@@ -3,6 +3,7 @@
 
 import {useAutoApply, usePipeline, useProjectsPending, type Project} from '@thunderid/configure-gateways';
 import {useProjectSelection} from '@thunderid/configure-projects';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   Button,
@@ -90,6 +91,7 @@ export default function PendingDeployBanner({canCreateProject = true}: PendingDe
   const [picking, setPicking] = useState(false);
   const [chosen, setChosen] = useState<string | null>(null);
   const autoApply = useAutoApply();
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   const auto = autoApply.data?.enabled ?? false;
   const first = pipeline.data?.stages[0];
   const firstTag = first?.name ?? '';
@@ -181,16 +183,18 @@ export default function PendingDeployBanner({canCreateProject = true}: PendingDe
             })}
           </Typography>
         </Stack>
-        <Button
-          variant="contained"
-          startIcon={<Rocket size={16} />}
-          onClick={deploy}
-          disabled={projects.length === 0}
-          sx={PILL}
-          data-testid="organization-deploy"
-        >
-          {t('home:organization.deployTo', 'Deploy to {{target}}', {target: firstTag})}
-        </Button>
+        {canDeploy && (
+          <Button
+            variant="contained"
+            startIcon={<Rocket size={16} />}
+            onClick={deploy}
+            disabled={projects.length === 0}
+            sx={PILL}
+            data-testid="organization-deploy"
+          >
+            {t('home:organization.deployTo', 'Deploy to {{target}}', {target: firstTag})}
+          </Button>
+        )}
       </Stack>
 
       <Dialog open={picking} onClose={() => setPicking(false)} fullWidth maxWidth="xs">

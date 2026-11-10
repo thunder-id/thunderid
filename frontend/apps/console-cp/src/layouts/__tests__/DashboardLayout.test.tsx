@@ -33,10 +33,6 @@ let mockPathname: string | undefined;
 // The banner over every page reads the pipeline's pending changes; it has tests of its own.
 vi.mock('../../components/PendingDeployBanner', () => ({default: () => null}));
 
-vi.mock('@thunderid/hooks', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
-  useCapabilities: () => mockCapabilities,
-}));
 interface MockProjectSelection {
   projects: {id: string; handle: string; displayName: string}[];
   selectedProject?: {id: string; handle: string; displayName: string};
@@ -115,6 +111,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useCapabilitiesContext: () => mockCapabilities,
     useConfig: () => ({
       config: {
         brand: {
@@ -174,14 +171,9 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock Outlet
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  const {useCapabilitiesContext} = await vi.importActual<typeof import('@thunderid/contexts')>('@thunderid/contexts');
   return {
     ...actual,
-    Outlet: () => (
-      <div data-testid="outlet" data-can-delete-app={String(useCapabilitiesContext().can('app', 'delete'))}>
-        Outlet Content
-      </div>
-    ),
+    Outlet: () => <div data-testid="outlet">Outlet Content</div>,
     Link: ({children, to, onClick = undefined}: {children: React.ReactNode; to: string; onClick?: () => void}) => (
       <a href={to} data-testid="router-link" onClick={onClick}>
         {children}
@@ -637,17 +629,6 @@ describe('DashboardLayout', () => {
   });
 
   describe('capabilities', () => {
-    it('hands the capabilities to the page', () => {
-      mockCapabilities = {
-        can: (_resource, action = 'view') => action === 'view',
-        canManageRoot: false,
-        isLoading: false,
-      };
-      render(<DashboardLayout />);
-
-      expect(screen.getByTestId('outlet')).toHaveAttribute('data-can-delete-app', 'false');
-    });
-
     it('hides the pages the admin cannot view, and groups left empty', () => {
       mockCapabilities = {can: (resource) => resource === 'user', canManageRoot: false, isLoading: false};
       render(<DashboardLayout />);

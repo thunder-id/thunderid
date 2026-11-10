@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useGetLanguages, useGetTranslations, useUpdateTranslation} from '@thunderid/i18n';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -84,6 +85,7 @@ export function I18nConfigurationCardContent({
 }: I18nConfigurationCardContentProps): ReactElement {
   const {t} = useTranslation();
   const {i18nTextLoading} = useI18nConfig();
+  const {can} = useCapabilitiesContext();
   const updateTranslation = useUpdateTranslation({
     onMutationSuccess: () => {
       invalidateI18nCache();
@@ -339,13 +341,17 @@ export function I18nConfigurationCardContent({
         </Box>
       )}
 
-      <Divider />
+      {can('i18n', 'update') && (
+        <>
+          <Divider />
 
-      <Tooltip title={t('flows:core.elements.textPropertyField.i18nCard.tooltip.addNewTranslation')}>
-        <PanelActionButton startIcon={<PlusIcon size={16} />} onClick={handleEnterCreateMode}>
-          {t('flows:core.elements.textPropertyField.i18nCard.createTitle')}
-        </PanelActionButton>
-      </Tooltip>
+          <Tooltip title={t('flows:core.elements.textPropertyField.i18nCard.tooltip.addNewTranslation')}>
+            <PanelActionButton startIcon={<PlusIcon size={16} />} onClick={handleEnterCreateMode}>
+              {t('flows:core.elements.textPropertyField.i18nCard.createTitle')}
+            </PanelActionButton>
+          </Tooltip>
+        </>
+      )}
     </Box>
   );
 

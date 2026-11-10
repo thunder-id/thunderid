@@ -1398,7 +1398,14 @@ describe('OrganizationUnitEditPage', () => {
   });
 
   describe('Without write access', () => {
-    it('should hide delete and disable save when the admin may only view organization units', async () => {
+    it('should offer the name and description edits when the admin may update organization units', async () => {
+      renderWithProviders(<OrganizationUnitEditPage />);
+
+      expect(await screen.findByRole('button', {name: 'Edit organization unit name'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Edit description'})).toBeInTheDocument();
+    });
+
+    it('should lock the fields and hide delete when the admin may only view organization units', async () => {
       renderWithProviders(
         <CapabilitiesProvider capabilities={viewOnly}>
           <OrganizationUnitEditPage />
@@ -1409,22 +1416,83 @@ describe('OrganizationUnitEditPage', () => {
         expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
       });
 
-      const descEditButton = screen
-        .getAllByRole('button')
-        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes('A test description'));
-      fireEvent.click(descEditButton!);
-      const descInput = screen.getByDisplayValue('A test description');
-      fireEvent.change(descInput, {target: {value: 'New description'}});
-      fireEvent.blur(descInput);
-
-      await waitFor(() => {
-        expect(screen.getByText(t('organizationUnits:edit.actions.save.label'))).toBeDisabled();
-      });
+      expect(screen.queryByRole('button', {name: 'Edit organization unit name'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit description'})).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')}));
       expect(
         screen.queryByRole('button', {name: t('organizationUnits:edit.general.dangerZone.delete.button.label')}),
       ).not.toBeInTheDocument();
+    });
+
+    it('should lock the organization unit an admin is confined to, which its parent manages', async () => {
+      renderWithProviders(
+        <CapabilitiesProvider
+          capabilities={{can: () => true, canManageRoot: false, confinedOuId: 'ou-123', isLoading: false}}
+        >
+          <OrganizationUnitEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', {name: 'Edit organization unit name'})).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')}));
+      expect(
+        screen.queryByRole('button', {name: t('organizationUnits:edit.general.dangerZone.delete.button.label')}),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should let an admin confined to another organization unit manage this one', async () => {
+      renderWithProviders(
+        <CapabilitiesProvider
+          capabilities={{can: () => true, canManageRoot: false, confinedOuId: 'ou-parent', isLoading: false}}
+        >
+          <OrganizationUnitEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(await screen.findByRole('button', {name: 'Edit organization unit name'})).toBeInTheDocument();
+    });
+
+    const contentTabs = (): string[] =>
+      ['childOUs', 'users', 'groups'].map((tab) => t(`organizationUnits:edit.page.tabs.${tab}`));
+
+    it('should hide the child units, users and groups of a unit below the one the admin is confined to', async () => {
+      renderWithProviders(
+        <CapabilitiesProvider
+          capabilities={{can: () => true, canManageRoot: false, confinedOuId: 'ou-parent', isLoading: false}}
+        >
+          <OrganizationUnitEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(await screen.findByRole('tab', {name: t('organizationUnits:edit.page.tabs.general')})).toBeInTheDocument();
+      contentTabs().forEach((name) => expect(screen.queryByRole('tab', {name})).not.toBeInTheDocument());
+      expect(screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')})).toBeInTheDocument();
+    });
+
+    it('should show the child units, users and groups of the unit the admin is confined to', async () => {
+      renderWithProviders(
+        <CapabilitiesProvider
+          capabilities={{can: () => true, canManageRoot: false, confinedOuId: 'ou-123', isLoading: false}}
+        >
+          <OrganizationUnitEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(await screen.findByRole('tab', {name: contentTabs()[0]})).toBeInTheDocument();
+      contentTabs().forEach((name) => expect(screen.getByRole('tab', {name})).toBeInTheDocument());
+    });
+
+    it('should show the child units, users and groups to an admin confined to no unit', async () => {
+      renderWithProviders(<OrganizationUnitEditPage />);
+
+      expect(await screen.findByRole('tab', {name: contentTabs()[0]})).toBeInTheDocument();
+      contentTabs().forEach((name) => expect(screen.getByRole('tab', {name})).toBeInTheDocument());
     });
   });
 

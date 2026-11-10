@@ -152,6 +152,7 @@ export default function GroupEditPage(): JSX.Element {
   };
 
   const resourceTypeTitle = t('navigation:pages.groups', 'Groups');
+  const isReadOnly = Boolean(group?.isReadOnly) || !can('group', 'update');
 
   if (isLoading || isOtherProject) {
     return (
@@ -247,7 +248,7 @@ export default function GroupEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedGroup.name ?? group.name}</Typography>
-                {!group.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label="Edit group name"
@@ -309,7 +310,7 @@ export default function GroupEditPage(): JSX.Element {
                 <Typography variant="body2" color="text.secondary">
                   {effectiveDescription || t('edit.page.description.empty', 'No description')}
                 </Typography>
-                {!group.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label="Edit group description"
@@ -387,7 +388,7 @@ export default function GroupEditPage(): JSX.Element {
           saveLabel={t('edit.page.save', 'Save changes')}
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={updateGroup.isPending}
-          saveDisabled={group.isReadOnly === true || !can('group', 'update')}
+          saveDisabled={isReadOnly}
           error={
             updateGroup.error
               ? getErrorMessage(updateGroup.error, t, 'update.error', 'Failed to update group. Please try again.')

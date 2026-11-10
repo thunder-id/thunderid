@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Button, IconButton, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -21,6 +21,7 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const routes = useVerifiableCredentialRoutes();
+  const {can} = useCapabilitiesContext();
   const listUrl = routes.verifiablePresentations.list();
 
   // Resolves an error through the `verifiable-presentations` catalog. `t` defaults to the `common`
@@ -170,17 +171,19 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{name || data.handle}</Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('verifiable-presentations:edit.name.editButton')}
-                  onClick={() => {
-                    setTempName(name);
-                    setIsEditingName(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {can('vc', 'update') && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('verifiable-presentations:edit.name.editButton')}
+                    onClick={() => {
+                      setTempName(name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -228,17 +231,19 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
                 <Typography variant="body2" color="text.secondary">
                   {description || t('verifiable-presentations:edit.description.empty')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('verifiable-presentations:edit.description.editButton')}
-                  onClick={() => {
-                    setTempDescription(description);
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {can('vc', 'update') && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('verifiable-presentations:edit.description.editButton')}
+                    onClick={() => {
+                      setTempDescription(description);
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -254,7 +259,8 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
         submitting={updateVP.isPending}
         submitLabel={t('common:actions.save')}
         onSubmit={handleSubmit}
-        onDelete={(): void => setDeleteOpen(true)}
+        onDelete={can('vc', 'delete') ? (): void => setDeleteOpen(true) : undefined}
+        readOnly={!can('vc', 'update')}
         error={
           updateVP.error
             ? getErrorMessage(updateVP.error, tForErrors, 'update.error', 'Failed to update presentation definition')

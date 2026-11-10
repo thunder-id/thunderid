@@ -20,17 +20,13 @@ vi.mock('@thunderid/react', () => ({
   useThunderID: () => ({clearSession: mockClearSession, discovery: mockDiscovery}),
 }));
 
-vi.mock('@thunderid/hooks', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
-  useCapabilities: () => ({
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
     can: (resource: string): boolean => mockPermissions.includes(`system:${resource}:view`),
     canManageRoot: false,
     isLoading: false,
   }),
-}));
-
-vi.mock('@thunderid/contexts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     getClientUrl: () => 'https://admin.example/console',
     getTrustedIssuerClientId: () => 'console-client',

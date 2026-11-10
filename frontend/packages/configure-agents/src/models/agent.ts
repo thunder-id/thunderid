@@ -66,6 +66,8 @@ export interface Agent {
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
   isReadOnly?: boolean;
+  /** False for an agent shared into the organization unit it is read in, which that unit cannot change */
+  isOwnedByOU?: boolean;
   /**
    * Effective access status, derived by the server at read time. Read-only.
    */
@@ -94,6 +96,8 @@ export interface BasicAgent {
   kind?: string;
   attributes?: Record<string, unknown>;
   isReadOnly?: boolean;
+  /** False for an agent shared into the organization unit it is read in, which that unit cannot change */
+  isOwnedByOU?: boolean;
   /**
    * Effective access status, derived by the server at read time. Read-only.
    */

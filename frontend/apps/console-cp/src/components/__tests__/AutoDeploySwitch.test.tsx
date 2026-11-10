@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import AutoDeploySwitch from '../AutoDeploySwitch';
@@ -78,6 +79,18 @@ describe('AutoDeploySwitch', () => {
     );
     expect(state.setAutoApply).not.toHaveBeenCalled();
     expect(screen.getByText('Turn on auto deploy to Development?')).toBeInTheDocument();
+  });
+
+  it('locks the switch for an admin who cannot update the organization configuration', () => {
+    render(
+      <CapabilitiesProvider
+        capabilities={{can: (_r, action = 'view') => action === 'view', canManageRoot: false, isLoading: false}}
+      >
+        <AutoDeploySwitch />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByLabelText('Auto deploy configuration to Development')).toBeDisabled();
   });
 
   it('asks before turning auto deploy off', async () => {

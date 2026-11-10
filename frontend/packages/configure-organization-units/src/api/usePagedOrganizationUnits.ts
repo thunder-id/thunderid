@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData} from '@tanstack/react-query';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import fetchChildOrganizationUnits from './fetchChildOrganizationUnits';
 import fetchOrganizationUnits from './fetchOrganizationUnits';
@@ -27,18 +27,20 @@ export default function usePagedOrganizationUnits(
 ): UseInfiniteQueryResult<InfiniteData<OrganizationUnitListResponse>> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const {confinedOuId} = useCapabilitiesContext();
 
   return useInfiniteQuery({
     queryKey: [
       parentId ? OrganizationUnitQueryKeys.CHILD_ORGANIZATION_UNITS : OrganizationUnitQueryKeys.ORGANIZATION_UNITS,
       'paged',
       parentId,
+      ...(parentId ? [] : [confinedOuId ?? null]),
     ],
     queryFn: ({pageParam}): Promise<OrganizationUnitListResponse> => {
       const params = {limit: PAGE_SIZE, offset: pageParam};
       return parentId
         ? fetchChildOrganizationUnits(http, getServerUrl(), parentId, params)
-        : fetchOrganizationUnits(http, getServerUrl(), params);
+        : fetchOrganizationUnits(http, getServerUrl(), {...params, confinedOuId});
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {

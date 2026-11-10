@@ -21,7 +21,7 @@ import {
 } from '@thunderid/configure-organization-units';
 import {isRowEmpty, useGetCorsConfig, useUpdateCorsConfig} from '@thunderid/configure-settings';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
-import {useProjectScope, useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope, useToast} from '@thunderid/contexts';
 import {DefaultTheme, useGetTheme, type Theme} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -168,6 +168,7 @@ export default function ApplicationCreatePage(): JSX.Element {
   const {data: applicationsData} = useGetApplications({limit: 100});
   const {data: corsConfigData} = useGetCorsConfig();
   const updateCorsConfig = useUpdateCorsConfig();
+  const {can} = useCapabilitiesContext();
   const ouLookup = useHasMultipleOUs();
   const {projectId} = useProjectScope();
   // Inside a project the application is created with the project alone, and the API places it in
@@ -755,7 +756,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         // part of the application payload above. This is independent of application creation
         // succeeding, so it neither blocks nor is blocked by the navigation below.
         const corsAdditions = corsOrigins.filter((row) => !isRowEmpty(row));
-        if (selectedTemplateConfig?.capabilities?.cors && corsAdditions.length > 0) {
+        if (selectedTemplateConfig?.capabilities?.cors && can('serverconfig', 'update') && corsAdditions.length > 0) {
           updateCorsConfig.mutate(
             {
               data: mergeCorsOrigins(

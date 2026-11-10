@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -71,6 +71,40 @@ function projectCheck(sent: unknown[]): void {
 }
 
 describe('ApplyPanel', () => {
+  it('says why the missing values are locked to an admin without full access', async () => {
+    http = fakeHttp({
+      'POST /gateways/gw-dev/apply': () => ({
+        gatewayId: 'gw-dev',
+        dryRun: true,
+        diff: {
+          toVersion: version.version,
+          changes: [
+            {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'added'},
+          ],
+        },
+        missing: {variables: ['APP_ORDERS_CLIENT_ID']},
+      }),
+    });
+    render(
+      <CapabilitiesProvider capabilities={{can: () => true, canManageRoot: false, isLoading: false}}>
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </CapabilitiesProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    expect(await within(panel).findByLabelText(/APP_ORDERS_CLIENT_ID/)).toBeDisabled();
+    expect(
+      within(panel).getByText(/Only an admin with full access to this deployment can fill these values/),
+    ).toBeInTheDocument();
+  });
+
   it("retries what a project's gateway refused with what it needs, scoped to the project", async () => {
     const sent: unknown[] = [];
     projectCheck(sent);

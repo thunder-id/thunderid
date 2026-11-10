@@ -47,8 +47,8 @@ import type {OrganizationUnit} from '../models/organization-unit';
 
 interface TabPanelProps {
   children?: ReactNode;
-  index: number;
-  value: number;
+  index: string;
+  value: string;
 }
 
 function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX.Element {
@@ -92,7 +92,7 @@ export default function OrganizationUnitEditPage({
   const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
   const logger = useLogger('OrganizationUnitEditPage');
-  const {can} = useCapabilitiesContext();
+  const {can, confinedOuId} = useCapabilitiesContext();
 
   // Resolves an error through the `organizationUnits` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -112,16 +112,14 @@ export default function OrganizationUnitEditPage({
   const {resetTreeState} = useOrganizationUnit();
   const {projectId} = useProjectScope();
 
-  const [tabState, setTabState] = useState<{organizationUnitId: string | undefined; value: number}>({
+  const [tabState, setTabState] = useState<{organizationUnitId: string | undefined; value: string}>({
     organizationUnitId: id,
-    value: 0,
+    value: 'general',
   });
 
   if (tabState.organizationUnitId !== id) {
-    setTabState({organizationUnitId: id, value: 0});
+    setTabState({organizationUnitId: id, value: 'general'});
   }
-
-  const activeTab = tabState.organizationUnitId === id ? tabState.value : 0;
   const [editedOU, setEditedOU] = useState<Partial<OrganizationUnit>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -142,7 +140,7 @@ export default function OrganizationUnitEditPage({
     ? t('organizationUnits:edit.page.backToOU', {name: fromOU.name})
     : t('organizationUnits:edit.page.back', 'Back to organization units');
 
-  const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
+  const handleTabChange = (_event: SyntheticEvent, newValue: string): void => {
     setTabState({organizationUnitId: id, value: newValue});
   };
 
@@ -237,6 +235,9 @@ export default function OrganizationUnitEditPage({
   };
 
   const resourceTypeTitle = t('navigation:pages.organizationUnits', 'Organization units');
+  // An admin confined to an organization unit cannot change or delete that unit; its parent manages it.
+  const isConfinedUnit = Boolean(confinedOuId) && organizationUnit?.id === confinedOuId;
+  const isReadOnly = Boolean(organizationUnit?.isReadOnly) || isConfinedUnit || !can('ou', 'update');
 
   if (isLoading) {
     return (
@@ -303,6 +304,67 @@ export default function OrganizationUnitEditPage({
     return <Navigate to={listUrl} replace />;
   }
 
+  // An admin confined to an organization unit reads the units directly beneath it, but not what is inside them:
+  // listing their children, users and groups is refused, so those tabs are left out.
+  // TODO: This repeats the server's rule. Read the reach from the server instead, for example a capabilities tier
+  // for direct child units or GET /capabilities?ouId=<unit>.
+  const canSeeContents = !confinedOuId || organizationUnit.id === confinedOuId;
+  const tabs: {key: string; label: string; panel: ReactNode; visible: boolean}[] = [
+    {
+      key: 'general',
+      label: t('organizationUnits:edit.page.tabs.general'),
+      panel: <EditGeneralSettings organizationUnit={organizationUnit} />,
+      visible: true,
+    },
+    {
+      key: 'childOUs',
+      label: t('organizationUnits:edit.page.tabs.childOUs'),
+      panel: (
+        <EditChildOrganizationUnitSettings organizationUnitId={id!} organizationUnitName={organizationUnit.name} />
+      ),
+      visible: canSeeContents,
+    },
+    {
+      key: 'users',
+      label: t('organizationUnits:edit.page.tabs.users'),
+      panel: <EditUsers organizationUnitId={id!} />,
+      visible: canSeeContents,
+    },
+    {
+      key: 'groups',
+      label: t('organizationUnits:edit.page.tabs.groups'),
+      panel: <EditGroups organizationUnitId={id!} />,
+      visible: canSeeContents,
+    },
+    {
+      key: 'defaultFlows',
+      label: t('organizationUnits:edit.page.tabs.defaultFlows'),
+      panel: renderDefaultFlowsSettings?.({
+        organizationUnit: isConfinedUnit ? {...organizationUnit, isReadOnly: true} : organizationUnit,
+        editedOU,
+        onFieldChange: handleFieldChange,
+      }),
+      visible: Boolean(renderDefaultFlowsSettings),
+    },
+    {
+      key: 'customization',
+      label: t('organizationUnits:edit.page.tabs.customization'),
+      panel: (
+        <EditCustomization organizationUnit={organizationUnit} editedOU={editedOU} onFieldChange={handleFieldChange} />
+      ),
+      visible: true,
+    },
+    {
+      key: 'advanced',
+      label: t('organizationUnits:edit.page.tabs.advanced'),
+      panel: !organizationUnit.isReadOnly && !isConfinedUnit && can('ou', 'delete') && (
+        <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+      ),
+      visible: true,
+    },
+  ].filter((tab) => tab.visible);
+  const activeTab = tabs.some((tab) => tab.key === tabState.value) ? tabState.value : 'general';
+
   return (
     <PageContent>
       <DocumentTitle title={organizationUnit.name} />
@@ -321,7 +383,7 @@ export default function OrganizationUnitEditPage({
             size={55}
             variant="rounded"
             supportedShapes={['rounded']}
-            editable={!organizationUnit.isReadOnly}
+            editable={!isReadOnly}
             value={editedOU.logoUrl ?? organizationUnit.logoUrl ?? undefined}
             fallback={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
             editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label', 'Update logo')}
@@ -363,9 +425,10 @@ export default function OrganizationUnitEditPage({
             ) : (
               <>
                 <Typography variant="h3">{editedOU.name ?? organizationUnit.name}</Typography>
-                {!organizationUnit.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('organizationUnits:edit.page.editName', 'Edit organization unit name')}
                     onClick={() => {
                       setTempName(editedOU.name ?? organizationUnit.name);
                       setIsEditingName(true);
@@ -421,9 +484,10 @@ export default function OrganizationUnitEditPage({
                   {(editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
                     t('organizationUnits:edit.page.description.empty')}
                 </Typography>
-                {!organizationUnit.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('organizationUnits:edit.page.editDescription', 'Edit description')}
                     onClick={() => {
                       setTempDescription(
                         (editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
@@ -448,97 +512,24 @@ export default function OrganizationUnitEditPage({
 
       {/* Tabs */}
       <Tabs value={activeTab} onChange={handleTabChange} aria-label="organization unit settings tabs">
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.general')}
-          id="ou-tab-0"
-          aria-controls="ou-tabpanel-0"
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.childOUs')}
-          id="ou-tab-1"
-          aria-controls="ou-tabpanel-1"
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.users')}
-          id="ou-tab-2"
-          aria-controls="ou-tabpanel-2"
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.groups')}
-          id="ou-tab-3"
-          aria-controls="ou-tabpanel-3"
-          sx={{textTransform: 'none'}}
-        />
-        {renderDefaultFlowsSettings && (
+        {tabs.map((tab) => (
           <Tab
-            label={t('organizationUnits:edit.page.tabs.defaultFlows')}
-            id="ou-tab-4"
-            aria-controls="ou-tabpanel-4"
+            key={tab.key}
+            value={tab.key}
+            label={tab.label}
+            id={`ou-tab-${tab.key}`}
+            aria-controls={`ou-tabpanel-${tab.key}`}
             sx={{textTransform: 'none'}}
           />
-        )}
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.customization')}
-          id={renderDefaultFlowsSettings ? 'ou-tab-5' : 'ou-tab-4'}
-          aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-5' : 'ou-tabpanel-4'}
-          sx={{textTransform: 'none'}}
-        />
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.advanced')}
-          id={renderDefaultFlowsSettings ? 'ou-tab-6' : 'ou-tab-5'}
-          aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-6' : 'ou-tabpanel-5'}
-          sx={{textTransform: 'none'}}
-        />
+        ))}
       </Tabs>
 
       {/* Tab Panels */}
-      <>
-        {/* General Settings Tab */}
-        <TabPanel value={activeTab} index={0}>
-          <EditGeneralSettings organizationUnit={organizationUnit} />
+      {tabs.map((tab) => (
+        <TabPanel key={tab.key} value={activeTab} index={tab.key}>
+          {tab.panel}
         </TabPanel>
-
-        {/* Child OUs Tab */}
-        <TabPanel value={activeTab} index={1}>
-          <EditChildOrganizationUnitSettings organizationUnitId={id!} organizationUnitName={organizationUnit.name} />
-        </TabPanel>
-
-        {/* Users Tab */}
-        <TabPanel value={activeTab} index={2}>
-          <EditUsers organizationUnitId={id!} />
-        </TabPanel>
-
-        {/* Groups Tab */}
-        <TabPanel value={activeTab} index={3}>
-          <EditGroups organizationUnitId={id!} />
-        </TabPanel>
-
-        {/* Default Flows Tab */}
-        {renderDefaultFlowsSettings && (
-          <TabPanel value={activeTab} index={4}>
-            {renderDefaultFlowsSettings({organizationUnit, editedOU, onFieldChange: handleFieldChange})}
-          </TabPanel>
-        )}
-
-        {/* Customization Tab */}
-        <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 5 : 4}>
-          <EditCustomization
-            organizationUnit={organizationUnit}
-            editedOU={editedOU}
-            onFieldChange={handleFieldChange}
-          />
-        </TabPanel>
-
-        {/* Advanced Tab */}
-        <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 6 : 5}>
-          {!organizationUnit.isReadOnly && can('ou', 'delete') && (
-            <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
-          )}
-        </TabPanel>
-      </>
+      ))}
 
       {/* Delete Dialog */}
       <OrganizationUnitDeleteDialog
@@ -556,7 +547,7 @@ export default function OrganizationUnitEditPage({
           saveLabel={t('organizationUnits:edit.actions.save.label')}
           savingLabel={t('organizationUnits:edit.actions.saving.label')}
           isSaving={updateOrganizationUnit.isPending}
-          saveDisabled={organizationUnit.isReadOnly === true || !can('ou', 'update')}
+          saveDisabled={isReadOnly}
           error={
             updateOrganizationUnit.error
               ? getErrorMessage(

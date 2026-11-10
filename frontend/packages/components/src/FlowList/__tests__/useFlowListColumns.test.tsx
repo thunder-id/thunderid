@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {screen, within} from '@testing-library/react';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, userEvent} from '@thunderid/test-utils';
 import {ListingTable} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -90,6 +91,22 @@ describe('useFlowListColumns', () => {
     expect(within(row).queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
     await userEvent.click(within(row).getByRole('button', {name: 'View'}));
     expect(onOpen).toHaveBeenCalledWith(flows[1]);
+  });
+
+  it('offers View instead of Edit when the admin may not update flows', async () => {
+    const onOpen = vi.fn();
+    render(
+      <CapabilitiesProvider
+        capabilities={{can: (_r, a = 'view') => a !== 'update', canManageRoot: true, isLoading: false}}
+      >
+        <FlowTable onOpen={onOpen} />
+      </CapabilitiesProvider>,
+    );
+    const row = rowOf('Suspend users');
+
+    expect(within(row).queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole('button', {name: 'View'}));
+    expect(onOpen).toHaveBeenCalledWith(flows[0]);
   });
 
   it('shows where each flow is along the deploy path only where the app says so', () => {

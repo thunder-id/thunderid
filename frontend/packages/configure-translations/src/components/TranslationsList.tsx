@@ -1,13 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {getDisplayNameForCode, toFlagEmoji, useGetLanguages} from '@thunderid/i18n';
 import {useLogger} from '@thunderid/logger/react';
 import {Chip, DataGrid, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui';
-import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -94,20 +94,7 @@ export default function TranslationsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<{id: string; code: string}>): JSX.Element => (
           <ListingTable.RowActions>
-            {can('i18n', 'update') && (
-              <Tooltip title={t('common:actions.edit', 'Edit')}>
-                <IconButton
-                  size="small"
-                  aria-label={t('common:actions.edit', 'Edit')}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(params.row.code);
-                  }}
-                >
-                  <Pencil size={16} />
-                </IconButton>
-              </Tooltip>
-            )}
+            <EditOrViewAction canEdit={can('i18n', 'update')} onClick={() => handleEditClick(params.row.code)} />
             {can('i18n', 'delete') && (
               <Tooltip title={t('common:actions.delete', 'Delete')}>
                 <IconButton

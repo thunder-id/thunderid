@@ -18,6 +18,17 @@ vi.mock('@thunderid/configure-translations', () => ({
 
 vi.mock('../lib/monaco-setup', () => ({}));
 
+let mockCan: (resource: string, action?: string) => boolean = () => true;
+let mockCanManageRoot = true;
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (r: string, a?: string) => mockCan(r, a),
+    canManageRoot: mockCanManageRoot,
+    isLoading: false,
+  }),
+}));
+
 vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-onboarding')>()),
   HomePage: () => <div data-testid="home-page" />,
@@ -147,6 +158,27 @@ vi.mock('../layouts/FullScreenLayout', async () => {
 describe('App', () => {
   afterEach(() => {
     window.history.pushState({}, '', '/');
+    mockCan = () => true;
+    mockCanManageRoot = true;
+  });
+
+  it('shows a notice instead of a create page the admin may not create on', async () => {
+    mockCan = (resource, action) => !(resource === 'group' && action === 'create');
+    window.history.pushState({}, '', '/groups/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('You do not have permission to view this page.')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('create-group-page')).not.toBeInTheDocument();
+  });
+
+  it('shows a notice instead of import / export to admins without the root permission', async () => {
+    mockCanManageRoot = false;
+    window.history.pushState({}, '', '/import-export');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('You do not have permission to view this page.')).toBeInTheDocument();
+    });
   });
 
   it('renders without crashing', () => {

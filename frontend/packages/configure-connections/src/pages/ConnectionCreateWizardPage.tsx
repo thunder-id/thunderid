@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {decodeKeyValuePairs, DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
-import {useGateCallbackUrl, useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useGateCallbackUrl, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {type JSX, useMemo, useState} from 'react';
@@ -86,6 +86,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   const emailProvidersQuery = useEmailProviders({enabled: isEmailSender});
   const notificationConfigQuery = useGetNotificationConfig({enabled: isEmailSender});
   const setDefaultSender = useSetDefaultEmailSender();
+  const {can} = useCapabilitiesContext();
   // The same query the configure step's form reads, so only the selected method's properties are sent.
   const {data: connectionMeta} = useConnectionMeta(step === Step.CONFIGURE ? activeType : undefined);
   const authenticationMethods: OutboundAuthMethod[] = useMemo(
@@ -175,9 +176,11 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
       }),
       ouId,
     };
-    // The first email sender becomes the default, unless the deployment configuration fixes it.
+    // The first email sender becomes the default, unless the deployment configuration fixes it or the admin
+    // can't change the server configuration.
     const makeDefault: boolean =
       isEmailSender &&
+      can('serverconfig', 'update') &&
       emailProvidersQuery.isSuccess &&
       emailProvidersQuery.data.length === 0 &&
       notificationConfigQuery.isSuccess &&

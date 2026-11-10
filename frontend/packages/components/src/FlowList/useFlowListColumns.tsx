@@ -1,10 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Chip, DataGrid, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import EditOrViewAction from '../EditOrViewAction/EditOrViewAction';
 import {useDeployStatusSource} from '../ResourceDeployStatus/DeployStatusContext';
 import ResourceDeployStatus from '../ResourceDeployStatus/ResourceDeployStatus';
 
@@ -19,6 +21,7 @@ export interface FlowListRow {
   flowType: string;
   updatedAt: string;
   isReadOnly?: boolean;
+  isOwnedByOU?: boolean;
 }
 
 /**
@@ -36,7 +39,7 @@ export interface FlowListColumnsOptions<T extends FlowListRow> {
 
 /**
  * Columns of a flow list: name, type, last update and the row actions. A read-only flow offers View;
- * any other flow offers Edit, and Delete when `onDelete` is given.
+ * any other flow offers Edit (View when the admin cannot update flows), and Delete when `onDelete` is given.
  *
  * @public
  */
@@ -45,6 +48,8 @@ export default function useFlowListColumns<T extends FlowListRow>({
   onDelete = undefined,
 }: FlowListColumnsOptions<T>): DataGrid.GridColDef<T>[] {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
+  const canUpdate = can('flow', 'update');
   // Where flows are along the deploy path is shown only where the app says so.
   const deploys = useDeployStatusSource() !== null;
 
@@ -111,7 +116,7 @@ export default function useFlowListColumns<T extends FlowListRow>({
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<T>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {params.row.isReadOnly || params.row.isOwnedByOU === false ? (
               <Tooltip title={t('common:actions.view', 'View')}>
                 <IconButton
                   aria-label={t('common:actions.view', 'View')}
@@ -126,18 +131,7 @@ export default function useFlowListColumns<T extends FlowListRow>({
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpen(params.row);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
+                <EditOrViewAction canEdit={canUpdate} onClick={() => onOpen(params.row)} />
                 {onDelete && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton
@@ -159,6 +153,6 @@ export default function useFlowListColumns<T extends FlowListRow>({
         ),
       },
     ],
-    [deploys, onDelete, onOpen, t],
+    [canUpdate, deploys, onDelete, onOpen, t],
   );
 }

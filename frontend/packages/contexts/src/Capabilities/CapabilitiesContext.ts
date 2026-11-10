@@ -16,6 +16,11 @@ export interface Capabilities {
    */
   can: (resource: string, action?: string) => boolean;
   /** Whether the admin may manage the APIs only the root `system` permission reaches. */
+  /**
+   * The organization unit the admin is confined to: set on the data plane for an admin without the root
+   * permission, whose token reaches only that unit and the units directly beneath it. Undefined otherwise.
+   */
+  confinedOuId?: string;
   canManageRoot: boolean;
   isLoading: boolean;
 }

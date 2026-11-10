@@ -3,6 +3,7 @@
 
 import {
   AccessStatusIndicator,
+  EditOrViewAction,
   QueryErrorNotice,
   ResourceAvatar,
   ResourceDeployStatus,
@@ -13,7 +14,7 @@ import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText, useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, IconButton, Stack, Tab, Tabs, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -200,7 +201,7 @@ export default function AgentsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {params.row.isReadOnly || params.row.isOwnedByOU === false ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   aria-label={t('common:status.readOnly', 'Read only')}
@@ -213,20 +214,7 @@ export default function AgentsList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                {can('agent', 'update') && (
-                  <Tooltip title={t('common:actions.edit', 'Edit')}>
-                    <IconButton
-                      aria-label={t('common:actions.edit', 'Edit')}
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditClick(params.row.id);
-                      }}
-                    >
-                      <Pencil size={16} />
-                    </IconButton>
-                  </Tooltip>
-                )}
+                <EditOrViewAction canEdit={can('agent', 'update')} onClick={() => handleEditClick(params.row.id)} />
                 {can('agent', 'delete') && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton

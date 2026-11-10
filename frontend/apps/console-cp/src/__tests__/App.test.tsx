@@ -54,6 +54,11 @@ vi.mock('@thunderid/configure-gateways', () => ({
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: () => true,
+    canManageRoot: true,
+    isLoading: false,
+  }),
   AdministrationProvider: ({
     administration,
     children,

@@ -38,6 +38,11 @@ interface MockThunderIDProviderProps {
   scopes?: string[];
 }
 
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/components')>()),
+  ServerCapabilitiesProvider: ({children}: {children: ReactNode}) => children,
+}));
+
 vi.mock('@thunderid/react', () => ({
   ThunderIDProvider: ({
     children,

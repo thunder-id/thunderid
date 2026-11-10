@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoader} from '@thunderid/components';
+import {CapabilityGuard, PageLoader} from '@thunderid/components';
 import {AgentTypeCreateProvider} from '@thunderid/configure-agent-types';
 import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
@@ -280,7 +280,14 @@ function projectFullScreenRoutes(): JSX.Element {
           />
         </Route>
         <Route path="create" element={<FullScreenLayout />}>
-          <Route index element={<CreateOrganizationUnitPage createInProjectsOnly />} />
+          <Route
+            index
+            element={
+              <CapabilityGuard resource="ou" action="create">
+                <CreateOrganizationUnitPage createInProjectsOnly />
+              </CapabilityGuard>
+            }
+          />
         </Route>
       </Route>
       <Route
@@ -291,7 +298,14 @@ function projectFullScreenRoutes(): JSX.Element {
           </GroupCreateProvider>
         }
       >
-        <Route index element={<CreateGroupPage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="group" action="create">
+              <CreateGroupPage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route
         path={`${ROUTE_SEGMENTS.roles}/create`}
@@ -301,24 +315,80 @@ function projectFullScreenRoutes(): JSX.Element {
           </RoleCreateProvider>
         }
       >
-        <Route index element={<CreateRolePage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="role" action="create">
+              <CreateRolePage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.users}/add`} element={<FullScreenLayout />}>
-        <Route index element={<UserAddPage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="user" action="create">
+              <UserAddPage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={ROUTE_SEGMENTS.deploy} element={<FullScreenLayout />}>
-        <Route index element={<DeployPage />} />
-        <Route path="gateways/:gatewayId/explore" element={<GatewayExplorerPage />} />
-        <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="gateway">
+              <DeployPage />
+            </CapabilityGuard>
+          }
+        />
+        <Route
+          path="gateways/:gatewayId/explore"
+          element={
+            <CapabilityGuard resource="gateway">
+              <GatewayExplorerPage />
+            </CapabilityGuard>
+          }
+        />
+        <Route
+          path="gateways/:gatewayId/values"
+          element={
+            <CapabilityGuard resource="gateway">
+              <GatewayValuesPage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/explore`} element={<FullScreenLayout />}>
-        <Route index element={<OrganizationExplorerPage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="gateway">
+              <OrganizationExplorerPage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.verifiablePresentations}/create`} element={<FullScreenLayout />}>
-        <Route index element={<VerifiablePresentationCreatePage createInProjectsOnly />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="vc" action="create">
+              <VerifiablePresentationCreatePage createInProjectsOnly />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.verifiableCredentials}/create`} element={<FullScreenLayout />}>
-        <Route index element={<VerifiableCredentialCreatePage createInProjectsOnly />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="vc" action="create">
+              <VerifiableCredentialCreatePage createInProjectsOnly />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route
         element={
@@ -328,20 +398,55 @@ function projectFullScreenRoutes(): JSX.Element {
         }
       >
         <Route path={`${ROUTE_SEGMENTS.applications}/types`} element={<DashboardLayout />}>
-          <Route index element={<ApplicationTemplateSelectPage />} />
+          <Route
+            index
+            element={
+              <CapabilityGuard resource="app" action="create">
+                <ApplicationTemplateSelectPage />
+              </CapabilityGuard>
+            }
+          />
         </Route>
         <Route path={`${ROUTE_SEGMENTS.applications}/create`} element={<FullScreenLayout />}>
-          <Route index element={<ApplicationCreatePage />} />
+          <Route
+            index
+            element={
+              <CapabilityGuard resource="app" action="create">
+                <ApplicationCreatePage />
+              </CapabilityGuard>
+            }
+          />
         </Route>
       </Route>
       <Route path={`${ROUTE_SEGMENTS.agents}/create`} element={<FullScreenLayout />}>
-        <Route index element={<AgentOnboardPage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="agent" action="create">
+              <AgentOnboardPage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.resourceServers}/create`} element={<FullScreenLayout />}>
-        <Route index element={<CreateResourceServerPage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="rs" action="create">
+              <CreateResourceServerPage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.flows}/create`} element={<FullScreenLayout />}>
-        <Route index element={<FlowCreatePage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="flow" action="create">
+              <FlowCreatePage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.flows}/:flowId`} element={<DashboardLayout collapseSidebar />}>
         <Route index element={<FlowBuilderPage />} />
@@ -350,7 +455,14 @@ function projectFullScreenRoutes(): JSX.Element {
         <Route index element={<DesignPage />} />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.design}/themes/create`} element={<FullScreenLayout />}>
-        <Route index element={<ThemeCreatePage />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="design" action="create">
+              <ThemeCreatePage />
+            </CapabilityGuard>
+          }
+        />
       </Route>
       <Route
         path={`${ROUTE_SEGMENTS.design}/themes/:themeId`}
@@ -378,7 +490,14 @@ function projectFullScreenRoutes(): JSX.Element {
         <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.notificationTemplates}/:channel/create`} element={<FullScreenLayout />}>
-        <Route index element={<NotificationTemplateCreatePage createInProjectsOnly />} />
+        <Route
+          index
+          element={
+            <CapabilityGuard resource="notificationtemplate" action="create">
+              <NotificationTemplateCreatePage createInProjectsOnly />
+            </CapabilityGuard>
+          }
+        />
       </Route>
     </>
   );
@@ -458,7 +577,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ProjectCreatePage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="project" action="create">
+                        <ProjectCreatePage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.userTypes.create()}
@@ -470,7 +596,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<CreateUserTypePage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="usertype" action="create">
+                        <CreateUserTypePage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.agentTypes.create()}
@@ -482,7 +615,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<CreateAgentTypePage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="agenttype" action="create">
+                        <CreateAgentTypePage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.connections.create()}
@@ -492,7 +632,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ConnectionCreateWizardPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="connection" action="create">
+                        <ConnectionCreateWizardPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
@@ -502,7 +649,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ConnectionConfigureWizardPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="connection" action="create">
+                        <ConnectionConfigureWizardPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.importExport.list()}
@@ -512,7 +666,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ImportExportPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard root>
+                        <ImportExportPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.export.page()}
@@ -522,7 +683,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ExportPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard root>
+                        <ExportPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.importConfiguration.upload()}
@@ -532,9 +700,30 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ImportConfigurationUploadPage />} />
-                  <Route path="validate" element={<ImportConfigurationValidatePage />} />
-                  <Route path="summary" element={<ImportConfigurationSummaryPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard root>
+                        <ImportConfigurationUploadPage />
+                      </CapabilityGuard>
+                    }
+                  />
+                  <Route
+                    path="validate"
+                    element={
+                      <CapabilityGuard root>
+                        <ImportConfigurationValidatePage />
+                      </CapabilityGuard>
+                    }
+                  />
+                  <Route
+                    path="summary"
+                    element={
+                      <CapabilityGuard root>
+                        <ImportConfigurationSummaryPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.translations.create()}
@@ -546,7 +735,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<TranslationCreatePage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="i18n" action="create">
+                        <TranslationCreatePage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.translations.list()}

@@ -1,13 +1,11 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {BotCogIcon, getInitials} from '@thunderid/components';
-import {CapabilitiesProvider, useConfig} from '@thunderid/contexts';
-import {useCapabilities} from '@thunderid/hooks';
+import {BotCogIcon, ForbiddenNotice, getInitials} from '@thunderid/components';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
-  Alert,
   AppShell,
   Box,
   Button,
@@ -85,7 +83,7 @@ function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
-  const {canManageRoot, isLoading} = useCapabilities();
+  const {canManageRoot, isLoading} = useCapabilitiesContext();
 
   if (!isLoading && !canManageRoot) {
     return null;
@@ -385,8 +383,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
     [t],
   );
 
-  const capabilities = useCapabilities();
-  const {can, isLoading: isLoadingCapabilities} = capabilities;
+  const {can, isLoading: isLoadingCapabilities} = useCapabilitiesContext();
 
   // The navigation the admin may see: entries for pages they can't view, and groups left empty, are hidden.
   const visibleRoutes: NavCategory[] = useMemo(() => {
@@ -535,19 +532,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         </Sidebar>
       </AppShell.Sidebar>
 
-      <AppShell.Main>
-        {isPageForbidden ? (
-          <Box sx={{p: 3}}>
-            <Alert severity="warning">
-              {t('navigation:forbidden.description', 'You do not have permission to view this page.')}
-            </Alert>
-          </Box>
-        ) : (
-          <CapabilitiesProvider capabilities={capabilities}>
-            <Outlet />
-          </CapabilitiesProvider>
-        )}
-      </AppShell.Main>
+      <AppShell.Main>{isPageForbidden ? <ForbiddenNotice /> : <Outlet />}</AppShell.Main>
 
       <AppShell.Footer>
         <Footer>

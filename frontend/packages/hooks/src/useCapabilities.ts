@@ -22,7 +22,7 @@ export interface CapabilitiesResponse {
  * Reads what the signed-in admin may do, to decide which pages and actions the Console offers.
  */
 export default function useCapabilities(): Capabilities {
-  const {http} = useThunderID();
+  const {http, isSignedIn} = useThunderID();
   const {getServerUrl} = useConfig();
   const {permissions, isLoading: isLoadingPermissions} = useGrantedPermissions();
   const {flattenedProfile} = useUser();
@@ -32,7 +32,7 @@ export default function useCapabilities(): Capabilities {
   // them again.
   const {data, isError, isPending} = useQuery<CapabilitiesResponse>({
     queryKey: ['capabilities', [...permissions].sort(), typeof ouId === 'string' ? ouId : ''],
-    enabled: !isLoadingPermissions,
+    enabled: isSignedIn && !isLoadingPermissions,
     queryFn: async (): Promise<CapabilitiesResponse> => {
       const response: {data: CapabilitiesResponse} = await http.request({
         url: `${getServerUrl()}/capabilities`,
@@ -50,5 +50,7 @@ export default function useCapabilities(): Capabilities {
     [data, isError],
   );
 
-  return {can, canManageRoot: data ? data.root.manage : isError, isLoading: isPending};
+  const confinedOuId: string | undefined = data?.scope.type === 'ou' && !data.root.manage ? data.scope.ouId : undefined;
+
+  return {can, canManageRoot: data ? data.root.manage : isError, confinedOuId, isLoading: isPending};
 }

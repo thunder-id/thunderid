@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import fetchOrganizationUnits from './fetchOrganizationUnits';
 import OrganizationUnitQueryKeys from '../constants/organization-unit-query-keys';
@@ -46,12 +46,16 @@ export default function useGetOrganizationUnits(
 ): UseQueryResult<OrganizationUnitListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const {confinedOuId} = useCapabilitiesContext();
   const {limit = 30, offset = 0, projectId} = params ?? {};
 
   return useQuery<OrganizationUnitListResponse>({
-    queryKey: [OrganizationUnitQueryKeys.ORGANIZATION_UNITS, {limit, offset, ...(projectId ? {projectId} : {})}],
+    queryKey: [
+      OrganizationUnitQueryKeys.ORGANIZATION_UNITS,
+      {limit, offset, ...(projectId ? {projectId} : {}), ...(confinedOuId ? {confinedOuId} : {})},
+    ],
     queryFn: async (): Promise<OrganizationUnitListResponse> =>
-      fetchOrganizationUnits(http, getServerUrl(), {limit, offset, projectId}),
+      fetchOrganizationUnits(http, getServerUrl(), {limit, offset, projectId, confinedOuId}),
     enabled,
   });
 }

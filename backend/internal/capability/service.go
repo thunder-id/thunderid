@@ -29,12 +29,17 @@ func newCapabilityService(authzService sysauthz.SystemAuthorizationServiceInterf
 // GetCapabilities returns the management actions the caller may perform, and where.
 func (s *capabilityService) GetCapabilities(ctx context.Context) (*capabilitiesResponse, *tidcommon.ServiceError) {
 	allowed := make(map[security.Action]bool)
+	unbound := security.LacksOrganizationUnit(ctx)
 	resources := make(map[security.ResourceType]map[string]bool, len(requiredActions))
 	for resource, catalogActions := range requiredActions {
 		resources[resource] = make(map[string]bool, len(catalogActions))
 		for name, actions := range catalogActions {
 			if name != viewAction {
 				actions = slices.Concat(catalogActions[viewAction], actions)
+			}
+			if unbound {
+				resources[resource][name] = false
+				continue
 			}
 			can, svcErr := s.allowsAll(ctx, actions, allowed)
 			if svcErr != nil {

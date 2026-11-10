@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, IconButton, InputAdornment, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {Eye, EyeOff, KeyRound, PenLine, X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
@@ -178,6 +179,7 @@ export default function ExplorerPanel({
   onDiscard,
 }: ExplorerPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {canManageRoot} = useCapabilitiesContext();
   const frame = {
     width: 360,
     flexShrink: 0,
@@ -373,7 +375,7 @@ export default function ExplorerPanel({
                             minRows={reference.list ? 2 : undefined}
                             value={value}
                             onChange={(event) => onDraft(reference.name, event.target.value)}
-                            disabled={isSaving}
+                            disabled={!canManageRoot || isSaving}
                             sx={EDITABLE}
                             slotProps={{input: {sx: {fontFamily: 'monospace', fontSize: 13}}}}
                             helperText={reference.list ? t('explorer.panel.listHint', 'One per line.') : undefined}
@@ -425,7 +427,7 @@ export default function ExplorerPanel({
                             placeholder={t('explorer.panel.secretPlaceholder', 'Enter a new value to replace')}
                             value={drafts.get(reference.name) ?? ''}
                             onChange={(event) => onDraft(reference.name, event.target.value)}
-                            disabled={isSaving}
+                            disabled={!canManageRoot || isSaving}
                             slotProps={{
                               input: {
                                 endAdornment: (
@@ -522,7 +524,7 @@ export default function ExplorerPanel({
           </Box>
         )}
       </Stack>
-      {own.length > 0 && (
+      {canManageRoot && own.length > 0 && (
         <Stack
           direction="row"
           spacing={1}

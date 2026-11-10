@@ -412,6 +412,7 @@ export default function ViewUserTypePage(): JSX.Element {
 
   // Loading state
   const resourceTypeTitle = t('navigation:pages.userTypes', 'User types');
+  const isReadOnly = Boolean(userType?.isReadOnly) || !can('usertype', 'update');
 
   if (isLoading) {
     return (
@@ -508,7 +509,7 @@ export default function ViewUserTypePage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{effectiveName}</Typography>
-                {!userType.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label={t('userTypes:edit.editName', 'Edit user type name')}
@@ -570,7 +571,7 @@ export default function ViewUserTypePage(): JSX.Element {
             properties={effectiveProperties}
             onPropertiesChange={handlePropertiesChange}
             userTypeHandle={userType.handle}
-            disabled={userType.isReadOnly}
+            disabled={isReadOnly}
           />
         </TabPanel>
 
@@ -631,7 +632,7 @@ export default function ViewUserTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateUserTypeMutation.isPending}
-          saveDisabled={userType.isReadOnly === true || !can('usertype', 'update')}
+          saveDisabled={isReadOnly}
           error={
             validationError ??
             (updateUserTypeMutation.error

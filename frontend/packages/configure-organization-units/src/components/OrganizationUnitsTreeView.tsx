@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQueryClient} from '@tanstack/react-query';
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {EditOrViewAction, PageLoadingAnimation, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
 import {useCapabilitiesContext, useConfig, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
 import {Box, IconButton, Typography, CircularProgress, TreeView, useTheme, Avatar, Tooltip} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useEffect, useRef, useMemo} from 'react';
 import type {ReactNode, MouseEvent, KeyboardEvent, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -77,7 +77,11 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
   } = allProps;
   const treeItemProps = {itemId, label, ...restProps};
   const theme = useTheme();
-  const {can} = useCapabilitiesContext();
+  const {can, confinedOuId} = useCapabilitiesContext();
+  // An admin confined to an organization unit manages the units directly beneath it, not the unit itself, and
+  // creates units only beneath its own.
+  const isConfinedUnit = itemId === confinedOuId;
+  const isBelowConfinedUnit = confinedOuId !== undefined && !isConfinedUnit;
   const {t} = useTranslation();
   const labelStr = typeof label === 'string' ? label : '';
   const itemData = itemMapProp?.get(itemId);
@@ -301,7 +305,7 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
             </Tooltip>
           ) : (
             <>
-              {can('ou', 'create') && onAddChild && (
+              {can('ou', 'create') && !isBelowConfinedUnit && onAddChild && (
                 <Tooltip title={addChildTooltip}>
                   <IconButton
                     size="small"
@@ -319,21 +323,14 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
                   </IconButton>
                 </Tooltip>
               )}
-              {can('ou', 'update') && (
-                <Tooltip title={editTooltip}>
-                  <IconButton
-                    size="small"
-                    aria-label={editTooltip}
-                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
-              {can('ou', 'delete') && (
+              <EditOrViewAction
+                canEdit={can('ou', 'update') && !isConfinedUnit}
+                editLabel={editTooltip}
+                onClick={(e: MouseEvent<HTMLButtonElement>) =>
+                  onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr})
+                }
+              />
+              {can('ou', 'delete') && !isConfinedUnit && (
                 <Tooltip title={deleteTooltip}>
                   <IconButton
                     size="small"
@@ -377,12 +374,14 @@ export default function OrganizationUnitsTreeView({
   const logger = useLogger('OrganizationUnitsTreeView');
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {can} = useCapabilitiesContext();
+  const {can, confinedOuId} = useCapabilitiesContext();
   const queryClient = useQueryClient();
   // Inside a project, only its organization units are listed.
   const {projectId} = useProjectScope();
   const {data, isLoading, error, refetch} = useGetOrganizationUnits({projectId});
   const canCreate = can('ou', 'create') && (!createInProjectsOnly || Boolean(projectId));
+  // A root organization unit comes only through import for an admin confined to an organization unit.
+  const canCreateRoot = canCreate && !confinedOuId;
   const {treeItems, setTreeItems, expandedItems, setExpandedItems, loadedItems, setLoadedItems, resetTreeState} =
     useOrganizationUnit();
 
@@ -432,7 +431,10 @@ export default function OrganizationUnitsTreeView({
       const childOUs = result.organizationUnits;
       const parentItem = findTreeItem(treeItemsRef.current, parentId);
       const addChildItem = buildAddChildItem(parentId, parentItem?.label ?? '', parentItem?.handle ?? '');
-      const items = [...(canCreate ? [addChildItem] : []), ...buildTreeItems(childOUs)];
+      // An admin confined to an organization unit reaches no unit below the ones directly beneath it, so those
+      // are leaves.
+      const childItems = buildTreeItems(childOUs).map((item) => (confinedOuId ? {...item, children: undefined} : item));
+      const items = [...(canCreate ? [addChildItem] : []), ...childItems];
 
       if (childOUs.length < result.totalResults) {
         items.push({
@@ -445,7 +447,7 @@ export default function OrganizationUnitsTreeView({
 
       return items;
     },
-    [canCreate, fetchChildPage],
+    [canCreate, confinedOuId, fetchChildPage],
   );
 
   // Fetch and update state for user-triggered node expansion
@@ -829,7 +831,7 @@ export default function OrganizationUnitsTreeView({
           <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
             {t('organizationUnits:listing.treeView.empty')}
           </Typography>
-          {canCreate && (
+          {canCreateRoot && (
             <Box
               role="button"
               tabIndex={0}
@@ -897,7 +899,7 @@ export default function OrganizationUnitsTreeView({
   return (
     <>
       <Box sx={{width: '100%', minHeight: 400}}>
-        {canCreate && (
+        {canCreateRoot && (
           <Box
             role="button"
             tabIndex={0}

@@ -38,6 +38,14 @@ describe('TemplateContentEditor', () => {
     vi.clearAllMocks();
   });
 
+  it('keeps the subject, body and color scheme from changing when read-only', () => {
+    render(<TemplateContentEditor {...baseProps} readOnly />);
+
+    expect(screen.getByDisplayValue('Hello')).toHaveAttribute('readonly');
+    expect(screen.getByDisplayValue('Body text')).toHaveAttribute('readonly');
+    expect(screen.getByRole('button', {pressed: false})).toBeDisabled();
+  });
+
   describe('Email channel', () => {
     it('renders the color scheme toggle, subject and body fields', () => {
       render(<TemplateContentEditor {...baseProps} />);

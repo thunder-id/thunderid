@@ -5,6 +5,7 @@ import {useQueries} from '@tanstack/react-query';
 import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
 import {gatewayColor, usePipeline, useProjects, type PipelineStage, type Project} from '@thunderid/configure-gateways';
 import {useProjectSelection} from '@thunderid/configure-projects';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {User} from '@thunderid/react';
 import {
   Avatar,
@@ -361,6 +362,8 @@ export default function OrganizationHomePage({
 }: OrganizationHomePageProps): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
+  const {can} = useCapabilitiesContext();
+  const mayCreateProject = canCreateProject && can('project', 'create');
   const pipeline = usePipeline();
   const {projects, selectProject: select} = useProjectSelection();
   const projectList = useProjects();
@@ -418,7 +421,7 @@ export default function OrganizationHomePage({
     across: {total?: number; projects: number},
     lead: string,
     action: string,
-    onAction: () => void,
+    onAction: (() => void) | undefined,
   ): JSX.Element => (
     <Card
       variant="outlined"
@@ -469,15 +472,17 @@ export default function OrganizationHomePage({
           })}
         </Typography>
       </Stack>
-      <Button
-        variant="contained"
-        startIcon={<Plus size={16} />}
-        onClick={onAction}
-        disabled={projects.length === 0}
-        sx={{...PILL, flex: '0 0 auto'}}
-      >
-        {action}
-      </Button>
+      {onAction && (
+        <Button
+          variant="contained"
+          startIcon={<Plus size={16} />}
+          onClick={onAction}
+          disabled={projects.length === 0}
+          sx={{...PILL, flex: '0 0 auto'}}
+        >
+          {action}
+        </Button>
+      )}
     </Card>
   );
 
@@ -515,7 +520,7 @@ export default function OrganizationHomePage({
             applications,
             t('home:organization.applicationsLead', 'Web, mobile and API clients that sign users in'),
             t('home:organization.newApplication', 'New application'),
-            () => pick('application'),
+            can('app', 'create') ? () => pick('application') : undefined,
           )}
           {acrossTile(
             'agents',
@@ -523,7 +528,7 @@ export default function OrganizationHomePage({
             agents,
             t('home:organization.agentsLead', 'AI agents with their own identity and access'),
             t('home:organization.newAgent', 'New agent'),
-            () => pick('agent'),
+            can('agent', 'create') ? () => pick('agent') : undefined,
           )}
         </Box>
 
@@ -751,7 +756,7 @@ export default function OrganizationHomePage({
           title={t('home:organization.projectsCount', 'Projects · {{count}}', {count: projects.length})}
           subtitle={t('home:organization.projectsLead', 'Each project holds its own applications and agents.')}
           action={
-            canCreateProject ? (
+            mayCreateProject ? (
               <Button variant="outlined" size="small" onClick={() => void navigate(RouteConfig.projects.create())}>
                 {t('home:organization.createProject', 'Create project')}
               </Button>
@@ -793,7 +798,7 @@ export default function OrganizationHomePage({
               </Stack>
               <Typography variant="caption" color="text.secondary" component="div" sx={{mt: 1.5}}>
                 {pickerText[picking].note}{' '}
-                {canCreateProject && (
+                {mayCreateProject && (
                   <Box
                     component={Link}
                     to={RouteConfig.projects.create()}

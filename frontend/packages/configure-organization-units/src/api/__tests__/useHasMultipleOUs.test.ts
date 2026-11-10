@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {renderHook} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import useGetChildOrganizationUnits from '../useGetChildOrganizationUnits';
@@ -8,6 +9,10 @@ import useGetOrganizationUnits from '../useGetOrganizationUnits';
 import useHasMultipleOUs from '../useHasMultipleOUs';
 
 vi.mock('../useGetOrganizationUnits');
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {...actual, useCapabilitiesContext: vi.fn(actual.useCapabilitiesContext)};
+});
 vi.mock('../useGetChildOrganizationUnits');
 
 const rootQuery = (organizationUnits: {id: string}[], totalResults: number, isError = false) =>
@@ -139,5 +144,21 @@ describe('useHasMultipleOUs', () => {
     expect(result.current).toMatchObject({hasMultipleOUs: true, isError: false, error: null});
     expect(refetchRoots).not.toHaveBeenCalled();
     expect(refetchChildren).not.toHaveBeenCalled();
+  });
+
+  it('offers only the organization unit a confined admin creates in, without asking for its children', () => {
+    vi.mocked(useCapabilitiesContext).mockReturnValueOnce({
+      can: () => true,
+      canManageRoot: false,
+      confinedOuId: 'x',
+      isLoading: false,
+    });
+    vi.mocked(useGetOrganizationUnits).mockReturnValue(rootQuery([{id: 'x'}], 1));
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue(childQuery(3));
+
+    const {result} = renderHook(() => useHasMultipleOUs());
+
+    expect(result.current).toMatchObject({hasMultipleOUs: false, isError: false, ouList: [{id: 'x'}]});
+    expect(useGetChildOrganizationUnits).toHaveBeenCalledWith(undefined, expect.anything());
   });
 });

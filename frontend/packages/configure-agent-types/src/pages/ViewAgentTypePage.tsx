@@ -387,7 +387,7 @@ export default function ViewAgentTypePage(): JSX.Element {
           properties={effectiveProperties}
           onPropertiesChange={handlePropertiesChange}
           agentTypeHandle={agentTypeHandle}
-          disabled={!isEditable}
+          disabled={!isEditable || !can('agenttype', 'update')}
           isEditMode
         />
       </TabPanel>

@@ -190,6 +190,9 @@ export default function RoleEditPage(): JSX.Element {
   };
 
   const resourceTypeTitle = t('navigation:pages.roles', 'Roles');
+  // A role shared into the organization unit is read only there, but the unit assigns it to its own members.
+  const isOwned = role?.isOwnedByOU !== false;
+  const isReadOnly = Boolean(role?.isReadOnly) || !isOwned || !can('role', 'update');
 
   if (isLoading || isOtherProject) {
     return (
@@ -295,7 +298,7 @@ export default function RoleEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedRole.name ?? role.name}</Typography>
-                {!role.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label={t('edit.page.editName', 'Edit role name')}
@@ -347,7 +350,7 @@ export default function RoleEditPage(): JSX.Element {
                 <Typography component="span" variant="body2" color="text.secondary">
                   {effectiveDescription || t('edit.page.description.empty', 'No description')}
                 </Typography>
-                {!role.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label={t('edit.page.editDescription', 'Edit role description')}
@@ -410,7 +413,7 @@ export default function RoleEditPage(): JSX.Element {
           <EditPermissionsSettings
             permissions={editedRole.permissions ?? serverPermissions}
             onPermissionsChange={handlePermissionsChange}
-            isReadOnly={role.isReadOnly}
+            isReadOnly={isReadOnly}
           />
         </TabPanel>
 
@@ -418,17 +421,22 @@ export default function RoleEditPage(): JSX.Element {
           <EditAssignmentsSettings
             roleId={role.id}
             ouId={role.ouId}
-            isReadOnly={role.isReadOnly === true || !can('role', 'update')}
+            isReadOnly={Boolean(role.isReadOnly) || !can('role', 'update')}
           />
         </TabPanel>
 
         <TabPanel value={activeTab} index={ORGANIZATION_ACCESS_TAB_INDEX}>
-          <EditOrganizationAccessSettings role={role} access={organizationAccess} />
+          <EditOrganizationAccessSettings
+            role={isOwned ? role : {...role, isReadOnly: true}}
+            access={organizationAccess}
+          />
         </TabPanel>
 
         <TabPanel value={activeTab} index={4}>
           <EditAdvancedSettings
-            onDeleteClick={role.isReadOnly || !can('role', 'delete') ? undefined : () => setDeleteDialogOpen(true)}
+            onDeleteClick={
+              role.isReadOnly || !isOwned || !can('role', 'delete') ? undefined : () => setDeleteDialogOpen(true)
+            }
           />
         </TabPanel>
       </>
@@ -450,7 +458,7 @@ export default function RoleEditPage(): JSX.Element {
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
           resetDisabled={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
-          saveDisabled={isRoleUpdating || role.isReadOnly === true || !can('role', 'update')}
+          saveDisabled={isRoleUpdating || isReadOnly}
           error={
             (updateRole.error
               ? getErrorMessage(updateRole.error, t, 'update.error', 'Failed to update role. Please try again.')

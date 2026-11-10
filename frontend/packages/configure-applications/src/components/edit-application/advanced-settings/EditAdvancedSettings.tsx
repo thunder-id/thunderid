@@ -95,6 +95,7 @@ export default function EditAdvancedSettings({
 }: EditAdvancedSettingsProps) {
   const {config} = useConfig();
   const {can} = useCapabilitiesContext();
+  const isReadOnly = Boolean(application.isReadOnly) || !can('app', 'update');
 
   // Redirect URIs, identity assertions, and passkeys validate independently; each is tracked
   // separately so one resolving doesn't clobber the other's still-invalid state when both report
@@ -159,7 +160,7 @@ export default function EditAdvancedSettings({
           oauth2Config={oauth2Config}
           oauth2Constraints={oauth2Constraints}
           onOAuth2ConfigChange={handleOAuth2ConfigChange}
-          disabled={application.isReadOnly}
+          disabled={isReadOnly}
           allowedGrantTypes={allowedGrantTypes}
           showRedirectUris={showRedirectUris}
           onValidationChange={setRedirectUrisInvalid}
@@ -169,7 +170,7 @@ export default function EditAdvancedSettings({
             key={sectionResetKey}
             oauth2Config={oauth2Config}
             onTokenConfigChange={handleTokenConfigChange}
-            disabled={application.isReadOnly}
+            disabled={isReadOnly}
             onValidationChange={setIdentityAssertionsInvalid}
           />
         )}
@@ -177,13 +178,13 @@ export default function EditAdvancedSettings({
           <AudienceSection
             audience={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
             onAudienceChange={handleDefaultAudienceChange}
-            disabled={application.isReadOnly}
+            disabled={isReadOnly}
           />
         )}
         <PasskeysSection
           allowedOrigins={currentPasskeyOrigins}
-          onPasskeysChange={application.isReadOnly ? undefined : handlePasskeysChange}
-          disabled={application.isReadOnly}
+          onPasskeysChange={isReadOnly ? undefined : handlePasskeysChange}
+          disabled={isReadOnly}
           onValidationChange={setPasskeysInvalid}
         />
         <MetadataSection application={application} />

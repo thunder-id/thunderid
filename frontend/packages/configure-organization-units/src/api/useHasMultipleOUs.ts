@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useCallback} from 'react';
 import useGetChildOrganizationUnits from './useGetChildOrganizationUnits';
 import useGetOrganizationUnits from './useGetOrganizationUnits';
@@ -19,6 +20,8 @@ interface UseHasMultipleOUsResult {
 }
 
 export default function useHasMultipleOUs(): UseHasMultipleOUsResult {
+  // An admin confined to an organization unit creates resources only in that unit, so it is the one to offer.
+  const {confinedOuId} = useCapabilitiesContext();
   const {
     data: ouData,
     isLoading: isOuLoading,
@@ -28,7 +31,7 @@ export default function useHasMultipleOUs(): UseHasMultipleOUsResult {
   } = useGetOrganizationUnits({limit: 2, offset: 0});
   const ouList = ouData?.organizationUnits ?? [];
   const rootCount = ouData?.totalResults ?? 0;
-  const singleRootId = rootCount === 1 ? ouList[0]?.id : undefined;
+  const singleRootId = rootCount === 1 && !confinedOuId ? ouList[0]?.id : undefined;
 
   const {
     data: childData,
@@ -42,8 +45,8 @@ export default function useHasMultipleOUs(): UseHasMultipleOUsResult {
   });
 
   const hasMultipleRoots = rootCount > 1;
-  const singleRootHasChildren = rootCount === 1 && (childData?.totalResults ?? 0) > 0;
-  const isChildLookupFailed = rootCount === 1 && isChildError;
+  const singleRootHasChildren = Boolean(singleRootId) && (childData?.totalResults ?? 0) > 0;
+  const isChildLookupFailed = Boolean(singleRootId) && isChildError;
   const refetch = useCallback((): void => {
     if (isOuError) void refetchOus();
     if (isChildLookupFailed) void refetchChildren();
@@ -51,7 +54,7 @@ export default function useHasMultipleOUs(): UseHasMultipleOUsResult {
 
   return {
     hasMultipleOUs: hasMultipleRoots || singleRootHasChildren,
-    isLoading: isOuLoading || (rootCount === 1 && isChildLoading),
+    isLoading: isOuLoading || (Boolean(singleRootId) && isChildLoading),
     isError: isOuError || isChildLookupFailed,
     error: (isOuError ? ouError : null) ?? (isChildLookupFailed ? childError : null),
     refetch,

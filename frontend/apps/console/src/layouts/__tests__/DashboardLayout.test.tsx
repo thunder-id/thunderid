@@ -30,11 +30,6 @@ let mockSdkConfig: Record<string, unknown> | undefined;
 let mockCapabilities: {can: (resource: string, action?: string) => boolean; canManageRoot: boolean; isLoading: boolean};
 let mockPathname: string | undefined;
 
-vi.mock('@thunderid/hooks', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
-  useCapabilities: () => mockCapabilities,
-}));
-
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
   useGetApplications: (params: unknown) => mockUseGetApplications(params),
@@ -57,6 +52,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useCapabilitiesContext: () => mockCapabilities,
     useConfig: () => ({
       config: {
         brand: {
@@ -93,14 +89,9 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock Outlet
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  const {useCapabilitiesContext} = await vi.importActual<typeof import('@thunderid/contexts')>('@thunderid/contexts');
   return {
     ...actual,
-    Outlet: () => (
-      <div data-testid="outlet" data-can-delete-app={String(useCapabilitiesContext().can('app', 'delete'))}>
-        Outlet Content
-      </div>
-    ),
+    Outlet: () => <div data-testid="outlet">Outlet Content</div>,
     Link: ({children, to}: {children: React.ReactNode; to: string}) => (
       <a href={to} data-testid="router-link">
         {children}
@@ -246,17 +237,6 @@ describe('DashboardLayout', () => {
 
       expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
       expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
-    });
-
-    it('hands the capabilities to the page', () => {
-      mockCapabilities = {
-        can: (_resource, action = 'view') => action === 'view',
-        canManageRoot: false,
-        isLoading: false,
-      };
-      render(<DashboardLayout />);
-
-      expect(screen.getByTestId('outlet')).toHaveAttribute('data-can-delete-app', 'false');
     });
 
     it('shows the page while the capabilities load', () => {

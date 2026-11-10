@@ -1208,23 +1208,23 @@ describe('ApplicationEditPage', () => {
       });
     });
 
-    it('disables save when the admin may not update applications', async () => {
-      const user = userEvent.setup();
+    it('offers the name and description edits when the admin may update applications', () => {
+      renderComponent();
+
+      expect(screen.getByRole('button', {name: 'Edit application name'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Edit description'})).toBeInTheDocument();
+    });
+
+    it('offers no name edit when the admin may not update applications', () => {
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
           <ApplicationEditPage />
         </CapabilitiesProvider>,
       );
 
-      const nameSection = screen.getByText('Test Application').closest('div');
-      await user.click(nameSection!.querySelector('button')!);
-      const nameInput = screen.getByRole('textbox');
-      await user.clear(nameInput);
-      await user.type(nameInput, 'Updated Application{Enter}');
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
-      });
+      expect(screen.queryByRole('button', {name: 'Edit application name'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit description'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /save changes/i})).not.toBeInTheDocument();
     });
 
     it('disables save with a named issue when authorization_code has no redirect URI', async () => {

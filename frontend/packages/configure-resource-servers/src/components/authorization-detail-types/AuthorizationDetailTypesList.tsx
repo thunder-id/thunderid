@@ -1,12 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice} from '@thunderid/components';
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useEffect, useMemo, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -144,20 +144,7 @@ export default function AuthorizationDetailTypesList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                {can('authzdetail', 'update') && (
-                  <Tooltip title={t('common:actions.edit', 'Edit')}>
-                    <IconButton
-                      size="small"
-                      aria-label={t('common:actions.edit', 'Edit')}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditor(params.row);
-                      }}
-                    >
-                      <Pencil size={16} />
-                    </IconButton>
-                  </Tooltip>
-                )}
+                <EditOrViewAction canEdit={can('authzdetail', 'update')} onClick={() => openEditor(params.row)} />
                 {can('authzdetail', 'delete') && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton

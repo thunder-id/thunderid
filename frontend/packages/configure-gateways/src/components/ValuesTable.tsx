@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -85,6 +86,7 @@ const countOf = (resources: ResourceGroup[]): number =>
  */
 export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {canManageRoot} = useCapabilitiesContext();
   const setValue = useSetStoredValue(gatewayId, kind);
   const deleteValue = useDeleteStoredValue(gatewayId, kind);
   const [editing, setEditing] = useState<string | null>(null);
@@ -234,7 +236,8 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     );
   };
 
-  const actionsCell = (row: ValueRow): JSX.Element => {
+  const actionsCell = (row: ValueRow): JSX.Element | null => {
+    if (!canManageRoot) return null;
     const held = isHeld(row, secret);
     if (editing === row.name) {
       return (

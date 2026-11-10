@@ -117,7 +117,7 @@ describe('AccountSecuritySection', () => {
     );
   });
 
-  it('disables Save when the admin may not update server configuration', async () => {
+  it('locks the lock card when the admin may not update server configuration', () => {
     config.merged = {
       user: {default: {enabled: true, threshold: 5, failureWindowSeconds: 900, lockDurationsSeconds: [300]}},
     };
@@ -128,8 +128,7 @@ describe('AccountSecuritySection', () => {
       </CapabilitiesProvider>,
     );
 
-    await userEvent.click(screen.getByRole('switch', {name: 'Automatic lock for Users'}));
-    expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.getByRole('switch', {name: 'Automatic lock for Users'})).toBeDisabled();
   });
 
   // A declarative accountAccess locks the section on the server, so nothing here may look editable.

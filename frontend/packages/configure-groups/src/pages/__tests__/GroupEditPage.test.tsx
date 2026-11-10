@@ -321,7 +321,7 @@ describe('GroupEditPage', () => {
     });
   });
 
-  it('should hide delete and disable save when the admin may only view groups', async () => {
+  it('should hide delete and the name edit when the admin may only view groups', async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <CapabilitiesProvider capabilities={viewOnly}>
@@ -332,14 +332,7 @@ describe('GroupEditPage', () => {
     await user.click(screen.getByText('Advanced'));
     expect(screen.queryByTestId('delete-click')).not.toBeInTheDocument();
 
-    const h3Heading = screen.getAllByText('Test Group').find((el) => el.tagName === 'H3');
-    await user.click(h3Heading!.parentElement!.querySelector('button')!);
-    const nameInput = screen.getByDisplayValue('Test Group');
-    await user.clear(nameInput);
-    await user.type(nameInput, 'New Name');
-    await user.keyboard('{Enter}');
-
-    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Edit group name'})).not.toBeInTheDocument();
   });
 
   it('should close delete dialog', async () => {

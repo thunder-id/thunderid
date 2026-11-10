@@ -12,6 +12,16 @@ const session = vi.hoisted(() => ({
   signIn: vi.fn(() => Promise.resolve()),
 }));
 
+let mockCan: (resource: string, action?: string) => boolean = () => true;
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (r: string, a?: string) => mockCan(r, a),
+    canManageRoot: true,
+    isLoading: false,
+  }),
+}));
+
 vi.mock('@thunderid/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/react')>()),
   useThunderID: () => ({
@@ -73,6 +83,7 @@ describe('App', () => {
   });
 
   afterEach(() => {
+    mockCan = () => true;
     window.history.pushState({}, '', '/');
   });
 
@@ -152,6 +163,16 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-group-page')).toBeInTheDocument();
     });
+  });
+
+  it('shows a notice instead of a create page the admin may not create on', async () => {
+    mockCan = (resource, action) => !(resource === 'group' && action === 'create');
+    window.history.pushState({}, '', '/groups/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('You do not have permission to view this page.')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('create-group-page')).not.toBeInTheDocument();
   });
 
   it('loads RolesListPage lazily at /roles', async () => {

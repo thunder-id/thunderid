@@ -733,7 +733,7 @@ describe('ViewUserTypePage', () => {
   });
 
   describe('Without write access', () => {
-    it('hides delete and disables save when the admin may only view user types', async () => {
+    it('hides delete and keeps the fields read-only when the admin may only view user types', async () => {
       const user = userEvent.setup();
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
@@ -742,7 +742,7 @@ describe('ViewUserTypePage', () => {
       );
 
       await user.click(screen.getByTestId('select-ou-child'));
-      expect(await screen.findByRole('button', {name: /^save$/i})).toBeDisabled();
+      expect(screen.queryByRole('button', {name: /^save$/i})).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('tab', {name: /advanced/i}));
       expect(screen.queryByRole('button', {name: /^delete$/i})).not.toBeInTheDocument();

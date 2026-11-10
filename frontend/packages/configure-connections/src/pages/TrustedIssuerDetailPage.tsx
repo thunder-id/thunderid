@@ -1,7 +1,14 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, QueryErrorNotice, ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {
+  DocumentTitle,
+  QueryErrorNotice,
+  ReadOnlyFieldset,
+  ResourceAvatar,
+  SettingsCard,
+  UnsavedChangesBar,
+} from '@thunderid/components';
 import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -46,8 +53,11 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
   const {config} = useConfig();
   const productName = config.brand.product_name;
   const routes = useConnectionRoutes();
-
   const trustedIssuerQuery = useTrustedIssuer(id);
+  // A trusted issuer shared into the organization unit is read only there.
+  const isOwned = trustedIssuerQuery.data?.isOwnedByOU !== false;
+  const canUpdate = isOwned && can('connection', 'update');
+  const canDelete = isOwned && can('connection', 'delete');
   const updateMutation = useUpdateTrustedIssuer(id ?? '');
   const deleteMutation = useDeleteConnection(ConnectionTypes.OIDC);
   const isIdJagAcceptanceUnavailable = useIsIdJagAcceptanceUnavailable();
@@ -237,120 +247,126 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
           )}
 
           <Stack direction="column" spacing={4}>
-            <SettingsCard
-              title={t('trustedIssuers:detail.general.title', 'General')}
-              description={t('trustedIssuers:detail.general.description', 'Core identity of this trusted issuer.')}
-            >
-              <Stack direction="column" spacing={3}>
-                <TextField
-                  labelPlacement="top"
-                  label={t('trustedIssuers:create.form.name.label', 'Name')}
-                  required
-                  id="trusted-issuer-name"
-                  fullWidth
-                  value={values.name}
-                  error={Boolean(nameError ?? (touched['name'] && errors.name))}
-                  helperText={nameError ?? (touched['name'] ? fieldErrorMessage(errors.name) : undefined)}
-                  onChange={(e) => setField('name', e.target.value)}
-                  onBlur={() => setTouchedField('name')}
-                />
+            <ReadOnlyFieldset readOnly={!canUpdate}>
+              <SettingsCard
+                title={t('trustedIssuers:detail.general.title', 'General')}
+                description={t('trustedIssuers:detail.general.description', 'Core identity of this trusted issuer.')}
+              >
+                <Stack direction="column" spacing={3}>
+                  <TextField
+                    labelPlacement="top"
+                    label={t('trustedIssuers:create.form.name.label', 'Name')}
+                    required
+                    id="trusted-issuer-name"
+                    fullWidth
+                    value={values.name}
+                    error={Boolean(nameError ?? (touched['name'] && errors.name))}
+                    helperText={nameError ?? (touched['name'] ? fieldErrorMessage(errors.name) : undefined)}
+                    onChange={(e) => setField('name', e.target.value)}
+                    onBlur={() => setTouchedField('name')}
+                  />
 
-                <TextField
-                  labelPlacement="top"
-                  label={t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
-                  required
-                  id="trusted-issuer-issuer"
-                  fullWidth
-                  value={values.issuer}
-                  error={Boolean(touched['issuer'] && errors.issuer)}
-                  helperText={
-                    (touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined) ??
-                    t(
-                      'trustedIssuers:create.form.issuer.hint',
-                      "The issuer URI from the external IdP's OpenID Connect discovery document.",
-                    )
-                  }
-                  onChange={(e) => setField('issuer', e.target.value)}
-                  onBlur={() => setTouchedField('issuer')}
-                />
+                  <TextField
+                    labelPlacement="top"
+                    label={t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
+                    required
+                    id="trusted-issuer-issuer"
+                    fullWidth
+                    value={values.issuer}
+                    error={Boolean(touched['issuer'] && errors.issuer)}
+                    helperText={
+                      (touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined) ??
+                      t(
+                        'trustedIssuers:create.form.issuer.hint',
+                        "The issuer URI from the external IdP's OpenID Connect discovery document.",
+                      )
+                    }
+                    onChange={(e) => setField('issuer', e.target.value)}
+                    onBlur={() => setTouchedField('issuer')}
+                  />
 
-                <TextField
-                  labelPlacement="top"
-                  label={t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
-                  required
-                  id="trusted-issuer-jwks-endpoint"
-                  fullWidth
-                  value={values.jwksEndpoint}
-                  error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
-                  helperText={
-                    (touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined) ??
-                    t(
-                      'trustedIssuers:create.form.jwksEndpoint.hint',
-                      'The JWKS endpoint used to validate the signature of incoming identity assertions.',
-                    )
-                  }
-                  onChange={(e) => setField('jwksEndpoint', e.target.value)}
-                  onBlur={() => setTouchedField('jwksEndpoint')}
-                />
-              </Stack>
-            </SettingsCard>
+                  <TextField
+                    labelPlacement="top"
+                    label={t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
+                    required
+                    id="trusted-issuer-jwks-endpoint"
+                    fullWidth
+                    value={values.jwksEndpoint}
+                    error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
+                    helperText={
+                      (touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined) ??
+                      t(
+                        'trustedIssuers:create.form.jwksEndpoint.hint',
+                        'The JWKS endpoint used to validate the signature of incoming identity assertions.',
+                      )
+                    }
+                    onChange={(e) => setField('jwksEndpoint', e.target.value)}
+                    onBlur={() => setTouchedField('jwksEndpoint')}
+                  />
+                </Stack>
+              </SettingsCard>
+            </ReadOnlyFieldset>
 
             {data?.ouId && <OrganizationUnitSection ouId={data.ouId} />}
 
-            <SettingsCard
-              title={t('trustedIssuers:detail.tokenExchange.title', 'Token exchange')}
-              description={t(
-                'trustedIssuers:detail.tokenExchange.description',
-                'Exchange subject tokens from this issuer for access tokens.',
-              )}
-              enabled={values.tokenExchangeEnabled}
-              onToggle={(checked) => setField('tokenExchangeEnabled', checked)}
-            >
-              <TextField
-                labelPlacement="top"
-                label={t('trustedIssuers:detail.tokenExchange.audience.label', 'Trusted token audience')}
-                id="trusted-issuer-token-audience"
-                fullWidth
-                placeholder="api://thunderid"
-                value={values.trustedTokenAudience ?? ''}
-                helperText={t(
-                  'trustedIssuers:detail.tokenExchange.audience.hint',
-                  "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
-                  {productName},
+            <ReadOnlyFieldset readOnly={!canUpdate}>
+              <SettingsCard
+                title={t('trustedIssuers:detail.tokenExchange.title', 'Token exchange')}
+                description={t(
+                  'trustedIssuers:detail.tokenExchange.description',
+                  'Exchange subject tokens from this issuer for access tokens.',
                 )}
-                onChange={(e) => setField('trustedTokenAudience', e.target.value || undefined)}
-              />
-            </SettingsCard>
+                enabled={values.tokenExchangeEnabled}
+                onToggle={(checked) => setField('tokenExchangeEnabled', checked)}
+              >
+                <TextField
+                  labelPlacement="top"
+                  label={t('trustedIssuers:detail.tokenExchange.audience.label', 'Trusted token audience')}
+                  id="trusted-issuer-token-audience"
+                  fullWidth
+                  placeholder="api://thunderid"
+                  value={values.trustedTokenAudience ?? ''}
+                  helperText={t(
+                    'trustedIssuers:detail.tokenExchange.audience.hint',
+                    "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
+                    {productName},
+                  )}
+                  onChange={(e) => setField('trustedTokenAudience', e.target.value || undefined)}
+                />
+              </SettingsCard>
+            </ReadOnlyFieldset>
 
-            <SettingsCard
-              title={idJagTitle}
-              description={t(
-                'trustedIssuers:detail.idJag.description',
-                'Accept and exchange signed identity assertions from this issuer for access tokens.',
-              )}
-              headerAction={
-                isIdJagAcceptanceUnavailable ? (
-                  <Tooltip title={idJagUnavailableHint}>
-                    <span>{idJagSwitch}</span>
-                  </Tooltip>
-                ) : (
-                  idJagSwitch
-                )
-              }
-            >
-              {(values.idJagEnabled || isIdJagAcceptanceUnavailable) && (
-                <Typography variant="body2" color="text.secondary">
-                  {isIdJagAcceptanceUnavailable
-                    ? idJagUnavailableHint
-                    : t(
-                        'trustedIssuers:detail.idJag.enabledNote',
-                        'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
-                      )}
-                </Typography>
-              )}
-            </SettingsCard>
+            <ReadOnlyFieldset readOnly={!canUpdate}>
+              <SettingsCard
+                title={idJagTitle}
+                description={t(
+                  'trustedIssuers:detail.idJag.description',
+                  'Accept and exchange signed identity assertions from this issuer for access tokens.',
+                )}
+                headerAction={
+                  isIdJagAcceptanceUnavailable ? (
+                    <Tooltip title={idJagUnavailableHint}>
+                      <span>{idJagSwitch}</span>
+                    </Tooltip>
+                  ) : (
+                    idJagSwitch
+                  )
+                }
+              >
+                {(values.idJagEnabled || isIdJagAcceptanceUnavailable) && (
+                  <Typography variant="body2" color="text.secondary">
+                    {isIdJagAcceptanceUnavailable
+                      ? idJagUnavailableHint
+                      : t(
+                          'trustedIssuers:detail.idJag.enabledNote',
+                          'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
+                        )}
+                  </Typography>
+                )}
+              </SettingsCard>
+            </ReadOnlyFieldset>
 
-            {can('connection', 'delete') && (
+            {canDelete && (
               <SettingsCard title={t('trustedIssuers:detail.dangerZone.title', 'Danger zone')}>
                 <Typography variant="h6" gutterBottom color="error">
                   {t('trustedIssuers:detail.dangerZone.delete.title', 'Delete trusted issuer')}
@@ -377,14 +393,14 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
             )}
           </Stack>
 
-          {dirty && (
+          {dirty && canUpdate && (
             <UnsavedChangesBar
               message={t('trustedIssuers:detail.saveBar.unsaved', 'You have unsaved changes')}
               resetLabel={t('trustedIssuers:detail.saveBar.reset', 'Reset')}
               saveLabel={t('trustedIssuers:detail.saveBar.save', 'Save changes')}
               savingLabel={t('common:status.saving', 'Saving...')}
               isSaving={updateMutation.isPending}
-              saveDisabled={!valid || !can('connection', 'update')}
+              saveDisabled={!valid || !canUpdate}
               onReset={resetEdits}
               onSave={handleSave}
             />

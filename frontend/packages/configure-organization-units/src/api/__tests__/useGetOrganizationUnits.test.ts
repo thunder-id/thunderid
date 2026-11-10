@@ -25,8 +25,16 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
     useConfig: () => ({
       getServerUrl: () => 'https://localhost:8090',
     }),
+    useCapabilitiesContext: () => ({
+      can: () => true,
+      canManageRoot: false,
+      confinedOuId: mockConfinedOuId,
+      isLoading: false,
+    }),
   };
 });
+
+let mockConfinedOuId: string | undefined;
 
 describe('useGetOrganizationUnits', () => {
   const mockOrganizationUnitList: OrganizationUnitListResponse = {
@@ -42,6 +50,26 @@ describe('useGetOrganizationUnits', () => {
 
   beforeEach(() => {
     mockHttpRequest.mockReset();
+    mockConfinedOuId = undefined;
+  });
+
+  it('lists only the organization unit a confined admin is in, as only the root admin lists the roots', async () => {
+    mockConfinedOuId = 'ou-2';
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList.organizationUnits[1]});
+
+    const {result} = renderHook(() => useGetOrganizationUnits());
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual({
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        organizationUnits: [mockOrganizationUnitList.organizationUnits[1]],
+      });
+    });
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({url: 'https://localhost:8090/organization-units/ou-2', method: 'GET'}),
+    );
   });
 
   afterEach(() => {

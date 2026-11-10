@@ -110,6 +110,25 @@ func (s *ServiceTestSuite) TestRootComesFromTheSystemPermission() {
 	s.Equal(capabilityScope{Type: sysauthz.BoundaryTypeDeployment}, resp.Scope)
 }
 
+// On the data plane, a token naming no organization unit reaches nothing without the root system permission.
+func (s *ServiceTestSuite) TestATokenNamingNoUnitMayDoNothingOnTheDataPlane() {
+	security.InitDataPlanePermissions("")
+	defer security.InitControlPlanePermissions("")
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU})
+	noUnit := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin", "", "token", []string{"org"}, nil))
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(noUnit)
+
+	s.Require().Nil(svcErr)
+	for resource, actions := range resp.Resources {
+		for action, can := range actions {
+			s.False(can, "%s %s", resource, action)
+		}
+	}
+	s.authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (s *ServiceTestSuite) TestReturnsTheAuthorizationError() {
 	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 		Return(false, &tidcommon.InternalServerError).Once()

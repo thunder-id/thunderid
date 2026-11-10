@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {BotCogIcon, getInitials} from '@thunderid/components';
+import {BotCogIcon, ForbiddenNotice, getInitials} from '@thunderid/components';
 import {
   gatewaySectionOf,
   useDeployRoutes,
@@ -10,12 +10,10 @@ import {
   type PipelineStage,
 } from '@thunderid/configure-gateways';
 import {ProjectSwitcher, useProjectSelection} from '@thunderid/configure-projects';
-import {CapabilitiesProvider, ProjectScopeProvider, useConfig} from '@thunderid/contexts';
-import {useCapabilities} from '@thunderid/hooks';
+import {ProjectScopeProvider, useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
-  Alert,
   AppShell,
   alpha,
   Box,
@@ -142,7 +140,7 @@ function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
-  const {canManageRoot, isLoading} = useCapabilities();
+  const {canManageRoot, isLoading} = useCapabilitiesContext();
 
   if (!isLoading && !canManageRoot) {
     return null;
@@ -641,8 +639,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     deployRoutes,
   ]);
 
-  const capabilities = useCapabilities();
-  const {can, canManageRoot, isLoading: isLoadingCapabilities} = capabilities;
+  const {can, canManageRoot, isLoading: isLoadingCapabilities} = useCapabilitiesContext();
   const isVisible = useCallback(
     (route: NavRoute): boolean =>
       isLoadingCapabilities || (route.rootOnly ? canManageRoot : !route.resource || can(route.resource)),
@@ -905,31 +902,25 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
 
       <AppShell.Main>
         <SignInOnUnauthorized />
+        {/* The banner over every page, scrolling away with it: the two scroll together, the page at its full height. */}
         {isPageForbidden ? (
-          <Box sx={{p: 3}}>
-            <Alert severity="warning">
-              {t('navigation:forbidden.description', 'You do not have permission to view this page.')}
-            </Alert>
-          </Box>
+          <ForbiddenNotice />
         ) : (
-          <CapabilitiesProvider capabilities={capabilities}>
-            {/* The banner over every page, scrolling away with it: the two scroll together, the page at its full height. */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                flex: 1,
-                minWidth: 0,
-                minHeight: 0,
-                overflowY: 'auto',
-                '& > :last-child': {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
-              }}
-            >
-              {/* An environment's own pages tell what it lacks themselves. */}
-              {!gatewayId && <PendingDeployBanner />}
-              <Outlet />
-            </Box>
-          </CapabilitiesProvider>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              overflowY: 'auto',
+              '& > :last-child': {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
+            }}
+          >
+            {/* An environment's own pages tell what it lacks themselves. */}
+            {!gatewayId && <PendingDeployBanner />}
+            <Outlet />
+          </Box>
         )}
       </AppShell.Main>
 

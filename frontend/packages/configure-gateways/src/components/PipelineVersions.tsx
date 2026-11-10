@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, CircularProgress, Dialog, DialogContent, DialogTitle, Stack, Typography} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -47,6 +48,7 @@ export default function PipelineVersions({
 }: PipelineVersionsProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const project = useProjectScope();
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   const [all, setAll] = useState(false);
   const firstIndex = firstRuns ? versions.findIndex((version: Version) => version.version === firstRuns) : -1;
   const shown = versions.slice(0, SHOWN);
@@ -109,7 +111,7 @@ export default function PipelineVersions({
           </Stack>
         )}
         {/* A version the first gateway runs already shows its tag in place of a deploy. */}
-        {deployable && version.version !== firstRuns && (
+        {canDeploy && deployable && version.version !== firstRuns && (
           <Button
             size="small"
             variant={index === 0 ? 'contained' : 'outlined'}

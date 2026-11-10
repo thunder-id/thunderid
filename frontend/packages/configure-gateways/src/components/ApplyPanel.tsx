@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -99,6 +100,7 @@ export default function ApplyPanel({
   const nameOfChange = useChangeName();
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
+  const {can, canManageRoot} = useCapabilitiesContext();
   const [target, setTarget] = useState<string>(gatewayId ?? gateways[0]?.id ?? '');
   const gateway = gateways.find((entry: Gateway) => entry.id === target);
   const drawer = variant === 'drawer';
@@ -275,7 +277,13 @@ export default function ApplyPanel({
     ).values(),
   ];
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
+  const canDeploy =
+    can('gateway', 'update') &&
+    Boolean(gateway) &&
+    check.isSuccess &&
+    selected.size > 0 &&
+    unfilled.length === 0 &&
+    !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.
@@ -454,7 +462,7 @@ export default function ApplyPanel({
         fields={fields}
         values={values}
         onChange={(field, value) => setValues((previous) => ({...previous, [fieldKey(field)]: value}))}
-        disabled={isWriting}
+        disabled={isWriting || !canManageRoot}
         target={drawer ? envName : undefined}
       />
     ) : null;
@@ -509,8 +517,16 @@ export default function ApplyPanel({
           checked={check.isSuccess}
           valueOf={fixValueOf}
           onChange={(field, value) => setFixValues((previous) => ({...previous, [fieldKey(field)]: value}))}
-          disabled={isWriting}
+          disabled={isWriting || !canManageRoot}
         />
+      )}
+      {!canManageRoot && (fields.length > 0 || (check.isSuccess && fixes.length > 0)) && (
+        <Alert severity="info">
+          {t(
+            'applyPanel.valuesNeedRoot',
+            'Only an admin with full access to this deployment can fill these values, so this deploy waits for one.',
+          )}
+        </Alert>
       )}
       {check.isSuccess &&
         (drawer || scoped ? (
