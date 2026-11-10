@@ -1576,7 +1576,9 @@ function apply_dev_quickstart_overrides() {
     assert_patched "$root/dp/deployment.yaml" "port: $GATE_APP_DEFAULT_PORT"
 
     write_cors_bootstrap "$root/dp/bootstrap/03-dev-cors.yaml" \
-        "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+        "https://localhost:$GATE_APP_DEFAULT_PORT" \
+        "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT" \
+        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
     write_cors_bootstrap "$root/cp/bootstrap/03-dev-cors.yaml" \
         "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
     # auth-dp keeps the pack's allowance for the Control Plane's own origin and gains the dev one:
