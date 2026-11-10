@@ -4880,6 +4880,12 @@ const translations = {
     // Validation messages - Resolve OU placement
     'core.validation.ouResolver.afterSession':
       'Resolve OU step <code>{{id}}</code> comes after a Save / Load Session step, so the flow will be rejected on save. Place it between the sign-in steps and Save / Load Session, or before Check SSO Session.',
+    'core.validation.ouResolver.noParent':
+      "Resolve OU step <code>{{id}}</code> has no parent organization unit, so the flow can't be saved. Enter the ID of the organization unit whose child organization units users select from.",
+
+    // Validation messages - role assignment
+    'core.validation.roleExecutor.noRoles':
+      "Role Executor step <code>{{id}}</code> names no roles to assign, so the flow can't be saved. Enter the IDs of the roles to assign to the new user in its properties.",
 
     // Validation messages - Resolve Variables
     'core.validation.variables.noneDeclared':

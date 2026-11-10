@@ -9,6 +9,7 @@ import {computeValidationNotifications} from '../computeValidationNotifications'
 import {
   COMMON_GRAPH_VALIDATION_RULES,
   GRAPH_VALIDATION_RULES,
+  REGISTRATION_GRAPH_VALIDATION_RULES,
   SIGN_OUT_GRAPH_VALIDATION_RULES,
   VALIDATION_RULES,
 } from '../validation-rules';
@@ -937,6 +938,121 @@ describe('computeValidationNotifications', () => {
       const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, COMMON_GRAPH_VALIDATION_RULES, edges);
 
       expect(result.has('resolve_ou_OU_RESOLVER_AFTER_SESSION')).toBe(false);
+    });
+  });
+
+  describe('Resolve OU parent rule', () => {
+    const resolver = (properties: Record<string, unknown>): Node =>
+      createNode({
+        id: 'resolve_ou',
+        type: 'TASK_EXECUTION',
+        data: {
+          action: {type: 'EXECUTOR', executor: {name: 'OUResolverExecutor'}},
+          properties,
+        } as unknown as StepData,
+      });
+
+    it.each([[''], ['  '], ['{{PARENT_OU_ID}}'], [undefined]])(
+      'should block saving a prompting Resolve OU step whose parent OU is %s',
+      (parentOuId) => {
+        const result = computeValidationNotifications(
+          [resolver({resolveFrom: 'prompt', parentOuId})],
+          VALIDATION_RULES,
+          t,
+          GRAPH_VALIDATION_RULES,
+        );
+
+        const notification = result.get('resolve_ou_OU_RESOLVER_NO_PARENT')!;
+        expect(notification).toBeDefined();
+        expect(notification.getType()).toBe(NotificationType.ERROR);
+        expect(notification.hasResource('resolve_ou')).toBe(true);
+      },
+    );
+
+    it('should accept a prompting Resolve OU step that names its parent OU', () => {
+      const result = computeValidationNotifications(
+        [resolver({resolveFrom: 'prompt', parentOuId: 'ou-1'})],
+        VALIDATION_RULES,
+        t,
+        GRAPH_VALIDATION_RULES,
+      );
+
+      expect(result.has('resolve_ou_OU_RESOLVER_NO_PARENT')).toBe(false);
+    });
+
+    it('should not ask for a parent OU outside the prompt strategy or outside sign-in flows', () => {
+      expect(
+        computeValidationNotifications(
+          [resolver({resolveFrom: 'promptAll'})],
+          VALIDATION_RULES,
+          t,
+          GRAPH_VALIDATION_RULES,
+        ).has('resolve_ou_OU_RESOLVER_NO_PARENT'),
+      ).toBe(false);
+      expect(
+        computeValidationNotifications(
+          [resolver({resolveFrom: 'prompt', parentOuId: ''})],
+          VALIDATION_RULES,
+          t,
+          REGISTRATION_GRAPH_VALIDATION_RULES,
+        ).has('resolve_ou_OU_RESOLVER_NO_PARENT'),
+      ).toBe(false);
+    });
+  });
+
+  describe('Role assignment roles rule', () => {
+    const roleStep = (mode: string, roles: unknown): Node =>
+      createNode({
+        id: 'assign_roles',
+        type: 'TASK_EXECUTION',
+        data: {
+          action: {type: 'EXECUTOR', executor: {name: 'RoleExecutor', mode}},
+          properties: {roles},
+        } as unknown as StepData,
+      });
+
+    it.each([[''], ['   '], [undefined]])('should block saving a sign-up that assigns roles %s', (roles) => {
+      const result = computeValidationNotifications(
+        [roleStep('role_assignment', roles)],
+        VALIDATION_RULES,
+        t,
+        REGISTRATION_GRAPH_VALIDATION_RULES,
+      );
+
+      const notification = result.get('assign_roles_ROLE_ASSIGNMENT_NO_ROLES')!;
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.ERROR);
+      expect(notification.hasResource('assign_roles')).toBe(true);
+    });
+
+    it('should accept a sign-up that names the roles it assigns', () => {
+      const result = computeValidationNotifications(
+        [roleStep('role_assignment', 'role-1 role-2')],
+        VALIDATION_RULES,
+        t,
+        REGISTRATION_GRAPH_VALIDATION_RULES,
+      );
+
+      expect(result.has('assign_roles_ROLE_ASSIGNMENT_NO_ROLES')).toBe(false);
+    });
+
+    it('should not ask for roles in another mode or outside sign-up flows', () => {
+      expect(
+        computeValidationNotifications(
+          [roleStep('role_selection', '')],
+          VALIDATION_RULES,
+          t,
+          REGISTRATION_GRAPH_VALIDATION_RULES,
+        ).has('assign_roles_ROLE_ASSIGNMENT_NO_ROLES'),
+      ).toBe(false);
+      expect(
+        computeValidationNotifications(
+          [roleStep('role_assignment', '')],
+          VALIDATION_RULES,
+          t,
+          COMMON_GRAPH_VALIDATION_RULES,
+        ).has('assign_roles_ROLE_ASSIGNMENT_NO_ROLES'),
+      ).toBe(false);
     });
   });
 
