@@ -390,6 +390,25 @@ func TestOrderDeletionsByDependencies_ReversesImportOrder(t *testing.T) {
 	}, got)
 }
 
+func TestOrderDeletionsByDependencies_RemovesATemplateBetweenItsFlowAndItsOrganizationUnit(t *testing.T) {
+	ordered := orderDeletionsByDependencies([]ResourceDeletion{
+		{ResourceType: resourceTypeOrganizationUnit, ID: "ou"},
+		{ResourceType: resourceTypeNotificationTemplate, ID: "template"},
+		{ResourceType: resourceTypeFlow, ID: "flow"},
+	})
+
+	got := make([]string, 0, len(ordered))
+	for _, deletion := range ordered {
+		got = append(got, deletion.ResourceType)
+	}
+
+	assert.Equal(t, []string{
+		resourceTypeFlow,
+		resourceTypeNotificationTemplate,
+		resourceTypeOrganizationUnit,
+	}, got)
+}
+
 func TestOrderDeletionsByDependencies_TakesMembersOffFirst(t *testing.T) {
 	ordered := orderDeletionsByDependencies([]ResourceDeletion{
 		{ResourceType: resourceTypeUser, ID: "user"},

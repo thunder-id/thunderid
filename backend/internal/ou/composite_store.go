@@ -326,6 +326,45 @@ func (c *compositeOUStore) GetOrganizationUnitChildrenList(ctx context.Context,
 	return items, nil
 }
 
+// GetOrganizationUnitChildrenCountInProject retrieves the count of the children of a parent that belong to a project
+// across both stores.
+func (c *compositeOUStore) GetOrganizationUnitChildrenCountInProject(
+	ctx context.Context, id, projectID string,
+) (int, error) {
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCountInProject(ctx, id, projectID) },
+		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCountInProject(ctx, id, projectID) },
+	)
+}
+
+// GetOrganizationUnitChildrenListInProject retrieves the children of a parent that belong to a project from both
+// stores with pagination. Applies the 1000-record limit in composite mode, as GetOrganizationUnitChildrenList does.
+func (c *compositeOUStore) GetOrganizationUnitChildrenListInProject(
+	ctx context.Context, id, projectID string, limit, offset int,
+) ([]OrganizationUnitBasic, error) {
+	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCountInProject(ctx, id, projectID) },
+		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCountInProject(ctx, id, projectID) },
+		func(count int) ([]OrganizationUnitBasic, error) {
+			return c.dbStore.GetOrganizationUnitChildrenListInProject(ctx, id, projectID, count, 0)
+		},
+		func(count int) ([]OrganizationUnitBasic, error) {
+			return c.fileStore.GetOrganizationUnitChildrenListInProject(ctx, id, projectID, count, 0)
+		},
+		mergeAndDeduplicateChildren,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, ErrResultLimitExceededInCompositeMode
+	}
+	return items, nil
+}
+
 // mergeAndDeduplicateOUs merges root-level OUs from both stores and removes duplicates by ID.
 // While duplicates shouldn't exist by design (an OU exists in only one store), this provides
 // defensive programming against misconfigurations or bugs.

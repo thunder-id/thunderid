@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
-import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
+import {OrganizationUnitTreePicker, useGetOrganizationUnits} from '@thunderid/configure-organization-units';
 import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {
@@ -46,9 +46,17 @@ export default function UserAddFormPage(): JSX.Element {
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createUser = useCreateUser();
   const {projectId} = useProjectScope();
-  // Inside a project the user is created with the project alone, and the API places it in the system
-  // organization unit, so there is no organization unit to pick.
+  // Inside a project the user goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has
+  // organization units; without any, the API places the user in the system organization unit.
   const isInProject = Boolean(projectId);
+  const {
+    data: projectOus,
+    isLoading: projectOusLoading,
+    error: projectOusError,
+    refetch: refetchProjectOus,
+  } = useGetOrganizationUnits({limit: 1, offset: 0, projectId}, isInProject);
+  const hasProjectOus = (projectOus?.totalResults ?? 0) > 0;
 
   const [typeId, setTypeId] = useState<string>('');
   const [ouId, setOuId] = useState<string>('');
@@ -65,6 +73,25 @@ export default function UserAddFormPage(): JSX.Element {
 
   const types: SchemaInterface[] = typeList?.types ?? [];
   const selectedType: SchemaInterface | undefined = types.find((type) => type.id === typeId);
+  // A user of a type belongs to the type's organization unit or one beneath it, so inside a project only
+  // the placements in that subtree are offered. None means the type cannot be used in this project.
+  const {
+    data: typePlacements,
+    isLoading: typePlacementsLoading,
+    error: typePlacementsError,
+    refetch: refetchTypePlacements,
+  } = useGetOrganizationUnits(
+    {limit: 1, offset: 0, projectId, placement: true, within: selectedType?.ouId},
+    isInProject && Boolean(selectedType),
+  );
+  const isTypeOutsideProject = isInProject && typePlacements?.totalResults === 0;
+  // Until both reads succeed it is not known where the user can go, so the user is not created.
+  const projectOusReadError = projectOus ? null : projectOusError;
+  const typePlacementsReadError = typePlacements ? null : typePlacementsError;
+  const placementsReadError = projectOusReadError ?? typePlacementsReadError;
+  // The picker selects the first placement once its own listing loads, so the user waits for it rather than being
+  // sent without an organization unit, which would place it in the system organization unit.
+  const isAwaitingPick = isInProject && hasProjectOus && !ouId;
   const schema: Record<string, PropertyDefinition> = userType?.schema ?? {};
 
   const handleClose = (): void => {
@@ -78,7 +105,7 @@ export default function UserAddFormPage(): JSX.Element {
     );
 
     createUser.mutate(
-      {...(isInProject ? {projectId} : {ouId}), type: selectedType?.handle ?? '', attributes},
+      {...(isInProject ? {projectId} : {}), ...(ouId ? {ouId} : {}), type: selectedType?.handle ?? '', attributes},
       {
         onSuccess: () => {
           void navigate(routes.list());
@@ -140,8 +167,9 @@ export default function UserAddFormPage(): JSX.Element {
                 onChange={(event) => {
                   const nextTypeId = String(event.target.value);
                   setTypeId(nextTypeId);
-                  // The type's own organization unit is the picker's root, so it starts selected.
-                  setOuId(types.find((type) => type.id === nextTypeId)?.ouId ?? '');
+                  // The type's own organization unit is the picker's root, so it starts selected. Inside a
+                  // project the picker selects the first placement the type allows instead.
+                  setOuId(isInProject ? '' : (types.find((type) => type.id === nextTypeId)?.ouId ?? ''));
                   // Another type's schema can share a field name, so its values are not carried over.
                   reset({});
                 }}
@@ -171,6 +199,43 @@ export default function UserAddFormPage(): JSX.Element {
               </FormControl>
             )}
 
+            {selectedType && placementsReadError && (
+              <QueryErrorNotice
+                variant="inline"
+                error={placementsReadError}
+                t={(key, options) => t(key.includes(':') ? key : `users:${key}`, options)}
+                fallbackKey="users:addForm.placementsError"
+                fallbackDefaultValue="The organization units this user can be placed in could not be loaded."
+                onRetry={() => {
+                  if (projectOusReadError) void refetchProjectOus();
+                  if (typePlacementsReadError) void refetchTypePlacements();
+                }}
+              />
+            )}
+
+            {selectedType && isTypeOutsideProject && (
+              <Alert severity="warning">
+                {t(
+                  'users:addForm.typeOutsideProject',
+                  "Users of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
+                )}
+              </Alert>
+            )}
+
+            {selectedType && isInProject && hasProjectOus && !isTypeOutsideProject && !placementsReadError && (
+              <FormControl fullWidth>
+                <FormLabel htmlFor="user-ou">{t('users:addForm.organizationUnit')}</FormLabel>
+                <OrganizationUnitTreePicker
+                  key={selectedType.id}
+                  id="user-ou"
+                  value={ouId}
+                  onChange={setOuId}
+                  projectId={projectId}
+                  withinOuId={selectedType.ouId || undefined}
+                />
+              </FormControl>
+            )}
+
             {/* The type's own schema decides the rest, so a type with extra attributes needs no
                 change here. */}
             {orderSchemaAttributes(schema).map(([name, definition]: [string, PropertyDefinition]) =>
@@ -181,7 +246,18 @@ export default function UserAddFormPage(): JSX.Element {
               <Button
                 type="submit"
                 variant="contained"
-                disabled={!selectedType || (!isInProject && !ouId) || !userType || createUser.isPending}
+                disabled={
+                  !selectedType ||
+                  (!isInProject && !ouId) ||
+                  (isInProject &&
+                    (projectOusLoading ||
+                      typePlacementsLoading ||
+                      isTypeOutsideProject ||
+                      Boolean(placementsReadError) ||
+                      isAwaitingPick)) ||
+                  !userType ||
+                  createUser.isPending
+                }
               >
                 {createUser.isPending ? t('users:addForm.creating') : t('users:addForm.submit')}
               </Button>

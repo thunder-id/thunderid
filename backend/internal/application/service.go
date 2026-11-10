@@ -1386,6 +1386,9 @@ func clientIDFromEntity(e *providers.Entity) (string, error) {
 // limit).
 func (as *applicationService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType == resourcedependency.ResourceTypeOU {
+		return as.organizationUnitUsages(ctx, id)
+	}
 	ids, _, err := as.inboundClientService.GetEntityIDsByReference(
 		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
@@ -1412,24 +1415,49 @@ func (as *applicationService) GetResourceDependencies(
 		if e.Category != providers.EntityCategoryApp {
 			continue
 		}
-		name := ""
-		var sysAttrs map[string]interface{}
-		if len(e.SystemAttributes) > 0 {
-			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
-		}
-		if sysAttrs != nil {
-			if n, ok := sysAttrs[fieldName].(string); ok {
-				name = n
-			}
-		}
 		usages = append(usages, resourcedependency.ResourceDependency{
 			ResourceType:     resourcedependency.ResourceTypeApplication,
 			ID:               e.ID,
-			DisplayName:      name,
+			DisplayName:      applicationName(e),
 			BehaviorOnDelete: behavior,
 		})
 	}
 	return usages, nil
+}
+
+// organizationUnitUsages reports the applications an organization unit owns, which block its deletion. The
+// number scanned is bounded by MaxCompositeStoreRecords.
+func (as *applicationService) organizationUnitUsages(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	entities, err := as.entityService.GetEntityListByOUIDs(
+		ctx, providers.EntityCategoryApp, []string{ouID}, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list applications in organization unit", log.Error(err))
+		return nil, err
+	}
+	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
+	for _, e := range entities {
+		usages = append(usages, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               e.ID,
+			DisplayName:      applicationName(e),
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return usages, nil
+}
+
+// applicationName reads an application's name from its entity's system attributes, or returns an empty string
+// when it has none.
+func applicationName(e providers.Entity) string {
+	var sysAttrs map[string]interface{}
+	if len(e.SystemAttributes) > 0 {
+		_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
+	}
+	if name, ok := sysAttrs[fieldName].(string); ok {
+		return name
+	}
+	return ""
 }
 
 // ValidateReferenceUpdate re-validates every application that references (resourceType, id) after

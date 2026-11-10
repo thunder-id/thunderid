@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
@@ -217,24 +218,46 @@ func (suite *ProjectServiceTestSuite) TestGetProject() {
 }
 
 func (suite *ProjectServiceTestSuite) TestValidateProjectOU() {
-	suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+	suite.Run("the system organization unit", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
 
-	suite.Nil(suite.service.ValidateProjectOU(context.Background(), testProjectID, testSystemOUID))
+		suite.Nil(suite.service.ValidateProjectOU(context.Background(), testProjectID, testSystemOUID))
+	})
+	suite.Run("an organization unit of the project", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+		suite.mockOUService.On("GetOrganizationUnitProjectID", mock.Anything, "project-ou").
+			Return(testProjectID, nil).Once()
+
+		suite.Nil(suite.service.ValidateProjectOU(context.Background(), testProjectID, "project-ou"))
+	})
 }
 
 func (suite *ProjectServiceTestSuite) TestValidateProjectOU_Fails() {
 	for name, tc := range map[string]struct {
-		storeErr error
-		ouErr    *tidcommon.ServiceError
-		ouID     string
-		expected tidcommon.ServiceError
+		storeErr    error
+		ouErr       *tidcommon.ServiceError
+		ouID        string
+		ouProjectID string
+		ouLookupErr *tidcommon.ServiceError
+		expected    tidcommon.ServiceError
 	}{
 		"an unknown project": {storeErr: errProjectNotFound, expected: ErrorProjectNotFound},
 		"a store error": {
 			storeErr: errors.New("db"), expected: tidcommon.InternalServerError,
 		},
-		"another organization unit": {ouID: "other-ou", expected: ErrorOUNotInProject},
-		"no organization unit":      {expected: ErrorOUNotInProject},
+		"an organization unit of another project": {
+			ouID: "other-ou", ouProjectID: "another-project", expected: ErrorOUNotInProject,
+		},
+		"an organization unit of no project": {ouID: "other-ou", expected: ErrorOUNotInProject},
+		"an organization unit that does not exist": {
+			ouID: "other-ou", ouLookupErr: &ou.ErrorOrganizationUnitNotFound, expected: ErrorOUNotInProject,
+		},
+		"an organization unit that cannot be read": {
+			ouID: "other-ou", ouLookupErr: &tidcommon.InternalServerError, expected: tidcommon.InternalServerError,
+		},
+		"no organization unit": {expected: ErrorOUNotInProject},
 		"no system organization unit": {
 			ouID: testSystemOUID, ouErr: &tidcommon.InternalServerError, expected: tidcommon.InternalServerError,
 		},
@@ -249,6 +272,10 @@ func (suite *ProjectServiceTestSuite) TestValidateProjectOU_Fails() {
 				suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(Project{}, tc.storeErr)
 			} else {
 				suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+			}
+			if tc.ouID != "" && tc.ouID != testSystemOUID {
+				suite.mockOUService.On("GetOrganizationUnitProjectID", mock.Anything, tc.ouID).
+					Return(tc.ouProjectID, tc.ouLookupErr).Once()
 			}
 
 			svcErr := suite.service.ValidateProjectOU(context.Background(), testProjectID, tc.ouID)

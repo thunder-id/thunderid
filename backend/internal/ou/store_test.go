@@ -553,6 +553,126 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 	})
 }
 
+func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChildrenCountInProject() {
+	suite.Run("success", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, queryGetOrganizationUnitChildrenCountInProject,
+			"parent", "project-1", testDeploymentID).Return([]map[string]interface{}{{"total": int64(3)}}, nil).Once()
+
+		count, err := suite.store.GetOrganizationUnitChildrenCountInProject(context.Background(), "parent", "project-1")
+
+		suite.Require().NoError(err)
+		suite.Equal(3, count)
+	})
+
+	suite.Run("no rows", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, "parent", "project-1", testDeploymentID).
+			Return([]map[string]interface{}{}, nil).Once()
+
+		count, err := suite.store.GetOrganizationUnitChildrenCountInProject(context.Background(), "parent", "project-1")
+
+		suite.Require().NoError(err)
+		suite.Zero(count)
+	})
+
+	for name, tc := range map[string]struct {
+		setup   func()
+		wantErr string
+	}{
+		"db client error": {
+			setup: func() {
+				suite.providerMock.On("GetEntityDBClient").Return(nil, errors.New("db err")).Once()
+			},
+			wantErr: "failed to get database client",
+		},
+		"query error": {
+			setup: func() {
+				suite.expectDBClient()
+				suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, "parent", "project-1",
+					testDeploymentID).Return(nil, errors.New("query err")).Once()
+			},
+			wantErr: "failed to execute count query",
+		},
+		"unexpected total": {
+			setup: func() {
+				suite.expectDBClient()
+				suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, "parent", "project-1",
+					testDeploymentID).Return([]map[string]interface{}{{"total": "3"}}, nil).Once()
+			},
+			wantErr: "unexpected type for total",
+		},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			tc.setup()
+
+			_, err := suite.store.GetOrganizationUnitChildrenCountInProject(context.Background(), "parent", "project-1")
+
+			suite.ErrorContains(err, tc.wantErr)
+		})
+	}
+}
+
+func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChildrenListInProject() {
+	parent := "parent"
+	suite.Run("success", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, queryGetOrganizationUnitChildrenListInProject,
+			parent, "project-1", 5, 10, testDeploymentID).Return([]map[string]interface{}{
+			makeOUResultRow("child1", "child1", "Child 1", "", &parent),
+		}, nil).Once()
+
+		children, err := suite.store.GetOrganizationUnitChildrenListInProject(
+			context.Background(), parent, "project-1", 5, 10)
+
+		suite.Require().NoError(err)
+		suite.Len(children, 1)
+		suite.Equal(parent, *children[0].Parent)
+	})
+
+	for name, tc := range map[string]struct {
+		setup   func()
+		wantErr string
+	}{
+		"db client error": {
+			setup: func() {
+				suite.providerMock.On("GetEntityDBClient").Return(nil, errors.New("db err")).Once()
+			},
+			wantErr: "failed to get database client",
+		},
+		"query error": {
+			setup: func() {
+				suite.expectDBClient()
+				suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, parent, "project-1", 5, 10,
+					testDeploymentID).Return(nil, errors.New("query err")).Once()
+			},
+			wantErr: "failed to execute query",
+		},
+		"builder error": {
+			setup: func() {
+				suite.expectDBClient()
+				suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, parent, "project-1", 5, 10,
+					testDeploymentID).Return([]map[string]interface{}{{"ou_id": 1}}, nil).Once()
+			},
+			wantErr: "failed to build organization unit basic",
+		},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			tc.setup()
+
+			_, err := suite.store.GetOrganizationUnitChildrenListInProject(
+				context.Background(), parent, "project-1", 5, 10)
+
+			suite.ErrorContains(err, tc.wantErr)
+		})
+	}
+}
+
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChildrenList() {
 	tests := []struct {
 		name    string
@@ -1869,6 +1989,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_buildGetOrganizationUni
 		query := buildGetOrganizationUnitsByIDsQuery(ids)
 
 		suite.Require().Equal("OUQ-OU_MGT-21", query.ID)
+		suite.Require().Contains(query.PostgresQuery, "PARENT_ID")
+		suite.Require().Contains(query.SQLiteQuery, "PARENT_ID")
 		suite.Require().Contains(query.PostgresQuery, "METADATA")
 		suite.Require().Contains(query.PostgresQuery, "$1, $2, $3")
 		suite.Require().Contains(query.PostgresQuery, "DEPLOYMENT_ID = $4")

@@ -56,14 +56,12 @@ export default function VerifiablePresentationCreatePage({
   const routes = useVerifiableCredentialRoutes();
   const createVP = useCreateVerifiablePresentation();
 
-  // Inside a project the definition is created with the project alone, and the API places it in the system
-  // organization unit, so there is no organization unit to pick.
-  const ouLookup = useHasMultipleOUs();
+  // Inside a project the definition goes to the system organization unit or one of the project's own, picked
+  // on the organization unit step. The step is offered only when the project has organization units; without
+  // any, the API places the definition in the system organization unit.
   const {projectId} = useProjectScope();
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
-  const {ouList} = ouLookup;
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   const [step, setStep] = useState<Step>('ORGANIZATION_UNIT');
   const [name, setName] = useState<string>('');
@@ -74,12 +72,13 @@ export default function VerifiablePresentationCreatePage({
   const [format, setFormat] = useState<string>('dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>([emptyClaimRow()]);
 
-  const effectiveOuId: string = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const effectiveOuId: string =
+    ouId !== '' ? ouId : !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
   // The organization unit whose name is shown in the Details step's summary chip.
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
-    !isInProject && Boolean(effectiveOuId),
+    Boolean(effectiveOuId),
   );
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
@@ -126,7 +125,7 @@ export default function VerifiablePresentationCreatePage({
     createVP.mutate(
       {
         handle: handle.trim(),
-        ...(isInProject ? {projectId} : {ouId: effectiveOuId}),
+        ...(isInProject ? {projectId, ...(effectiveOuId ? {ouId: effectiveOuId} : {})} : {ouId: effectiveOuId}),
         name: name.trim() || undefined,
         vct: vct.trim(),
         format: format.trim() || undefined,
@@ -277,6 +276,7 @@ export default function VerifiablePresentationCreatePage({
             "Choose the organization unit that will own this verifiable presentation. You can't change this once created.",
           )}
           value={effectiveOuId}
+          projectId={projectId}
           onChange={(value: string): void => {
             clearCreateError();
             setOuId(value);

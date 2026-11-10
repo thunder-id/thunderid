@@ -59,7 +59,7 @@ Manage configurations in **Verifiable Credentials → Templates** in the <Produc
 
 On the control plane, every credential configuration belongs to a project.
 
-- **Create**: set `projectId` in the request body of `POST /openid4vci/credential-configurations`. The configuration goes into the system organization unit, so `ouId` can be left out. A request without `projectId` fails with `VCI-2015`, a project that does not exist fails with `VCI-2013`, and any organization unit other than the system one fails with `VCI-2014`.
+- **Create**: set `projectId` in the request body of `POST /openid4vci/credential-configurations`. Without `ouId`, the configuration goes into the system organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. A request without `projectId` fails with `VCI-2015`, a project that does not exist fails with `VCI-2013`, and any other organization unit fails with `VCI-2014`.
 - **List**: `GET /openid4vci/credential-configurations?projectId=<project-id>` returns the configurations of the project. A project that does not exist returns an empty list.
 - **Update**: an update without `projectId` keeps the configuration in its current project, and one without `ouId` keeps its organization unit. A different `projectId` moves the configuration to that project after the same checks.
 - **Delete a project**: deleting a project that still has credential configurations fails with `PRJ-1013`.

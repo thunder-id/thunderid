@@ -513,11 +513,15 @@ func (ts *notificationTemplateService) SetDependencyRegistry(r resourcedependenc
 }
 
 // GetResourceDependencies implements resourcedependency.Provider: it blocks deletion of a template
-// required by a built-in endpoint. It lives on the template service, not the consumer, because
-// template deletion is served on both planes while a consumer runs on one.
+// required by a built-in endpoint, and of an organization unit that owns templates. It lives on the
+// template service, not the consumer, because template deletion is served on both planes while a
+// consumer runs on one.
 func (ts *notificationTemplateService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	usages := make([]resourcedependency.ResourceDependency, 0)
+	if resourceType == resourcedependency.ResourceTypeOU {
+		return ts.organizationUnitUsages(ctx, id)
+	}
 	if resourceType != resourcedependency.ResourceTypeNotificationTemplate {
 		return usages, nil
 	}
@@ -542,6 +546,29 @@ func (ts *notificationTemplateService) GetResourceDependencies(
 		}
 	}
 
+	return usages, nil
+}
+
+// organizationUnitUsages reports the templates of every channel an organization unit owns. The number scanned
+// for each channel is bounded by MaxCompositeStoreRecords.
+func (ts *notificationTemplateService) organizationUnitUsages(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	usages := make([]resourcedependency.ResourceDependency, 0)
+	for _, channel := range []ChannelType{ChannelTypeEmail, ChannelTypeSMS} {
+		templates, err := ts.store.ListTemplatesByOUIDs(
+			ctx, channel, []string{ouID}, serverconst.MaxCompositeStoreRecords, 0)
+		if err != nil {
+			return nil, err
+		}
+		for _, template := range templates {
+			usages = append(usages, resourcedependency.ResourceDependency{
+				ResourceType:     resourcedependency.ResourceTypeNotificationTemplate,
+				ID:               template.ID,
+				DisplayName:      template.DisplayName,
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			})
+		}
+	}
 	return usages, nil
 }
 

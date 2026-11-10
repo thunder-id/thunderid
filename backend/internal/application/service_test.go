@@ -4757,6 +4757,86 @@ func (suite *ServiceTestSuite) TestGetResourceDependencies_SystemAttributesWitho
 	assert.Equal(suite.T(), "", result[0].DisplayName)
 }
 
+func (suite *ServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedApplications() {
+	service, mockStore := suite.setupTestService()
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	ep := resetEntityServiceMethod(service, "GetEntityListByOUIDs")
+	ep.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryApp, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs},
+		{ID: "app-2", Category: providers.EntityCategoryApp},
+	}, nil)
+
+	result, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               "app-1",
+			DisplayName:      "Portal App",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               "app-2",
+			DisplayName:      "",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, result)
+	mockStore.AssertNotCalled(suite.T(), "GetEntityIDsByReference", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_OUWithoutApplications() {
+	service, _ := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityListByOUIDs")
+	ep.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryApp, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).Return([]providers.Entity{}, nil)
+
+	result, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_OUEntityServiceError() {
+	service, _ := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityListByOUIDs")
+	ep.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryApp, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).Return(nil, errors.New("store error"))
+
+	result, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	assert.EqualError(suite.T(), err, "store error")
+	assert.Nil(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestApplicationName() {
+	withName, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	withoutName, _ := json.Marshal(map[string]interface{}{"description": "some desc"})
+	nonStringName, _ := json.Marshal(map[string]interface{}{"name": 42})
+
+	testCases := []struct {
+		name     string
+		sysAttrs json.RawMessage
+		expected string
+	}{
+		{name: "WithName", sysAttrs: withName, expected: "Portal App"},
+		{name: "WithoutName", sysAttrs: withoutName, expected: ""},
+		{name: "NonStringName", sysAttrs: nonStringName, expected: ""},
+		{name: "NoSystemAttributes", sysAttrs: nil, expected: ""},
+		{name: "MalformedSystemAttributes", sysAttrs: json.RawMessage("{"), expected: ""},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			assert.Equal(suite.T(), tc.expected, applicationName(providers.Entity{SystemAttributes: tc.sysAttrs}))
+		})
+	}
+}
+
 func (suite *ServiceTestSuite) TestCreateApplication_CreateInboundClientFailsAndCompensationFails() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{

@@ -94,6 +94,33 @@ describe('useGetOrganizationUnits', () => {
     });
   });
 
+  it('lists where a project resource can be placed when placement is asked for', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
+
+    renderHook(() => useGetOrganizationUnits({projectId: 'project-1', placement: true}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({url: expect.stringContaining('projectId=project-1&placement=true'), method: 'GET'}),
+      );
+    });
+  });
+
+  it('keeps only the placements within an organization unit when asked to', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
+
+    renderHook(() => useGetOrganizationUnits({projectId: 'project-1', placement: true, within: 'ou-type'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: expect.stringContaining('projectId=project-1&placement=true&within=ou-type'),
+          method: 'GET',
+        }),
+      );
+    });
+  });
+
   it('lists every root organization unit without a project', async () => {
     mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
 

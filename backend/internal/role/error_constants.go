@@ -552,8 +552,9 @@ var (
 			DefaultValue: "Organization unit not in project",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.roleservice.ou_not_in_project_description",
-			DefaultValue: "A role in a project must be in the system organization unit",
+			Key: "error.roleservice.ou_not_in_project_description",
+			DefaultValue: "A role in a project must be in the system organization unit " +
+				"or in an organization unit of the project",
 		},
 	}
 	// ErrorTooManyAssignments is returned when a removal request names more assignments than allowed.

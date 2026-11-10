@@ -67,25 +67,31 @@ const ouState: {hasMultipleOUs: boolean; isLoading: boolean; ouList: {id: string
   ouList: [{id: 'ou-root'}],
 };
 
+const mockUseHasMultipleOUs = vi.fn<(projectId?: string) => typeof ouState>(() => ouState);
 vi.mock('@thunderid/configure-organization-units', () => ({
-  useHasMultipleOUs: () => ouState,
+  useHasMultipleOUs: (projectId?: string) => mockUseHasMultipleOUs(projectId),
 }));
 
 vi.mock('../../components/create-flow/FlowOrganizationUnitStep', () => ({
   default: ({
     isLoading,
     value,
+    projectId = undefined,
     onChange,
     onBack,
     onContinue,
   }: {
     isLoading: boolean;
     value: string;
+    projectId?: string;
     onChange: (ouId: string) => void;
     onBack: () => void;
     onContinue: () => void;
   }) => (
-    <div data-testid="ou-step" data-loading={String(isLoading)} data-value={value}>
+    <div data-testid="ou-step" data-loading={String(isLoading)} data-value={value} data-project-id={projectId}>
+      <button type="button" data-testid="ou-pick-system" onClick={() => onChange('system-ou')}>
+        pick system
+      </button>
       <button type="button" data-testid="ou-pick-b" onClick={() => onChange('ou-b')}>
         pick b
       </button>
@@ -726,17 +732,18 @@ describe('FlowCreatePage', () => {
     describe('inside a project', () => {
       beforeEach(() => {
         mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
-        ouState.hasMultipleOUs = true;
-        ouState.ouList = [{id: 'ou-a'}, {id: 'ou-b'}];
+        ouState.hasMultipleOUs = false;
+        ouState.ouList = [];
       });
 
       afterEach(() => {
         mockUseProjectScope.mockReturnValue({});
       });
 
-      it('skips the organization unit step even when there are several organization units', () => {
+      it('skips the organization unit step when the project has no organization units', () => {
         render(<FlowCreatePage />);
 
+        expect(mockUseHasMultipleOUs).toHaveBeenCalledWith('project-1');
         expect(screen.queryByTestId('ou-step')).not.toBeInTheDocument();
         expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
       });
@@ -752,6 +759,47 @@ describe('FlowCreatePage', () => {
           expect.any(Object),
         );
         expect(mockMutate.mock.calls[0][0]).not.toHaveProperty('ouId');
+      });
+
+      describe('when the project has organization units', () => {
+        beforeEach(() => {
+          ouState.hasMultipleOUs = true;
+          ouState.ouList = [{id: 'ou-p1'}];
+        });
+
+        it("shows the project's organization unit step", () => {
+          render(<FlowCreatePage />);
+
+          expect(screen.getByTestId('ou-step')).toHaveAttribute('data-project-id', 'project-1');
+        });
+
+        it('creates the flow in the system organization unit the picker selects', () => {
+          render(<FlowCreatePage />);
+
+          fireEvent.click(screen.getByTestId('ou-pick-system'));
+          fireEvent.click(screen.getByTestId('ou-continue'));
+          fillConfigureStep();
+          fireEvent.click(screen.getByText('Create'));
+
+          expect(mockMutate).toHaveBeenCalledWith(
+            expect.objectContaining({name: 'My Flow', projectId: 'project-1', ouId: 'system-ou'}),
+            expect.any(Object),
+          );
+        });
+
+        it('creates the flow in the picked project organization unit', () => {
+          render(<FlowCreatePage />);
+
+          fireEvent.click(screen.getByTestId('ou-pick-b'));
+          fireEvent.click(screen.getByTestId('ou-continue'));
+          fillConfigureStep();
+          fireEvent.click(screen.getByText('Create'));
+
+          expect(mockMutate).toHaveBeenCalledWith(
+            expect.objectContaining({name: 'My Flow', projectId: 'project-1', ouId: 'ou-b'}),
+            expect.any(Object),
+          );
+        });
       });
 
       it('carries the project into the Device Grant draft', () => {

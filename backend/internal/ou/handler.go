@@ -56,10 +56,21 @@ func (ouh *organizationUnitHandler) HandleOUListRequest(w http.ResponseWriter, r
 
 	// An empty projectId= still takes the project branch and lists no organization units, rather than every one.
 	var ouListResponse *OrganizationUnitListResponse
-	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+	query := r.URL.Query()
+	switch {
+	case query.Has(projectIDQueryParam) && query.Get(placementQueryParam) == "true":
+		// The placement listing leads with the system organization unit, which a filter could not page around.
+		if f != nil {
+			ouh.handleError(ctx, w, &ErrorPlacementWithFilter)
+			return
+		}
+		ouListResponse, svcErr = ouh.service.GetOrganizationUnitPlacementList(ctx,
+			sysutils.SanitizeString(query.Get(projectIDQueryParam)),
+			sysutils.SanitizeString(query.Get(withinQueryParam)), limit, offset)
+	case query.Has(projectIDQueryParam):
 		ouListResponse, svcErr = ouh.service.GetOrganizationUnitListByProject(
 			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset, f)
-	} else {
+	default:
 		ouListResponse, svcErr = ouh.service.GetOrganizationUnitList(ctx, limit, offset, f)
 	}
 	if svcErr != nil {

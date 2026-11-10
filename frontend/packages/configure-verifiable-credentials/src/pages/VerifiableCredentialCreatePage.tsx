@@ -61,14 +61,12 @@ export default function VerifiableCredentialCreatePage({
   const routes = useVerifiableCredentialRoutes();
   const createVC = useCreateVerifiableCredential();
 
-  // Inside a project the configuration is created with the project alone, and the API places it in the system
-  // organization unit, so there is no organization unit to pick.
-  const ouLookup = useHasMultipleOUs();
+  // Inside a project the configuration goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has organization units;
+  // without any, the API places the configuration in the system organization unit.
   const {projectId} = useProjectScope();
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
-  const {ouList} = ouLookup;
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   const [step, setStep] = useState<Step>('ORGANIZATION_UNIT');
   const [name, setName] = useState<string>('');
@@ -79,7 +77,8 @@ export default function VerifiableCredentialCreatePage({
   const [format, setFormat] = useState<string>('dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>(credentialToClaimRows(undefined));
 
-  const effectiveOuId: string = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const effectiveOuId: string =
+    ouId !== '' ? ouId : !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
   // A create error is stale once the wizard's data changes.
   const clearCreateError = (): void => {
@@ -114,7 +113,7 @@ export default function VerifiableCredentialCreatePage({
   // The organization unit whose name is shown in the Details step's summary chip.
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
-    !isInProject && Boolean(effectiveOuId),
+    Boolean(effectiveOuId),
   );
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
@@ -154,7 +153,7 @@ export default function VerifiableCredentialCreatePage({
 
   const buildRequest = () => ({
     handle: handle.trim(),
-    ...(isInProject ? {projectId} : {ouId: effectiveOuId}),
+    ...(isInProject ? {projectId, ...(effectiveOuId ? {ouId: effectiveOuId} : {})} : {ouId: effectiveOuId}),
     name: name.trim() || undefined,
     vct: vct.trim(),
     format: format.trim() || undefined,
@@ -286,6 +285,7 @@ export default function VerifiableCredentialCreatePage({
             "Choose the organization unit that will own this verifiable credential. You can't change this once created.",
           )}
           value={effectiveOuId}
+          projectId={projectId}
           onChange={handleOuIdChange}
           onBack={close}
           onContinue={handleNext}

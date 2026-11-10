@@ -306,7 +306,7 @@ export interface CreateFlowRequest {
    */
   ouId?: string;
   /**
-   * Places the flow in the project, in the system organization unit.
+   * Places the flow in the project, in the system organization unit unless `ouId` names one of the project's.
    */
   projectId?: string;
   /**

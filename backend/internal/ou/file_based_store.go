@@ -270,6 +270,7 @@ func (f *fileBasedStore) GetOrganizationUnitsByIDs(
 					Name:        ou.Name,
 					Description: ou.Description,
 					ProjectID:   ou.ProjectID,
+					Parent:      ou.Parent,
 					LogoURL:     ou.LogoURL,
 				})
 			}
@@ -375,6 +376,55 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenCount(
 	}
 
 	return count, nil
+}
+
+// GetOrganizationUnitChildrenCountInProject implements organizationUnitStoreInterface.
+func (f *fileBasedStore) GetOrganizationUnitChildrenCountInProject(
+	ctx context.Context, id, projectID string,
+) (int, error) {
+	children, err := f.childrenInProject(id, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return len(children), nil
+}
+
+// GetOrganizationUnitChildrenListInProject implements organizationUnitStoreInterface.
+func (f *fileBasedStore) GetOrganizationUnitChildrenListInProject(
+	ctx context.Context, id, projectID string, limit, offset int,
+) ([]OrganizationUnitBasic, error) {
+	children, err := f.childrenInProject(id, projectID)
+	if err != nil {
+		return nil, err
+	}
+	start := min(offset, len(children))
+	return children[start:min(start+limit, len(children))], nil
+}
+
+// childrenInProject returns the child organization units of a parent that belong to the given project.
+func (f *fileBasedStore) childrenInProject(id, projectID string) ([]OrganizationUnitBasic, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	children := make([]OrganizationUnitBasic, 0)
+	for _, item := range list {
+		ou, ok := item.Data.(*OrganizationUnit)
+		if !ok || ou.Parent == nil || *ou.Parent != id || ou.ProjectID != projectID {
+			continue
+		}
+		children = append(children, OrganizationUnitBasic{
+			ID:          ou.ID,
+			Handle:      ou.Handle,
+			Name:        ou.Name,
+			Description: ou.Description,
+			ProjectID:   ou.ProjectID,
+			Parent:      ou.Parent,
+			LogoURL:     ou.LogoURL,
+		})
+	}
+	return children, nil
 }
 
 // GetOrganizationUnitChildrenList implements organizationUnitStoreInterface.

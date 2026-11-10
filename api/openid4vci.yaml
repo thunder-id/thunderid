@@ -220,7 +220,7 @@ components:
       required: [handle, vct]
       properties:
         handle: {type: string, description: Unique credential configuration handle.}
-        ouId: {type: string, description: ID of the organization unit that owns this configuration. Required unless projectId is given; a configuration in a project is in the system organization unit.}
+        ouId: {type: string, description: ID of the organization unit that owns this configuration. Required unless projectId is given; a configuration in a project is in the system organization unit when it is left out, and otherwise must be in an organization unit of the project.}
         projectId: {type: string, description: "ID of the project this configuration belongs to. Required on the Control Plane, where a request without it fails with VCI-2015 and a project that does not exist fails with VCI-2013. On update, leaving it out keeps the configuration's project."}
         name: {type: string}
         description: {type: string}

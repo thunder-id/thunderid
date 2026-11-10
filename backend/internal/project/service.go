@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package project manages projects. A project groups identity configuration in the system
-// organization unit, and its resources carry the project ID.
+// Package project manages projects. A project groups identity configuration, and its resources carry the
+// project ID. They are placed in the system organization unit or in an organization unit of the project.
 package project
 
 import (
@@ -112,9 +112,10 @@ func (s *projectService) GetProject(ctx context.Context, id string) (*Project, *
 }
 
 // ValidateProjectOU checks that a resource scoped to the project is in an organization unit the project
-// includes: the system organization unit. It returns ErrorProjectNotFound when the project does not
-// exist, ErrorOUNotInProject when the organization unit is outside the project, and a server error when
-// the system organization unit is not configured or does not exist.
+// includes: the system organization unit, or an organization unit that belongs to the project. It returns
+// ErrorProjectNotFound when the project does not exist, ErrorOUNotInProject when the organization unit is
+// outside the project, and a server error when the system organization unit is not configured or does not
+// exist.
 func (s *projectService) ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
 	if _, err := s.store.GetProject(ctx, projectID); err != nil {
 		return s.mapStoreError(ctx, err, "Failed to get project")
@@ -123,7 +124,20 @@ func (s *projectService) ValidateProjectOU(ctx context.Context, projectID, ouID 
 	if svcErr != nil {
 		return svcErr
 	}
-	if ouID != systemOUID {
+	if ouID == systemOUID {
+		return nil
+	}
+	if ouID == "" {
+		return &ErrorOUNotInProject
+	}
+	ouProjectID, svcErr := s.ouService.GetOrganizationUnitProjectID(ctx, ouID)
+	if svcErr != nil {
+		if svcErr.Code == ou.ErrorOrganizationUnitNotFound.Code {
+			return &ErrorOUNotInProject
+		}
+		return svcErr
+	}
+	if ouProjectID != projectID {
 		return &ErrorOUNotInProject
 	}
 	return nil

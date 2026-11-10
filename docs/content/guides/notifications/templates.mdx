@@ -40,9 +40,9 @@ By default a template is a database row you edit freely through the Console and 
 
 On the control plane, every notification template belongs to a project.
 
-- **Create**: set `projectId` in the request body of `POST /notification-templates/{channel}/templates`. The template goes into the system organization unit, so `ouId` can be left out. A request without `projectId` fails with `NTM-1031`, a project that does not exist fails with `NTM-1029`, and any organization unit other than the system one fails with `NTM-1030`.
+- **Create**: set `projectId` in the request body of `POST /notification-templates/{channel}/templates`. Without `ouId`, the template goes into the system organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. A request without `projectId` fails with `NTM-1031`, a project that does not exist fails with `NTM-1029`, and any other organization unit fails with `NTM-1030`.
 - **List**: `GET /notification-templates/{channel}/templates?projectId=<project-id>` returns the templates of the project. A project that does not exist returns an empty list.
-- **Update**: an update without `projectId` keeps the template in its current project. A different `projectId` moves the template to that project. A project that does not exist fails with `NTM-1029`, and a template outside the system organization unit cannot move into a project (`NTM-1030`).
+- **Update**: an update without `projectId` keeps the template in its current project. A different `projectId` moves the template to that project. A project that does not exist fails with `NTM-1029`, and a template can move into a project only from the system organization unit or an organization unit of that project (`NTM-1030`).
 - **Delete a project**: deleting a project that still has templates fails with `PRJ-1013`.
 - **Declarative files**: a template file must set `projectId`, and can leave `ouId` out to be placed in the system organization unit. A file without `projectId` stops the server from starting. Export and import keep `projectId`.
 

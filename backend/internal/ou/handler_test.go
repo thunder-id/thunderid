@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -302,6 +303,60 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUListRequest
 			},
 			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.AssertNotCalled(suite.T(), "GetOrganizationUnitList", mock.Anything)
+			},
+		},
+		{
+			name: "lists where a project's resources can be placed",
+			url:  "/organization-units?projectId=project-1&placement=true",
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitPlacementList", mock.Anything, "project-1", "",
+						serverconst.DefaultPageSize, 0).
+					Return(&OrganizationUnitListResponse{
+						TotalResults: 2,
+						OrganizationUnits: []OrganizationUnitBasic{
+							{ID: "system", IsSystem: true},
+							{ID: "ou-1", ProjectID: "project-1"},
+						},
+					}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusOK, recorder.Code)
+				suite.Contains(recorder.Body.String(), `"isSystem":true`)
+				var resp OrganizationUnitListResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.True(resp.OrganizationUnits[0].IsSystem)
+				suite.False(resp.OrganizationUnits[1].IsSystem)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "GetOrganizationUnitListByProject",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			},
+		},
+		{
+			name: "lists the placements within an organization unit",
+			url:  "/organization-units?projectId=project-1&placement=true&within=ou-type",
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitPlacementList", mock.Anything, "project-1", "ou-type",
+						serverconst.DefaultPageSize, 0).
+					Return(&OrganizationUnitListResponse{
+						TotalResults:      1,
+						OrganizationUnits: []OrganizationUnitBasic{{ID: "ou-type", ProjectID: "project-1"}},
+					}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusOK, recorder.Code)
+			},
+		},
+		{
+			name: "refuses a filter on a placement listing",
+			url:  "/organization-units?projectId=project-1&placement=true&filter=" + url.QueryEscape(`name eq "x"`),
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				suite.Contains(recorder.Body.String(), ErrorPlacementWithFilter.Code)
 			},
 		},
 		{

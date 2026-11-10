@@ -1394,6 +1394,9 @@ var resourceDependencyOrder = []string{
 	resourceTypeAgentType,
 	resourceTypeConnection,
 	resourceTypeResourceServer,
+	// After the organization unit that holds a template, which is not deleted while it does, and before the flows
+	// that send it, so a flow is removed before the template it names.
+	resourceTypeNotificationTemplate,
 	resourceTypeFlow,
 	resourceTypeTheme,
 	resourceTypeLayout,

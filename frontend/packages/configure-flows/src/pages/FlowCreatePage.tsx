@@ -59,15 +59,13 @@ export default function FlowCreatePage(): JSX.Element {
   const [selectedOuId, setSelectedOuId] = useState('');
 
   // The organization unit is the wizard's first step whenever there is a choice to make. A single-unit deployment
-  // uses its one unit, so once that is known the step is skipped. Inside a project the flow is created with the
-  // project alone, and the API places it in the system organization unit, so there is no organization unit to pick.
-  const ouLookup = useHasMultipleOUs();
+  // uses its one unit, so once that is known the step is skipped. Inside a project the flow goes to the system
+  // organization unit or one of the project's own, and the step is offered only when the project has organization
+  // units; without any, the API places the flow in the system organization unit.
   const {projectId} = useProjectScope();
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
-  const {ouList} = ouLookup;
-  const ouId: string = hasMultipleOUs ? selectedOuId : (ouList[0]?.id ?? '');
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
+  const ouId: string = hasMultipleOUs ? selectedOuId : isInProject ? '' : (ouList[0]?.id ?? '');
 
   const currentStep: FlowCreateStep =
     requestedStep === FlowCreateStep.ORGANIZATION_UNIT && !isOuLoading && !hasMultipleOUs
@@ -147,7 +145,8 @@ export default function FlowCreatePage(): JSX.Element {
         name: nameValue.name,
         handle: nameValue.handle,
         flowType: selectedType,
-        ...(isInProject ? {projectId} : {ouId}),
+        ...(isInProject ? {projectId} : {}),
+        ...(ouId ? {ouId} : {}),
         nodes: resolveConnectionPlaceholders(selectedTemplate.config.nodes, {
           identityProviders: identityProviders.data,
           smsProviders: smsProviders.data,
@@ -246,6 +245,7 @@ export default function FlowCreatePage(): JSX.Element {
       <FlowOrganizationUnitStep
         isLoading={isOuLoading || !hasMultipleOUs}
         value={selectedOuId}
+        projectId={projectId}
         onChange={(value) => {
           clearCreateError();
           setSelectedOuId(value);

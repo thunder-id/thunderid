@@ -16,8 +16,8 @@ export interface TrustedAuthorityInput {
 export interface CreateVerifiablePresentationRequest {
   handle: string;
   /**
-   * The organization unit this definition belongs to. A definition in a project leaves it out and is placed in
-   * the system organization unit.
+   * The organization unit this definition belongs to. A definition in a project leaves it out to be placed in
+   * the system organization unit, or names one of the project's.
    */
   ouId?: string;
   /** The project this definition belongs to. Required on the control plane. */

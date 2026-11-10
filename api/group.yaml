@@ -235,7 +235,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.groupservice.ou_not_in_project_description"
-                      defaultValue: "A group in a project must be in the system organization unit"
+                      defaultValue: "A group in a project must be in the system organization unit or in an organization unit of the project"
         "409":
           description: Conflict
           content:
@@ -412,7 +412,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.groupservice.ou_not_in_project_description"
-                      defaultValue: "A group in a project must be in the system organization unit"
+                      defaultValue: "A group in a project must be in the system organization unit or in an organization unit of the project"
                 group-ou-change-not-allowed:
                   summary: Group has members, belongs to other groups, or is assigned roles
                   value:
@@ -1290,7 +1290,7 @@ components:
           description: "Required unless projectId is given, which places the group in the system organization unit when ouId is left out."
         projectId:
           type: string
-          description: "ID of the project the group belongs to. Leave it out for a group of the organization. A group in a project must be in the system organization unit."
+          description: "ID of the project the group belongs to. Leave it out for a group of the organization. A group in a project must be in the system organization unit or in an organization unit of the project."
         members:
           type: array
           description: "Members of the group. Every member must be owned by the organization unit given in `ouId` or shared with it."

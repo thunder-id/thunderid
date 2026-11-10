@@ -18,17 +18,28 @@ interface UseHasMultipleOUsResult {
   ouList: OrganizationUnit[];
 }
 
-export default function useHasMultipleOUs(): UseHasMultipleOUsResult {
+/**
+ * Tells whether creating a resource needs an organization unit choice.
+ *
+ * Without a project, there is a choice when the deployment has more than one organization unit. With a
+ * project, the resource can go into the system organization unit or into one of the project's
+ * organization units, so there is a choice when the project has any. `ouList` then holds the
+ * project's organization units.
+ *
+ * @param projectId - The project the resource is created in, if any
+ */
+export default function useHasMultipleOUs(projectId?: string): UseHasMultipleOUsResult {
+  const isProjectMode = Boolean(projectId);
   const {
     data: ouData,
     isLoading: isOuLoading,
     isError: isOuError,
     error: ouError,
     refetch: refetchOus,
-  } = useGetOrganizationUnits({limit: 2, offset: 0});
+  } = useGetOrganizationUnits({limit: 2, offset: 0, projectId});
   const ouList = ouData?.organizationUnits ?? [];
   const rootCount = ouData?.totalResults ?? 0;
-  const singleRootId = rootCount === 1 ? ouList[0]?.id : undefined;
+  const singleRootId = !isProjectMode && rootCount === 1 ? ouList[0]?.id : undefined;
 
   const {
     data: childData,
@@ -43,15 +54,15 @@ export default function useHasMultipleOUs(): UseHasMultipleOUsResult {
 
   const hasMultipleRoots = rootCount > 1;
   const singleRootHasChildren = rootCount === 1 && (childData?.totalResults ?? 0) > 0;
-  const isChildLookupFailed = rootCount === 1 && isChildError;
+  const isChildLookupFailed = Boolean(singleRootId) && isChildError;
   const refetch = useCallback((): void => {
     if (isOuError) void refetchOus();
     if (isChildLookupFailed) void refetchChildren();
   }, [isOuError, isChildLookupFailed, refetchOus, refetchChildren]);
 
   return {
-    hasMultipleOUs: hasMultipleRoots || singleRootHasChildren,
-    isLoading: isOuLoading || (rootCount === 1 && isChildLoading),
+    hasMultipleOUs: isProjectMode ? rootCount > 0 : hasMultipleRoots || singleRootHasChildren,
+    isLoading: isOuLoading || (Boolean(singleRootId) && isChildLoading),
     isError: isOuError || isChildLookupFailed,
     error: (isOuError ? ouError : null) ?? (isChildLookupFailed ? childError : null),
     refetch,

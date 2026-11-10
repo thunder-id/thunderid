@@ -13,7 +13,7 @@ export interface CreateRoleRequest {
   description?: string;
   /** ID of the organization unit this role belongs to; the system organization unit when omitted */
   ouId?: string;
-  /** Places the role in the project, in the system organization unit */
+  /** Places the role in the project, in the system organization unit unless `ouId` names one of the project's */
   projectId?: string;
   /** Optional initial permissions */
   permissions?: ResourcePermissions[];

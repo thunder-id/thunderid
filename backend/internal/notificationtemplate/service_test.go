@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -949,6 +950,84 @@ func (s *NotificationTemplateServiceTestSuite) TestStoreErrorSurfaced() {
 
 	s.Require().Error(err)
 	s.Nil(usages)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestGetResourceDependencies_OUReportsTemplatesOfEveryChannel() {
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0).
+		Return([]templateDAO{{ID: "email-1", DisplayName: "Welcome"}}, nil).Once()
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeSMS, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0).
+		Return([]templateDAO{{ID: "sms-1", DisplayName: "OTP"}}, nil).Once()
+
+	usages, err := s.svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeOU, "ou-1")
+
+	s.Require().NoError(err)
+	s.Equal([]resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeNotificationTemplate,
+			ID:               "email-1",
+			DisplayName:      "Welcome",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeNotificationTemplate,
+			ID:               "sms-1",
+			DisplayName:      "OTP",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, usages)
+	s.mockStore.AssertNotCalled(s.T(), "GetTemplateByHandle", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestGetResourceDependencies_OUWithoutTemplates() {
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0).Return([]templateDAO{}, nil).Once()
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeSMS, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0).Return([]templateDAO{}, nil).Once()
+
+	usages, err := s.svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeOU, "ou-1")
+
+	s.Require().NoError(err)
+	s.NotNil(usages)
+	s.Empty(usages)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestGetResourceDependencies_OUStoreError() {
+	testCases := []struct {
+		name  string
+		setup func()
+	}{
+		{
+			name: "EmailChannel",
+			setup: func() {
+				s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"},
+					serverconst.MaxCompositeStoreRecords, 0).Return(nil, errors.New("db down")).Once()
+			},
+		},
+		{
+			name: "SMSChannel",
+			setup: func() {
+				s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"},
+					serverconst.MaxCompositeStoreRecords, 0).
+					Return([]templateDAO{{ID: "email-1", DisplayName: "Welcome"}}, nil).Once()
+				s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeSMS, []string{"ou-1"},
+					serverconst.MaxCompositeStoreRecords, 0).Return(nil, errors.New("db down")).Once()
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			tc.setup()
+
+			usages, err := s.svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeOU, "ou-1")
+
+			s.Require().EqualError(err, "db down")
+			s.Nil(usages)
+		})
+	}
 }
 
 // testProjectID is the project the project tests place templates in.

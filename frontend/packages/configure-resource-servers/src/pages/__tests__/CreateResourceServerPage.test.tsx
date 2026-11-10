@@ -86,10 +86,11 @@ const mockUseHasMultipleOUs = vi.fn(() => ({
 }));
 
 vi.mock('@thunderid/configure-organization-units', () => ({
-  useHasMultipleOUs: () => mockUseHasMultipleOUs(),
+  useHasMultipleOUs: (projectId?: string) => mockUseHasMultipleOUs(projectId),
   OrganizationUnitTreePicker: () => <div data-testid="ou-tree-picker" />,
   OrganizationUnitPickerScreen: ({
     value,
+    projectId = undefined,
     onChange,
     onBack,
     onContinue,
@@ -97,13 +98,17 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     continueLabel,
   }: {
     value: string;
+    projectId?: string;
     onChange: (id: string) => void;
     onBack: () => void;
     onContinue: () => void;
     backLabel: string;
     continueLabel: string;
   }) => (
-    <div data-testid="organization-unit-picker-screen">
+    <div data-testid="organization-unit-picker-screen" data-project-id={projectId}>
+      <button type="button" onClick={() => onChange('system-ou')}>
+        Select system OU
+      </button>
       <button type="button" onClick={() => onChange('ou-2')}>
         Select OU
       </button>
@@ -533,6 +538,8 @@ describe('CreateResourceServerPage', () => {
     it('shows the organization unit picker before the Type step', () => {
       renderWithProviders(<CreateResourceServerPage />);
 
+      expect(mockUseHasMultipleOUs).toHaveBeenCalledWith(undefined);
+      expect(screen.getByTestId('organization-unit-picker-screen')).not.toHaveAttribute('data-project-id');
       expect(screen.getByTestId('organization-unit-picker-screen')).toBeInTheDocument();
       expect(screen.queryByText(/What type of resource server are you adding/i)).not.toBeInTheDocument();
     });
@@ -582,32 +589,7 @@ describe('CreateResourceServerPage', () => {
   });
 
   describe('inside a project', () => {
-    beforeEach(() => {
-      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
-      mockUseHasMultipleOUs.mockReturnValue({
-        hasMultipleOUs: true,
-        isLoading: false,
-        ouList: [
-          {id: 'ou-1', name: 'Default', handle: 'default', parent: null},
-          {id: 'ou-2', name: 'Other', handle: 'other', parent: null},
-        ],
-      });
-    });
-
-    afterEach(() => {
-      mockUseProjectScope.mockReturnValue({});
-    });
-
-    it('skips the organization unit step even when there are several organization units', () => {
-      renderWithProviders(<CreateResourceServerPage />);
-
-      expect(screen.queryByTestId('organization-unit-picker-screen')).not.toBeInTheDocument();
-      expect(screen.getByText(/What type of resource server are you adding/i)).toBeInTheDocument();
-    });
-
-    it('creates the resource server in the project, without an organization unit', async () => {
-      renderWithProviders(<CreateResourceServerPage />);
-
+    async function createApi(): Promise<void> {
       fireEvent.click(screen.getByRole('button', {name: /API/i}));
       fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
 
@@ -629,12 +611,82 @@ describe('CreateResourceServerPage', () => {
       });
 
       fireEvent.click(screen.getByRole('button', {name: /Create resource server/i}));
+    }
 
-      expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
-        expect.objectContaining({name: 'Orders API', projectId: 'project-1'}),
-        expect.any(Object),
-      );
-      expect(mockCreateResourceServerMutate.mock.calls[0][0]).not.toHaveProperty('ouId');
+    beforeEach(() => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+    });
+
+    afterEach(() => {
+      mockUseProjectScope.mockReturnValue({});
+    });
+
+    describe('when the project has no organization units', () => {
+      beforeEach(() => {
+        mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+      });
+
+      it('skips the organization unit step', () => {
+        renderWithProviders(<CreateResourceServerPage />);
+
+        expect(mockUseHasMultipleOUs).toHaveBeenCalledWith('project-1');
+        expect(screen.queryByTestId('organization-unit-picker-screen')).not.toBeInTheDocument();
+        expect(screen.getByText(/What type of resource server are you adding/i)).toBeInTheDocument();
+      });
+
+      it('creates the resource server in the project, without an organization unit', async () => {
+        renderWithProviders(<CreateResourceServerPage />);
+
+        await createApi();
+
+        expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
+          expect.objectContaining({name: 'Orders API', projectId: 'project-1'}),
+          expect.any(Object),
+        );
+        expect(mockCreateResourceServerMutate.mock.calls[0][0]).not.toHaveProperty('ouId');
+      });
+    });
+
+    describe('when the project has organization units', () => {
+      beforeEach(() => {
+        mockUseHasMultipleOUs.mockReturnValue({
+          hasMultipleOUs: true,
+          isLoading: false,
+          ouList: [{id: 'ou-p1', name: 'Project OU', handle: 'project-ou', parent: null}],
+        });
+      });
+
+      it("shows the project's organization unit step", () => {
+        renderWithProviders(<CreateResourceServerPage />);
+
+        expect(screen.getByTestId('organization-unit-picker-screen')).toHaveAttribute('data-project-id', 'project-1');
+      });
+
+      it('creates the resource server in the system organization unit the picker selects', async () => {
+        renderWithProviders(<CreateResourceServerPage />);
+
+        fireEvent.click(screen.getByRole('button', {name: 'Select system OU'}));
+        fireEvent.click(screen.getByRole('button', {name: 'Continue'}));
+        await createApi();
+
+        expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
+          expect.objectContaining({name: 'Orders API', projectId: 'project-1', ouId: 'system-ou'}),
+          expect.any(Object),
+        );
+      });
+
+      it('creates the resource server in the picked project organization unit', async () => {
+        renderWithProviders(<CreateResourceServerPage />);
+
+        fireEvent.click(screen.getByRole('button', {name: 'Select OU'}));
+        fireEvent.click(screen.getByRole('button', {name: 'Continue'}));
+        await createApi();
+
+        expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
+          expect.objectContaining({name: 'Orders API', projectId: 'project-1', ouId: 'ou-2'}),
+          expect.any(Object),
+        );
+      });
     });
   });
 });

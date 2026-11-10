@@ -18,8 +18,16 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     data: id ? {id, name: 'Test Organization Unit'} : undefined,
     isLoading: false,
   }),
-  OrganizationUnitPickerScreen: ({onBack, onContinue}: {onBack: () => void; onContinue: () => void}) => (
-    <div data-testid="organization-unit-picker-screen">
+  OrganizationUnitPickerScreen: ({
+    onBack,
+    onContinue,
+    projectId = undefined,
+  }: {
+    onBack: () => void;
+    onContinue: () => void;
+    projectId?: string;
+  }) => (
+    <div data-testid="organization-unit-picker-screen" data-project-id={projectId}>
       <button type="button" onClick={onBack}>
         Back
       </button>
@@ -536,24 +544,13 @@ describe('CreateRolePage', () => {
   });
 
   describe('inside a project', () => {
-    beforeEach(() => {
-      vi.mocked(useHasMultipleOUs).mockReturnValue({
-        hasMultipleOUs: true,
-        isLoading: false,
-        ouList: [
-          {id: 'ou-1', handle: 'default-ou', name: 'Default OU'},
-          {id: 'ou-2', handle: 'other-ou', name: 'Other OU'},
-        ],
-      });
-    });
-
-    it('should skip the organization unit step even when there are several organization units', () => {
+    function mockRoleStep(currentStep: RoleCreateFlowStep, ouId = ''): void {
       vi.mocked(useRoleCreate).mockReturnValue({
-        currentStep: RoleCreateFlowStep.ORGANIZATION_UNIT,
+        currentStep,
         setCurrentStep: mockSetCurrentStep,
-        name: '',
+        name: 'Shop Admin',
         setName: mockSetName,
-        ouId: '',
+        ouId,
         setOuId: mockSetOuId,
         error: null,
         setError: mockSetError,
@@ -561,46 +558,88 @@ describe('CreateRolePage', () => {
         setPermissions: mockSetPermissions,
         reset: vi.fn(),
       } as unknown as ReturnType<typeof useRoleCreate>);
+    }
 
-      render(
-        <ProjectScopeProvider project={{id: 'project-1'}}>
-          <CreateRolePage />
-        </ProjectScopeProvider>,
-      );
-
-      expect(screen.queryByTestId('organization-unit-picker-screen')).not.toBeInTheDocument();
-      expect(mockSetCurrentStep).toHaveBeenCalledWith(RoleCreateFlowStep.BASIC_INFO);
-    });
-
-    it('should create the role in the project, without an organization unit', async () => {
+    function mockCreate(): ReturnType<typeof vi.fn> {
       const mockMutateAsync = vi.fn().mockResolvedValue({});
       vi.mocked(useCreateRole).mockReturnValue({
         mutateAsync: mockMutateAsync,
         isPending: false,
       } as unknown as ReturnType<typeof useCreateRole>);
-      vi.mocked(useRoleCreate).mockReturnValue({
-        currentStep: RoleCreateFlowStep.PERMISSIONS,
-        setCurrentStep: mockSetCurrentStep,
-        name: 'Shop Admin',
-        setName: mockSetName,
-        ouId: '',
-        setOuId: mockSetOuId,
-        error: null,
-        setError: mockSetError,
-        permissions: [],
-        setPermissions: mockSetPermissions,
-        reset: vi.fn(),
-      } as unknown as ReturnType<typeof useRoleCreate>);
+      return mockMutateAsync;
+    }
 
+    function renderInProject(): void {
       render(
         <ProjectScopeProvider project={{id: 'project-1'}}>
           <CreateRolePage />
         </ProjectScopeProvider>,
       );
-      fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+    }
 
-      await vi.waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1'});
+    describe('when the project has no organization units', () => {
+      beforeEach(() => {
+        vi.mocked(useHasMultipleOUs).mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+      });
+
+      it('should skip the organization unit step', () => {
+        mockRoleStep(RoleCreateFlowStep.ORGANIZATION_UNIT);
+        renderInProject();
+
+        expect(useHasMultipleOUs).toHaveBeenCalledWith('project-1');
+        expect(screen.queryByTestId('organization-unit-picker-screen')).not.toBeInTheDocument();
+        expect(mockSetCurrentStep).toHaveBeenCalledWith(RoleCreateFlowStep.BASIC_INFO);
+      });
+
+      it('should create the role in the project, without an organization unit', async () => {
+        const mockMutateAsync = mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS);
+        renderInProject();
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1'});
+        });
+      });
+    });
+
+    describe('when the project has organization units', () => {
+      beforeEach(() => {
+        vi.mocked(useHasMultipleOUs).mockReturnValue({
+          hasMultipleOUs: true,
+          isLoading: false,
+          ouList: [{id: 'ou-p1', handle: 'project-ou', name: 'Project OU'}],
+        });
+      });
+
+      it("should show the project's organization unit step", () => {
+        mockRoleStep(RoleCreateFlowStep.ORGANIZATION_UNIT);
+        renderInProject();
+
+        expect(screen.getByTestId('organization-unit-picker-screen')).toHaveAttribute('data-project-id', 'project-1');
+        expect(mockSetCurrentStep).not.toHaveBeenCalled();
+      });
+
+      it('should create the role in the system organization unit the picker selects', async () => {
+        const mockMutateAsync = mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS, 'system-ou');
+        renderInProject();
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1', ouId: 'system-ou'});
+        });
+      });
+
+      it('should create the role in the picked project organization unit', async () => {
+        const mockMutateAsync = mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS, 'ou-p1');
+        renderInProject();
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1', ouId: 'ou-p1'});
+        });
       });
     });
   });

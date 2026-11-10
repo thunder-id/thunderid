@@ -94,6 +94,9 @@ const (
 	ResourceTypeResource             = "resource"
 	ResourceTypeAction               = "action"
 	ResourceTypeSharingPolicy        = "sharingPolicy"
+	ResourceTypeRole                 = "role"
+	ResourceTypeVCIConfiguration     = "credentialConfiguration"
+	ResourceTypeVPDefinition         = "presentationDefinition"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

@@ -88,4 +88,15 @@ export interface OrganizationUnitListParams {
    * @example '019a3000-0000-7000-8000-0000000000a1'
    */
   projectId?: string;
+
+  /**
+   * With `projectId`, list where a project resource can be placed: the system organization unit
+   * first, then the project's top organization units
+   */
+  placement?: boolean;
+
+  /**
+   * With `placement`, keep only the placements in this organization unit's subtree
+   */
+  within?: string;
 }

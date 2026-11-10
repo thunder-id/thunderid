@@ -14,6 +14,13 @@ const h = vi.hoisted(() => ({
   // The signed-in user as the SDK holds them: the ID token's claims, which carry no ID, merged with
   // the profile /users/me returns, which does, when the caller is a user here.
   signedIn: {current: {id: 'user-1', username: 'alice'} as Record<string, unknown> | null},
+  // How many organization units the selected project has.
+  projectOuCount: {current: 0},
+  // How many placements the selected agent type allows in the project, or null while they never load.
+  placementCount: {current: 1 as number | null},
+  // Whether the reads of the project's organization units and of the type's placements fail.
+  projectOusFail: {current: false},
+  placementsFail: {current: false},
 }));
 
 // Translations are shared across the suite, so keys are asserted rather than English copy.
@@ -41,16 +48,37 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   OrganizationUnitTreePicker: ({
     onChange,
     rootOuId = undefined,
+    projectId = undefined,
+    withinOuId = undefined,
     helperText = undefined,
   }: {
     onChange: (ouId: string) => void;
     rootOuId?: string;
+    projectId?: string;
+    withinOuId?: string;
     helperText?: string;
   }) => (
     <>
-      <button type="button" data-testid="ou-picker" data-root={rootOuId} onClick={() => onChange('ou-child')}>
+      <button
+        type="button"
+        data-testid="ou-picker"
+        data-root={rootOuId}
+        data-project-id={projectId}
+        data-within={withinOuId}
+        onClick={() => onChange('ou-child')}
+      >
         pick ou
       </button>
+      {projectId && (
+        <button type="button" data-testid="ou-picker-system" onClick={() => onChange('system-ou')}>
+          pick system ou
+        </button>
+      )}
+      {projectId && withinOuId && (
+        <button type="button" data-testid="ou-picker-within" onClick={() => onChange(withinOuId)}>
+          pick the type organization unit
+        </button>
+      )}
       {helperText && <span>{helperText}</span>}
     </>
   ),
@@ -147,8 +175,25 @@ describe('AgentAddFormPage', () => {
     vi.clearAllMocks();
     h.created.current = {id: 'agent-1', name: 'Calendar Agent'};
     h.signedIn.current = {id: 'user-1', username: 'alice'};
+    h.projectOuCount.current = 0;
+    h.placementCount.current = 1;
+    h.projectOusFail.current = false;
+    h.placementsFail.current = false;
+    agentTypes.types[0].ouId = 'ou-root';
     h.http.request.mockImplementation((config: unknown) => {
       const {url, method} = config as RecordedRequest;
+      if (url.includes('/organization-units?') && url.includes('placement=true')) {
+        if (h.placementsFail.current) return Promise.reject(new Error('network down'));
+        const count = h.placementCount.current;
+        if (count === null) return new Promise(() => undefined);
+        return Promise.resolve({data: {totalResults: count, startIndex: 1, count, organizationUnits: []}});
+      }
+      if (url.includes('/organization-units?') && url.includes('projectId=project-1')) {
+        if (h.projectOusFail.current) return Promise.reject(new Error('network down'));
+        const count = h.projectOuCount.current;
+        const organizationUnits = count > 0 ? [{id: 'ou-p1', handle: 'project-ou', name: 'Project OU'}] : [];
+        return Promise.resolve({data: {totalResults: count, startIndex: 1, count, organizationUnits}});
+      }
       if (method === 'POST' && url.endsWith('/agents')) {
         return Promise.resolve({data: h.created.current});
       }
@@ -200,30 +245,170 @@ describe('AgentAddFormPage', () => {
     // No flow is involved anywhere along the way.
     expect(requests().some((request) => request.url.includes('/flow/execute'))).toBe(false);
     expect(requests().some((request) => request.url.includes('/server-config/flow'))).toBe(false);
+    // Outside a project the picker is rooted at the type's organization unit, with no placement lookup.
+    expect(requests().some((request) => request.url.includes('/organization-units'))).toBe(false);
   });
 
-  it('creates the agent in the selected project, with no organization unit to pick', async () => {
-    const user = userEvent.setup();
-    render(
-      <ProjectScopeProvider project={{id: 'project-1'}}>
-        <AgentAddFormPage />
-      </ProjectScopeProvider>,
-    );
+  describe('inside a project', () => {
+    async function fillInProject(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <AgentAddFormPage />
+        </ProjectScopeProvider>,
+      );
 
-    await chooseOption(user, 0, 'Default');
-    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
-    await fillAttributes(user);
-    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+      await chooseOption(user, 0, 'Default');
+    }
 
-    await waitFor(() => {
-      expect(requests().some((request) => request.method === 'POST')).toBe(true);
+    function continueButton(): HTMLElement {
+      return screen.getByRole('button', {name: 'common:actions.continue'});
+    }
+
+    async function submitted(user: ReturnType<typeof userEvent.setup>): Promise<unknown> {
+      await fillAttributes(user);
+      await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+      await waitFor(() => {
+        expect(requests().some((request) => request.method === 'POST')).toBe(true);
+      });
+      return requests().find((request) => request.method === 'POST')?.data;
+    }
+
+    it('creates the agent in the selected project, with no organization unit to pick when the project has none', async () => {
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      await waitFor(() => {
+        expect(requests().some((request) => request.url.includes('projectId=project-1'))).toBe(true);
+      });
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+      expect(await submitted(user)).toEqual({
+        projectId: 'project-1',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
     });
-    const post = requests().find((request) => request.method === 'POST');
-    expect(post?.data).toEqual({
-      projectId: 'project-1',
-      type: 'default',
-      attributes: {name: 'Calendar Agent', llmModel: 'claude'},
-      inboundAuthConfig: [ISSUED_CREDENTIALS],
+
+    function placementRequest(): string | undefined {
+      return requests().find((request) => request.url.includes('placement=true'))?.url;
+    }
+
+    it('offers the placements of a type in the system organization unit and creates the agent where the picker selects', async () => {
+      h.projectOuCount.current = 1;
+      h.placementCount.current = 2;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      const picker = await screen.findByTestId('ou-picker');
+      expect(placementRequest()).toContain('projectId=project-1&placement=true&within=ou-root');
+      expect(picker).toHaveAttribute('data-project-id', 'project-1');
+      expect(picker).toHaveAttribute('data-within', 'ou-root');
+      expect(picker).not.toHaveAttribute('data-root');
+      await user.click(screen.getByTestId('ou-picker-system'));
+      expect(await submitted(user)).toEqual({
+        projectId: 'project-1',
+        ouId: 'system-ou',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
+    });
+
+    it('offers only the subtree of a type in a project organization unit and creates the agent in it', async () => {
+      agentTypes.types[0].ouId = 'ou-shop';
+      h.projectOuCount.current = 1;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-within', 'ou-shop');
+      await user.click(screen.getByTestId('ou-picker-within'));
+      expect(await submitted(user)).toEqual({
+        projectId: 'project-1',
+        ouId: 'ou-shop',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
+    });
+
+    it('says the type cannot be used in the project when it allows no placement there, and keeps submit disabled', async () => {
+      h.projectOuCount.current = 1;
+      h.placementCount.current = 0;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(await screen.findByText('agents:addForm.typeOutsideProject')).toBeInTheDocument();
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+      expect(continueButton()).toBeDisabled();
+    });
+
+    it('says the type cannot be used in a project without organization units when it is outside the system organization unit', async () => {
+      agentTypes.types[0].ouId = 'ou-elsewhere';
+      h.placementCount.current = 0;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(await screen.findByText('agents:addForm.typeOutsideProject')).toBeInTheDocument();
+      expect(placementRequest()).toContain('within=ou-elsewhere');
+      expect(continueButton()).toBeDisabled();
+    });
+
+    it("keeps submit disabled while the type's placements are loading", async () => {
+      h.placementCount.current = null;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(screen.queryByText('agents:addForm.typeOutsideProject')).not.toBeInTheDocument();
+      expect(continueButton()).toBeDisabled();
+    });
+
+    it.each([
+      ['the type placements', h.placementsFail],
+      ["the project's organization units", h.projectOusFail],
+    ])('says so when %s cannot be loaded, keeps Continue disabled, and offers a retry', async (_, fails) => {
+      h.projectOuCount.current = 1;
+      fails.current = true;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      const retry = await screen.findByRole('button', {name: 'common:actions.refresh'});
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+      expect(screen.queryByText('agents:addForm.typeOutsideProject')).not.toBeInTheDocument();
+      expect(continueButton()).toBeDisabled();
+
+      fails.current = false;
+      await user.click(retry);
+      await user.click(await screen.findByTestId('ou-picker'));
+      await waitFor(() => expect(continueButton()).toBeEnabled());
+    });
+
+    it('keeps Continue disabled until the picker selects an organization unit', async () => {
+      h.projectOuCount.current = 1;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      const picker = await screen.findByTestId('ou-picker');
+      await waitFor(() => {
+        expect(requests().some((request) => request.url.includes('/agent-types/type-1'))).toBe(true);
+      });
+      expect(continueButton()).toBeDisabled();
+      await user.click(picker);
+      await waitFor(() => expect(continueButton()).toBeEnabled());
+    });
+
+    it('creates the agent in the picked project organization unit', async () => {
+      h.projectOuCount.current = 1;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      await user.click(await screen.findByTestId('ou-picker'));
+      expect(await submitted(user)).toEqual({
+        projectId: 'project-1',
+        ouId: 'ou-child',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
     });
   });
 

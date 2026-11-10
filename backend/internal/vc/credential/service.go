@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -25,6 +26,10 @@ const maxProjectIDLength = 36
 // CredentialConfigurationServiceInterface manages OpenID4VCI credential configurations in the configdb
 // store, which the issuer engine reads on demand.
 type CredentialConfigurationServiceInterface interface {
+	// GetResourceDependencies reports the credential configurations an organization unit owns, which block its
+	// deletion.
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CreateCredentialConfiguration(ctx context.Context, dto *CredentialConfigurationDTO) (
 		*CredentialConfigurationDTO, *tidcommon.ServiceError)
 	GetCredentialConfiguration(ctx context.Context, id string) (*CredentialConfigurationDTO, *tidcommon.ServiceError)
@@ -686,4 +691,27 @@ func setManagedStore(service any, managed managedresource.StoreInterface) {
 	if svc, ok := service.(*configurationService); ok {
 		svc.managed = managed
 	}
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. It reports the credential configurations an
+// organization unit owns, which block its deletion. Other resource types have no dependencies here.
+func (s *configurationService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+	summaries, err := s.store.ListCredentialConfigurationSummariesByOUID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]resourcedependency.ResourceDependency, 0, len(summaries))
+	for _, c := range summaries {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeVCIConfiguration,
+			ID:               c.ID,
+			DisplayName:      c.Handle,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }

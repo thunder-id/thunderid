@@ -33,14 +33,12 @@ export default function CreateRolePage(): JSX.Element {
   const {currentStep, setCurrentStep, name, setName, ouId, setOuId, error, setError, permissions, setPermissions} =
     useRoleCreate();
 
-  const ouLookup = useHasMultipleOUs();
   const {projectId} = useProjectScope();
-  // Inside a project the role is created with the project alone, and the API places it in the system
-  // organization unit, so there is no organization unit to pick.
+  // Inside a project the role goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has
+  // organization units; without any, the API places the role in the system organization unit.
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
-  const {ouList} = ouLookup;
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
   // deployments never need it, so once that's known, skip straight past it.
@@ -51,7 +49,7 @@ export default function CreateRolePage(): JSX.Element {
   }, [isOuLoading, hasMultipleOUs, currentStep, setCurrentStep]);
 
   // The organization unit whose name is shown in the Details step's summary chip.
-  const resolvedOuId = isInProject ? undefined : hasMultipleOUs ? ouId : ouList[0]?.id;
+  const resolvedOuId = isInProject ? (hasMultipleOUs && ouId) || undefined : hasMultipleOUs ? ouId : ouList[0]?.id;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     resolvedOuId,
     Boolean(resolvedOuId),
@@ -118,15 +116,15 @@ export default function CreateRolePage(): JSX.Element {
       return;
     }
 
-    const selectedOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
-    if (!isInProject && !selectedOuId) {
+    if (!isInProject && !resolvedOuId) {
       setError(t('create.form.organizationUnit.required', 'Organization unit is required'));
       return;
     }
 
     const requestData: CreateRoleRequest = {
       name: trimmedName,
-      ...(isInProject ? {projectId} : {ouId: selectedOuId}),
+      ...(isInProject ? {projectId} : {}),
+      ...(resolvedOuId ? {ouId: resolvedOuId} : {}),
       ...(permissions.length > 0 ? {permissions} : {}),
     };
 
@@ -221,6 +219,7 @@ export default function CreateRolePage(): JSX.Element {
             "Choose the organization unit that will own this role. You can't change this once created.",
           )}
           value={ouId}
+          projectId={projectId}
           onChange={setOuId}
           onBack={handleClose}
           onContinue={handleNextStep}

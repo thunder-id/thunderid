@@ -14,6 +14,8 @@ import (
 type projectOU struct {
 	ID        string `json:"id"`
 	ProjectID string `json:"projectId"`
+	IsSystem  bool   `json:"isSystem"`
+	Parent    string `json:"parent"`
 }
 
 // projectOUList is the part of an organization unit list response these tests read.

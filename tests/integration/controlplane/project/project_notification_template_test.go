@@ -13,6 +13,9 @@ import (
 // templatesPath is the collection of email templates these tests create.
 const templatesPath = "/notification-templates/email/templates"
 
+// smsTemplatesPath is the collection of SMS templates these tests create.
+const smsTemplatesPath = "/notification-templates/sms/templates"
+
 // projectTemplate is the part of a notification template response these tests read.
 type projectTemplate struct {
 	ID        string `json:"id"`
@@ -186,6 +189,18 @@ func (ts *ProjectAPITestSuite) TestImportedTemplateWithoutProjectKeepsItsProject
 func (ts *ProjectAPITestSuite) templateBody(name, placement string, args ...interface{}) string {
 	return fmt.Sprintf(`{"handle":%q,"displayName":%q,"content":{"subject":"Hello","body":"<p>Hello</p>"},%s}`,
 		ts.handle("tpl-"+name), "Template "+name, fmt.Sprintf(placement, args...))
+}
+
+// createSMSTemplate posts an SMS template with the given placement, requires a 201, and records it for cleanup.
+func (ts *ProjectAPITestSuite) createSMSTemplate(name, placement string, args ...interface{}) projectTemplate {
+	body := fmt.Sprintf(`{"handle":%q,"displayName":%q,"content":{"body":"Hello"},%s}`,
+		ts.handle("sms-"+name), "SMS template "+name, fmt.Sprintf(placement, args...))
+	status, resp := ts.do(http.MethodPost, smsTemplatesPath, body)
+	ts.Require().Equal(http.StatusCreated, status, resp)
+	var created projectTemplate
+	ts.Require().NoError(json.Unmarshal([]byte(resp), &created))
+	ts.smsTemplates = append(ts.smsTemplates, created.ID)
+	return created
 }
 
 // templateUpdateBody builds an email template update request, with the given fields appended.

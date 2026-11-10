@@ -142,10 +142,10 @@ Deleting an application is permanent. Any client using the application's Client 
 
 ## Scope Applications to a Project
 
-Every project on the control plane includes the system organization unit, and an application in a project is placed there. When you manage applications through the REST API on the control plane, pass a project ID to work within a project.
+Every project on the control plane includes the system organization unit, and an application in a project is placed there or in one of the project's own organization units. When you manage applications through the REST API on the control plane, pass a project ID to work within a project.
 
 - **List**: `GET /applications?projectId=<project-id>` returns the project's applications, followed by the ones shared into it. To narrow the list to one organization unit, add `filter=ouId eq "<ou-id>"`. A project that does not exist, or an organization unit outside the project, returns an empty list.
-- **Create or update**: set `projectId` in the request body of `POST /applications` or `PUT /applications/{id}`. Without `ouId`, the application is placed in the system organization unit. With `ouId`, it must be the system organization unit, even when the project has organization units of its own. Any other organization unit fails the request with `APP-1064`, and one that does not exist fails it with `APP-1018`. A project that does not exist fails the request with `APP-1063`.
+- **Create or update**: set `projectId` in the request body of `POST /applications` or `PUT /applications/{id}`. On create, an application in a project without `ouId` is placed in the system organization unit. An update without `ouId` keeps the application's organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit, including one that does not exist, fails the request with `APP-1064`. A project that does not exist fails the request with `APP-1063`.
 
 A data plane has no projects. It rejects a `projectId` in a create or update request with `APP-1063`, and returns an empty list for `GET /applications?projectId=<project-id>`.
 

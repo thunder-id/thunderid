@@ -13,13 +13,18 @@ export default function buildTreeItems(ous: OrganizationUnit[]): OrganizationUni
     description: ou.description,
     logoUrl: ou.logoUrl,
     isReadOnly: ou.isReadOnly,
-    children: [
-      {
-        id: `${ou.id}${OrganizationUnitTreeConstants.PLACEHOLDER_SUFFIX}`,
-        label: '',
-        handle: '',
-        isPlaceholder: true,
-      },
-    ],
+    // The system organization unit is offered as a placement on its own, so it cannot be expanded.
+    ...(ou.isSystem
+      ? {}
+      : {
+          children: [
+            {
+              id: `${ou.id}${OrganizationUnitTreeConstants.PLACEHOLDER_SUFFIX}`,
+              label: '',
+              handle: '',
+              isPlaceholder: true,
+            },
+          ],
+        }),
   }));
 }

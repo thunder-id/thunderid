@@ -220,7 +220,7 @@ curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
 
 On the control plane, a resource server can belong to a project. A resource server without a `projectId` belongs to no project and stays available to every project.
 
-- **Create or update**: set `projectId` in the request body of `POST /resource-servers` or `PUT /resource-servers/{id}`. A resource server in a project is in the system organization unit, so `ouId` can be left out. Any other organization unit fails the request with `RES-1026`, and a project that does not exist fails it with `RES-1025`.
+- **Create or update**: set `projectId` in the request body of `POST /resource-servers` or `PUT /resource-servers/{id}`. On create, a resource server in a project without `ouId` is placed in the system organization unit. An update without `ouId` keeps the resource server's organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit fails the request with `RES-1026`, and a project that does not exist fails it with `RES-1025`.
 - **Update without `projectId` or `ouId`**: the resource server keeps its current project and organization unit. A different `projectId` moves the resource server to that project.
 - **List**: `GET /resource-servers?projectId=<project-id>` returns the resource servers of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
 

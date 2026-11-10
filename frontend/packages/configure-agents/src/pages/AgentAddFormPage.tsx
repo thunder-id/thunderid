@@ -3,7 +3,7 @@
 
 import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
 import {useGetAgentType, useGetAllAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
-import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {OrganizationUnitTreePicker, useGetOrganizationUnits} from '@thunderid/configure-organization-units';
 import {renderSchemaField, useGetUser, useGetUsers} from '@thunderid/configure-users';
 import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
@@ -80,9 +80,17 @@ export default function AgentAddFormPage(): JSX.Element {
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createAgent = useCreateAgent();
   const {projectId} = useProjectScope();
-  // Inside a project the agent is created with the project alone, and the API places it in the system
-  // organization unit, so there is no organization unit to pick.
+  // Inside a project the agent goes to the system organization unit or one of the project's own. The
+  // organization unit is offered only when the project has organization units; without any, the API places
+  // the agent in the system organization unit.
   const isInProject = Boolean(projectId);
+  const {
+    data: projectOus,
+    isLoading: projectOusLoading,
+    error: projectOusError,
+    refetch: refetchProjectOus,
+  } = useGetOrganizationUnits({limit: 1, offset: 0, projectId}, isInProject);
+  const hasProjectOus = (projectOus?.totalResults ?? 0) > 0;
 
   const [step, setStep] = useState<AgentAddStep>('setup');
   const [description, setDescription] = useState<string>('');
@@ -124,6 +132,31 @@ export default function AgentAddFormPage(): JSX.Element {
 
   const types: AgentTypeListItem[] = typeList ?? [];
   const selectedType: AgentTypeListItem | undefined = types.find((type) => type.id === typeId);
+  // An agent of a type belongs to the type's organization unit or one beneath it, so inside a project only
+  // the placements in that subtree are offered. None means the type cannot be used in this project.
+  const {
+    data: typePlacements,
+    isLoading: typePlacementsLoading,
+    error: typePlacementsError,
+    refetch: refetchTypePlacements,
+  } = useGetOrganizationUnits(
+    {limit: 1, offset: 0, projectId, placement: true, within: selectedType?.ouId},
+    isInProject && Boolean(selectedType),
+  );
+  const isTypeOutsideProject = isInProject && typePlacements?.totalResults === 0;
+  // Until both reads succeed it is not known where the agent can go, so the setup step stays incomplete.
+  const projectOusReadError = projectOus ? null : projectOusError;
+  const typePlacementsReadError = typePlacements ? null : typePlacementsError;
+  const placementsReadError = projectOusReadError ?? typePlacementsReadError;
+  // The picker selects the first placement once its own listing loads, so the agent waits for it rather than being
+  // sent without an organization unit, which would place it in the system organization unit.
+  const isPlacementKnown =
+    !isInProject ||
+    (!projectOusLoading &&
+      !typePlacementsLoading &&
+      !placementsReadError &&
+      !isTypeOutsideProject &&
+      (!hasProjectOus || Boolean(ouId)));
   const users = userList?.users ?? [];
   // Two users can share a display name, so the option shows the user's ID as well when they do.
   const duplicateDisplays = new Set(
@@ -160,6 +193,7 @@ export default function AgentAddFormPage(): JSX.Element {
   const isSetupComplete =
     Boolean(selectedType) &&
     (isInProject || Boolean(ouId)) &&
+    isPlacementKnown &&
     Boolean(agentType) &&
     (Boolean(externalOwner) || callerCanOwn || Boolean(ownerId)) &&
     !isInvalidExternalOwner(externalOwner);
@@ -173,7 +207,8 @@ export default function AgentAddFormPage(): JSX.Element {
     );
     const trimmedDescription = description.trim();
     const request: CreateAgentRequest = {
-      ...(isInProject ? {projectId} : {ouId}),
+      ...(isInProject ? {projectId} : {}),
+      ...(ouId ? {ouId} : {}),
       type: selectedType?.handle ?? '',
       ...(externalOwner ? {owner: externalOwner} : {}),
       ...(!externalOwner && ownerId ? {owner: {id: ownerId, idType: 'uuid', isLocal: true}} : {}),
@@ -356,6 +391,43 @@ export default function AgentAddFormPage(): JSX.Element {
                   'agents:addForm.organizationUnitHint',
                   'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
                 )}
+              />
+            </FormControl>
+          )}
+
+          {selectedType && placementsReadError && (
+            <QueryErrorNotice
+              variant="inline"
+              error={placementsReadError}
+              t={tForErrors}
+              fallbackKey="agents:addForm.placementsError"
+              fallbackDefaultValue="The organization units this agent can be placed in could not be loaded."
+              onRetry={() => {
+                if (projectOusReadError) void refetchProjectOus();
+                if (typePlacementsReadError) void refetchTypePlacements();
+              }}
+            />
+          )}
+
+          {selectedType && isTypeOutsideProject && (
+            <Alert severity="warning">
+              {t(
+                'agents:addForm.typeOutsideProject',
+                "Agents of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
+              )}
+            </Alert>
+          )}
+
+          {selectedType && isInProject && hasProjectOus && !isTypeOutsideProject && !placementsReadError && (
+            <FormControl fullWidth>
+              <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
+              <OrganizationUnitTreePicker
+                key={selectedType.id}
+                id="agent-ou"
+                value={ouId}
+                onChange={setOuId}
+                projectId={projectId}
+                withinOuId={selectedType.ouId || undefined}
               />
             </FormControl>
           )}

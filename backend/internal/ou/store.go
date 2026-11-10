@@ -49,6 +49,10 @@ type organizationUnitStoreInterface interface {
 	GetOrganizationUnitChildrenList(
 		ctx context.Context, id string, limit, offset int, f *tidcommon.FilterGroup,
 	) ([]OrganizationUnitBasic, error)
+	GetOrganizationUnitChildrenCountInProject(ctx context.Context, id, projectID string) (int, error)
+	GetOrganizationUnitChildrenListInProject(
+		ctx context.Context, id, projectID string, limit, offset int,
+	) ([]OrganizationUnitBasic, error)
 }
 
 var getDBProvider = provider.GetDBProvider
@@ -581,6 +585,58 @@ func (s *organizationUnitStore) GetOrganizationUnitChildrenList(ctx context.Cont
 	}
 
 	return childOUs, nil
+}
+
+// GetOrganizationUnitChildrenCountInProject retrieves the count of the child organization units of a parent that
+// belong to the given project.
+func (s *organizationUnitStore) GetOrganizationUnitChildrenCountInProject(
+	ctx context.Context, id, projectID string,
+) (int, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetOrganizationUnitChildrenCountInProject,
+		id, projectID, s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+	if len(results) == 0 {
+		return 0, nil
+	}
+	count, ok := results[0]["total"].(int64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected type for total: %T", results[0]["total"])
+	}
+	return int(count), nil
+}
+
+// GetOrganizationUnitChildrenListInProject retrieves a page of the child organization units of a parent that
+// belong to the given project.
+func (s *organizationUnitStore) GetOrganizationUnitChildrenListInProject(
+	ctx context.Context, id, projectID string, limit, offset int,
+) ([]OrganizationUnitBasic, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetOrganizationUnitChildrenListInProject,
+		id, projectID, limit, offset, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	children := make([]OrganizationUnitBasic, 0, len(results))
+	for _, row := range results {
+		child, err := buildOrganizationUnitBasicFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build organization unit basic: %w", err)
+		}
+		children = append(children, child)
+	}
+	return children, nil
 }
 
 // CheckOrganizationUnitNameConflict checks if an organization unit name conflicts under the same parent.

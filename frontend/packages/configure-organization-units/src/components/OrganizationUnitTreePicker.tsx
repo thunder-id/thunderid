@@ -20,6 +20,7 @@ import type {OrganizationUnitTreeItem} from '../models/organization-unit-tree';
 import type {OrganizationUnitListResponse} from '../models/responses';
 import appendTreeItemChildren from '../utils/appendTreeItemChildren';
 import buildItemMap from '../utils/buildItemMap';
+import buildPlacementTreeItems from '../utils/buildPlacementTreeItems';
 import buildTreeItems from '../utils/buildTreeItems';
 import updateTreeItemChildren from '../utils/updateTreeItemChildren';
 
@@ -235,6 +236,18 @@ interface OrganizationUnitTreePickerProps {
    * applies in global-root mode (i.e. when `rootOuId` isn't set).
    */
   autoSelectFirst?: boolean;
+  /**
+   * Lists where a resource of this project can be placed instead of the global roots: the system
+   * organization unit first, then the project's own organization units. The system organization
+   * unit is picked whenever nothing is selected, so `value` always ends up a real ID. Ignored when
+   * `rootOuId` is set.
+   */
+  projectId?: string;
+  /**
+   * With `projectId`, keeps only the placements in this organization unit's subtree, such as those
+   * a user type allows.
+   */
+  withinOuId?: string;
 }
 
 export default function OrganizationUnitTreePicker({
@@ -249,6 +262,8 @@ export default function OrganizationUnitTreePicker({
   maxHeight = 300,
   spacious = false,
   autoSelectFirst = false,
+  projectId = undefined,
+  withinOuId = undefined,
 }: OrganizationUnitTreePickerProps): JSX.Element {
   const theme = useTheme();
   const {t} = useTranslation();
@@ -261,13 +276,21 @@ export default function OrganizationUnitTreePicker({
     isLoading,
     error: rootListError,
     refetch: refetchRootList,
-  } = useGetOrganizationUnits(undefined, !rootOuId);
+  } = useGetOrganizationUnits(projectId ? {projectId, placement: true, within: withinOuId} : undefined, !rootOuId);
+  const isProjectMode = Boolean(projectId) && !rootOuId;
+  // In project mode the system organization unit leads the first page, and the project's organization units placed
+  // under it are shown as its children, whichever page lists them.
+  const systemOuId: string | undefined = isProjectMode
+    ? data?.organizationUnits.find((ou) => ou.isSystem)?.id
+    : undefined;
 
+  // In project mode the first item is the system organization unit, the placement a project
+  // resource gets when no other is picked, so it is always selected when nothing is.
   useEffect((): void => {
-    if (!autoSelectFirst || rootOuId || value) return;
+    if ((!autoSelectFirst && !isProjectMode) || rootOuId || value) return;
     const firstRootOuId = data?.organizationUnits[0]?.id;
     if (firstRootOuId) onChange(firstRootOuId);
-  }, [autoSelectFirst, rootOuId, value, data, onChange]);
+  }, [autoSelectFirst, rootOuId, isProjectMode, value, data, onChange]);
   const {
     data: rootOuData,
     isLoading: isRootOuLoading,
@@ -296,7 +319,7 @@ export default function OrganizationUnitTreePicker({
 
   const itemMap = useMemo(() => buildItemMap(treeItems), [treeItems]);
 
-  // Reset all tree state when rootOuId changes so stale data is never shown.
+  // Reset all tree state when rootOuId, projectId or withinOuId changes so stale data is never shown.
   useEffect(() => {
     setTreeItems([]);
     setExpandedItems([]);
@@ -306,13 +329,22 @@ export default function OrganizationUnitTreePicker({
     setChildOffsets(new Map());
     setRootOffset(0);
     setRootLoadMoreLoading(false);
-  }, [rootOuId]);
+  }, [rootOuId, projectId, withinOuId]);
 
-  // Build root tree when data arrives (global root mode)
+  // Build root tree when data arrives (global root and project modes)
   useEffect(() => {
     if (rootOuId) return;
     if (data?.organizationUnits && data.organizationUnits.length > 0 && treeItems.length === 0) {
-      const items = buildTreeItems(data.organizationUnits);
+      const {topItems, underSystem} = isProjectMode
+        ? buildPlacementTreeItems(data.organizationUnits, systemOuId)
+        : {topItems: buildTreeItems(data.organizationUnits), underSystem: []};
+      let items = topItems;
+      if (systemOuId && underSystem.length > 0) {
+        // Its children come from the listing, so it is never fetched; it opens to show them.
+        items = appendTreeItemChildren(items, systemOuId, underSystem);
+        setLoadedItems((prev) => new Set(prev).add(systemOuId));
+        setExpandedItems([systemOuId]);
+      }
 
       if (data.organizationUnits.length < data.totalResults) {
         items.push({
@@ -326,7 +358,7 @@ export default function OrganizationUnitTreePicker({
       setRootOffset(data.organizationUnits.length);
       setTreeItems(items);
     }
-  }, [rootOuId, data, treeItems.length]);
+  }, [rootOuId, data, treeItems.length, isProjectMode, systemOuId]);
 
   // Build root tree when data arrives (rooted mode).
   // The treeItems.length === 0 guard prevents re-initialization when dependencies
@@ -482,17 +514,26 @@ export default function OrganizationUnitTreePicker({
       const result = await queryClient.fetchQuery<OrganizationUnitListResponse>({
         queryKey: [
           OrganizationUnitQueryKeys.ORGANIZATION_UNITS,
-          {limit: OrganizationUnitTreeConstants.PAGE_SIZE, offset: rootOffset},
+          {
+            limit: OrganizationUnitTreeConstants.PAGE_SIZE,
+            offset: rootOffset,
+            ...(projectId ? {projectId, placement: true, ...(withinOuId ? {within: withinOuId} : {})} : {}),
+          },
         ],
         queryFn: async (): Promise<OrganizationUnitListResponse> =>
           fetchOrganizationUnits(http, getServerUrl(), {
             limit: OrganizationUnitTreeConstants.PAGE_SIZE,
             offset: rootOffset,
+            projectId,
+            placement: Boolean(projectId),
+            within: projectId ? withinOuId : undefined,
           }),
         staleTime: 0,
       });
 
-      const newItems = buildTreeItems(result.organizationUnits);
+      const {topItems: newItems, underSystem} = isProjectMode
+        ? buildPlacementTreeItems(result.organizationUnits, systemOuId)
+        : {topItems: buildTreeItems(result.organizationUnits), underSystem: []};
       const loadedSoFar = rootOffset + result.organizationUnits.length;
 
       if (loadedSoFar < result.totalResults) {
@@ -507,15 +548,20 @@ export default function OrganizationUnitTreePicker({
       setRootOffset(loadedSoFar);
       setTreeItems((prev) => {
         const withoutLoadMore = prev.filter((item) => item.id !== OrganizationUnitTreeConstants.ROOT_LOAD_MORE_ID);
+        const merged = [...withoutLoadMore, ...newItems];
 
-        return [...withoutLoadMore, ...newItems];
+        return systemOuId && underSystem.length > 0 ? appendTreeItemChildren(merged, systemOuId, underSystem) : merged;
       });
+      if (systemOuId && underSystem.length > 0) {
+        setLoadedItems((prev) => new Set(prev).add(systemOuId));
+        setExpandedItems((prev) => (prev.includes(systemOuId) ? prev : [...prev, systemOuId]));
+      }
     } catch (_error: unknown) {
       logger.error('Failed to load more root organization units', {error: _error});
     } finally {
       setRootLoadMoreLoading(false);
     }
-  }, [rootOffset, getServerUrl, queryClient, http, logger]);
+  }, [rootOffset, projectId, withinOuId, isProjectMode, systemOuId, getServerUrl, queryClient, http, logger]);
 
   const handleLoadMore = useCallback(
     async (parentId: string): Promise<void> => {
@@ -637,7 +683,7 @@ export default function OrganizationUnitTreePicker({
     );
   }
 
-  if (!rootOuId && data?.organizationUnits.length === 0) {
+  if (!rootOuId && !isProjectMode && data?.organizationUnits.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
         {t('organizationUnits:treePicker.empty')}

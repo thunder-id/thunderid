@@ -3,11 +3,12 @@
 
 import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import UserAddFormPage from '../UserAddFormPage';
 
 const mockNavigate = vi.fn();
 const mockHttpRequest = vi.fn<(config: RecordedRequest) => Promise<{data: unknown}>>();
+const mockUseGetOrganizationUnits = vi.fn<(params: {placement?: boolean}, enabled: boolean) => unknown>();
 
 // Translations are shared across the suite, so keys are asserted rather than English copy.
 vi.mock('react-i18next', async (importOriginal) => {
@@ -34,24 +35,44 @@ vi.mock('@thunderid/react', async (importOriginal) => {
 });
 
 vi.mock('@thunderid/configure-organization-units', () => ({
+  useGetOrganizationUnits: (params: {placement?: boolean}, enabled: boolean) =>
+    mockUseGetOrganizationUnits(params, enabled),
   OrganizationUnitTreePicker: ({
     value,
     onChange,
     rootOuId = undefined,
+    projectId = undefined,
+    withinOuId = undefined,
   }: {
     value: string;
     onChange: (ouId: string) => void;
     rootOuId?: string;
+    projectId?: string;
+    withinOuId?: string;
   }) => (
-    <button
-      type="button"
-      data-testid="ou-picker"
-      data-root={rootOuId}
-      data-value={value}
-      onClick={() => onChange('ou-child')}
-    >
-      pick ou
-    </button>
+    <>
+      <button
+        type="button"
+        data-testid="ou-picker"
+        data-root={rootOuId}
+        data-project-id={projectId}
+        data-within={withinOuId}
+        data-value={value}
+        onClick={() => onChange('ou-child')}
+      >
+        pick ou
+      </button>
+      {projectId && (
+        <button type="button" data-testid="ou-picker-system" onClick={() => onChange('system-ou')}>
+          pick system ou
+        </button>
+      )}
+      {projectId && withinOuId && (
+        <button type="button" data-testid="ou-picker-within" onClick={() => onChange(withinOuId)}>
+          pick the type organization unit
+        </button>
+      )}
+    </>
   ),
 }));
 
@@ -85,6 +106,7 @@ function requests(): RecordedRequest[] {
 describe('UserAddFormPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseGetOrganizationUnits.mockReturnValue({data: undefined, isLoading: false});
     mockHttpRequest.mockImplementation((config: RecordedRequest) => {
       if (config.method === 'POST' && config.url.endsWith('/users')) {
         return Promise.resolve({data: {id: 'user-1'}});
@@ -187,28 +209,194 @@ describe('UserAddFormPage', () => {
     expect(submit).toBeEnabled();
   });
 
-  it('creates the user in the selected project, without an organization unit to pick', async () => {
-    const user = userEvent.setup();
-    render(
-      <ProjectScopeProvider project={{id: 'project-1'}}>
-        <UserAddFormPage />
-      </ProjectScopeProvider>,
-    );
+  it('does not look up project organization units outside a project', () => {
+    render(<UserAddFormPage />);
 
-    await user.click(await screen.findByRole('combobox'));
-    await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
-    await user.type(await screen.findByRole('textbox', {name: /username/i}), 'dave');
+    expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith({limit: 1, offset: 0, projectId: undefined}, false);
+    expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith(expect.objectContaining({placement: true}), false);
+    expect(mockUseGetOrganizationUnits).not.toHaveBeenCalledWith(expect.anything(), true);
+  });
 
-    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+  describe('inside a project', () => {
+    afterEach(() => {
+      userTypes.types[0].ouId = 'ou-root';
+    });
 
-    await waitFor(() => {
-      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+    async function fillInProject(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserAddFormPage />
+        </ProjectScopeProvider>,
+      );
+
+      await user.click(await screen.findByRole('combobox'));
+      await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'dave');
+    }
+
+    // The project's own organization units, and the placements the selected type allows in the project.
+    function mockLookups(projectOus: number, placements: number, placementsLoading = false): void {
+      mockUseGetOrganizationUnits.mockImplementation((params: {placement?: boolean}) =>
+        params.placement
+          ? {data: placementsLoading ? undefined : {totalResults: placements}, isLoading: placementsLoading}
+          : {data: {totalResults: projectOus, organizationUnits: []}, isLoading: false},
+      );
+    }
+
+    async function posted(user: ReturnType<typeof userEvent.setup>): Promise<unknown> {
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+      await waitFor(() => {
+        expect(requests().some((request) => request.method === 'POST')).toBe(true);
+      });
+      return requests().find((request) => request.method === 'POST')?.data;
+    }
+
+    it('creates the user in the selected project, without an organization unit to pick when the project has none', async () => {
+      mockLookups(0, 1);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith({limit: 1, offset: 0, projectId: 'project-1'}, true);
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+      expect(await posted(user)).toEqual({projectId: 'project-1', type: 'customer', attributes: {username: 'dave'}});
+    });
+
+    it('offers the placements of a type in the system organization unit and creates the user where the picker selects', async () => {
+      mockLookups(1, 2);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith(
+        {limit: 1, offset: 0, projectId: 'project-1', placement: true, within: 'ou-root'},
+        true,
+      );
+      const picker = screen.getByTestId('ou-picker');
+      expect(picker).toHaveAttribute('data-project-id', 'project-1');
+      expect(picker).toHaveAttribute('data-within', 'ou-root');
+      expect(picker).toHaveAttribute('data-value', '');
+      expect(picker).not.toHaveAttribute('data-root');
+      await user.click(screen.getByTestId('ou-picker-system'));
+
+      expect(await posted(user)).toEqual({
         projectId: 'project-1',
+        ouId: 'system-ou',
         type: 'customer',
         attributes: {username: 'dave'},
       });
     });
+
+    it('offers only the subtree of a type in a project organization unit and creates the user in it', async () => {
+      userTypes.types[0].ouId = 'ou-shop';
+      mockLookups(1, 1);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-within', 'ou-shop');
+      await user.click(screen.getByTestId('ou-picker-within'));
+
+      expect(await posted(user)).toEqual({
+        projectId: 'project-1',
+        ouId: 'ou-shop',
+        type: 'customer',
+        attributes: {username: 'dave'},
+      });
+    });
+
+    it('creates the user in the picked project organization unit', async () => {
+      mockLookups(1, 2);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      await user.click(screen.getByTestId('ou-picker'));
+
+      expect(await posted(user)).toEqual({
+        projectId: 'project-1',
+        ouId: 'ou-child',
+        type: 'customer',
+        attributes: {username: 'dave'},
+      });
+    });
+
+    it('says the type cannot be used in the project when it allows no placement there, and keeps submit disabled', async () => {
+      mockLookups(1, 0);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(screen.getByText('users:addForm.typeOutsideProject')).toBeInTheDocument();
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+    });
+
+    it('says the type cannot be used in a project without organization units when it is outside the system organization unit', async () => {
+      userTypes.types[0].ouId = 'ou-elsewhere';
+      mockLookups(0, 0);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith(
+        {limit: 1, offset: 0, projectId: 'project-1', placement: true, within: 'ou-elsewhere'},
+        true,
+      );
+      expect(screen.getByText('users:addForm.typeOutsideProject')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+    });
+
+    it('keeps submit disabled while the project organization units are loading', async () => {
+      mockUseGetOrganizationUnits.mockImplementation((params: {placement?: boolean}) =>
+        params.placement ? {data: {totalResults: 1}, isLoading: false} : {data: undefined, isLoading: true},
+      );
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+    });
+
+    it("keeps submit disabled while the type's placements are loading", async () => {
+      mockLookups(0, 0, true);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(screen.queryByText('users:addForm.typeOutsideProject')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+    });
+
+    it('keeps submit disabled until the picker selects an organization unit', async () => {
+      mockLookups(1, 2);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+      await user.click(screen.getByTestId('ou-picker'));
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeEnabled();
+    });
+
+    it.each([true, false])(
+      'says so when a placement read fails (the placements: %s), keeps submit disabled, and retries the failed read',
+      async (placementsFail) => {
+        const refetchProjectOus = vi.fn();
+        const refetchPlacements = vi.fn();
+        const failure = new Error('network down');
+        mockUseGetOrganizationUnits.mockImplementation((params: {placement?: boolean}) =>
+          params.placement
+            ? placementsFail
+              ? {data: undefined, isLoading: false, error: failure, refetch: refetchPlacements}
+              : {data: {totalResults: 1}, isLoading: false, error: null, refetch: refetchPlacements}
+            : placementsFail
+              ? {data: {totalResults: 1}, isLoading: false, error: null, refetch: refetchProjectOus}
+              : {data: undefined, isLoading: false, error: failure, refetch: refetchProjectOus},
+        );
+        const user = userEvent.setup();
+        await fillInProject(user);
+
+        expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+        expect(screen.queryByText('users:addForm.typeOutsideProject')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+
+        await user.click(screen.getByRole('button', {name: 'common:actions.refresh'}));
+        expect(refetchPlacements).toHaveBeenCalledTimes(placementsFail ? 1 : 0);
+        expect(refetchProjectOus).toHaveBeenCalledTimes(placementsFail ? 0 : 1);
+      },
+    );
   });
 
   it("preselects the chosen type's organization unit and posts it when no other is picked", async () => {

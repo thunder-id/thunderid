@@ -74,14 +74,12 @@ export default function NotificationTemplateCreatePage({
     [templatesData],
   );
 
-  // Inside a project the template is created with the project alone, and the API places it in the system
-  // organization unit, so there is no organization unit to pick.
-  const ouLookup = useHasMultipleOUs();
+  // Inside a project the template goes to the system organization unit or one of the project's own, picked on
+  // the organization unit step. The step is offered only when the project has organization units; without
+  // any, the API places the template in the system organization unit.
   const {projectId} = useProjectScope();
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
-  const {ouList} = ouLookup;
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   const [step, setStep] = useState<CreateStep>('organizationUnit');
   const [ouId, setOuId] = useState('');
@@ -96,11 +94,11 @@ export default function NotificationTemplateCreatePage({
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // A single-OU deployment adopts its only OU; otherwise the user's pick on the OU step.
-  const soleOuId: string = !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const soleOuId: string = !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
   const effectiveOuId: string = ouId !== '' ? ouId : soleOuId;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
-    !isInProject && Boolean(effectiveOuId),
+    Boolean(effectiveOuId),
   );
 
   const contentReady = (!isEmail || subject.trim() !== '') && body.trim() !== '';
@@ -143,7 +141,7 @@ export default function NotificationTemplateCreatePage({
 
     const base = {
       handle: handle.trim(),
-      ...(isInProject ? {projectId} : {ouId: effectiveOuId}),
+      ...(isInProject ? {projectId, ...(effectiveOuId ? {ouId: effectiveOuId} : {})} : {ouId: effectiveOuId}),
       displayName: displayName.trim(),
     };
     const data: CreateTemplateRequest = isEmail
@@ -217,6 +215,7 @@ export default function NotificationTemplateCreatePage({
             "Choose the organization unit that will own this template. You can't change this once created.",
           )}
           value={effectiveOuId}
+          projectId={projectId}
           onChange={(value: string): void => {
             setSubmitError(null);
             setOuId(value);
