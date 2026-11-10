@@ -65,6 +65,8 @@ type UserServiceInterface interface {
 	GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
+	UpdateSelfUserCredential(ctx context.Context, userID, name, currentValue,
+		newValue string) *tidcommon.ServiceError
 	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ResolveUserOUHandle(ctx context.Context, user *providers.User) *tidcommon.ServiceError
@@ -1167,6 +1169,91 @@ func (us *userService) UpdateUserCredentials(
 		log.Int("credentialTypesCount", len(credentialsMap)))
 	us.captureCredentials(ctx, &existingUser, existingUser.Attributes, plaintextCreds)
 	return nil
+}
+
+// UpdateSelfUserCredential sets one credential for the user making the request. A credential the user
+// already holds is changed only when currentValue matches it. A credential the user doesn't hold yet is
+// set only when the user holds no credential at all, since there is nothing else to check it against.
+func (us *userService) UpdateSelfUserCredential(
+	ctx context.Context,
+	userID, name, currentValue, newValue string,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if strings.TrimSpace(userID) == "" {
+		return &ErrorAuthenticationFailed
+	}
+	if strings.TrimSpace(name) == "" || newValue == "" {
+		return &ErrorMissingCredentials
+	}
+	if CredentialType(name).IsSystemManaged() {
+		return &ErrorInvalidCredential
+	}
+
+	update, err := json.Marshal(map[string]string{name: newValue})
+	if err != nil {
+		return logErrorAndReturnServerError(ctx, logger, "Failed to marshal credentials", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	if err = us.entityService.ValidateCredentials(ctx, userID, update); err != nil {
+		return us.credentialUpdateError(ctx, logger, userID, err)
+	}
+
+	held, err := us.entityService.GetHeldCredentialTypes(ctx, userID)
+	if err != nil {
+		return us.credentialUpdateError(ctx, logger, userID, err)
+	}
+	if slices.Contains(held, name) {
+		if svcErr := us.verifyCurrentCredential(ctx, logger, userID, name, currentValue); svcErr != nil {
+			return svcErr
+		}
+	} else {
+		holdsAny, svcErr := us.holdsAnyCredential(ctx, logger, userID, held)
+		if svcErr != nil {
+			return svcErr
+		}
+		if holdsAny {
+			return &ErrorCredentialSetNotAllowed
+		}
+	}
+
+	return us.UpdateUserCredentials(ctx, userID, update)
+}
+
+// verifyCurrentCredential checks currentValue against the credential the user holds under name. A missing
+// value fails the same way as a wrong one.
+func (us *userService) verifyCurrentCredential(ctx context.Context, logger *log.Logger,
+	userID, name, currentValue string) *tidcommon.ServiceError {
+	if currentValue == "" {
+		return &ErrorInvalidCurrentCredential
+	}
+	_, _, err := us.entityService.AuthenticateEntityByID(ctx, userID, map[string]interface{}{name: currentValue})
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, entity.ErrAuthenticationFailed) {
+		return &ErrorInvalidCurrentCredential
+	}
+	return us.credentialUpdateError(ctx, logger, userID, err)
+}
+
+// holdsAnyCredential reports whether the user holds a schema credential or a system-managed one, such as
+// a passkey.
+func (us *userService) holdsAnyCredential(ctx context.Context, logger *log.Logger, userID string,
+	heldSchemaCredentials []string) (bool, *tidcommon.ServiceError) {
+	if len(heldSchemaCredentials) > 0 {
+		return true, nil
+	}
+	for _, credType := range systemManagedCredentialTypes {
+		creds, err := us.entityService.GetCredentialsByType(ctx, userID, credType.String())
+		if err != nil {
+			return false, us.credentialUpdateError(ctx, logger, userID, err)
+		}
+		if len(creds) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // replacesHeldCredential reports whether the update replaces a credential the user already holds. A

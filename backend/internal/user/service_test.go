@@ -20,6 +20,7 @@ import (
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -6949,4 +6950,173 @@ func TestUserService_CreateUser_InProjectWithoutOUSystemOUFailure(t *testing.T) 
 
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+}
+
+// selfCredentialService is a user service around svcTestUserID1 for UpdateSelfUserCredential.
+func (s *UserServiceTestSuite) selfCredentialService() (*userService, *entitymock.EntityServiceInterfaceMock,
+	*systemFlowProviderMock) {
+	entities := entitymock.NewEntityServiceInterfaceMock(s.T())
+	flows := newSystemFlowProviderMock(s.T())
+	return &userService{entityService: entities, authzService: newAllowAllAuthz(s.T()), systemFlows: flows},
+		entities, flows
+}
+
+// expectCredentialWrite makes the delegated UpdateUserCredentials write the credential for
+// svcTestUserID1, holding the given credential types.
+func expectCredentialWrite(entities *entitymock.EntityServiceInterfaceMock, held ...string) {
+	entities.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		ID: svcTestUserID1, Category: providers.EntityCategoryUser, OUID: testOrgID,
+	}, nil).Once()
+	entities.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(false, nil).Once()
+	entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return(held, nil).Once()
+	entities.On("UpdateCredentials", mock.Anything, svcTestUserID1,
+		json.RawMessage(`{"password":"New@123"}`)).Return(nil).Once()
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_ChangesWithMatchingCurrentValue() {
+	service, entities, flows := s.selfCredentialService()
+	entities.On("ValidateCredentials", mock.Anything, svcTestUserID1,
+		json.RawMessage(`{"password":"New@123"}`)).Return(nil).Once()
+	entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string{"password"}, nil).Once()
+	entities.On("AuthenticateEntityByID", mock.Anything, svcTestUserID1,
+		map[string]interface{}{"password": "Old@123"}).Return(&entitypkg.AuthenticateResult{}, "", nil).Once()
+	expectCredentialWrite(entities, "password")
+	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).
+		Return(&flowcommon.SystemFlowResult{}, nil).Twice()
+
+	s.Nil(service.UpdateSelfUserCredential(context.Background(), svcTestUserID1, "password", "Old@123", "New@123"))
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_SetsFirstCredential() {
+	service, entities, _ := s.selfCredentialService()
+	entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil).Once()
+	entities.On("GetCredentialsByType", mock.Anything, svcTestUserID1, CredentialTypePasskey.String()).
+		Return([]entitypkg.StoredCredential(nil), nil).Once()
+	expectCredentialWrite(entities)
+
+	s.Nil(service.UpdateSelfUserCredential(context.Background(), svcTestUserID1, "password", "", "New@123"))
+	entities.AssertNotCalled(s.T(), "AuthenticateEntityByID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_RefusesWrongOrMissingCurrentValue() {
+	testCases := []struct {
+		name         string
+		currentValue string
+		authErr      error
+	}{
+		{name: "Wrong", currentValue: "Wrong@123", authErr: entitypkg.ErrAuthenticationFailed},
+		{name: "Missing", currentValue: ""},
+	}
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			service, entities, _ := s.selfCredentialService()
+			entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+			entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).
+				Return([]string{"password"}, nil).Once()
+			if tc.authErr != nil {
+				entities.On("AuthenticateEntityByID", mock.Anything, svcTestUserID1,
+					map[string]interface{}{"password": tc.currentValue}).
+					Return((*entitypkg.AuthenticateResult)(nil), svcTestUserID1, tc.authErr).Once()
+			}
+
+			s.Equal(&ErrorInvalidCurrentCredential, service.UpdateSelfUserCredential(context.Background(),
+				svcTestUserID1, "password", tc.currentValue, "New@123"))
+			entities.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_RefusesFirstCredentialWhenAnotherIsHeld() {
+	testCases := []struct {
+		name     string
+		held     []string
+		passkeys []entitypkg.StoredCredential
+	}{
+		{name: "Schema credential held", held: []string{"pin"}},
+		{name: "Passkey held", passkeys: []entitypkg.StoredCredential{{Value: "passkey-1"}}},
+	}
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			service, entities, _ := s.selfCredentialService()
+			entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+			entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return(tc.held, nil).Once()
+			if len(tc.held) == 0 {
+				entities.On("GetCredentialsByType", mock.Anything, svcTestUserID1, CredentialTypePasskey.String()).
+					Return(tc.passkeys, nil).Once()
+			}
+
+			s.Equal(&ErrorCredentialSetNotAllowed, service.UpdateSelfUserCredential(context.Background(),
+				svcTestUserID1, "password", "", "New@123"))
+			entities.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_RejectsInvalidRequests() {
+	testCases := []struct {
+		name     string
+		userID   string
+		credName string
+		newValue string
+		wantErr  *tidcommon.ServiceError
+	}{
+		{name: "Missing user", userID: "", credName: "password", newValue: "New@123",
+			wantErr: &ErrorAuthenticationFailed},
+		{name: "Missing name", userID: svcTestUserID1, credName: " ", newValue: "New@123",
+			wantErr: &ErrorMissingCredentials},
+		{name: "Missing new value", userID: svcTestUserID1, credName: "password", newValue: "",
+			wantErr: &ErrorMissingCredentials},
+		{name: "System-managed credential", userID: svcTestUserID1, credName: "passkey", newValue: "New@123",
+			wantErr: &ErrorInvalidCredential},
+	}
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			service, _, _ := s.selfCredentialService()
+
+			s.Equal(tc.wantErr, service.UpdateSelfUserCredential(context.Background(), tc.userID, tc.credName,
+				"Old@123", tc.newValue))
+		})
+	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_ReportsEntityFailures() {
+	s.Run("Undeclared credential", func() {
+		service, entities, _ := s.selfCredentialService()
+		entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+			Return(entitypkg.ErrInvalidCredential).Once()
+
+		s.Equal(ErrorInvalidCredential.Code, service.UpdateSelfUserCredential(context.Background(),
+			svcTestUserID1, "unknown", "Old@123", "New@123").Code)
+	})
+	s.Run("Unreadable held credentials", func() {
+		service, entities, _ := s.selfCredentialService()
+		entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+		entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).
+			Return([]string(nil), errors.New("store down")).Once()
+
+		s.Equal(&tidcommon.InternalServerError, service.UpdateSelfUserCredential(context.Background(),
+			svcTestUserID1, "password", "Old@123", "New@123"))
+	})
+	s.Run("Failed verification read", func() {
+		service, entities, _ := s.selfCredentialService()
+		entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+		entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string{"password"}, nil).Once()
+		entities.On("AuthenticateEntityByID", mock.Anything, svcTestUserID1, mock.Anything).
+			Return((*entitypkg.AuthenticateResult)(nil), "", errors.New("store down")).Once()
+
+		s.Equal(&tidcommon.InternalServerError, service.UpdateSelfUserCredential(context.Background(),
+			svcTestUserID1, "password", "Old@123", "New@123"))
+	})
+	s.Run("Unreadable passkeys", func() {
+		service, entities, _ := s.selfCredentialService()
+		entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+		entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil).Once()
+		entities.On("GetCredentialsByType", mock.Anything, svcTestUserID1, CredentialTypePasskey.String()).
+			Return([]entitypkg.StoredCredential(nil), errors.New("store down")).Once()
+
+		s.Equal(&tidcommon.InternalServerError, service.UpdateSelfUserCredential(context.Background(),
+			svcTestUserID1, "password", "", "New@123"))
+	})
 }

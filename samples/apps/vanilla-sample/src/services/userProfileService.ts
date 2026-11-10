@@ -82,7 +82,7 @@ export const updateCurrentUserProfile = async (
     return normalizeUserProfile(await response.json() as Partial<UserProfile>);
 };
 
-export const updateCurrentUserPassword = async (password: string): Promise<void> => {
+export const updateCurrentUserPassword = async (currentPassword: string, newPassword: string): Promise<void> => {
     const response = await fetch('/api/profile/password', {
         method: 'POST',
         headers: {
@@ -90,9 +90,9 @@ export const updateCurrentUserPassword = async (password: string): Promise<void>
             Accept: 'application/json',
         },
         body: JSON.stringify({
-            attributes: {
-                password,
-            },
+            name: 'password',
+            currentValue: currentPassword,
+            newValue: newPassword,
         }),
     });
 
