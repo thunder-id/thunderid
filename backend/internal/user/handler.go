@@ -524,6 +524,10 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 		handleError(ctx, w, &ErrorAuthenticationFailed)
 		return
 	}
+	if security.IsDelegated(ctx) {
+		handleError(ctx, w, &ErrorDelegatedTokenNotAllowed)
+		return
+	}
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
@@ -649,7 +653,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusBadRequest
 		case ErrorAuthenticationFailed.Code:
 			statusCode = http.StatusUnauthorized
-		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code, ErrorSharedUserReadOnly.Code:
+		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code, ErrorSharedUserReadOnly.Code,
+			ErrorDelegatedTokenNotAllowed.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest

@@ -1940,6 +1940,8 @@ var defaultMessages = map[string]string{
 	"error.userservice.cannot_modify_declarative_resource_description": "The user is declarative and cannot be modified or deleted",
 	"error.userservice.credential_update_not_allowed": "Credential update not allowed",
 	"error.userservice.credential_update_not_allowed_description": "The credential updates through this endpoint are not allowed",
+	"error.userservice.delegated_token_not_allowed": "Delegated token not allowed",
+	"error.userservice.delegated_token_not_allowed_description": "Credentials cannot be changed with a delegated token",
 	"error.userservice.deployment_wide_sharing_not_allowed": "Deployment-wide sharing is not allowed",
 	"error.userservice.deployment_wide_sharing_not_allowed_description": "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import",
 	"error.userservice.handle_path_required": "Handle path required",

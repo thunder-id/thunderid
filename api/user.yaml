@@ -2732,6 +2732,20 @@ paths:
                 description:
                   key: "error.unauthorized_description"
                   defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The caller may not change the user's credentials with a delegated token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1046"
+                message:
+                  key: "error.userservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.userservice.delegated_token_not_allowed_description"
+                  defaultValue: "Credentials cannot be changed with a delegated token"
         "404":
           description: Authenticated user not found
           content:
