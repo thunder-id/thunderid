@@ -608,6 +608,23 @@ func TestOuChildPolicy_IsActionAllowed(t *testing.T) {
 	assert.Equal(t, policyDecisionDenied, decision, "a caller naming no unit reaches none")
 }
 
+// A known parent decides without a lookup: the resolver here fails every call.
+func TestOuChildPolicy_IsActionAllowed_KnownParent(t *testing.T) {
+	p := &ouChildPolicy{resolver: &stubOUHierarchyResolver{ancestorIDsErr: &tidcommon.InternalServerError}}
+	ctx := buildCtxWithOU("", "ou1")
+	ou1, root, none := "ou1", "root", ""
+
+	decision, err := p.isActionAllowed(ctx, &ActionContext{OUID: "child", ParentOUID: &ou1})
+	assert.Nil(t, err)
+	assert.Equal(t, policyDecisionAllowed, decision)
+	decision, err = p.isActionAllowed(ctx, &ActionContext{OUID: "sibling", ParentOUID: &root})
+	assert.Nil(t, err)
+	assert.Equal(t, policyDecisionDenied, decision)
+	decision, err = p.isActionAllowed(ctx, &ActionContext{OUID: "root", ParentOUID: &none})
+	assert.Nil(t, err)
+	assert.Equal(t, policyDecisionDenied, decision)
+}
+
 func TestOuChildPolicy_GetAccessibleResources_NotApplicable(t *testing.T) {
 	applicable, result, err := (&ouChildPolicy{}).getAccessibleResources(
 		buildCtxWithOU("", "ou1"), security.ActionListChildOUs, security.ResourceTypeOU)

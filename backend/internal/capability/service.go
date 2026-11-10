@@ -44,6 +44,14 @@ func (s *capabilityService) GetCapabilities(ctx context.Context) (*capabilitiesR
 		}
 	}
 
+	// Creating a root organization unit names no parent, which some planes accept only through import.
+	createRoot, svcErr := s.authzService.IsActionAllowed(ctx, security.ActionCreateOU,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeOU})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	resources[security.ResourceTypeOU][createRootAction] = createRoot && resources[security.ResourceTypeOU][viewAction]
+
 	boundary := s.authzService.GetBoundary(ctx)
 	return &capabilitiesResponse{
 		Scope:     capabilityScope{Type: boundary.Type, OUID: boundary.OUID},

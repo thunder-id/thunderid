@@ -52,13 +52,11 @@ func TestADeployedUnitReadsAsReadOnly(t *testing.T) {
 	svc := &organizationUnitService{managed: store}
 
 	store.EXPECT().IsManaged(ctx, "ou-1", managedresource.TypeOrganizationUnit).Return(true, nil).Once()
-	unit, svcErr := svc.withManaged(ctx, OrganizationUnit{ID: "ou-1"})
-	require.Nil(t, svcErr)
+	unit := svc.withManaged(ctx, OrganizationUnit{ID: "ou-1"})
 	assert.True(t, unit.IsReadOnly)
 	store.EXPECT().IsManaged(ctx, "ou-1", managedresource.TypeOrganizationUnit).
 		Return(false, errors.New("marker store unavailable")).Once()
-	unit, svcErr = svc.withManaged(ctx, OrganizationUnit{ID: "ou-1"})
-	require.Nil(t, svcErr)
+	unit = svc.withManaged(ctx, OrganizationUnit{ID: "ou-1"})
 	assert.False(t, unit.IsReadOnly)
 
 	units := []OrganizationUnitBasic{{ID: "ou-1"}, {ID: "ou-2"}}

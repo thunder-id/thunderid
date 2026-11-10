@@ -8,6 +8,9 @@ import "github.com/thunder-id/thunderid/internal/system/security"
 // viewAction is the catalog action every other action of a resource builds on.
 const viewAction = "view"
 
+// createRootAction is the organization unit catalog action that creates a unit with no parent.
+const createRootAction = "createRoot"
+
 // requiredActions maps each catalog resource and action to the system actions a caller needs, all of
 // them, to do it in the Console. The first is the action itself, where a catalog "view" is the
 // resource's read. The rest are what its Console page can't work without: a create wizard that places

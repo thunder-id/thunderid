@@ -31,16 +31,31 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 }
 
-// allow makes the mock allow exactly the given actions, with no record.
+// allow makes the mock allow exactly the given actions, with or without a record.
 func (s *ServiceTestSuite) allow(actions ...security.Action) {
 	allowed := make(map[security.Action]bool, len(actions))
 	for _, action := range actions {
 		allowed[action] = true
 	}
-	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, (*sysauthz.ActionContext)(nil)).
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 		Return(func(_ context.Context, action security.Action, _ *sysauthz.ActionContext) bool {
 			return allowed[action]
 		}, (*tidcommon.ServiceError)(nil))
+}
+
+// A unit created with no parent is reported apart from one created beneath a parent, since a plane may accept
+// it only through import.
+func (s *ServiceTestSuite) TestReportsWhetherARootUnitIsCreated() {
+	rootCreation := &sysauthz.ActionContext{ResourceType: security.ResourceTypeOU}
+	s.authz.On("IsActionAllowed", mock.Anything, security.ActionCreateOU, rootCreation).Return(false, nil).Once()
+	s.allow(security.ActionReadOU, security.ActionCreateOU)
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: "ou-1"})
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(context.Background())
+
+	s.Require().Nil(svcErr)
+	s.True(resp.Resources[security.ResourceTypeOU]["create"])
+	s.False(resp.Resources[security.ResourceTypeOU]["createRoot"])
 }
 
 func (s *ServiceTestSuite) TestReportsWhatTheBoundaryAllows() {

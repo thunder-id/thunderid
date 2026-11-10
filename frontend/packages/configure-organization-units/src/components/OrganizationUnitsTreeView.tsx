@@ -20,7 +20,7 @@ import OrganizationUnitQueryKeys from '../constants/organization-unit-query-keys
 import OrganizationUnitTreeConstants from '../constants/organization-unit-tree-constants';
 import useOrganizationUnit from '../contexts/useOrganizationUnit';
 import useOrganizationUnitRoutes from '../hooks/useOrganizationUnitRoutes';
-import type {OrganizationUnit} from '../models/organization-unit';
+import type {OrganizationUnit, OrganizationUnitAction} from '../models/organization-unit';
 import type {OrganizationUnitTreeItem} from '../models/organization-unit-tree';
 import type {OrganizationUnitListResponse} from '../models/responses';
 import appendTreeItemChildren from '../utils/appendTreeItemChildren';
@@ -52,6 +52,7 @@ interface CustomTreeItemProps extends TreeView.TreeItemProps {
   addChildTooltip?: string;
   addChildButtonText?: string;
   editTooltip?: string;
+  viewTooltip?: string;
   deleteTooltip?: string;
   loadingItems?: Set<string>;
   loadMoreLoadingItems?: Set<string>;
@@ -67,6 +68,7 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
     addChildTooltip = '',
     addChildButtonText = '',
     editTooltip = '',
+    viewTooltip = '',
     deleteTooltip = '',
     loadingItems: loadingItemsProp,
     loadMoreLoadingItems: loadMoreLoadingItemsProp,
@@ -77,7 +79,6 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
   } = allProps;
   const treeItemProps = {itemId, label, ...restProps};
   const theme = useTheme();
-  const {can} = useCapabilitiesContext();
   const {t} = useTranslation();
   const labelStr = typeof label === 'string' ? label : '';
   const itemData = itemMapProp?.get(itemId);
@@ -91,6 +92,7 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
         itemId.endsWith(OrganizationUnitTreeConstants.ERROR_SUFFIX) ||
         itemId.endsWith(OrganizationUnitTreeConstants.EMPTY_SUFFIX)));
   const isItemLoading = loadingItemsProp?.has(itemId);
+  const allows = (action: OrganizationUnitAction): boolean => itemData?.allowedActions?.includes(action) ?? false;
 
   if (isLoadMoreItem) {
     const parentId = itemId.replace(OrganizationUnitTreeConstants.LOAD_MORE_SUFFIX, '');
@@ -293,62 +295,50 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
               </Typography>
             )}
           </Box>
-          {itemData?.isReadOnly ? (
-            <Tooltip title={t('common:status.readOnly', 'Read only')}>
-              <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
-                <Eye size={16} />
+          {allows('createChild') && onAddChild && (
+            <Tooltip title={addChildTooltip}>
+              <IconButton
+                size="small"
+                aria-label={addChildTooltip}
+                onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  onAddChild?.(e as unknown as MouseEvent<HTMLElement>, {
+                    id: itemId,
+                    name: labelStr,
+                    handle: itemData?.handle ?? '',
+                  });
+                }}
+              >
+                <Plus size={16} />
               </IconButton>
             </Tooltip>
-          ) : (
-            <>
-              {can('ou', 'create') && onAddChild && (
-                <Tooltip title={addChildTooltip}>
-                  <IconButton
-                    size="small"
-                    aria-label={addChildTooltip}
-                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      onAddChild?.(e as unknown as MouseEvent<HTMLElement>, {
-                        id: itemId,
-                        name: labelStr,
-                        handle: itemData?.handle ?? '',
-                      });
-                    }}
-                  >
-                    <Plus size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
-              {can('ou', 'update') && (
-                <Tooltip title={editTooltip}>
-                  <IconButton
-                    size="small"
-                    aria-label={editTooltip}
-                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
-              {can('ou', 'delete') && (
-                <Tooltip title={deleteTooltip}>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    aria-label={deleteTooltip}
-                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      onDelete?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
-            </>
+          )}
+          <Tooltip title={allows('update') ? editTooltip : viewTooltip}>
+            <IconButton
+              size="small"
+              aria-label={allows('update') ? editTooltip : viewTooltip}
+              onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                e.stopPropagation();
+                onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+              }}
+            >
+              {allows('update') ? <Pencil size={16} /> : <Eye size={16} />}
+            </IconButton>
+          </Tooltip>
+          {allows('delete') && (
+            <Tooltip title={deleteTooltip}>
+              <IconButton
+                size="small"
+                color="error"
+                aria-label={deleteTooltip}
+                onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  onDelete?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+                }}
+              >
+                <Trash2 size={16} />
+              </IconButton>
+            </Tooltip>
           )}
         </Box>
       }
@@ -382,7 +372,8 @@ export default function OrganizationUnitsTreeView({
   // Inside a project, only its organization units are listed.
   const {projectId} = useProjectScope();
   const {data, isLoading, error, refetch} = useGetOrganizationUnits({projectId});
-  const canCreate = can('ou', 'create') && (!createInProjectsOnly || Boolean(projectId));
+  const canCreateHere = !createInProjectsOnly || Boolean(projectId);
+  const canCreateRoot = can('ou', 'createRoot') && canCreateHere;
   const {treeItems, setTreeItems, expandedItems, setExpandedItems, loadedItems, setLoadedItems, resetTreeState} =
     useOrganizationUnit();
 
@@ -432,7 +423,8 @@ export default function OrganizationUnitsTreeView({
       const childOUs = result.organizationUnits;
       const parentItem = findTreeItem(treeItemsRef.current, parentId);
       const addChildItem = buildAddChildItem(parentId, parentItem?.label ?? '', parentItem?.handle ?? '');
-      const items = [...(canCreate ? [addChildItem] : []), ...buildTreeItems(childOUs)];
+      const canAddChild = canCreateHere && (parentItem?.allowedActions?.includes('createChild') ?? false);
+      const items = [...(canAddChild ? [addChildItem] : []), ...buildTreeItems(childOUs)];
 
       if (childOUs.length < result.totalResults) {
         items.push({
@@ -445,7 +437,7 @@ export default function OrganizationUnitsTreeView({
 
       return items;
     },
-    [canCreate, fetchChildPage],
+    [canCreateHere, fetchChildPage],
   );
 
   // Fetch and update state for user-triggered node expansion
@@ -829,7 +821,7 @@ export default function OrganizationUnitsTreeView({
           <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
             {t('organizationUnits:listing.treeView.empty')}
           </Typography>
-          {canCreate && (
+          {canCreateRoot && (
             <Box
               role="button"
               tabIndex={0}
@@ -897,7 +889,7 @@ export default function OrganizationUnitsTreeView({
   return (
     <>
       <Box sx={{width: '100%', minHeight: 400}}>
-        {canCreate && (
+        {canCreateRoot && (
           <Box
             role="button"
             tabIndex={0}
@@ -967,11 +959,12 @@ export default function OrganizationUnitsTreeView({
             item: {
               onEdit: handleEditClick,
               onDelete: handleDeleteClick,
-              onAddChild: canCreate ? handleAddChildClick : undefined,
+              onAddChild: canCreateHere ? handleAddChildClick : undefined,
               onLoadMore: handleLoadMoreWithErrorLogging,
               addChildTooltip: t('organizationUnits:listing.treeView.addChild'),
               addChildButtonText: t('organizationUnits:listing.treeView.addChildOrganizationUnit'),
               editTooltip: t('common:actions.edit'),
+              viewTooltip: t('common:actions.view', 'View'),
               deleteTooltip: t('common:actions.delete'),
               loadingItems,
               loadMoreLoadingItems: combinedLoadMoreLoadingItems,

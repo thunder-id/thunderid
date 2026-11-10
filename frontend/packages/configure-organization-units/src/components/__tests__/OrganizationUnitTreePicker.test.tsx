@@ -77,8 +77,22 @@ describe('OrganizationUnitTreePicker', () => {
     startIndex: 1,
     count: 2,
     organizationUnits: [
-      {id: 'ou-1', handle: 'root', name: 'Root Organization', description: 'Root OU', parent: null},
-      {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+      {
+        id: 'ou-1',
+        handle: 'root',
+        name: 'Root Organization',
+        description: 'Root OU',
+        parent: null,
+        allowedActions: ['listChildren'],
+      },
+      {
+        id: 'ou-2',
+        handle: 'engineering',
+        name: 'Engineering',
+        description: null,
+        parent: null,
+        allowedActions: ['listChildren'],
+      },
     ],
   };
 
@@ -257,7 +271,14 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: 'A child', parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: 'A child',
+          parent: 'ou-1',
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -333,8 +354,22 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -361,8 +396,22 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -377,8 +426,15 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 3,
       count: 2,
       organizationUnits: [
-        {id: 'ou-3', handle: 'sales', name: 'Sales', description: null, parent: null},
-        {id: 'ou-4', handle: 'marketing', name: 'Marketing', description: null, parent: null},
+        {id: 'ou-3', handle: 'sales', name: 'Sales', description: null, parent: null, allowedActions: ['listChildren']},
+        {
+          id: 'ou-4',
+          handle: 'marketing',
+          name: 'Marketing',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -403,8 +459,22 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -419,7 +489,16 @@ describe('OrganizationUnitTreePicker', () => {
         totalResults: 50,
         startIndex: 3,
         count: 2,
-        organizationUnits: [{id: 'ou-3', handle: 'sales', name: 'Sales', description: null, parent: null}],
+        organizationUnits: [
+          {
+            id: 'ou-3',
+            handle: 'sales',
+            name: 'Sales',
+            description: null,
+            parent: null,
+            allowedActions: ['listChildren'],
+          },
+        ],
       },
     });
 
@@ -445,8 +524,22 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -461,7 +554,16 @@ describe('OrganizationUnitTreePicker', () => {
         totalResults: 50,
         startIndex: 3,
         count: 2,
-        organizationUnits: [{id: 'ou-3', handle: 'sales', name: 'Sales', description: null, parent: null}],
+        organizationUnits: [
+          {
+            id: 'ou-3',
+            handle: 'sales',
+            name: 'Sales',
+            description: null,
+            parent: null,
+            allowedActions: ['listChildren'],
+          },
+        ],
       },
     });
 
@@ -487,7 +589,14 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -514,8 +623,22 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -546,7 +669,14 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -601,6 +731,7 @@ describe('OrganizationUnitTreePicker', () => {
       name: 'Root OU',
       description: 'The root',
       parent: null,
+      allowedActions: ['listChildren'],
     };
 
     const childOUsResponse: OrganizationUnitListResponse = {
@@ -608,8 +739,22 @@ describe('OrganizationUnitTreePicker', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'child-1', handle: 'child-1-handle', name: 'Child One', description: null, parent: 'root-ou-1'},
-        {id: 'child-2', handle: 'child-2-handle', name: 'Child Two', description: null, parent: 'root-ou-1'},
+        {
+          id: 'child-1',
+          handle: 'child-1-handle',
+          name: 'Child One',
+          description: null,
+          parent: 'root-ou-1',
+          allowedActions: ['listChildren'],
+        },
+        {
+          id: 'child-2',
+          handle: 'child-2-handle',
+          name: 'Child Two',
+          description: null,
+          parent: 'root-ou-1',
+          allowedActions: ['listChildren'],
+        },
       ],
     };
 
@@ -714,6 +859,7 @@ describe('OrganizationUnitTreePicker', () => {
             name: 'Grandchild One',
             description: null,
             parent: 'child-1',
+            allowedActions: ['listChildren'],
           },
         ],
       };
@@ -776,6 +922,7 @@ describe('OrganizationUnitTreePicker', () => {
             name: 'Grandchild One',
             description: null,
             parent: 'child-1',
+            allowedActions: ['listChildren'],
           },
           {
             id: 'grandchild-2',
@@ -783,6 +930,7 @@ describe('OrganizationUnitTreePicker', () => {
             name: 'Grandchild Two',
             description: null,
             parent: 'child-1',
+            allowedActions: ['listChildren'],
           },
         ],
       };
@@ -797,6 +945,7 @@ describe('OrganizationUnitTreePicker', () => {
             name: 'Grandchild Three',
             description: null,
             parent: 'child-1',
+            allowedActions: ['listChildren'],
           },
         ],
       };
@@ -827,7 +976,14 @@ describe('OrganizationUnitTreePicker', () => {
         startIndex: 3,
         count: 1,
         organizationUnits: [
-          {id: 'child-3', handle: 'child-3-handle', name: 'Child Three', description: null, parent: 'root-ou-1'},
+          {
+            id: 'child-3',
+            handle: 'child-3-handle',
+            name: 'Child Three',
+            description: null,
+            parent: 'root-ou-1',
+            allowedActions: ['listChildren'],
+          },
         ],
       };
       mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false, error: null});
@@ -971,8 +1127,22 @@ describe('OrganizationUnitTreePicker', () => {
         startIndex: 1,
         count: 2,
         organizationUnits: [
-          {id: 'child-1', handle: 'child-1-handle', name: 'Child One', description: null, parent: 'root-ou-1'},
-          {id: 'child-2', handle: 'child-2-handle', name: 'Child Two', description: null, parent: 'root-ou-1'},
+          {
+            id: 'child-1',
+            handle: 'child-1-handle',
+            name: 'Child One',
+            description: null,
+            parent: 'root-ou-1',
+            allowedActions: ['listChildren'],
+          },
+          {
+            id: 'child-2',
+            handle: 'child-2-handle',
+            name: 'Child Two',
+            description: null,
+            parent: 'root-ou-1',
+            allowedActions: ['listChildren'],
+          },
         ],
       };
 
@@ -1028,7 +1198,13 @@ describe('OrganizationUnitTreePicker', () => {
     });
 
     it('should not auto-select in rootOuId mode', async () => {
-      const rootOu: OrganizationUnit = {id: 'root-ou-1', handle: 'root-ou', name: 'Root OU', parent: null};
+      const rootOu: OrganizationUnit = {
+        id: 'root-ou-1',
+        handle: 'root-ou',
+        name: 'Root OU',
+        parent: null,
+        allowedActions: ['listChildren'],
+      };
       const rootOuChildren: OrganizationUnitListResponse = {
         totalResults: 0,
         startIndex: 1,

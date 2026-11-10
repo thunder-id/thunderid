@@ -371,7 +371,7 @@ On a Data Plane, a token that holds `org` or `org:ou`, and not `system`, acts fo
 
 | Request | Allowed for |
 |---|---|
-| List the root OUs (`GET /organization-units`) | `system` only |
+| List the root OUs (`GET /organization-units`) | The token's own OU, which the list returns in place of the root OUs |
 | List child OUs (`GET /organization-units/{id}/ous`) | The token's own OU |
 | View an OU (`GET /organization-units/{id}`) | The token's own OU and its direct children |
 | Create an OU (`POST /organization-units`) | A direct child of the token's own OU |
@@ -382,6 +382,17 @@ Every other OU is refused with `403 Forbidden`, including the token's own OU for
 A request by hierarchical path, such as `/organization-units/tree/{path}`, resolves to the last OU in the path and is allowed as the same request by ID is. For such a token, a path that names no OU is refused with `403 Forbidden` too, so a path does not reveal which OUs exist outside its reach. A token that holds `system` gets `404 Not Found` for it.
 
 A token that holds `system` manages every OU in the deployment. A control plane bounds no permission to an OU.
+
+Each OU in a response carries `allowedActions`, the actions the token may take on it, so a client does not need to work them out:
+
+| Action | Meaning |
+|---|---|
+| `update` | Update the OU |
+| `delete` | Delete the OU |
+| `createChild` | Create an OU beneath it |
+| `listChildren` | List the OUs beneath it |
+
+For example, the token's own OU reports `createChild` and `listChildren`, and its direct children report `update` and `delete`. An OU that is read only reports neither `update` nor `delete`. A field that is absent means no action is allowed. To find out whether the token may create a root OU, read `createRoot` under `ou` in `GET /capabilities`. A Data Plane takes root OUs only from an import, so it reports `false` there.
 
 ## Organization Units in Projects
 

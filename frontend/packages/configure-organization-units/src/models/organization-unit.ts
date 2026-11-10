@@ -31,6 +31,11 @@
  * };
  * ```
  */
+/**
+ * An action the caller may take on an organization unit.
+ */
+export type OrganizationUnitAction = 'update' | 'delete' | 'createChild' | 'listChildren';
+
 export interface OrganizationUnit {
   /**
    * Unique identifier of the organization unit
@@ -136,4 +141,11 @@ export interface OrganizationUnit {
    * Whether the organization unit is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+
+  /**
+   * What the caller may do with the organization unit, as the server decides it: update or delete it, create
+   * an organization unit beneath it, or list the ones beneath it
+   * @example ['createChild', 'listChildren']
+   */
+  allowedActions?: OrganizationUnitAction[];
 }

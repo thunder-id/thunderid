@@ -37,6 +37,7 @@ var importOnlyWrites = map[string][]string{
 	"i18n":         {"create", "update", "delete"},
 	"authzdetail":  {"create", "update", "delete"},
 	"serverconfig": {"update"},
+	"ou":           {"createRoot"},
 }
 
 // The root admin is allowed every action except the writes a data plane takes only from an import.

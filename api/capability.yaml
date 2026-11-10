@@ -103,7 +103,9 @@ components:
           description: >-
             Each catalog resource (for example `app`, `user` or `serverconfig`), mapped to each
             action declared on it (`view`, `create`, `update` or `delete`) and whether the caller
-            may perform it.
+            may perform it. Organization units also report `createRoot`, whether the caller may create
+            an organization unit with no parent. A data plane takes root organization units only from an
+            import, so it reports `createRoot` as false for every token.
           additionalProperties:
             type: object
             additionalProperties:

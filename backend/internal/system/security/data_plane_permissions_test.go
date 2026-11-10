@@ -351,15 +351,14 @@ func (s *DataPlanePermissionsTestSuite) process(ouID string, permissions []strin
 	return err
 }
 
-// An organization permission reaches only the unit its token names, so only the system root permission lists the
-// root organization units on the data plane. The control plane keeps the view permission of organization units.
-func (s *DataPlanePermissionsTestSuite) TestListingTheRootOrganizationUnitsNeedsSystem() {
+// Listing the root organization units needs the view permission of organization units: the list is narrowed to
+// the units the caller reaches.
+func (s *DataPlanePermissionsTestSuite) TestListingTheRootOrganizationUnitsNeedsOUView() {
 	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
 	s.Require().NoError(err)
-	s.Equal("system", GetSystemPermissions().OUListRoots)
-	s.Equal("system", svc.getRequiredPermissionForAPI(http.MethodGet, "/organization-units"))
-	s.Equal("system", ResolveActionPermission(ActionListOUs))
-	s.Equal("system", ResolveMCPToolPermission("list_organization_units"))
+	s.Equal("org:ou:view", svc.getRequiredPermissionForAPI(http.MethodGet, "/organization-units"))
+	s.Equal("org:ou:view", ResolveActionPermission(ActionListOUs))
+	s.Equal("org:ou:view", ResolveMCPToolPermission("list_organization_units"))
 	s.Equal("org:ou:view", svc.getRequiredPermissionForAPI(http.MethodGet, "/organization-units/ou-1/ous"))
 	s.Equal("org:ou:view", ResolveActionPermission(ActionListChildOUs))
 

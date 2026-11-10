@@ -73,6 +73,8 @@ type OrganizationUnit struct {
 	UpdatedAt                 time.Time `json:"updatedAt" yaml:"updatedAt"`
 	// IsReadOnly marks an organization unit a control plane deployed. It is never exported.
 	IsReadOnly bool `json:"isReadOnly" yaml:"-"`
+	// AllowedActions lists what the caller may do with the organization unit. It is never exported.
+	AllowedActions []string `json:"allowedActions,omitempty" yaml:"-"`
 }
 
 // OrganizationUnitRequestWithID represents the request body for creating an organization unit
@@ -118,11 +120,13 @@ type OrganizationUnitBasic struct {
 	Description string `json:"description,omitempty"`
 	ProjectID   string `json:"projectId,omitempty"`
 	// Parent is read only where a listing needs it to decide which units are its top ones, and never sent.
-	Parent     *string   `json:"-"`
-	LogoURL    string    `json:"logoUrl,omitempty"`
-	IsReadOnly bool      `json:"isReadOnly"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	Parent     *string `json:"-"`
+	LogoURL    string  `json:"logoUrl,omitempty"`
+	IsReadOnly bool    `json:"isReadOnly"`
+	// AllowedActions lists what the caller may do with the organization unit.
+	AllowedActions []string  `json:"allowedActions,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // User represents a user with basic information for OU endpoints. IsOwnedByOU reports whether the

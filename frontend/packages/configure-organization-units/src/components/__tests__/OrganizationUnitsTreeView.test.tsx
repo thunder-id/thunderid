@@ -5,6 +5,7 @@ import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, within, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, it, expect, vi, beforeEach, beforeAll} from 'vitest';
+import type {OrganizationUnitAction} from '../../models/organization-unit';
 import type {OrganizationUnitListResponse} from '../../models/responses';
 import OrganizationUnitsTreeView from '../OrganizationUnitsTreeView';
 
@@ -26,6 +27,7 @@ vi.mock('@thunderid/logger/react', () => ({
 }));
 
 // Mock the API hook
+const ALL_ACTIONS: OrganizationUnitAction[] = ['update', 'delete', 'createChild', 'listChildren'];
 const mockUseGetOrganizationUnits = vi.fn();
 vi.mock('@/api/useGetOrganizationUnits', () => ({
   default: (...args: unknown[]) =>
@@ -108,8 +110,22 @@ describe('OrganizationUnitsTreeView', () => {
     startIndex: 1,
     count: 2,
     organizationUnits: [
-      {id: 'ou-1', handle: 'root', name: 'Root Organization', description: 'Root OU', parent: null},
-      {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+      {
+        id: 'ou-1',
+        handle: 'root',
+        name: 'Root Organization',
+        description: 'Root OU',
+        parent: null,
+        allowedActions: ALL_ACTIONS,
+      },
+      {
+        id: 'ou-2',
+        handle: 'engineering',
+        name: 'Engineering',
+        description: null,
+        parent: null,
+        allowedActions: ALL_ACTIONS,
+      },
     ],
   };
 
@@ -266,7 +282,40 @@ describe('OrganizationUnitsTreeView', () => {
     expect(screen.getAllByLabelText(t('common:actions.delete'))).toHaveLength(2);
   });
 
-  it('should hide the add, edit and delete actions when the admin may only view organization units', async () => {
+  it('follows the actions the server allows on each unit', async () => {
+    mockUseGetOrganizationUnits.mockReturnValue({
+      data: {
+        totalResults: 2,
+        startIndex: 1,
+        count: 2,
+        organizationUnits: [
+          {id: 'own', handle: 'own', name: 'Own Unit', parent: null, allowedActions: ['createChild', 'listChildren']},
+          {id: 'child', handle: 'child', name: 'Child Unit', parent: 'own', allowedActions: ['update', 'delete']},
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetchOrganizationUnits,
+    });
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <OrganizationUnitsTreeView />
+      </CapabilitiesProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Own Unit')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByLabelText(t('organizationUnits:listing.treeView.addChild'))).toHaveLength(1);
+    expect(screen.getAllByLabelText(t('common:actions.view'))).toHaveLength(1);
+    expect(screen.getAllByLabelText(t('common:actions.edit'))).toHaveLength(1);
+    expect(screen.getAllByLabelText(t('common:actions.delete'))).toHaveLength(1);
+    const expandable = screen.getAllByRole('treeitem').filter((item) => item.hasAttribute('aria-expanded'));
+    expect(expandable.map((item) => item.textContent)).toEqual([expect.stringContaining('Own Unit')]);
+  });
+
+  it('offers no root creation when the server does not allow it', async () => {
     renderWithProviders(
       <CapabilitiesProvider capabilities={viewOnly}>
         <OrganizationUnitsTreeView />
@@ -277,9 +326,6 @@ describe('OrganizationUnitsTreeView', () => {
       expect(screen.getByText('Root Organization')).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText(t('organizationUnits:listing.treeView.addChild'))).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(t('common:actions.edit'))).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(t('common:actions.delete'))).not.toBeInTheDocument();
     expect(screen.queryByText(t('organizationUnits:listing.addRootOrganizationUnit'))).not.toBeInTheDocument();
   });
 
@@ -494,7 +540,14 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: 'A child', parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: 'A child',
+          parent: 'ou-1',
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -553,7 +606,14 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Restored Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Restored Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -627,7 +687,14 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -655,7 +722,14 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -830,7 +904,14 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -865,7 +946,14 @@ describe('OrganizationUnitsTreeView', () => {
         startIndex: 2,
         count: 1,
         organizationUnits: [
-          {id: 'ou-child-2', handle: 'child2', name: 'Fetched Child 2', description: null, parent: 'ou-1'},
+          {
+            id: 'ou-child-2',
+            handle: 'child2',
+            name: 'Fetched Child 2',
+            description: null,
+            parent: 'ou-1',
+            allowedActions: ALL_ACTIONS,
+          },
         ],
       },
     });
@@ -882,7 +970,14 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 1,
       organizationUnits: [
-        {id: 'ou-child-1', handle: 'child1', name: 'Fetched Child', description: null, parent: 'ou-1'},
+        {
+          id: 'ou-child-1',
+          handle: 'child1',
+          name: 'Fetched Child',
+          description: null,
+          parent: 'ou-1',
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -918,8 +1013,22 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -1002,8 +1111,22 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -1019,8 +1142,15 @@ describe('OrganizationUnitsTreeView', () => {
         startIndex: 3,
         count: 2,
         organizationUnits: [
-          {id: 'ou-3', handle: 'marketing', name: 'Marketing', description: null, parent: null},
-          {id: 'ou-4', handle: 'sales', name: 'Sales', description: null, parent: null},
+          {
+            id: 'ou-3',
+            handle: 'marketing',
+            name: 'Marketing',
+            description: null,
+            parent: null,
+            allowedActions: ALL_ACTIONS,
+          },
+          {id: 'ou-4', handle: 'sales', name: 'Sales', description: null, parent: null, allowedActions: ALL_ACTIONS},
         ],
       },
     });
@@ -1048,8 +1178,22 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 
@@ -1065,8 +1209,15 @@ describe('OrganizationUnitsTreeView', () => {
         startIndex: 3,
         count: 2,
         organizationUnits: [
-          {id: 'ou-3', handle: 'marketing', name: 'Marketing', description: null, parent: null},
-          {id: 'ou-4', handle: 'sales', name: 'Sales', description: null, parent: null},
+          {
+            id: 'ou-3',
+            handle: 'marketing',
+            name: 'Marketing',
+            description: null,
+            parent: null,
+            allowedActions: ALL_ACTIONS,
+          },
+          {id: 'ou-4', handle: 'sales', name: 'Sales', description: null, parent: null, allowedActions: ALL_ACTIONS},
         ],
       },
     });
@@ -1090,8 +1241,22 @@ describe('OrganizationUnitsTreeView', () => {
       startIndex: 1,
       count: 2,
       organizationUnits: [
-        {id: 'ou-1', handle: 'root', name: 'Root Organization', description: null, parent: null},
-        {id: 'ou-2', handle: 'engineering', name: 'Engineering', description: null, parent: null},
+        {
+          id: 'ou-1',
+          handle: 'root',
+          name: 'Root Organization',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
+        {
+          id: 'ou-2',
+          handle: 'engineering',
+          name: 'Engineering',
+          description: null,
+          parent: null,
+          allowedActions: ALL_ACTIONS,
+        },
       ],
     };
 

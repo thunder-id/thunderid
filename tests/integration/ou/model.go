@@ -11,13 +11,14 @@ import (
 
 // OrganizationUnitBasic represents the basic information of an organization unit.
 type OrganizationUnitBasic struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"handle"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	LogoURL     string    `json:"logoUrl,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID             string    `json:"id"`
+	Handle         string    `json:"handle"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	LogoURL        string    `json:"logoUrl,omitempty"`
+	AllowedActions []string  `json:"allowedActions,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // OrganizationUnit represents an organization unit.
@@ -27,6 +28,7 @@ type OrganizationUnit struct {
 	Name            string    `json:"name"`
 	Description     string    `json:"description,omitempty"`
 	Parent          *string   `json:"parent"`
+	AllowedActions  []string  `json:"allowedActions,omitempty"`
 	LogoURL         string    `json:"logoUrl,omitempty"`
 	TosURI          string    `json:"tosUri,omitempty"`
 	PolicyURI       string    `json:"policyUri,omitempty"`

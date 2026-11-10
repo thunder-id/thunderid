@@ -44,6 +44,10 @@ type ActionContext struct {
 	// ResourceOwnerID is the stored owner of the resource, read from the resource itself, never from the request.
 	// Set it only when the owner may act on the resource; leave it empty otherwise.
 	ResourceOwnerID string
+	// ParentOUID is the parent of the organization unit OUID names, when the caller already holds it, so the
+	// organization unit policies need not look it up. Point it at an empty string for a root organization unit, and
+	// leave it nil when the parent is not known.
+	ParentOUID *string
 }
 
 // AccessibleResources represents the set of resources a caller is permitted to access

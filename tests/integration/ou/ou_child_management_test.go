@@ -29,7 +29,7 @@ const (
 // OUChildManagementTestSuite covers how far org and org:ou reach into organization units on the Data Plane.
 // A token names one unit, and manages the units directly beneath it: it reads its own unit and its direct
 // children, lists its own children, creates, updates and deletes its direct children, and reaches nothing
-// further down, beside or above. Only the system permission lists the root organization units.
+// further down, beside or above. Listing the root organization units returns the token's own unit.
 //
 //	root (child-mgmt-root)
 //	├── unit (child-mgmt-unit)              ← every administrator belongs here
@@ -115,16 +115,55 @@ func (ts *OUChildManagementTestSuite) TearDownSuite() {
 	}
 }
 
-// Only the system permission lists the root organization units.
-func (ts *OUChildManagementTestSuite) TestListingTheRootUnitsNeedsSystem() {
+// The root listing returns the units the token reaches: its own unit, for which it may create and list children.
+// The system permission lists every root unit.
+func (ts *OUChildManagementTestSuite) TestTheRootListingIsTheTokensOwnUnit() {
 	for scope, client := range ts.admins {
 		ts.Run(scope, func() {
-			status, body := ts.send(client, http.MethodGet, "/organization-units", nil)
-			ts.Equal(http.StatusForbidden, status, string(body))
+			list := ts.list(client, "/organization-units")
+			ts.Require().Len(list.OrganizationUnits, 1)
+			ts.Equal(ts.unitID, list.OrganizationUnits[0].ID)
+			ts.Equal([]string{"createChild", "listChildren"}, list.OrganizationUnits[0].AllowedActions)
 		})
 	}
-	status, body := ts.send(testutils.GetHTTPClient(), http.MethodGet, "/organization-units", nil)
-	ts.Equal(http.StatusOK, status, string(body))
+	list := ts.list(testutils.GetHTTPClient(), "/organization-units")
+	ids := make([]string, 0, len(list.OrganizationUnits))
+	for _, unit := range list.OrganizationUnits {
+		ids = append(ids, unit.ID)
+	}
+	ts.Contains(ids, ts.rootID)
+}
+
+// Each unit reports what the token may do with it: a direct child is updated and deleted, but not expanded.
+func (ts *OUChildManagementTestSuite) TestEachUnitReportsItsAllowedActions() {
+	for scope, client := range ts.admins {
+		ts.Run(scope, func() {
+			children := ts.list(client, "/organization-units/"+ts.unitID+"/ous")
+			for _, child := range children.OrganizationUnits {
+				ts.Equal([]string{"update", "delete"}, child.AllowedActions, child.Handle)
+			}
+
+			status, body := ts.send(client, http.MethodGet, "/organization-units/"+ts.unitID, nil)
+			ts.Require().Equal(http.StatusOK, status, string(body))
+			var unit OrganizationUnit
+			ts.Require().NoError(json.Unmarshal(body, &unit))
+			ts.Equal([]string{"createChild", "listChildren"}, unit.AllowedActions)
+		})
+	}
+	status, body := ts.send(testutils.GetHTTPClient(), http.MethodGet, "/organization-units/"+ts.childID, nil)
+	ts.Require().Equal(http.StatusOK, status, string(body))
+	var unit OrganizationUnit
+	ts.Require().NoError(json.Unmarshal(body, &unit))
+	ts.Equal([]string{"update", "delete", "createChild", "listChildren"}, unit.AllowedActions)
+}
+
+// list fetches an organization unit listing.
+func (ts *OUChildManagementTestSuite) list(client *http.Client, path string) OrganizationUnitListResponse {
+	status, body := ts.send(client, http.MethodGet, path, nil)
+	ts.Require().Equalf(http.StatusOK, status, "%s: %s", path, body)
+	var list OrganizationUnitListResponse
+	ts.Require().NoError(json.Unmarshal(body, &list))
+	return list
 }
 
 // The children of the token's own unit are listed, by ID and by handle path. The children of any other unit,

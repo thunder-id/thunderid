@@ -38,9 +38,9 @@ paths:
         every organization unit of the project it may list, at any level, as the list without `projectId`
         does.
 
-        On the Data Plane, listing the root organization units requires the `system` permission. A token
-        holding `org` or `org:ou` reaches only the organization unit it names, and lists that unit's children
-        with `GET /organization-units/{id}/ous` instead.
+        On the Data Plane, a token holding `org` or `org:ou` and not `system` reaches only the organization
+        unit it names, so this lists that one unit in place of the root organization units. List its children
+        with `GET /organization-units/{id}/ous`.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -117,8 +117,7 @@ paths:
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
         "403":
           description: |
-            The caller may not list the root organization units. On a data plane, only the `system`
-            permission lists them.
+            The caller does not hold the permission to view organization units.
           content:
             application/json:
               schema:
@@ -1811,6 +1810,16 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the organization unit is immutable by clients."
+        allowedActions:
+          type: array
+          readOnly: true
+          description: |
+            The actions the caller may take on the organization unit: `update`, `delete`, `createChild` (create
+            an organization unit beneath it) and `listChildren` (list the organization units beneath it). A read
+            only organization unit allows no `update` or `delete`. Absent when no action is allowed.
+          items:
+            type: string
+            enum: [update, delete, createChild, listChildren]
         createdAt:
           type: string
           format: date-time
@@ -1833,6 +1842,16 @@ components:
             Whether the organization unit is read only: declared in a resource file, or deployed by a control
             plane, which only a later deploy from the control plane changes.
           example: false
+        allowedActions:
+          type: array
+          readOnly: true
+          description: |
+            The actions the caller may take on the organization unit: `update`, `delete`, `createChild` (create
+            an organization unit beneath it) and `listChildren` (list the organization units beneath it). A read
+            only organization unit allows no `update` or `delete`. Absent when no action is allowed.
+          items:
+            type: string
+            enum: [update, delete, createChild, listChildren]
         id:
           type: string
           format: uuid

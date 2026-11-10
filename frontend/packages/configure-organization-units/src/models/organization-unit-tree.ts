@@ -27,7 +27,7 @@ import type {OrganizationUnit} from './organization-unit';
  * ```
  */
 export interface OrganizationUnitTreeItem
-  extends Pick<OrganizationUnit, 'id' | 'handle' | 'description' | 'logoUrl' | 'isReadOnly'> {
+  extends Pick<OrganizationUnit, 'id' | 'handle' | 'description' | 'logoUrl' | 'isReadOnly' | 'allowedActions'> {
   /**
    * Display label shown in the tree view
    * @example 'Engineering'

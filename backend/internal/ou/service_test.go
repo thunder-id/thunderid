@@ -3057,6 +3057,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 					Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{"ou-1"}}, nil).
 					Once()
+				authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
 			},
 			setupStore: func(store *organizationUnitStoreInterfaceMock) {
 				store.On("GetOrganizationUnitsByIDs", mock.Anything, []string{"ou-1"}).

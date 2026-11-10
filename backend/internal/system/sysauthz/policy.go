@@ -169,6 +169,12 @@ func (p *ouChildPolicy) isActionAllowed(ctx context.Context,
 		}
 		return policyDecisionDenied, nil
 	}
+	if actionCtx.ParentOUID != nil {
+		if *actionCtx.ParentOUID == callerOUID {
+			return policyDecisionAllowed, nil
+		}
+		return policyDecisionDenied, nil
+	}
 	ancestorIDs, svcErr := p.resolver.GetAncestorOUIDs(ctx, actionCtx.OUID)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {

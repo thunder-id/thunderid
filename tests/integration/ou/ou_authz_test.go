@@ -258,13 +258,18 @@ func closeBody(resp *http.Response) { _ = resp.Body.Close() }
 // Tests — READ operations (org:ou:view is sufficient)
 // ---------------------------------------------------------------------------
 
-// TestListOUs verifies that an OU-scoped admin may not list the root OUs: an organization permission
-// reaches only the unit its token names, so only the system permission lists them.
+// TestListOUs verifies that an OU-scoped admin's root listing is its own OU, which a view-only token may only
+// expand.
 func (ts *OUAuthzTestSuite) TestListOUs() {
 	resp := ts.do(http.MethodGet, "/organization-units", nil)
 	defer closeBody(resp)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "an org:ou:view token lists the OUs it reaches")
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode, "an org:ou:view token must not list the root OUs")
+	var listResp OrganizationUnitListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	ts.Require().Len(listResp.OrganizationUnits, 1)
+	ts.Equal(ts.ou1ID, listResp.OrganizationUnits[0].ID)
+	ts.Equal([]string{"listChildren"}, listResp.OrganizationUnits[0].AllowedActions)
 }
 
 // TestListOwnChildOUs verifies that the OU-admin lists the direct children of OU1, and not those of OU12.

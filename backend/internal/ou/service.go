@@ -187,15 +187,79 @@ func (ous *organizationUnitService) refuseChange(ctx context.Context, id string)
 
 // withManaged reports an organization unit a control plane deployed as read only. A failed read of that is
 // logged and taken as not: every write to such a unit is refused whatever the read says.
-func (ous *organizationUnitService) withManaged(
-	ctx context.Context, ou OrganizationUnit) (OrganizationUnit, *tidcommon.ServiceError) {
+func (ous *organizationUnitService) withManaged(ctx context.Context, ou OrganizationUnit) OrganizationUnit {
 	deployed, err := managedresource.IsDeployed(ctx, ous.managed, ou.ID, managedresource.TypeOrganizationUnit)
 	if err != nil {
 		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the organization unit",
 			log.String("id", ou.ID), log.Error(err))
 	}
 	ou.IsReadOnly = deployed
+	return ou
+}
+
+// withReach reports a read organization unit as read only when a control plane deployed it, with the actions the
+// caller may take on it.
+func (ous *organizationUnitService) withReach(
+	ctx context.Context, ou OrganizationUnit) (OrganizationUnit, *tidcommon.ServiceError) {
+	ou = ous.withManaged(ctx, ou)
+	parent := ""
+	if ou.Parent != nil {
+		parent = *ou.Parent
+	}
+	actions, svcErr := ous.allowedActions(ctx, ou.ID, &parent, ou.IsReadOnly)
+	if svcErr != nil {
+		return OrganizationUnit{}, svcErr
+	}
+	ou.AllowedActions = actions
 	return ou, nil
+}
+
+// ouAllowedActions maps each action reported in allowedActions to the authorization action it needs on the
+// organization unit.
+var ouAllowedActions = []struct {
+	name   string
+	action security.Action
+}{
+	{"update", security.ActionUpdateOU},
+	{"delete", security.ActionDeleteOU},
+	{"createChild", security.ActionCreateOU},
+	{"listChildren", security.ActionListChildOUs},
+}
+
+// allowedActions returns the actions the caller may take on an organization unit, so a client need not infer
+// them. parent is the unit's parent when already known, which spares the policies a lookup; nil when not known. A
+// read-only unit allows no update or delete.
+func (ous *organizationUnitService) allowedActions(
+	ctx context.Context, id string, parent *string, readOnly bool) ([]string, *tidcommon.ServiceError) {
+	actions := []string{}
+	for _, a := range ouAllowedActions {
+		if readOnly && (a.action == security.ActionUpdateOU || a.action == security.ActionDeleteOU) {
+			continue
+		}
+		allowed, svcErr := ous.authzService.IsActionAllowed(ctx, a.action,
+			&sysauthz.ActionContext{ResourceType: security.ResourceTypeOU, OUID: id, ParentOUID: parent})
+		if svcErr != nil {
+			return nil, &tidcommon.InternalServerError
+		}
+		if allowed {
+			actions = append(actions, a.name)
+		}
+	}
+	return actions, nil
+}
+
+// markAllowedActions sets the actions the caller may take on each listed organization unit. parent is the
+// parent of every listed unit when they share a known one, and nil otherwise.
+func (ous *organizationUnitService) markAllowedActions(
+	ctx context.Context, units []OrganizationUnitBasic, parent *string) *tidcommon.ServiceError {
+	for i := range units {
+		actions, svcErr := ous.allowedActions(ctx, units[i].ID, parent, units[i].IsReadOnly)
+		if svcErr != nil {
+			return svcErr
+		}
+		units[i].AllowedActions = actions
+	}
+	return nil
 }
 
 // markManaged reports the listed organization units a control plane deployed as read only.
@@ -264,6 +328,9 @@ func (ous *organizationUnitService) GetOrganizationUnitList(
 	}
 	if list != nil {
 		ous.markManaged(ctx, list.OrganizationUnits)
+		if svcErr := ous.markAllowedActions(ctx, list.OrganizationUnits, nil); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 	return list, svcErr
 }
@@ -632,7 +699,7 @@ func (ous *organizationUnitService) GetOrganizationUnit(
 		return OrganizationUnit{}, &tidcommon.InternalServerError
 	}
 
-	return ous.withManaged(ctx, ou)
+	return ous.withReach(ctx, ou)
 }
 
 // GetOrganizationUnitByPath retrieves an organization unit by hierarchical handle path.
@@ -660,7 +727,7 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 		return OrganizationUnit{}, svcErr
 	}
 
-	return ous.withManaged(ctx, ou)
+	return ous.withReach(ctx, ou)
 }
 
 // IsOrganizationUnitExists checks if an organization unit exists by ID.
@@ -1355,6 +1422,9 @@ func (ous *organizationUnitService) GetOrganizationUnitChildren(
 	list, svcErr := buildOrganizationUnitListResponse(base, items, totalCount, limit, offset)
 	if list != nil {
 		ous.markManaged(ctx, list.OrganizationUnits)
+		if svcErr := ous.markAllowedActions(ctx, list.OrganizationUnits, &id); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 	return list, svcErr
 }

@@ -13,13 +13,17 @@ export default function buildTreeItems(ous: OrganizationUnit[]): OrganizationUni
     description: ou.description,
     logoUrl: ou.logoUrl,
     isReadOnly: ou.isReadOnly,
-    children: [
-      {
-        id: `${ou.id}${OrganizationUnitTreeConstants.PLACEHOLDER_SUFFIX}`,
-        label: '',
-        handle: '',
-        isPlaceholder: true,
-      },
-    ],
+    allowedActions: ou.allowedActions,
+    // A unit whose children the caller may not list is a leaf.
+    children: ou.allowedActions?.includes('listChildren')
+      ? [
+          {
+            id: `${ou.id}${OrganizationUnitTreeConstants.PLACEHOLDER_SUFFIX}`,
+            label: '',
+            handle: '',
+            isPlaceholder: true,
+          },
+        ]
+      : [],
   }));
 }
