@@ -18,6 +18,7 @@ Read every reference file whose row matches the change:
 | Adds or changes a log line | `logging.md` |
 | Adds any new code: scope, constants, types, helpers, names, comments, user-facing text | `idiom.md` |
 | Adds a management resource, or a store mode, export, or import to one | `resource.md` |
+| Lets a resource belong to a project, or reads or writes its `projectId` | `resource.md` (Projects) |
 | Adds or changes a server configuration key | `config.md` |
 
 Before adding anything, open the closest existing package and match its shape. When a rule here and an older package disagree, follow the rule.
