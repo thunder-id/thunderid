@@ -533,6 +533,9 @@ func (s *importService) importResources(
 	failed := 0
 	flowIDAliases := make(map[string]string)
 	var mandating []userSharingReplay
+	if request.DryRun {
+		ctx = withPlannedUnits(ctx, &plannedUnits{byID: map[string]bool{}, byHandle: map[string]string{}})
+	}
 
 	orderedDocs := orderDocumentsByDependencies(docs)
 
@@ -568,6 +571,8 @@ func (s *importService) importResources(
 		for i := pendingBefore; i < len(mandating); i++ {
 			mandating[i].resultIndex = len(results) - 1
 		}
+
+		plannedUnitsOf(ctx).record(doc, outcome)
 
 		if doc.ResourceType == resourceTypeFlow && outcome.Status == statusSuccess && originalFlowID != "" &&
 			outcome.ResourceID != "" && originalFlowID != outcome.ResourceID {
@@ -1271,7 +1276,13 @@ func (s *importService) importFlowDefinition(
 	}
 
 	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil {
-		return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
+		// A dry run takes a unit the same import creates first as there, as the real import finds it.
+		planned, ok := plannedUnitsOf(ctx).resolve(flowDef.OUID, flowDef.OUHandle)
+		if !dryRun || !ok || svcErr.Code != flowmgt.ErrorInvalidFlowOU.Code {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
+		}
+		flowDef.OUID = planned
+		flowDef.OUHandle = ""
 	}
 
 	if dryRun {
