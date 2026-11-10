@@ -84,7 +84,7 @@ describe('ProjectsListPage', () => {
 
     await user.click(screen.getByRole('button', {name: /Support/}));
 
-    expect(mockNavigate).toHaveBeenCalledWith('/project/support/applications');
+    expect(mockNavigate).toHaveBeenCalledWith('/project/support');
   });
 
   it('opens the create project page from the add button', async () => {
