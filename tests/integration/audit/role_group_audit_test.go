@@ -250,8 +250,9 @@ func (ts *AuditLogTestSuite) TestAGroupChangeTheGroupServiceRefusesIsRecordedAsD
 }
 
 // An import that creates a group with a member and a role assigned to that group writes the events of
-// the group service and the role service for them: each create and each grant, under the import's trace
-// ID, then the import's own line. The lookups that decide between update and create write no line.
+// the group service and the role service for them: each create, then each grant once the group and role
+// exist, under the import's trace ID, then the import's own line. The lookups that decide between update
+// and create write no line.
 func (ts *AuditLogTestSuite) TestAnImportWritesTheEventsOfTheRolesAndGroupsItCreates() {
 	ouID, userType := ts.createUserType("role-group-import")
 	userID := ts.createUser(ouID, userType, ts.prefix+"imported-member", "AuditImportedMember123!")
@@ -283,8 +284,8 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventsOfTheRolesAndGroupsItCre
 		target, subject testutils.AuditRef
 	}{
 		{"group.create", groupRef, groupRef},
-		{"group.member.add", groupRef, testutils.AuditRef{Type: "user", ID: userID}},
 		{"role.create", roleRef, roleRef},
+		{"group.member.add", groupRef, testutils.AuditRef{Type: "user", ID: userID}},
 		{"role.assignment.add", roleRef, groupRef},
 		{importEvent, configurationRef, testutils.AuditRef{}},
 	}

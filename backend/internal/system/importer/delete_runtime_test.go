@@ -72,7 +72,7 @@ func (f *fakeOUService) DeleteOrganizationUnit(context.Context, string) *tidcomm
 
 func (f *fakeRoleService) DeleteRole(_ context.Context, id string) *tidcommon.ServiceError {
 	f.deleted = append(f.deleted, id)
-	return nil
+	return f.deleteErr
 }
 
 func (f *fakeGroupService) DeleteGroup(context.Context, string) *tidcommon.ServiceError { return nil }

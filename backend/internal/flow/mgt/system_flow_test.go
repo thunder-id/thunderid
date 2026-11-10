@@ -55,7 +55,7 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 	graphs := newGraphBuilderInterfaceMock(s.T())
 	graphs.EXPECT().ValidateGraph(mock.Anything, mock.Anything).Return(nil)
 	validator := newFlowValidator(
-		registry, interceptormock.NewInterceptorRegistryInterfaceMock(s.T()), graphs, nil, nil)
+		registry, interceptormock.NewInterceptorRegistryInterfaceMock(s.T()), graphs, nil, nil, nil, nil)
 
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, validator)
 

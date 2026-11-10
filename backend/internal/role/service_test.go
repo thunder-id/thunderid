@@ -990,6 +990,41 @@ func (suite *RoleServiceTestSuite) TestGetRole_StoreError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+// TestGetRolesByIDs_ReadsOnceKeyedByIDAndLeavesOutUnknownIDs confirms the roles are read in one call with duplicate
+// IDs removed, keyed by ID, and that an ID naming no role is simply absent from the result.
+func (suite *RoleServiceTestSuite) TestGetRolesByIDs_ReadsOnceKeyedByIDAndLeavesOutUnknownIDs() {
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role-1", "role-gone"}).
+		Return([]Role{{ID: "role-1", Name: "admins", OUID: "ou-1"}}, nil).Once()
+
+	result, err := suite.service.GetRolesByIDs(context.Background(), []string{"role-1", "role-gone", "role-1"})
+
+	suite.Require().Nil(err)
+	suite.Require().Len(result, 1)
+	suite.Equal("admins", result["role-1"].Name)
+	suite.NotContains(result, "role-gone")
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByIDs_NoIDsReturnsAnEmptyMap() {
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, mock.Anything).Return([]Role{}, nil).Once()
+
+	result, err := suite.service.GetRolesByIDs(context.Background(), nil)
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Empty(result)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByIDs_StoreFailureIsAServerError() {
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role-1"}).
+		Return(nil, errors.New("db down")).Once()
+
+	result, err := suite.service.GetRolesByIDs(context.Background(), []string{"role-1"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 // TestGetRolesByNames_DedupesInputAndGroupsAmbiguousMatches confirms duplicate input names are
 // deduped before the store call, and that more than one role sharing a name are both returned under
 // that name rather than one silently overwriting the other.

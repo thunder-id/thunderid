@@ -159,6 +159,12 @@ const (
 	// NodePropertyRoles names, separated by spaces, the roles a role executor node records in an invitation flow
 	// instead of prompting for them, or assigns in a sign-up flow.
 	NodePropertyRoles = "roles"
+	// NodePropertyAssignGroup names, separated by commas, the IDs of the groups a provisioning node assigns to the
+	// entity it creates.
+	NodePropertyAssignGroup = "assignGroup"
+	// NodePropertyAssignRole names, separated by commas, the IDs of the roles a provisioning node assigns to the
+	// entity it creates.
+	NodePropertyAssignRole = "assignRole"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.

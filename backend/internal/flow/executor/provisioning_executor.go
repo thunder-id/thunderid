@@ -85,8 +85,8 @@ func newProvisioningExecutor(
 				{Property: propertyKeyDynamicInputsIncludeOptional},
 				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
-				{Property: propertyKeyAssignGroup},
-				{Property: propertyKeyAssignRole},
+				{Property: common.NodePropertyAssignGroup},
+				{Property: common.NodePropertyAssignRole},
 				{Property: propertyKeySeedGroupsFromMapping},
 				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
@@ -1409,7 +1409,7 @@ func (p *provisioningExecutor) getGroupsToAssign(ctx *providers.NodeContext) []s
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
-	val, ok := ctx.NodeProperties[propertyKeyAssignGroup]
+	val, ok := ctx.NodeProperties[common.NodePropertyAssignGroup]
 	if !ok {
 		return nil
 	}
@@ -1426,7 +1426,7 @@ func (p *provisioningExecutor) getRolesToAssign(ctx *providers.NodeContext) []st
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
-	val, ok := ctx.NodeProperties[propertyKeyAssignRole]
+	val, ok := ctx.NodeProperties[common.NodePropertyAssignRole]
 	if !ok {
 		return nil
 	}

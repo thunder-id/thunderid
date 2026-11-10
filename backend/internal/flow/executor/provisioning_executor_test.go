@@ -1769,8 +1769,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Assign
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
 		NodeProperties: map[string]interface{}{
-			propertyKeyAssignGroup: "agent-group-id",
-			propertyKeyAssignRole:  "agent-role-id",
+			common.NodePropertyAssignGroup: "agent-group-id",
+			common.NodePropertyAssignRole:  "agent-role-id",
 		},
 		UserInputs: map[string]string{"name": "support-bot"},
 		RuntimeData: map[string]string{
@@ -4387,7 +4387,7 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_NilRuntimeData
 func (suite *ProvisioningExecutorTestSuite) TestGetGroupsToAssign_NonStringValue_ReturnsNil() {
 	ctx := &providers.NodeContext{
 		NodeProperties: map[string]interface{}{
-			propertyKeyAssignGroup: 42,
+			common.NodePropertyAssignGroup: 42,
 		},
 	}
 
@@ -4399,7 +4399,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetGroupsToAssign_NonStringValue
 func (suite *ProvisioningExecutorTestSuite) TestGetRolesToAssign_NonStringValue_ReturnsNil() {
 	ctx := &providers.NodeContext{
 		NodeProperties: map[string]interface{}{
-			propertyKeyAssignRole: true,
+			common.NodePropertyAssignRole: true,
 		},
 	}
 
