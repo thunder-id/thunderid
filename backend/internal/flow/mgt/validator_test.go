@@ -3565,6 +3565,12 @@ func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() 
 	for _, flowType := range providers.ValidFlowTypes {
 		s.Nil(s.v.validateExecutorFlowType(&node, &meta, flowType), string(flowType))
 	}
-	s.Nil(s.v.validateFlowTypeBasedConstraints(providers.FlowTypeSelf,
-		companionNodes(executor.ExecutorNameOTPExecutor)))
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelf, providers.FlowTypeAdminInitiated} {
+		s.Nil(s.v.validateFlowTypeBasedConstraints(flowType, companionNodes(executor.ExecutorNameOTPExecutor)),
+			string(flowType))
+		s.Nil(s.v.validateFlowTypeBasedConstraints(flowType,
+			attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)), string(flowType))
+		s.NotNil(s.v.validateFlowTypeBasedConstraints(flowType,
+			attributeVerificationNodes(executor.ExecutorModePrepare)), "%s must record what it prepares", flowType)
+	}
 }

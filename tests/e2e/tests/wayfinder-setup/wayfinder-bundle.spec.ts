@@ -138,7 +138,7 @@ test.describe("Wayfinder Sample Bundle", { tag: [TestTags.WAYFINDER] }, () => {
     expect(merged.userOnboardingFlow?.defaultHandle).toBe("wayfinder-onboarding-flow");
 
     // The server ships these flow types without a default handle.
-    const withoutDefault = ["registrationFlow", "recoveryFlow", "selfFlow"];
+    const withoutDefault = ["registrationFlow", "recoveryFlow", "selfFlow", "adminInitiatedFlow"];
     const missing = Object.keys(merged)
       .filter(flowType => !withoutDefault.includes(flowType))
       .filter(flowType => !merged[flowType]?.defaultHandle);

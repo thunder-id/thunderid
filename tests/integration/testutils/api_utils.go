@@ -2869,6 +2869,12 @@ func GetFlow(flowID string) (Flow, error) {
 // node's ID to the flow the copy calls there instead. The shipped flow is left as it is; the caller
 // deletes the copy. It returns the copy's ID.
 func CopyFlowWithSenders(handle, flowType, copyHandle string, senders, calls map[string]string) (string, error) {
+	return CopyFlowWithSendersInOU(handle, flowType, copyHandle, "", senders, calls)
+}
+
+// CopyFlowWithSendersInOU is CopyFlowWithSenders with the copy owned by ouID; an empty ouID keeps the default unit.
+func CopyFlowWithSendersInOU(handle, flowType, copyHandle, ouID string, senders,
+	calls map[string]string) (string, error) {
 	shippedID, err := GetFlowIDByHandle(handle, flowType)
 	if err != nil {
 		return "", err
@@ -2891,6 +2897,7 @@ func CopyFlowWithSenders(handle, flowType, copyHandle string, senders, calls map
 	}
 	flow.Name += " with a sender"
 	flow.Handle = copyHandle
+	flow.OUID = ouID
 	return CreateFlow(flow)
 }
 

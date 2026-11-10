@@ -402,7 +402,7 @@ var ErrorFlowNotSharedWithOU = tidcommon.ServiceError{
 	},
 }
 
-// ErrorFlowHandleRequired is returned when a self flow start names no flow handle.
+// ErrorFlowHandleRequired is returned when the start of a flow named by its handle names none.
 var ErrorFlowHandleRequired = tidcommon.ServiceError{
 	Code: "FES-1023",
 	Type: tidcommon.ClientErrorType,
@@ -412,7 +412,7 @@ var ErrorFlowHandleRequired = tidcommon.ServiceError{
 	},
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.flow_handle_required_description",
-		DefaultValue: "A flow handle is required to start a self flow",
+		DefaultValue: "A flow handle is required to start this flow",
 	},
 }
 

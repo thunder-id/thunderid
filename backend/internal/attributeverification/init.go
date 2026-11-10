@@ -6,12 +6,15 @@ package attributeverification
 import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize builds the attribute verification service over the entity service, which stores the
-// verification, and the entity type service, which declares the contact attributes.
+// verification, the entity type service, which declares the contact attributes, and the authorizer, which
+// confines a caller to the users it may update.
 func Initialize(entityService entity.EntityServiceInterface, entityTypeService entitytype.EntityTypeServiceInterface,
-	observability providers.ObservabilityProvider) AttributeVerificationServiceInterface {
-	return newAttributeVerificationService(entityService, entityTypeService, observability)
+	observability providers.ObservabilityProvider,
+	authorizer sysauthz.SystemAuthorizationServiceInterface) AttributeVerificationServiceInterface {
+	return newAttributeVerificationService(entityService, entityTypeService, observability, authorizer)
 }

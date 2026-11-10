@@ -229,7 +229,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
 	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
-		observabilitySvc)
+		observabilitySvc, ouAuthzService)
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=

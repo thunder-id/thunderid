@@ -352,6 +352,43 @@ For properties, input types, and node examples, see [Advanced Configurations](..
 
 </details>
 
+<details>
+  <summary>Build an administrator attribute verification flow</summary>
+
+  An administrator-initiated flow is started by an administrator for a user and finished by that user. It is never assigned to an application. An administrator starts it through the Flow Execution API with `flowType` set to `ADMIN_INITIATED`, the flow's `handle`, the user's ID as the `subject` input, and an access token carrying a `system` permission. The flow must be owned by, or shared with, the organization unit the token is issued for. The shipped flow's **Validate Permission** step then requires `system:user:update` or `org:user:update`, and the flow needs permission to update that user. The flow runs as that administrator, so an organization unit administrator can send a link only to users of its own organization units: the user continues it from the link it sends, with no access token, and those steps run with the permissions the administrator still holds, so the link stops working once the administrator loses them. See [Permissions for Administration Flows](../../users/manage-roles#permissions-for-administration-flows) and [API Reference](../../../apis).
+
+  <ProductName /> ships `default-admin-attribute-verification-flow`, which emails the user a link to verify their email address. Start it with the user's ID:
+
+  ```bash
+  curl -kL -X POST https://localhost:8090/flow/execute \
+    -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{ "flowType": "ADMIN_INITIATED", "handle": "default-admin-attribute-verification-flow", "inputs": { "subject": "<user-id>" }, "verbose": true }'
+  ```
+
+  The flow prepares the user's stored email address, sends it the `admin-initiated-email-verification` email, and answers the administrator that the link was sent. The administrator never receives the link, even when the email cannot be sent. The user opens the link, confirms, and the flow records the verification. The start binds the flow to the user it names, so no later request can change that user. The flow verifies `email` unless the start names another email attribute in the `attribute` input, such as `"attribute": "workEmail"`. It sends the link by email, so name only an email attribute.
+
+  Build a flow of your own:
+
+  1. In the Console, go to **Flows** → **+ Create New Flow**.
+  2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**. You cannot change it later. With exactly one organization unit, the Console skips this step.
+  3. Select **Administrator-initiated** as the flow type and click **Continue**.
+  4. Choose the **Administrator Attribute Verification with Email Link** template.
+  5. Give the flow a name and click **Create**.
+  6. The canvas opens with the template pre-wired. Select the email provider as described below, customize the steps as needed, then click **Save**.
+
+  The **Send Email** node sends only through the email provider that it names. In `default-admin-attribute-verification-flow`, the **Send Email** node ships without an email provider, so the flow sends nothing until you select your email provider on that node. To select it in the Console:
+
+  1. Go to **Flows** and open the flow, for example **Default Admin Attribute Verification Flow**.
+  2. Click the configure icon on the **Send Email** node and select your provider in **Email provider**.
+  3. Click **Save**.
+
+  When the Console opens a flow, it fills an empty **Email provider** with your first email provider. The flow sends through it only after you save it. See [Configure an Email Provider](../../notifications/email-providers). The link email uses the `admin-initiated-email-verification` template. See [Default Templates](../../declarative-configurations/import-resources#default-templates).
+
+  Every `ADMIN_INITIATED` flow expires after `adminInitiatedFlow.expirySeconds`, 24 hours by default. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+</details>
+
 ## Development Tips
 
 ### Always Wire Failure Outputs
