@@ -48,6 +48,21 @@ Use it when a resource server cannot or should not validate JWTs locally. For ex
 
 When the token is DPoP-bound, the response also includes the `cnf.jkt` claim. When an access token carries RFC 9396 authorization details, the response also includes them as `authorization_details`. The introspection of a refresh token does not include them (see [Rich Authorization Requests](../rich-authorization-requests#token-introspection)).
 
+When the token is delegated, for example an agent acting on behalf of a user, the response also includes the `act` claim naming the actor. A delegation chain is returned with its nesting intact, so the outermost `act.sub` is the current actor and each nested `act` is an earlier one:
+
+```json
+{
+  "active": true,
+  "sub": "user-456",
+  "act": {
+    "sub": "agent-b",
+    "act": { "sub": "agent-a" }
+  }
+}
+```
+
+Base access decisions on `sub` and the outermost `act` only. Nested actors are a history trail and are informational ([RFC 8693 Section 4.1](https://www.rfc-editor.org/rfc/rfc8693#section-4.1)).
+
 </details>
 
 ## Introspection or Local JWT Validation

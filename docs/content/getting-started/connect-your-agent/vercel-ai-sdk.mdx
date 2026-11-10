@@ -323,17 +323,14 @@ const enrollments = new Map<string, Set<string>>();
 let enrolling = false;
 async function recordEnrollment(courseId: string, token: string) {
   const identity = await validateToken(token, 'courses:enroll');
-  // Decode only after introspection validates this exact token.
-  // {{ProductName}}'s introspection response does not include the actor claim.
-  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
-  if (!claims.act?.sub) throw new Error('Enrollment requires a delegated user token.');
+  if (!identity.act?.sub) throw new Error('Enrollment requires a delegated user token.');
   const studentId: string = identity.sub;
   if (!enrollments.has(studentId)) enrollments.set(studentId, new Set());
   const enrolled = enrollments.get(studentId)!;
   const status = enrolled.has(courseId) ? 'already_enrolled' : 'enrolled';
   enrolled.add(courseId);
   const result = { student_id: studentId, course_id: courseId, status };
-  console.log('Verified agent:', claims.act.sub);
+  console.log('Verified agent:', identity.act.sub);
   console.log('Tool result:', JSON.stringify(result));
   return result;
 }

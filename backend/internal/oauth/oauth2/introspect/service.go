@@ -181,6 +181,9 @@ func (s *tokenIntrospectionService) prepareValidResponse(payload map[string]inte
 	if jti, ok := payload["jti"].(string); ok {
 		response.Jti = jti
 	}
+	if act, ok := payload[constants.ClaimAct].(map[string]interface{}); ok && len(act) > 0 {
+		response.Act = act
+	}
 
 	return response
 }

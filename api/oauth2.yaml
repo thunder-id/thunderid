@@ -1564,6 +1564,9 @@ components:
           type: string
         token_type:
           type: string
+          enum: [Bearer, DPoP]
+          description: |
+            `DPoP` when the token is bound to a DPoP key (RFC 9449), otherwise `Bearer`.
         exp:
           type: integer
           format: int64
@@ -1599,6 +1602,34 @@ components:
             type: object
             additionalProperties: true
           description: The RFC 9396 authorization details the token carries, when it has any.
+        cnf:
+          type: object
+          description: |
+            Confirmation claim (RFC 7800). Present for DPoP-bound tokens, carrying the thumbprint of
+            the key the token is bound to (RFC 9449 Section 6.2).
+          properties:
+            jkt:
+              type: string
+              description: Base64url-encoded SHA-256 JWK thumbprint of the DPoP public key.
+        act:
+          $ref: '#/components/schemas/ActorClaim'
+
+    ActorClaim:
+      type: object
+      description: |
+        Actor claim (RFC 8693 Section 4.1) naming the party acting on behalf of the token subject,
+        such as an agent acting for a user. Present only on delegated tokens. When one actor delegates
+        to another, the earlier actor is nested under `act`, so the outermost object is the current actor.
+      properties:
+        sub:
+          type: string
+          description: Subject identifier of the actor.
+        iss:
+          type: string
+          description: Issuer of the actor's identity, when it differs from the token issuer.
+        act:
+          $ref: '#/components/schemas/ActorClaim'
+      additionalProperties: true
 
     JWKSResponse:
       type: object
