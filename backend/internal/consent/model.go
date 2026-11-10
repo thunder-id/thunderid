@@ -32,9 +32,19 @@ type Consent struct {
 	GroupID string // e.g. app id
 	Status  ConsentStatus
 	// ValidityTime is the Unix timestamp until which the consent is valid
-	ValidityTime   int64
-	Purposes       []ConsentPurposeItem
+	ValidityTime int64
+	Purposes     []ConsentPurposeItem
+	// Properties records how the decision was made, for audit
+	Properties     ConsentProperties
 	Authorizations []ConsentAuthorization
+}
+
+// ConsentProperties holds facts about how a consent was decided. It is stored as JSON in the PROPERTIES column,
+// which is NULL when none is set.
+type ConsentProperties struct {
+	// OneTime is set when the user chose not to remember the decision. The consent is kept for audit and
+	// expires at once.
+	OneTime bool `json:"oneTime,omitempty"`
 }
 
 // ConsentStatus defines the possible statuses for a consent record.
@@ -169,6 +179,7 @@ type ConsentRequest struct {
 	// ValidityTime is the Unix timestamp until which the consent is valid
 	ValidityTime   int64
 	Purposes       []ConsentPurposeItem
+	Properties     ConsentProperties
 	Authorizations []ConsentAuthorizationRequest
 }
 

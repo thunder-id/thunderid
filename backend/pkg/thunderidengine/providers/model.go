@@ -1432,6 +1432,10 @@ type ConsentDecisions struct {
 	Reason ConsentDecisionReason `json:"reason,omitempty"`
 	// Purposes contains the per-purpose element approval decisions
 	Purposes []PurposeDecision `json:"purposes"`
+	// OneTime is set when the user approved but chose not to remember the decision. The consent is kept for audit
+	// and expires at once. The consent executor honors it only where the node lets the user choose how long
+	// consent lasts.
+	OneTime bool `json:"oneTime,omitempty"`
 }
 
 // PurposeDecision holds the consent decisions for a single purpose

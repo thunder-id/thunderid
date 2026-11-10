@@ -241,6 +241,7 @@ func (c *consentService) createConsent(
 		Status:         ConsentStatusActive,
 		ValidityTime:   consent.ValidityTime,
 		Purposes:       consent.Purposes,
+		Properties:     consent.Properties,
 		Authorizations: authorizations,
 	}
 
@@ -285,6 +286,7 @@ func (c *consentService) updateConsent(
 			Status:         existing.Status,
 			ValidityTime:   consent.ValidityTime,
 			Purposes:       consent.Purposes,
+			Properties:     consent.Properties,
 			Authorizations: authorizations,
 		}
 		return c.consentStore.UpdateConsent(txCtx, updatedConsent)

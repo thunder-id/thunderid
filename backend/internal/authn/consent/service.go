@@ -270,16 +270,18 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 
 	validityTime := int64(0)
 	if validityPeriod > 0 {
-		validityTime = time.Now().Unix() + validityPeriod
+		validityTime = time.Now().Unix() + min(validityPeriod, MaxValidityPeriod)
 	}
+
+	properties := consent.ConsentProperties{OneTime: decisions.OneTime}
 
 	var consentRecord *consent.Consent
 	if len(existingConsents) > 0 {
 		consentRecord, svcErr = s.updateExistingConsent(ctx, appID, userID,
-			existingConsents, newPurposeItems, detailElements, validityTime, sessionData)
+			existingConsents, newPurposeItems, detailElements, validityTime, properties, sessionData)
 	} else {
 		consentRecord, svcErr = s.createNewConsent(ctx, appID, userID,
-			newPurposeItems, detailElements, validityTime)
+			newPurposeItems, detailElements, validityTime, properties)
 	}
 	if svcErr != nil {
 		return nil, svcErr
@@ -300,7 +302,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appID, userID string,
 	existingConsents []*consent.Consent, newPurposeItems []providers.ConsentPurposeItem,
 	detailElements map[string][]consent.ConsentElementApproval, validityTime int64,
-	session *consentSessionData,
+	properties consent.ConsentProperties, session *consentSessionData,
 ) (*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("existingConsentCount", len(existingConsents)))
@@ -310,6 +312,7 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appI
 	req := &consent.ConsentRequest{
 		GroupID:      appID,
 		ValidityTime: validityTime,
+		Properties:   properties,
 		Authorizations: []consent.ConsentAuthorizationRequest{
 			{
 				UserID: userID,
@@ -340,10 +343,10 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appI
 	return updated, nil
 }
 
-// createNewConsent creates a new consent record with the given purpose items and validity time.
+// createNewConsent creates a new consent record with the given purpose items, validity time and properties.
 func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, userID string,
 	newPurposeItems []providers.ConsentPurposeItem, detailElements map[string][]consent.ConsentElementApproval,
-	validityTime int64) (*consent.Consent, *tidcommon.ServiceError) {
+	validityTime int64, properties consent.ConsentProperties) (*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Creating new consent record")
 
@@ -351,6 +354,7 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, us
 	req := &consent.ConsentRequest{
 		GroupID:      appID,
 		ValidityTime: validityTime,
+		Properties:   properties,
 		Authorizations: []consent.ConsentAuthorizationRequest{
 			{
 				UserID: userID,
