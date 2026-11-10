@@ -1338,6 +1338,35 @@ describe('computeValidationNotifications', () => {
     });
   });
 
+  describe('Resolve Variables failure target rule', () => {
+    const edge = (target: string): Edge =>
+      ({id: `vars-failure-${target}`, source: 'vars', sourceHandle: 'failure', target}) as Edge;
+    const variablesNode = (): Node => createNode({id: 'vars', type: 'VARIABLES'});
+    const run = (nodes: Node[], edges: Edge[]) =>
+      computeValidationNotifications(nodes, VALIDATION_RULES, t, COMMON_GRAPH_VALIDATION_RULES, edges);
+
+    it('should accept a failure path that leads to a prompt view', () => {
+      const result = run([variablesNode(), createNode({id: 'retry', type: 'VIEW'})], [edge('retry')]);
+
+      expect(result.has('vars_VARIABLES_FAILURE_INVALID_TARGET')).toBe(false);
+    });
+
+    it('should warn when the failure path leads to a step that is not a prompt view', () => {
+      const result = run([variablesNode(), createNode({id: 'end', type: 'END'})], [edge('end')]);
+      const notification = result.get('vars_VARIABLES_FAILURE_INVALID_TARGET')!;
+
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.WARNING);
+      expect(notification.hasResource('vars')).toBe(true);
+    });
+
+    it('should stay silent when the failure handle is not connected', () => {
+      const result = run([variablesNode()], []);
+
+      expect(result.has('vars_VARIABLES_FAILURE_INVALID_TARGET')).toBe(false);
+    });
+  });
+
   describe('Resolve Variables declaration rule', () => {
     const NOTIFICATION_ID = 'vars_1_VARIABLES_NONE_DECLARED';
     const variablesNode = (id: string, inputs?: unknown[]): Node =>

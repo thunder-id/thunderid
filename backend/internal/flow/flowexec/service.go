@@ -875,7 +875,7 @@ func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineCont
 	}
 
 	if ouID != "" {
-		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyOUID: ouID})
+		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyOUID: ouID, common.RuntimeKeyOUFixed: "true"})
 	}
 	return nil
 }

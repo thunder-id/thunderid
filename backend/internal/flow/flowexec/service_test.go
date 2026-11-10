@@ -4740,6 +4740,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_InitiateFlowStoresTheBoundary() {
 	s.Equal(map[string]string{
 		common.RuntimeKeyClientID: "boundary-client",
 		common.RuntimeKeyOUID:     boundaryAppOUID,
+		common.RuntimeKeyOUFixed:  "true",
 	}, runtimeData)
 }
 

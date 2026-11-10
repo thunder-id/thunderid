@@ -262,6 +262,9 @@ func (b *graphBuilder) configureNodeNavigation(nodeDef *providers.NodeDefinition
 		if callNode, ok := node.(core.CallNodeInterface); ok {
 			callNode.SetOnFailure(nodeDef.OnFailure)
 		}
+		if variablesNode, ok := node.(core.VariablesNodeInterface); ok {
+			variablesNode.SetOnFailure(nodeDef.OnFailure)
+		}
 
 		// Add edge for graph structure
 		if _, exists := edges[nodeDef.ID]; !exists {

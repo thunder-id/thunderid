@@ -136,6 +136,9 @@ describe('organization templates', () => {
     expect(nodes.get('resolve_organization')?.properties).toEqual(resolver);
     expect(nodes.get('resolve_organization')?.onSuccess).toBe('organization_settings');
     expect(nodes.get('organization_settings')?.type).toBe('VARIABLES');
+    // An organization with no identity provider goes back to the sign-in page, which shows the error.
+    expect(nodes.get('organization_settings')?.onFailure).toBe('prompt_signin');
+    expect(nodes.get(nodes.get('organization_settings')?.onFailure ?? '')?.type).toBe('PROMPT');
     expect(nodes.get('enterprise_auth')?.properties).toEqual({
       idpId: '{{var(enterpriseIdp)}}',
       allowAuthenticationWithoutLocalUser: true,

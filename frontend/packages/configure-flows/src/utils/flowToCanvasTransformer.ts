@@ -479,6 +479,21 @@ function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
       });
     }
 
+    // Handle VARIABLES node -> onFailure step connection
+    if (stepType === StaticStepTypes.Variables && node.onFailure && nodeIds.has(node.onFailure)) {
+      edges.push({
+        id: `${node.id}-failure-to-${node.onFailure}`,
+        source: node.id,
+        sourceHandle: 'failure',
+        target: node.onFailure,
+        type: 'smoothstep',
+        animated: false,
+        markerEnd: {
+          type: MarkerType.Arrow,
+        },
+      });
+    }
+
     // Handle PROMPT/VIEW node button actions
     if (stepType === StepTypes.View) {
       const nodeActions = getNodeActions(node);

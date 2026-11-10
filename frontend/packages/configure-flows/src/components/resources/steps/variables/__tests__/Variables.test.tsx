@@ -20,6 +20,7 @@ vi.mock('@xyflow/react', () => ({
   Position: {
     Left: 'left',
     Right: 'right',
+    Bottom: 'bottom',
   },
 }));
 
@@ -100,9 +101,19 @@ describe('Variables', () => {
   it('should send the path on from the right, with a handle named after the node', () => {
     render(<Variables id="vars" />);
 
-    const handle = screen.getByTestId('handle-source');
-    expect(handle).toHaveAttribute('data-position', 'right');
+    const handle = screen
+      .getAllByTestId('handle-source')
+      .find((candidate) => candidate.dataset['position'] === 'right');
     expect(handle).toHaveAttribute('data-handle-id', 'vars_NEXT');
+  });
+
+  it('should send the failure path on from the bottom, with a handle named failure', () => {
+    render(<Variables id="vars" />);
+
+    const handle = screen
+      .getAllByTestId('handle-source')
+      .find((candidate) => candidate.dataset['position'] === 'bottom');
+    expect(handle).toHaveAttribute('data-handle-id', 'failure');
   });
 
   it('should remove its node from the graph when deleted', () => {
