@@ -174,7 +174,7 @@ A create request with neither `ouId` nor `projectId` fails with `FLM-1029`, and 
 
 ### Scope a Flow to a Project
 
-Every project on the control plane includes the system organization unit, and a flow in a project is placed there or in one of the project's own organization units. When you manage flows through the REST API or the MCP server on the control plane, pass a project ID to work within a project.
+Every project on the control plane includes the system organization unit, and a flow in a project is placed there or in one of the project's own organization units. When you manage flows through the REST API or the MCP server on the control plane, pass a project ID to work within a project. To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 - **Create**: set `projectId` in the body of `POST /flows`. Without `ouId`, the flow belongs to the system organization unit. With `ouId`, that organization unit must be the system organization unit or an organization unit of the project.
 - **Update**: a `PUT /flows/{flowId}` without `projectId`, or with the current one, keeps the flow in its project without checking the project again. A different `projectId` moves the flow to that project, after the same organization unit check.

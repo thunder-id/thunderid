@@ -94,7 +94,7 @@ If the change would grant more than you hold, the API returns `403 Forbidden` wi
 
 ## Scope Groups to a Project
 
-On the control plane, a group can belong to a project. A group without a `projectId` belongs to the organization, so the groups that exist today stay organization-level.
+On the control plane, a group can belong to a project. A group without a `projectId` belongs to no project, so the groups that exist today stay outside every project, under **Shared by all projects** in the Console. Which organization units can use it still follows its organization unit and sharing policy. See [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx). To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 When a project is selected in the Console, **Groups** lists only that project's groups, and **Create group** creates the group in the project. When the project has organization units, it asks which one the group belongs to, with the system organization unit as the default. With no project selected, **Groups** lists every group.
 
@@ -103,7 +103,7 @@ When a project is selected in the Console, **Groups** lists only that project's 
 - **List**: `GET /groups?projectId=<project-id>` returns the groups of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
 - **Delete the project**: a project that still has groups, runtime or declared, cannot be deleted. `DELETE /projects/{id}` fails with `PRJ-1013` until its groups are deleted or moved to another project.
 
-Group names are unique per organization unit. A project's groups in the system organization unit share it with every other project, so such a group cannot take the name of another project's group or of an organization-level group there.
+Group names are unique per organization unit. A project's groups in the system organization unit share it with every other project, so such a group cannot take the name of another project's group or of a group in no project there.
 
 A project organizes groups for management only. Members, nesting, and role assignments work the same whatever project a group belongs to.
 

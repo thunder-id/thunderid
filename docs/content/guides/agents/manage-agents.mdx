@@ -317,15 +317,15 @@ Deletion is permanent and revokes the agent's credentials. Tokens the agent was 
 
 ## Scope agents to a project
 
-Every project on the control plane includes the system organization unit, and an agent in a project is placed there or in one of the project's own organization units. When you manage agents through the REST API on the control plane, pass a project ID to work within a project.
+Every project on the control plane includes the system organization unit, and an agent in a project is placed there or in one of the project's own organization units. When you manage agents through the REST API on the control plane, pass a project ID to work within a project. To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
-- **List**: `GET /agents?projectId=<project-id>` returns the project's agents, followed by the ones shared into it. To narrow the list to one organization unit, add `filter=ouId eq "<ou-id>"`. That is the only filter accepted with `projectId`; any other filter fails with `AGT-1020`. A project that does not exist, or an organization unit outside the project, returns an empty list.
+- **List**: `GET /agents?projectId=<project-id>` returns the project's agents. To narrow the list to one organization unit, add `filter=ouId eq "<ou-id>"`. That is the only filter accepted with `projectId`; any other filter fails with `AGT-1020`. A project that does not exist, or an organization unit outside the project, returns an empty list.
 - **Create**: set `projectId` in the request body of `POST /agents`. Without `ouId` or `ouHandle`, the agent is placed in the system organization unit. With either one, it must be the system organization unit or an organization unit of the project.
 - **Update**: set `projectId` in the request body of `PUT /agents/<AGENT_ID>` to check that the agent stays in the project. The request still replaces the whole agent, as described in [Manage an agent](#manage-an-agent). The organization unit checked is the one the request names with `ouId` or `ouHandle`, or the agent's current one when the request names none. A project ID never moves the agent on its own.
 
 A project that does not exist fails a create or update with `AGT-1047`, and any other organization unit fails it with `AGT-1048`. On create, that includes an `ouId` that does not exist. An `ouHandle` that does not exist, an update that names an organization unit that does not exist, or a create request with none of `ouId`, `ouHandle`, and `projectId`, fails with `AGT-1005`.
 
-A data plane has no projects. It rejects a `projectId` in a create or update request with `AGT-1047`, and returns an empty list for `GET /agents?projectId=<project-id>`.
+A data plane has no projects. It keeps a `projectId` it receives without checking it, so configuration imported from a control plane keeps its project, and `GET /agents?projectId=<project-id>` returns the agents that carry that project ID.
 
 ## Related Guides
 

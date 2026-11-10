@@ -193,7 +193,7 @@ Deleting a role also removes its assignments and revokes the role's scopes from 
 
 ## Scope Roles to a Project
 
-On the control plane, a role can belong to a project. A role without a `projectId` belongs to no project, so the roles that exist today stay organization-level.
+On the control plane, a role can belong to a project. A role without a `projectId` belongs to no project, so the roles that exist today stay outside every project, under **Shared by all projects** in the Console. Which organization units can use it still follows its organization unit and sharing policy. See [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx). To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 When a project is selected in the Console, **Roles** lists only that project's roles, and **Create role** creates the role in the project. When the project has organization units, it asks which one the role belongs to, with the system organization unit as the default. With no project selected, **Roles** lists every role.
 
@@ -201,7 +201,7 @@ When a project is selected in the Console, **Roles** lists only that project's r
 - **Update without `projectId` or `ouId`**: the role keeps its current project and organization unit. A different `projectId` moves the role to that project, unless the role is shared with other organization units, which fails the request with `ROL-1029`.
 - **List**: `GET /roles?projectId=<project-id>` returns the roles of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
 
-Role names are unique per organization unit. A project's roles in the system organization unit share it with every other project, so such a role cannot take the name of another project's role or of an organization-level role there.
+Role names are unique per organization unit. A project's roles in the system organization unit share it with every other project, so such a role cannot take the name of another project's role or of a role in no project there.
 
 A project groups roles for management only. Assignments, sharing, and the role names that tokens carry work the same whatever project a role belongs to.
 

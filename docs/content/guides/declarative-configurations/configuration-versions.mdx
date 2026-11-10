@@ -315,8 +315,9 @@ gateway to deploy the version to first.
 
 A diff and an apply can be scoped to one project with its id: `GET /gateways/{id}/diff?project=<id>`,
 or `"project": "<id>"` in the apply's body. A project's own resources are those whose documents name it
-in `projectId`, such as its applications and agents. Organization units, users and groups name no
-project, so they are shared. Each change of the diff is then placed in a
+in `projectId`, such as its applications and agents. A resource that names no project, such as the
+system organization unit or a user or group in no project, is shared. See
+[Projects](../../key-concepts/projects.mdx). Each change of the diff is then placed in a
 `section`:
 
 | Section | What it holds | Sent by default |

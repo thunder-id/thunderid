@@ -165,7 +165,7 @@ To import a user whose shares carry roles, put the user, the role, and the share
 
 ## Scope Users to a Project
 
-On the control plane, a user can belong to a project. A user without a `projectId` belongs to the organization, so the users that exist today stay organization-level.
+On the control plane, a user can belong to a project. A user without a `projectId` belongs to no project, so the users that exist today stay outside every project. Which organization units can use it still follows its organization unit and sharing policy. See [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx). To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 When a project is selected in the Console, **Users** lists only that project's users, and **Add user** creates the user in the project. When the project has organization units, it asks which one the user belongs to, offering only the ones the user type allows, with the first of them selected. A user type that can't be used in the project is reported before the user is created. With no project selected, **Administrators** lists every user, including the users of each project.
 

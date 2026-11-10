@@ -1,0 +1,168 @@
+---
+title: Manage Projects
+docType: guide
+sidebar_position: 1
+description: Create, list, update, and delete projects on the control plane through the Console and the REST API, and manage them with the MCP server or resource files.
+---
+
+# Manage Projects
+
+Create a project for each product or team on the control plane, then create its applications, agents, flows, and branding inside it. To learn what a project holds and how it relates to organization units, see [Projects](../../key-concepts/projects.mdx).
+
+## Prerequisites
+
+- A <ProductName /> control plane. See [Run the Control Plane and Data Plane together with Docker](../../deployment/deployment-paths/docker.mdx#run-the-control-plane-and-data-plane-together-with-docker).
+- For the REST API, an access token with a project permission or the root `system` permission. See [Permissions](#permissions).
+
+## Work in a Project in the Console
+
+The control plane Console opens in the **Default** project. The project you work in is part of the page address, such as `/project/default/applications`, so a reload or a shared link opens the same project.
+
+- **Switch projects**: select another project from the **Project** list in the header. The Console stays on the same page, such as **Applications**, in the project you select.
+- **Leave the project**: click **Clear project selection** beside the **Project** list to open the projects list. With no project open, click **Select project** in the header to open one.
+
+Inside a project, the sidebar shows the project's **Overview** and **Deployment pipeline**, followed by its resources under **Build**, **Identities**, and **Customize**. Outside a project, the sidebar shows **Projects**, **Administrators**, and **Deployment**, and lists the resources that are not in any project under **Shared by all projects**.
+
+## Create a Project
+
+1. In the control plane Console, click **Clear project selection** in the header to leave the project you are in.
+2. Select **Projects** in the sidebar and click **Add project**.
+3. Enter a **Name** for the project.
+4. Check the **Handle**. The Console fills it in from the name until you edit it. The handle cannot change after you create the project.
+5. Optionally, enter a **Description**.
+6. Click **Create**.
+
+The Console opens the **Applications** page of the new project.
+
+To create a project through the REST API, send a `POST` request to `/projects` with the project's handle and display name.
+
+```bash
+curl -kL -X POST "https://localhost:8095/projects" \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "handle": "shop",
+    "displayName": "Shop",
+    "description": "Online shop"
+  }'
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `handle` | Yes | Identifier of the project, unique across the control plane. Up to 100 characters of lowercase letters, numbers, hyphens, and underscores. It cannot change after the project is created. |
+| `displayName` | Yes | Name shown for the project. Up to 100 characters. |
+| `description` | No | Up to 255 characters. |
+| `id` | No | A UUID to use as the project's ID, so a project managed across several systems keeps one ID. Without it, <ProductName /> generates one. |
+
+The response is `201 Created` with the project, including its `id` and `createdAt`. Use the `id` as the `projectId` of the resources you create in the project.
+
+## List and View Projects
+
+In the Console, click **Clear project selection** in the header, then select **Projects** in the sidebar. Search by name, handle, or description, and click a project to open it.
+
+Through the REST API, `GET /projects` returns the projects, oldest first. Page through them with `limit`, from 1 to 100 and 30 by default, and `offset`.
+
+```bash
+curl -kL "https://localhost:8095/projects?limit=10&offset=0" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+`GET /projects/{id}` returns one project, or `404` (`PRJ-1002`) when no project has that ID.
+
+## Update a Project
+
+The Console does not edit projects. Send a `PUT` request to `/projects/{id}` with the display name and description. The request replaces both, so a request without `description` clears it.
+
+```bash
+curl -kL -X PUT "https://localhost:8095/projects/<project-id>" \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "handle": "shop",
+    "displayName": "Online Shop",
+    "description": "Storefront and checkout"
+  }'
+```
+
+The handle cannot change. Leave `handle` out or send the current one. A different handle fails the request with `PRJ-1007`.
+
+## Delete a Project
+
+1. In the control plane Console, click **Clear project selection** in the header to leave the project you are in.
+2. Select **Projects** in the sidebar.
+3. On the project's card, click the delete action.
+4. Click **Delete** to confirm.
+
+Through the REST API, send a `DELETE` request to `/projects/{id}`. The response is `204 No Content`, also when no project has that ID.
+
+```bash
+curl -kL -X DELETE "https://localhost:8095/projects/<project-id>" \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+A project that still holds resources cannot be deleted. The request fails with `409` (`PRJ-1013`) while the project has any of these:
+
+- Applications, agents, or users
+- Groups
+- Organization units
+- Flows, themes, or layouts
+- Notification templates
+- Credential configurations or presentation definitions
+
+Delete these resources or move them to another project first. A resource defined in a declarative resource file cannot be deleted or moved through the API, so remove it from the file or change its `projectId` there, and restart the server. See each resource's guide, for example [Organization Units in Projects](../organization-units/manage-organization-units.mdx#organization-units-in-projects).
+## Use the MCP Server
+
+The <ProductName /> MCP server on the control plane offers these project tools:
+
+| Tool | Description |
+|---|---|
+| `list_projects` | Lists every project, oldest first. |
+| `get_project_by_id` | Returns one project. |
+| `create_project` | Creates a project. |
+| `update_project` | Replaces the display name and description of a project. The handle cannot change. |
+
+The MCP server has no tool to delete a project. Use the REST API or the Console instead. See [MCP Server](../../working-with-ai/mcp-server.mdx).
+
+## Declare Projects in Resource Files
+
+A project is a `project` document in an import or a bootstrap file, and an export of the control plane writes one for each project.
+
+```yaml
+resource_type: project
+id: 019a0000-0000-7000-8000-000000000001
+handle: shop
+displayName: Shop
+description: Online shop
+```
+
+A project document must carry its `id`. An import creates the project when no project has that ID. With upsert, it updates the display name and description of an existing project, and the handle still cannot change. Without upsert, an existing ID fails the document with `PRJ-1006`.
+
+A data plane has no projects, so an import there skips a `project` document and reports it as not imported. See [Import Resources](../declarative-configurations/import-resources.mdx) and [Export Resources](../resource-export.mdx).
+
+## Permissions
+
+The project APIs and MCP tools accept the root `system` permission or a project permission: `system:project:view` to list and read projects, `system:project:create`, `system:project:update`, and `system:project:delete`, or `system:project` for every action. The resources inside a project are authorized by their own permissions, such as `system:app` for applications. See [System Permissions](../users/manage-roles.mdx#system-permissions).
+
+## Error Codes
+
+| Code | Status | Cause |
+|---|---|---|
+| `PRJ-1001` | `400` | The request body is malformed. |
+| `PRJ-1002` | `404` | No project has the given ID. |
+| `PRJ-1003` | `400` | The display name is missing or longer than 100 characters. |
+| `PRJ-1004` | `400` | The description is longer than 255 characters. |
+| `PRJ-1005` | `400` | The supplied `id` is not a UUID. |
+| `PRJ-1006` | `409` | Another project already has the supplied `id`. |
+| `PRJ-1007` | `400` | An update sends a handle other than the current one. |
+| `PRJ-1008` | `400` | `limit` is not an integer from 1 to 100. |
+| `PRJ-1009` | `400` | `offset` is negative or not an integer. |
+| `PRJ-1011` | `400` | The handle is missing, longer than 100 characters, or has characters other than lowercase letters, numbers, hyphens, and underscores. |
+| `PRJ-1012` | `409` | Another project already has the handle. |
+| `PRJ-1013` | `409` | The project still holds resources that block a delete. |
+| `PRJ-1014` | `403` | A control plane deployed the project, so it can change only there. |
+
+## Next Steps
+
+- [Projects](../../key-concepts/projects.mdx)
+- [Scope Applications to a Project](../applications/manage-applications.mdx#scope-applications-to-a-project)
+- [Deploy One Project](../declarative-configurations/configuration-versions.mdx#deploy-one-project)

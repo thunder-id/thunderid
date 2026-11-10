@@ -57,7 +57,7 @@ Manage configurations in **Verifiable Credentials → Templates** in the <Produc
 
 ### Credential Configurations in Projects
 
-On the control plane, every credential configuration belongs to a project.
+On the control plane, every credential configuration belongs to a project. To learn what a project is, see [Projects](../../../key-concepts/projects.mdx).
 
 - **Create**: set `projectId` in the request body of `POST /openid4vci/credential-configurations`. Without `ouId`, the configuration goes into the system organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. A request without `projectId` fails with `VCI-2015`, a project that does not exist fails with `VCI-2013`, and any other organization unit fails with `VCI-2014`.
 - **List**: `GET /openid4vci/credential-configurations?projectId=<project-id>` returns the configurations of the project. A project that does not exist returns an empty list.
