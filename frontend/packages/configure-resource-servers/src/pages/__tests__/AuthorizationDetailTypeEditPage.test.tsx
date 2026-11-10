@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {act, renderWithProviders, screen, userEvent, fireEvent, waitFor, within} from '@thunderid/test-utils';
 import type {MouseEvent, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -160,6 +160,24 @@ describe('AuthorizationDetailTypeEditPage', () => {
     renderWithProviders(<AuthorizationDetailTypeEditPage />);
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it("shows a type of the selected project, and returns from another project's", () => {
+    loaded({...paymentType, projectId: 'project-1'});
+    const {unmount} = renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AuthorizationDetailTypeEditPage />
+      </ProjectScopeProvider>,
+    );
+    expect(screen.getByRole('heading', {name: 'Payment initiation'})).toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-2'}}>
+        <AuthorizationDetailTypeEditPage />
+      </ProjectScopeProvider>,
+    );
+    expect(screen.queryByRole('heading', {name: 'Payment initiation'})).toBeNull();
   });
 
   it('loads the type by its id and shows it across the tabs', async () => {

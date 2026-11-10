@@ -44,6 +44,8 @@ const (
 	maxSchemaLength = 64 << 10
 	// maxTypeIDLength bounds a supplied type id to the width of the store's ID column.
 	maxTypeIDLength = 36
+	// maxProjectIDLength is the width of the PROJECT_ID column. A longer project ID names no project.
+	maxProjectIDLength = 36
 )
 
 // templateBraces matches any text between double braces in a consent template.
@@ -62,6 +64,12 @@ type AuthorizationDetailMgtServiceInterface interface {
 	// ListAuthorizationDetailTypes lists the registered types, a page at a time.
 	ListAuthorizationDetailTypes(ctx context.Context, limit, offset int) (*AuthorizationDetailTypePage,
 		*tidcommon.ServiceError)
+	// ListAuthorizationDetailTypesByProject lists the types of a project, a page at a time. A project that does
+	// not exist has none.
+	ListAuthorizationDetailTypesByProject(ctx context.Context, projectID string, limit, offset int) (
+		*AuthorizationDetailTypePage, *tidcommon.ServiceError)
+	// ProjectHasAuthorizationDetailTypes reports whether a type belongs to the project.
+	ProjectHasAuthorizationDetailTypes(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	// UpdateAuthorizationDetailType updates a type.
 	UpdateAuthorizationDetailType(ctx context.Context, id string, t providers.AuthorizationDetailType) (
 		*providers.AuthorizationDetailType, *tidcommon.ServiceError)
@@ -86,6 +94,16 @@ type authorizationDetailMgtService struct {
 	// managed says which types a control plane deployed, which stay read only here. Nil where nothing
 	// is deployed from one.
 	managed managedresource.StoreInterface
+	// projects checks the project a type names. Nil on a deployment that serves no projects, which keeps the
+	// project ID unchecked.
+	projects projectChecker
+	// projectRequired is set on a deployment that serves projects, where every type belongs to one.
+	projectRequired bool
+}
+
+// projectChecker reads whether a project exists.
+type projectChecker interface {
+	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
 // newAuthorizationDetailMgtService creates a new authorizationDetailMgtService.
@@ -111,6 +129,12 @@ func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx contex
 		return nil, &ErrorDeclarativeModeCreateNotAllowed
 	}
 	if svcErr := validateTypeDefinition(t); svcErr != nil {
+		return nil, svcErr
+	}
+	if t.ProjectID == "" && s.projectRequired {
+		return nil, &ErrorProjectRequired
+	}
+	if svcErr := s.validateProject(ctx, t.ProjectID); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := setProcessorAuthentication(&t, nil); svcErr != nil {
@@ -216,10 +240,48 @@ func refuseReadOnly(ctx context.Context, t *providers.AuthorizationDetailType,
 // ListAuthorizationDetailTypes lists the registered types, a page at a time.
 func (s *authorizationDetailMgtService) ListAuthorizationDetailTypes(ctx context.Context,
 	limit, offset int) (*AuthorizationDetailTypePage, *tidcommon.ServiceError) {
+	return s.listTypePage(ctx, limit, offset,
+		func() (int, error) { return s.typeStore.CountTypes(ctx) },
+		func() ([]providers.AuthorizationDetailType, error) {
+			return s.typeStore.ListTypePage(ctx, limit, offset)
+		})
+}
+
+// ListAuthorizationDetailTypesByProject lists the types of a project, a page at a time. An empty project ID names
+// no project, so it lists none rather than every type.
+func (s *authorizationDetailMgtService) ListAuthorizationDetailTypesByProject(ctx context.Context,
+	projectID string, limit, offset int) (*AuthorizationDetailTypePage, *tidcommon.ServiceError) {
+	if projectID == "" {
+		return s.listTypePage(ctx, limit, offset, func() (int, error) { return 0, nil },
+			func() ([]providers.AuthorizationDetailType, error) { return []providers.AuthorizationDetailType{}, nil })
+	}
+	return s.listTypePage(ctx, limit, offset,
+		func() (int, error) { return s.typeStore.CountTypesByProject(ctx, projectID) },
+		func() ([]providers.AuthorizationDetailType, error) {
+			return s.typeStore.ListTypePageByProject(ctx, projectID, limit, offset)
+		})
+}
+
+// ProjectHasAuthorizationDetailTypes reports whether a type belongs to the project.
+func (s *authorizationDetailMgtService) ProjectHasAuthorizationDetailTypes(ctx context.Context,
+	projectID string) (bool, *tidcommon.ServiceError) {
+	count, err := s.typeStore.CountTypesByProject(ctx, projectID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to check the authorization details types of a project",
+			log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
+}
+
+// listTypePage reads a page of types and their total, and marks the ones a control plane deployed.
+func (s *authorizationDetailMgtService) listTypePage(ctx context.Context, limit, offset int,
+	count func() (int, error), list func() ([]providers.AuthorizationDetailType, error),
+) (*AuthorizationDetailTypePage, *tidcommon.ServiceError) {
 	if limit < 1 || limit > serverconst.MaxPageSize || offset < 0 {
 		return nil, &ErrorInvalidPagination
 	}
-	total, err := s.typeStore.CountTypes(ctx)
+	total, err := count()
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ErrorResultLimitExceededInCompositeMode
@@ -227,7 +289,7 @@ func (s *authorizationDetailMgtService) ListAuthorizationDetailTypes(ctx context
 		s.logger.Error(ctx, "Failed to count authorization details types", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	types, err := s.typeStore.ListTypePage(ctx, limit, offset)
+	types, err := list()
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ErrorResultLimitExceededInCompositeMode
@@ -266,6 +328,15 @@ func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx contex
 	if svcErr := validateTypeDefinition(t); svcErr != nil {
 		return nil, svcErr
 	}
+	// An update that names no project keeps the type's project, and the project is checked only when the type
+	// moves to another one.
+	if t.ProjectID == "" {
+		t.ProjectID = existing.ProjectID
+	} else if t.ProjectID != existing.ProjectID {
+		if svcErr := s.validateProject(ctx, t.ProjectID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 	if svcErr := setProcessorAuthentication(&t, existing.Processor); svcErr != nil {
 		return nil, svcErr
 	}
@@ -282,7 +353,7 @@ func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx contex
 	// An equivalent but reordered schema is still stored (it drives consent field order), without a version bump.
 	if !changesGrant && sameJSONText(t.Schema, existing.Schema) && t.ConsentTemplate == existing.ConsentTemplate &&
 		t.Name == existing.Name &&
-		t.Description == existing.Description &&
+		t.Description == existing.Description && t.ProjectID == existing.ProjectID &&
 		t.Reuse == existing.Reuse && reflect.DeepEqual(t.Processor, existing.Processor) {
 		return existing, nil
 	}
@@ -307,6 +378,31 @@ func (s *authorizationDetailMgtService) updateMissedError(ctx context.Context, i
 		return svcErr
 	}
 	return &ErrorTypeChanged
+}
+
+// validateProject checks the project a type names. A deployment that serves no projects, such as a data plane,
+// cannot check it and keeps the project ID as given so that imported configuration retains it, but refuses one
+// longer than the column holds.
+func (s *authorizationDetailMgtService) validateProject(ctx context.Context, projectID string) *tidcommon.ServiceError {
+	if projectID == "" {
+		return nil
+	}
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorInvalidProject
+	}
+	if s.projects == nil {
+		return nil
+	}
+	exists, svcErr := s.projects.ProjectExists(ctx, projectID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check the project of an authorization details type",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	if !exists {
+		return &ErrorInvalidProject
+	}
+	return nil
 }
 
 // checkWriteAccess refuses a caller who may not write an authorization details type.

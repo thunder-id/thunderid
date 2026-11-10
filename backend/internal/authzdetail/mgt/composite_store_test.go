@@ -87,6 +87,30 @@ func (s *CompositeStoreTestSuite) TestStore() {
 	s.True(isDeclarative)
 }
 
+// A project's types are counted and paged from both stores, a type both hold once.
+func (s *CompositeStoreTestSuite) TestByProject() {
+	fileType := paymentType()
+	fileType.ProjectID = testProjectID
+	dbType := flightType()
+	dbType.ProjectID = testProjectID
+	otherType := flightType()
+	otherType.ID, otherType.Type, otherType.ProjectID = "type-3", "other", testOtherProjectID
+	dbStore := newTypeStoreInterfaceMock(s.T())
+	composite := newCompositeTypeStore(newTestFileStore(s.T(), fileType), dbStore)
+	dbStore.EXPECT().ListTypes(mock.Anything).
+		Return([]providers.AuthorizationDetailType{dbType, otherType, fileType}, nil).Times(3)
+
+	count, err := composite.CountTypesByProject(s.ctx, testProjectID)
+	s.NoError(err)
+	s.Equal(2, count)
+	page, err := composite.ListTypePageByProject(s.ctx, testProjectID, 1, 1)
+	s.Require().NoError(err)
+	s.Equal([]string{testPaymentType}, []string{page[0].Type})
+	page, err = composite.ListTypePageByProject(s.ctx, testOtherProjectID, 10, 0)
+	s.Require().NoError(err)
+	s.Equal([]string{"other"}, []string{page[0].Type})
+}
+
 func (s *CompositeStoreTestSuite) TestDatabaseErrors() {
 	dbStore := newTypeStoreInterfaceMock(s.T())
 	composite := newCompositeTypeStore(newTestFileStore(s.T()), dbStore)

@@ -13,7 +13,7 @@ import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
 import type {ProjectRoutePaths} from '@thunderid/configure-projects';
-import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
+import type {AuthorizationDetailTypeRoutePaths, ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
 import type {TranslationRoutePaths} from '@thunderid/configure-translations';
 import type {UserTypeRoutePaths} from '@thunderid/configure-user-types';
@@ -55,6 +55,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   ApplicationRoutePaths &
   ConnectionRoutePaths &
   ResourceServerRoutePaths &
+  AuthorizationDetailTypeRoutePaths &
   TranslationRoutePaths &
   VerifiableCredentialRoutePaths &
   ImportExportRoutePaths &
@@ -86,6 +87,7 @@ export const ROUTE_SEGMENTS = {
   connections: 'connections',
   trustedIssuers: 'trusted-issuers',
   resourceServers: 'resource-servers',
+  authorizationDetailTypes: 'authorization-detail-types',
   translations: 'translations',
   notificationTemplates: 'notification-templates',
   home: 'home',
@@ -148,6 +150,11 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.resourceServers}`,
     detail: (resourceServerId) => `/${ROUTE_SEGMENTS.resourceServers}/${resourceServerId}`,
     create: () => `/${ROUTE_SEGMENTS.resourceServers}/create`,
+  },
+  authorizationDetailTypes: {
+    list: () => `/${ROUTE_SEGMENTS.authorizationDetailTypes}`,
+    detail: (id) => `/${ROUTE_SEGMENTS.authorizationDetailTypes}/${id}`,
+    create: () => `/${ROUTE_SEGMENTS.authorizationDetailTypes}/create`,
   },
   translations: {
     list: () => `/${ROUTE_SEGMENTS.translations}`,
@@ -240,6 +247,7 @@ const PROJECT_SCOPED_DOMAINS = [
   'users',
   'agents',
   'resourceServers',
+  'authorizationDetailTypes',
   'notificationTemplates',
   'applications',
   'groups',

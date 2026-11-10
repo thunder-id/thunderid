@@ -100,6 +100,22 @@ func (f *typeFileBasedStore) ListTypePage(ctx context.Context, limit, offset int
 	return pageOf(types, limit, offset), nil
 }
 
+// CountTypesByProject counts the types of a project.
+func (f *typeFileBasedStore) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
+	types, err := f.ListTypes(ctx)
+	return len(typesOfProject(types, projectID)), err
+}
+
+// ListTypePageByProject lists one page of the types of a project, ordered by type value.
+func (f *typeFileBasedStore) ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]providers.AuthorizationDetailType, error) {
+	types, err := f.ListTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pageOf(typesOfProject(types, projectID), limit, offset), nil
+}
+
 // UpdateType is not supported in the file-based store.
 func (f *typeFileBasedStore) UpdateType(_ context.Context, _ providers.AuthorizationDetailType, _ bool) error {
 	return errTypeImmutable

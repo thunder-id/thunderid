@@ -83,6 +83,22 @@ func (c *compositeTypeStore) ListTypePage(ctx context.Context, limit, offset int
 	return pageOf(types, limit, offset), nil
 }
 
+// CountTypesByProject counts the types of a project in both stores, counting a type both hold once.
+func (c *compositeTypeStore) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
+	types, err := c.listCappedTypes(ctx)
+	return len(typesOfProject(types, projectID)), err
+}
+
+// ListTypePageByProject lists one page of the types of a project in both stores.
+func (c *compositeTypeStore) ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]providers.AuthorizationDetailType, error) {
+	types, err := c.listCappedTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pageOf(typesOfProject(types, projectID), limit, offset), nil
+}
+
 // listCappedTypes lists the types of both stores, refusing a merged list over the composite mode limit.
 func (c *compositeTypeStore) listCappedTypes(ctx context.Context) ([]providers.AuthorizationDetailType, error) {
 	types, err := c.ListTypes(ctx)
@@ -127,6 +143,17 @@ func pageOf(types []providers.AuthorizationDetailType, limit, offset int) []prov
 	start := min(offset, len(types))
 	end := min(start+limit, len(types))
 	return types[start:end]
+}
+
+// typesOfProject keeps the types that belong to the project.
+func typesOfProject(types []providers.AuthorizationDetailType, projectID string) []providers.AuthorizationDetailType {
+	kept := make([]providers.AuthorizationDetailType, 0, len(types))
+	for _, t := range types {
+		if t.ProjectID == projectID {
+			kept = append(kept, t)
+		}
+	}
+	return kept
 }
 
 // mergeTypes merges the types of both stores, ordered by type value; database types win on id clashes.

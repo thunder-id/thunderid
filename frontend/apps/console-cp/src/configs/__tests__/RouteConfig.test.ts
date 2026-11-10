@@ -63,6 +63,15 @@ describe('RouteConfig', () => {
     expect(RouteConfig.trustedIssuers.detail('issuer-1')).toBe('/trusted-issuers/issuer-1');
   });
 
+  it('authorizationDetailTypes builds paths from the segment, under the project inside one', () => {
+    expect(RouteConfig.authorizationDetailTypes.list()).toBe('/authorization-detail-types');
+    expect(RouteConfig.authorizationDetailTypes.detail('type-1')).toBe('/authorization-detail-types/type-1');
+    expect(RouteConfig.authorizationDetailTypes.create()).toBe('/authorization-detail-types/create');
+    expect(projectRouteConfig('shop').authorizationDetailTypes.create()).toBe(
+      '/project/shop/authorization-detail-types/create',
+    );
+  });
+
   it('resourceServers builds paths from the segment', () => {
     expect(RouteConfig.resourceServers.list()).toBe('/resource-servers');
     expect(RouteConfig.resourceServers.detail('rs-1')).toBe('/resource-servers/rs-1');

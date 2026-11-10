@@ -18,6 +18,9 @@ import (
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
+// projectIDQueryParam is the list query parameter that names a project.
+const projectIDQueryParam = "projectId"
+
 // authorizationDetailHandler handles HTTP requests for authorization details type management.
 type authorizationDetailHandler struct {
 	service AuthorizationDetailMgtServiceInterface
@@ -28,15 +31,27 @@ func newAuthorizationDetailHandler(service AuthorizationDetailMgtServiceInterfac
 	return &authorizationDetailHandler{service: service}
 }
 
-// HandleTypeListRequest lists the authorization details types, a page at a time.
+// HandleTypeListRequest lists the authorization details types, a page at a time, or a project's when the projectId
+// query parameter names one.
 func (h *authorizationDetailHandler) HandleTypeListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	limit, offset, ok := parsePagination(r.URL.Query())
+	query := r.URL.Query()
+	limit, offset, ok := parsePagination(query)
 	if !ok {
 		handleError(ctx, w, &ErrorInvalidPagination)
 		return
 	}
-	page, svcErr := h.service.ListAuthorizationDetailTypes(ctx, limit, offset)
+	var page *AuthorizationDetailTypePage
+	var svcErr *tidcommon.ServiceError
+	extraQuery := ""
+	// An empty projectId= still takes the project branch, and lists no types rather than every one.
+	if query.Has(projectIDQueryParam) {
+		projectID := sysutils.SanitizeString(query.Get(projectIDQueryParam))
+		page, svcErr = h.service.ListAuthorizationDetailTypesByProject(ctx, projectID, limit, offset)
+		extraQuery = "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID)
+	} else {
+		page, svcErr = h.service.ListAuthorizationDetailTypes(ctx, limit, offset)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -48,7 +63,7 @@ func (h *authorizationDetailHandler) HandleTypeListRequest(w http.ResponseWriter
 		Count:        len(page.Types),
 		Types:        make([]AuthorizationDetailTypeResponse, 0, len(page.Types)),
 		Links: sysutils.BuildPaginationLinks("/authorization-detail-types", limit, offset,
-			page.TotalResults, ""),
+			page.TotalResults, extraQuery),
 	}
 	for _, t := range page.Types {
 		response.Types = append(response.Types, toTypeResponse(t))
@@ -173,6 +188,7 @@ func typeFromRequest(req *AuthorizationDetailTypeRequest) providers.Authorizatio
 		Schema:          req.Schema,
 		ConsentTemplate: req.ConsentTemplate,
 		Reuse:           req.Reuse != nil && *req.Reuse,
+		ProjectID:       sysutils.SanitizeString(req.ProjectID),
 	}
 	if req.Processor != nil {
 		t.Processor = &providers.AuthorizationDetailProcessor{Endpoint: req.Processor.Endpoint}
@@ -193,6 +209,7 @@ func toTypeResponse(t providers.AuthorizationDetailType) AuthorizationDetailType
 		Processor:       processorResponse(t.Processor),
 		Reuse:           t.Reuse,
 		IsReadOnly:      t.IsReadOnly,
+		ProjectID:       t.ProjectID,
 	}
 }
 

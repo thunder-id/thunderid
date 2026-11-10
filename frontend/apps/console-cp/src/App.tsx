@@ -86,6 +86,19 @@ const ResourceServerEditPage = lazy(() =>
 const CreateResourceServerPage = lazy(() =>
   import('@thunderid/configure-resource-servers').then((m) => ({default: m.CreateResourceServerPage})),
 );
+const AuthorizationDetailTypesListPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.AuthorizationDetailTypesListPage})),
+);
+const AuthorizationDetailTypeEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-resource-servers').then((m) => ({default: m.AuthorizationDetailTypeEditPage})),
+  ),
+);
+const CreateAuthorizationDetailTypePage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-resource-servers').then((m) => ({default: m.CreateAuthorizationDetailTypePage})),
+  ),
+);
 
 const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentOnboardPage})));
 const AgentEditPage = lazy(() =>
@@ -225,6 +238,11 @@ function projectDashboardRoutes(): JSX.Element {
       <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
       <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
       <Route path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`} element={<ResourceServerEditPage />} />
+      <Route
+        path={ROUTE_SEGMENTS.authorizationDetailTypes}
+        element={<AuthorizationDetailTypesListPage createInProjectsOnly />}
+      />
+      <Route path={`${ROUTE_SEGMENTS.authorizationDetailTypes}/:id`} element={<AuthorizationDetailTypeEditPage />} />
       <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
       <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
       <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
@@ -319,6 +337,9 @@ function projectFullScreenRoutes(): JSX.Element {
       </Route>
       <Route path={`${ROUTE_SEGMENTS.verifiableCredentials}/create`} element={<FullScreenLayout />}>
         <Route index element={<VerifiableCredentialCreatePage createInProjectsOnly />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.authorizationDetailTypes}/create`} element={<FullScreenLayout />}>
+        <Route index element={<CreateAuthorizationDetailTypePage createInProjectsOnly />} />
       </Route>
       <Route
         element={

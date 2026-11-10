@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DiscardChangesDialog, DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateAuthorizationDetailType from '../api/useCreateAuthorizationDetailType';
 import FieldsSection from '../components/authorization-detail-types/FieldsSection';
 import GeneralSection from '../components/authorization-detail-types/GeneralSection';
@@ -44,8 +45,22 @@ const STEP_SECTION: Record<AuthorizationDetailTypeCreateStep, AuthorizationDetai
 /** The id of the content of the current step. */
 const STEP_CONTENT_ID = 'authorization-detail-type-step';
 
-export default function CreateAuthorizationDetailTypePage(): JSX.Element {
+/**
+ * Props for the {@link CreateAuthorizationDetailTypePage} component.
+ */
+export interface CreateAuthorizationDetailTypePageProps {
+  /**
+   * Whether an intent is created in a project only. When set, the page returns to the list outside a selected
+   * project, since an intent created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function CreateAuthorizationDetailTypePage({
+  createInProjectsOnly = false,
+}: CreateAuthorizationDetailTypePageProps): JSX.Element {
   const navigate = useNavigate();
+  const {projectId} = useProjectScope();
   const routes = useAuthorizationDetailTypeRoutes();
   const {t} = useTranslation();
   const logger = useLogger('CreateAuthorizationDetailTypePage');
@@ -133,28 +148,32 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
     }
 
     submittingRef.current = true;
-    createType.mutate(form.buildRequest(), {
-      onSuccess: (created) => {
-        // The wizard is left behind, so going back does not open it again, empty.
-        (async (): Promise<void> => {
-          await navigate(routes.detail(created.id), {replace: true});
-        })().catch((err: unknown) => {
-          logger.error('Failed to navigate after create', {error: err});
-        });
+    // Inside a project the intent is created in it.
+    createType.mutate(
+      {...form.buildRequest(), ...(projectId ? {projectId} : {})},
+      {
+        onSuccess: (created) => {
+          // The wizard is left behind, so going back does not open it again, empty.
+          (async (): Promise<void> => {
+            await navigate(routes.detail(created.id), {replace: true});
+          })().catch((err: unknown) => {
+            logger.error('Failed to navigate after create', {error: err});
+          });
+        },
+        onError: (err: Error) => {
+          submittingRef.current = false;
+          logger.error('Failed to create intent', errorLogDetails(err));
+          // An error about one value opens the step that edits it, where it is shown beside the value
+          // and takes focus. The fields select the field an error is about themselves.
+          const target = form.reportSaveError(err);
+          const step = target && STEP_ORDER.find((candidate) => STEP_SECTION[candidate] === SAVE_ERROR_SECTION[target]);
+          if (target && step) {
+            setCurrentStep(step);
+            if (step !== AuthorizationDetailTypeCreateStep.FIELDS) focusProblem({containerId: STEP_CONTENT_ID, target});
+          }
+        },
       },
-      onError: (err: Error) => {
-        submittingRef.current = false;
-        logger.error('Failed to create intent', errorLogDetails(err));
-        // An error about one value opens the step that edits it, where it is shown beside the value
-        // and takes focus. The fields select the field an error is about themselves.
-        const target = form.reportSaveError(err);
-        const step = target && STEP_ORDER.find((candidate) => STEP_SECTION[candidate] === SAVE_ERROR_SECTION[target]);
-        if (target && step) {
-          setCurrentStep(step);
-          if (step !== AuthorizationDetailTypeCreateStep.FIELDS) focusProblem({containerId: STEP_CONTENT_ID, target});
-        }
-      },
-    });
+    );
   };
 
   const handleBack = (): void => {
@@ -171,6 +190,10 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
         return <GeneralSection form={form} />;
     }
   };
+
+  if (createInProjectsOnly && !projectId) {
+    return <Navigate to={routes.list()} replace />;
+  }
 
   return (
     <>

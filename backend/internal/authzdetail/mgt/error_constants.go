@@ -267,4 +267,32 @@ var (
 				"be changed there",
 		},
 	}
+	// ErrorProjectRequired is the error returned when a type is created without a project on a deployment
+	// that serves projects.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.authorizationdetailservice.project_required_description",
+			DefaultValue: "An authorization details type must belong to a project. " +
+				"Set projectId to the project it belongs to",
+		},
+	}
+	// ErrorInvalidProject is the error returned when a type names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
 )

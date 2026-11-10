@@ -286,7 +286,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceServerProvider := resource.NewDefaultAwareResourceServerProvider(resourceService, serverConfigService)
 
 	// Initialize authorization details type management and processing.
-	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, nil, ouAuthzService)
+	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(
+		mux, mcpServer, nil, ouAuthzService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 	authzDetailService := authzdetailexec.Initialize(authzDetailMgtService,
