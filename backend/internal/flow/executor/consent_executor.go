@@ -71,6 +71,7 @@ func newConsentExecutor(
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: "timeout"},
 				{Property: propertyKeyConsentFailOnDeny},
+				{Property: propertyKeyConsentPromptValidityPeriod},
 			},
 		})
 
@@ -153,9 +154,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	}
 	appName := ctx.Application.Name
 	// The request can ask for a fresh consent (prompt=consent, CIBA), and so can the client's own setting.
-	loginConsent := ctx.Application.LoginConsent
-	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true" ||
-		(loginConsent != nil && loginConsent.AlwaysPrompt != nil && *loginConsent.AlwaysPrompt)
+	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true" || e.alwaysPromptsConsent(ctx)
 	authorizationDetails, err := requestedAuthorizationDetails(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the requested authorization details: %w", err)
@@ -228,6 +227,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	execResp.ForwardedData[common.ForwardedDataKeyConsentPrompt] = promptData.Purposes
 	execResp.AdditionalData[common.DataConsentPrompt] = string(promptJSON)
 	e.addClientHosts(ctx, execResp)
+	e.addValidityInput(ctx, execResp)
 
 	// Store the session token in RuntimeData for validation during consent recording
 	if promptData.SessionToken != "" {
@@ -264,6 +264,69 @@ func (e *consentExecutor) addClientHosts(ctx *providers.NodeContext, execResp *p
 	execResp.AdditionalData[common.DataRedirectURIHost] = redirectURIHost
 	execResp.AdditionalData[common.DataRedirectURILoopback] =
 		strconv.FormatBool(sysutils.IsLoopbackRedirectHost(redirectURIHost))
+}
+
+// alwaysPromptsConsent reports whether the application or agent asks for consent on every authorization.
+func (e *consentExecutor) alwaysPromptsConsent(ctx *providers.NodeContext) bool {
+	loginConsent := ctx.Application.LoginConsent
+	return loginConsent != nil && loginConsent.AlwaysPrompt != nil && *loginConsent.AlwaysPrompt
+}
+
+// addValidityInput asks the consent prompt to let the user choose how long their consent lasts, with the
+// longest period the application or agent allows. It asks nothing of a client that prompts every time, since a
+// remembered consent is never used there and the choice would change nothing.
+func (e *consentExecutor) addValidityInput(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	if !e.promptsValidityPeriod(ctx) || e.alwaysPromptsConsent(ctx) {
+		return
+	}
+	execResp.AdditionalData[common.DataPromptConsentValidity] = "true"
+	execResp.AdditionalData[common.DataMaxConsentValidity] = strconv.FormatInt(e.configuredValidityPeriod(ctx), 10)
+}
+
+// promptsValidityPeriod reports whether the node lets the user choose how long their consent lasts.
+func (e *consentExecutor) promptsValidityPeriod(ctx *providers.NodeContext) bool {
+	prompt, _ := ctx.NodeProperties[propertyKeyConsentPromptValidityPeriod].(bool)
+	return prompt
+}
+
+// configuredValidityPeriod returns the consent validity period, in seconds, set on the application or agent. A
+// consent that does not expire is reported as the longest period, so that every period compares the same way.
+func (e *consentExecutor) configuredValidityPeriod(ctx *providers.NodeContext) int64 {
+	if ctx.Application.LoginConsent == nil || ctx.Application.LoginConsent.ValidityPeriod <= 0 {
+		return consentauthn.MaxValidityPeriod
+	}
+	return min(ctx.Application.LoginConsent.ValidityPeriod, consentauthn.MaxValidityPeriod)
+}
+
+// resolveValidityPeriod returns the validity period, in seconds, to record the consent with. When the node lets
+// the user choose and the user approves, it is their choice capped to the period of the application or agent.
+// Otherwise, and when the user chose nothing usable, it is that period. The longest period is recorded as zero,
+// a consent that does not expire.
+func (e *consentExecutor) resolveValidityPeriod(ctx *providers.NodeContext, decisionsJSON string,
+	approved bool) int64 {
+	period := e.configuredValidityPeriod(ctx)
+	if approved && e.promptsValidityPeriod(ctx) {
+		if chosen := e.chosenValidityPeriod(decisionsJSON); chosen > 0 {
+			period = min(chosen, period)
+		}
+	}
+
+	if period >= consentauthn.MaxValidityPeriod {
+		return 0
+	}
+	return period
+}
+
+// chosenValidityPeriod returns the whole seconds the user chose in the submitted decisions, or 0 when the
+// value is missing, not a number or below one second.
+func (e *consentExecutor) chosenValidityPeriod(decisionsJSON string) int64 {
+	var submitted struct {
+		ValidityPeriod float64 `json:"validityPeriod"`
+	}
+	if err := json.Unmarshal([]byte(decisionsJSON), &submitted); err != nil || submitted.ValidityPeriod < 1 {
+		return 0
+	}
+	return int64(min(submitted.ValidityPeriod, float64(consentauthn.MaxValidityPeriod)))
 }
 
 // handleConsentDecisions processes the user's consent decisions.
@@ -324,11 +387,7 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		}
 	}
 
-	// Determine validity period from the application config
-	validityPeriod := int64(0)
-	if ctx.Application.LoginConsent != nil {
-		validityPeriod = ctx.Application.LoginConsent.ValidityPeriod
-	}
+	validityPeriod := e.resolveValidityPeriod(ctx, decisionsJSON, decisions.Approved)
 
 	// Retrieve the consent session token from RuntimeData for server-side validation
 	sessionToken := ctx.RuntimeData[common.RuntimeKeyConsentSessionToken]

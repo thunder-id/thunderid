@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -256,6 +257,19 @@ var (
 			"validityPeriod": 3600,
 		},
 	}
+
+	// consentValidityChoiceFlow lets the user choose how long their consent lasts. consentChoiceApp,
+	// consentChoiceShortApp and consentChoiceNoLimitApp run it with a long, a short and no consent validity period.
+	consentValidityChoiceFlow = consentFlowWithProperties("Consent Executor Validity Choice Test Flow",
+		"consent_executor_validity_choice_test_1", map[string]interface{}{"promptValidityPeriod": true})
+	consentChoiceApp      = consentValidityTestApp("consent_choice_test", "Validity Choice", 3600)
+	consentChoiceShortApp = consentValidityTestApp("consent_choice_short_test", "Validity Choice Short",
+		int(shortConsentValidityPeriod.Seconds()))
+	consentChoiceNoLimitApp = consentValidityTestApp("consent_choice_no_limit_test", "Validity Choice No Limit", 0)
+	// consentChoiceAlwaysPromptApp runs the same flow, but prompts on every authorization, so a chosen period would
+	// never decide when the user is asked again.
+	consentChoiceAlwaysPromptApp = consentAlwaysPrompt(
+		consentValidityTestApp("consent_choice_always_prompt_test", "Validity Choice Always Prompt", 3600))
 
 	// consentPermissionFlow runs the authorization executor ahead of the consent executor, which is
 	// what turns the user's authorized permissions into a consent purpose. Permission consent is
@@ -531,6 +545,10 @@ var (
 	consentExecFlowPermissionAppID     string
 	consentExecFlowPermissionAttrAppID string
 	consentExecFlowOIDCAppID           string
+	consentExecFlowChoiceAppID         string
+	consentExecFlowChoiceShortAppID    string
+	consentExecFlowChoiceNoLimitAppID  string
+	consentExecFlowChoiceAlwaysAppID   string
 	consentExecFlowResourceServerID    string
 	consentExecFlowOUID                string
 	consentExecFlowEntityTypeID        string
@@ -622,6 +640,26 @@ func (ts *ConsentExecutorFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test resource server during setup")
 	consentExecFlowResourceServerID = resourceServerID
 
+	choiceFlowID, err := testutils.CreateFlow(consentValidityChoiceFlow)
+	ts.Require().NoError(err, "Failed to create consent validity choice flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, choiceFlowID)
+
+	for _, choice := range []struct {
+		app   *testutils.Application
+		appID *string
+	}{
+		{&consentChoiceApp, &consentExecFlowChoiceAppID},
+		{&consentChoiceShortApp, &consentExecFlowChoiceShortAppID},
+		{&consentChoiceNoLimitApp, &consentExecFlowChoiceNoLimitAppID},
+		{&consentChoiceAlwaysPromptApp, &consentExecFlowChoiceAlwaysAppID},
+	} {
+		choice.app.AuthFlowID = choiceFlowID
+		choice.app.OUID = consentExecFlowOUID
+		choiceAppID, err := testutils.CreateApplication(*choice.app)
+		ts.Require().NoError(err, "Failed to create validity choice application "+choice.app.Name)
+		*choice.appID = choiceAppID
+	}
+
 	permissionFlowID, err := testutils.CreateFlow(consentPermissionFlow)
 	ts.Require().NoError(err, "Failed to create consent permission flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, permissionFlowID)
@@ -685,7 +723,8 @@ func (ts *ConsentExecutorFlowTestSuite) TearDownSuite() {
 		consentExecFlowNoValidityAppID, consentExecFlowNoAttributesAppID,
 		consentExecFlowProfileFilterAppID, consentExecFlowTimeoutAppID,
 		consentExecFlowPermissionAppID, consentExecFlowPermissionAttrAppID,
-		consentExecFlowOIDCAppID,
+		consentExecFlowOIDCAppID, consentExecFlowChoiceAppID,
+		consentExecFlowChoiceShortAppID, consentExecFlowChoiceNoLimitAppID, consentExecFlowChoiceAlwaysAppID,
 	} {
 		if appID == "" {
 			continue
@@ -867,6 +906,100 @@ func (ts *ConsentExecutorFlowTestSuite) TestConsentRePromptedAfterValidityPeriod
 		"Re-granted consent should yield the granted attributes")
 	ts.Require().Equal(consentTestEmail, claims.Additional["email"],
 		"Re-granted consent should yield the granted attributes")
+}
+
+// TestPromptAsksForValidityPeriodOnlyWhenTheNodeAllowsIt covers the step data: the input is requested only by a
+// consent node that allows it, for a client that does not prompt on every authorization, with the period of the
+// application as its limit when there is one.
+func (ts *ConsentExecutorFlowTestSuite) TestPromptAsksForValidityPeriodOnlyWhenTheNodeAllowsIt() {
+	tests := []struct {
+		name        string
+		appID       string
+		expectInput bool
+		expectMax   string
+	}{
+		{"node does not allow it", consentExecFlowAppID, false, ""},
+		{"node allows it with a limit", consentExecFlowChoiceAppID, true, "3600"},
+		{"node allows it with no limit", consentExecFlowChoiceNoLimitAppID, true, "2147483647"},
+		{"node allows it but the client prompts every time", consentExecFlowChoiceAlwaysAppID, false, ""},
+	}
+	for _, tc := range tests {
+		ts.Run(tc.name, func() {
+			consentStep, err := common.InitiateAuthenticationFlow(tc.appID, false, consentTestCredentials, "")
+			ts.Require().NoError(err, "Failed to initiate authentication flow")
+			ts.Require().Equal("INCOMPLETE", consentStep.FlowStatus, "Expected a consent prompt to be shown")
+
+			data := consentStep.Data.AdditionalData
+			if !tc.expectInput {
+				ts.Require().NotContains(data, "promptConsentValidity")
+				ts.Require().NotContains(data, "maxConsentValidity")
+				return
+			}
+			ts.Require().Equal("true", data["promptConsentValidity"])
+			ts.Require().Equal(tc.expectMax, data["maxConsentValidity"])
+		})
+	}
+}
+
+// TestUserChosenValidityPeriodDecidesWhenConsentExpires covers the period a user chooses on the prompt. Consent is
+// granted on every application first, so that one wait covers them all. A period shorter than the application's makes
+// the consent expire, a period longer than the application's is capped to it, a period chosen where the application
+// sets none applies, and a period sent to a flow that does not ask for one is ignored.
+func (ts *ConsentExecutorFlowTestSuite) TestUserChosenValidityPeriodDecidesWhenConsentExpires() {
+	short := int(shortConsentValidityPeriod.Seconds())
+	cases := []struct {
+		name          string
+		appID         string
+		chosen        int
+		expectPrompts bool
+	}{
+		{"shorter than the application's period", consentExecFlowChoiceAppID, short, true},
+		{"longer than the application's period", consentExecFlowChoiceShortAppID, 3600, true},
+		{"chosen where the application sets none", consentExecFlowChoiceNoLimitAppID, short, true},
+		{"sent to a flow that does not ask for one", consentExecFlowAppID, 1, false},
+	}
+	for _, tc := range cases {
+		ts.grantWithChosenValidityPeriod(tc.appID, tc.chosen)
+	}
+
+	time.Sleep(shortConsentValidityPeriod + time.Second)
+
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			if tc.expectPrompts {
+				ts.loginExpectingConsentPrompt(tc.appID)
+				return
+			}
+			finalStep, err := common.InitiateAuthenticationFlow(tc.appID, false, consentTestCredentials, "")
+			ts.Require().NoError(err, "Failed to initiate second authentication flow")
+			ts.Require().Equal("COMPLETE", finalStep.FlowStatus,
+				"Expected the application's period to apply, so the consent is still reused")
+		})
+	}
+}
+
+// TestUserChosenNoExpiryWithNoLimit covers a user choosing consent that does not expire, which the prompt submits as
+// the largest period, for an application with no validity period: the consent is recorded without an expiry.
+func (ts *ConsentExecutorFlowTestSuite) TestUserChosenNoExpiryWithNoLimit() {
+	ts.grantWithChosenValidityPeriod(consentExecFlowChoiceNoLimitAppID, math.MaxInt32)
+
+	finalStep, err := common.InitiateAuthenticationFlow(consentExecFlowChoiceNoLimitAppID, false,
+		consentTestCredentials, "")
+	ts.Require().NoError(err, "Failed to initiate second authentication flow")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected the consent without an expiry to be reused")
+}
+
+// TestUserChosenValidityPeriodThatIsNotUsableKeepsTheApplicationPeriod covers a negative period: the consent keeps
+// the validity period of the application and is reused by the next login. The executor unit tests cover the other
+// values that are not a period.
+func (ts *ConsentExecutorFlowTestSuite) TestUserChosenValidityPeriodThatIsNotUsableKeepsTheApplicationPeriod() {
+	ts.grantWithChosenValidityPeriod(consentExecFlowChoiceAppID, -5)
+
+	finalStep, err := common.InitiateAuthenticationFlow(consentExecFlowChoiceAppID, false,
+		consentTestCredentials, "")
+	ts.Require().NoError(err, "Failed to initiate second authentication flow")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus,
+		"Expected the consent to keep the application's period and be reused")
 }
 
 // TestEssentialGrantedAndOptionalDenied covers granting every essential attribute while denying every
@@ -1338,6 +1471,64 @@ func (ts *ConsentExecutorFlowTestSuite) TestMissingPurposeDecisionIsTreatedAsDen
 
 // --- helpers ---
 
+// consentFlowWithProperties returns a sign-in flow that authenticates with credentials, asks for consent with the
+// given properties on the consent node, and asserts.
+func consentFlowWithProperties(name, handle string, properties map[string]interface{}) testutils.Flow {
+	return testutils.Flow{
+		Name:     name,
+		FlowType: "AUTHENTICATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "credentials_auth"},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor"},
+				"onSuccess": "consent",
+			},
+			{
+				"id":         "consent",
+				"type":       "TASK_EXECUTION",
+				"executor":   map[string]interface{}{"name": "ConsentExecutor"},
+				"properties": properties,
+				"onSuccess":  "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
+// consentValidityTestApp returns an application that asks for the given_name and email attributes, with the given
+// consent validity period in seconds. The key makes up its client ID and secret.
+func consentValidityTestApp(key, title string, validityPeriod int) testutils.Application {
+	return testutils.Application{
+		Name:             "Consent " + title + " Test Application",
+		Description:      "Application for testing the consent validity period of the " + title + " flow",
+		ClientID:         key + "_client",
+		ClientSecret:     key + "_secret",
+		RedirectURIs:     []string{"http://localhost:3000/callback"},
+		AllowedUserTypes: []string{"consent_flow_user"},
+		AssertionConfig: map[string]interface{}{
+			"userAttributes": []string{"given_name", "email"},
+		},
+		LoginConsent: map[string]interface{}{
+			"validityPeriod": validityPeriod,
+		},
+	}
+}
+
+// consentAlwaysPrompt returns the application with consent asked on every authorization.
+func consentAlwaysPrompt(app testutils.Application) testutils.Application {
+	app.LoginConsent["alwaysPrompt"] = true
+	return app
+}
+
 // loginExpectingConsentPrompt authenticates the test user against the given application and requires
 // that the flow stops at a consent prompt, returning that step and its attribute consent purpose.
 func (ts *ConsentExecutorFlowTestSuite) loginExpectingConsentPrompt(appID string) (
@@ -1364,6 +1555,19 @@ func (ts *ConsentExecutorFlowTestSuite) setRequestedAttributes(attributes ...str
 	}
 	ts.Require().NoError(testutils.UpdateApplication(consentExecFlowAppID, app),
 		"Failed to update the requested attributes")
+}
+
+// grantWithChosenValidityPeriod signs the test user in to the application and grants consent with the given
+// validity period in the decisions.
+func (ts *ConsentExecutorFlowTestSuite) grantWithChosenValidityPeriod(appID string, validityPeriod interface{}) {
+	consentStep, purpose := ts.loginExpectingConsentPrompt(appID)
+	decisionsJSON, err := buildConsentDecisionsInputWithValidity(purpose, validityPeriod)
+	ts.Require().NoError(err, "Failed to build consent decisions payload")
+
+	grantedStep, err := common.CompleteFlow(consentStep.ExecutionID,
+		map[string]string{consentDecisionsInputKey: decisionsJSON}, "", consentStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit consent decisions")
+	ts.Require().Equal("COMPLETE", grantedStep.FlowStatus, "Expected flow to complete after granting consent")
 }
 
 // grantTestUserPermissions assigns the test user a role holding every test permission, so the

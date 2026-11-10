@@ -1830,8 +1830,9 @@ Checks whether the authenticated user has active consent records for the require
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `timeout` | Consent timeout (seconds) | No | Seconds before the consent prompt expires. `0` means no timeout. A prompt that times out records no consent: the flow goes on with no consented attributes or authorization details, or fails when `failOnDeny` is `true`. |
+| `timeout` | Consent prompt timeout (seconds) | No | Seconds before the consent prompt expires. `0` means no timeout. A prompt that times out records no consent: the flow goes on with no consented attributes or authorization details, or fails when `failOnDeny` is `true`. |
 | `failOnDeny` | Fail flow when user denies consent | No | When `true`, the flow fails if the user denies the prompt or lets it time out, even if every prompted item is optional. Default: `false`. |
+| `promptValidityPeriod` | Let the user choose the consent validity period | No | Boolean, `false` by default. When `true`, the consent prompt lets the user choose when they are asked again, from up to five periods or a period of their own, none longer than the validity period set on the application or agent. When that period is `0` or not set, the choices include **No expiry**. The prompt does not offer the choice to an application or agent with `loginConsent.alwaysPrompt` set to `true`. See [Let users choose the validity period](../consent.mdx#let-users-choose-the-validity-period). |
 
 **Input Configuration:**
 - `consent_decisions` (required): JSON-encoded consent decisions returned by the Consent View. Default: `consent_decisions`

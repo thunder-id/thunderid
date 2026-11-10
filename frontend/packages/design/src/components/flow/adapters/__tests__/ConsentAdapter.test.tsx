@@ -830,6 +830,8 @@ gateI18n
           'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
           'client.deviceWarning':
             'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
+          'validity.label': 'How often to ask',
+          'validity.remember': 'Keep this',
         },
       },
     },
@@ -902,6 +904,384 @@ describe('ConsentAdapter — Gate text', () => {
       'aria-label',
       'Take out initiate',
     );
+  });
+});
+
+describe('ConsentAdapter validity period input', () => {
+  const key = '__consent_validity_period__';
+  const remember = () => screen.queryByRole('checkbox', {name: 'Keep this'});
+  const field = () => screen.queryByRole<HTMLInputElement>('combobox', {name: /How often to ask/});
+
+  // Keeps the form values the way the sign-in form does, so a change shows in what the field renders.
+  function ControlledField({
+    formValues,
+    maxValidityPeriod = undefined,
+    onInputChange,
+  }: {
+    formValues: Record<string, string>;
+    maxValidityPeriod?: number;
+    onInputChange: (name: string, value: string) => void;
+  }): JSX.Element {
+    const [values, setValues] = useState<Record<string, string>>(formValues);
+
+    return (
+      <ConsentAdapter
+        consentData={permissionsPurpose}
+        formValues={values}
+        onInputChange={(name: string, value: string) => {
+          onInputChange(name, value);
+          setValues((previous) => ({...previous, [name]: value}));
+        }}
+        validityInput
+        maxValidityPeriod={maxValidityPeriod}
+      />
+    );
+  }
+
+  const renderField = (
+    props: {
+      maxValidityPeriod?: number;
+      formValues?: Record<string, string>;
+    } = {},
+  ) => {
+    const onInputChange = vi.fn();
+    renderWithProviders(
+      <GateText>
+        <ControlledField
+          formValues={props.formValues ?? {}}
+          maxValidityPeriod={props.maxValidityPeriod}
+          onInputChange={onInputChange}
+        />
+      </GateText>,
+    );
+
+    return {onInputChange};
+  };
+
+  const optionLabels = async () => {
+    await userEvent.click(field()!);
+    const labels = screen.getAllByRole('option').map((option) => option.textContent);
+    await userEvent.keyboard('{Escape}');
+
+    return labels;
+  };
+
+  const type = async (text: string) => {
+    await userEvent.clear(field()!);
+    if (text !== '') await userEvent.type(field()!, text);
+  };
+
+  it('shows nothing unless the flow asks for it', () => {
+    renderWithProviders(
+      <GateText>
+        <ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} />
+      </GateText>,
+    );
+
+    expect(remember()).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('starts with the decision remembered, and lists the periods that fit the limit', async () => {
+    renderField({maxValidityPeriod: 86400});
+
+    expect(remember()).toBeChecked();
+    expect(field()!.value).toBe('1 minute');
+    expect(screen.getByText('Your consent expires in 1 minute.')).toBeTruthy();
+    expect(await optionLabels()).toEqual(['1 minute', '30 minutes', '1 hour', '12 hours', '1 day']);
+  });
+
+  it('puts the shortest period in the form so that what is shown is what is submitted', () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+    expect(onInputChange).toHaveBeenCalledTimes(1);
+    expect(onInputChange).toHaveBeenCalledWith(key, '60');
+  });
+
+  it('keeps a period the form already holds', () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400, formValues: {[key]: '3600'}});
+
+    expect(field()!.value).toBe('1 hour');
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  it('adds the limit to the list when fewer than three periods fit', async () => {
+    renderField({maxValidityPeriod: 200});
+
+    expect(field()!.value).toBe('1 minute');
+    expect(await optionLabels()).toEqual(['1 minute', '3 minutes']);
+  });
+
+  it('does not list the limit when it is not a standard period and enough periods fit', async () => {
+    renderField({maxValidityPeriod: 10000});
+
+    expect(await optionLabels()).toEqual(['1 minute', '5 minutes', '30 minutes', '1 hour']);
+  });
+
+  it('lists no more than five periods, the shortest and the longest that fit and three spread between them', async () => {
+    renderField({maxValidityPeriod: 2592000});
+
+    expect(await optionLabels()).toEqual(['1 minute', '30 minutes', '6 hours', '1 day', '30 days']);
+  });
+
+  it('ends the list with no expiry when there is no limit', async () => {
+    const {onInputChange} = renderField({});
+
+    expect(await optionLabels()).toEqual(['1 minute', '1 hour', '12 hours', '30 days', 'No expiry']);
+
+    await userEvent.click(field()!);
+    await userEvent.click(screen.getByRole('option', {name: 'No expiry'}));
+
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '2147483647');
+    expect(field()!.value).toBe('No expiry');
+    expect(screen.getByText('You will not be asked again unless this application asks for more access.')).toBeTruthy();
+  });
+
+  it('reports the short value when the box is unticked, and the shortest period when it is ticked again', async () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+    await userEvent.click(remember()!);
+
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '1');
+    expect(remember()).not.toBeChecked();
+    expect(field()).toBeNull();
+    expect(screen.getByText('You will be asked again the next time you sign in.')).toBeTruthy();
+
+    await userEvent.click(remember()!);
+
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+    expect(field()!.value).toBe('1 minute');
+  });
+
+  it('shows the note and no list when the form holds the short value', () => {
+    renderField({maxValidityPeriod: 86400, formValues: {[key]: '1'}});
+
+    expect(remember()).not.toBeChecked();
+    expect(field()).toBeNull();
+    expect(screen.getByText('You will be asked again the next time you sign in.')).toBeTruthy();
+  });
+
+  it('reports the seconds of the period picked under the validity period key', async () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+    await userEvent.click(field()!);
+    await userEvent.click(screen.getByRole('option', {name: '1 hour'}));
+
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '3600');
+    expect(field()!.value).toBe('1 hour');
+    expect(screen.getByText('Your consent expires in 1 hour.')).toBeTruthy();
+    expect(screen.queryByText(/asked again on/)).toBeNull();
+  });
+
+  describe('typed period', () => {
+    const unit = () => screen.queryByRole('combobox', {name: 'Unit'});
+    const pickUnit = async (name: string) => {
+      await userEvent.click(unit()!);
+      await userEvent.click(screen.getByRole('option', {name}));
+    };
+
+    it('shows the unit only while a number is typed, and not beside the name of a period', async () => {
+      renderField({maxValidityPeriod: 86400});
+
+      expect(unit()).toBeNull();
+
+      await type('90');
+
+      expect(unit()).not.toBeNull();
+      expect(unit()!.textContent).toBe('minutes');
+
+      await userEvent.tab();
+      await userEvent.click(field()!);
+      await userEvent.click(screen.getByRole('option', {name: '1 hour'}));
+
+      expect(unit()).toBeNull();
+    });
+
+    it('reports the number typed as seconds in the unit, minutes at first', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('90');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '5400');
+      expect(field()!.value).toBe('90');
+      expect(screen.getByText('Enter a whole number, up to 1440.')).toBeTruthy();
+    });
+
+    it('does not mention a limit when there is none', async () => {
+      renderField({});
+
+      await type('90');
+
+      expect(screen.getByText('Enter a whole number.')).toBeTruthy();
+    });
+
+    it('offers only the units that fit the limit', async () => {
+      renderField({maxValidityPeriod: 10000});
+
+      await type('5');
+      await userEvent.click(unit()!);
+
+      expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
+        'seconds',
+        'minutes',
+        'hours',
+      ]);
+    });
+
+    it('works the seconds out again when the unit changes, keeping the number', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400 * 10});
+
+      await type('3');
+      await pickUnit('hours');
+
+      expect(field()!.value).toBe('3');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '10800');
+
+      await pickUnit('days');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '259200');
+    });
+
+    it('holds what is typed at the limit, and shows the most the unit allows', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('999999');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '86400');
+      expect(field()!.value).toBe('1440');
+    });
+
+    it('holds the number at the limit again when the unit grows', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('600');
+      await pickUnit('hours');
+
+      expect(field()!.value).toBe('24');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '86400');
+    });
+
+    it('reports the shortest period while the input is empty or holds no number', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('90');
+      await type('');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+      expect(field()!.value).toBe('');
+
+      await type('abc');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+    });
+
+    it('keeps the decision remembered while a number in seconds passes through the value for one that is not', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('9');
+      await pickUnit('seconds');
+      await type('15');
+
+      expect(remember()).toBeChecked();
+      expect(field()!.value).toBe('15');
+      expect(onInputChange).toHaveBeenCalledWith(key, '1');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '15');
+    });
+
+    it('takes digits only', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('1a2b');
+
+      expect(field()!.value).toBe('12');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '720');
+    });
+
+    it('starts a number when a digit is typed over the name of a period', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await userEvent.type(field()!, '5');
+
+      expect(field()!.value).toBe('5');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '300');
+    });
+
+    it('does not take a letter typed over the name of a period', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+      const calls: number = onInputChange.mock.calls.length;
+
+      await userEvent.type(field()!, 'x');
+
+      expect(field()!.value).toBe('1 minute');
+      expect(onInputChange.mock.calls).toHaveLength(calls);
+    });
+
+    it('clears the name of a period when part of it is deleted', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await userEvent.click(field()!);
+      await userEvent.keyboard('{ArrowRight}{Backspace}');
+
+      expect(field()!.value).toBe('');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+    });
+
+    it('shows a typed period that is listed by its name once the input loses focus', async () => {
+      renderField({maxValidityPeriod: 86400});
+
+      await type('60');
+      await userEvent.tab();
+
+      expect(field()!.value).toBe('60');
+
+      await userEvent.tab();
+
+      expect(field()!.value).toBe('1 hour');
+    });
+
+    it('lets the unit be changed after a number that is one of the periods', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('60');
+      await pickUnit('hours');
+
+      expect(field()!.value).toBe('24');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '86400');
+    });
+
+    it("keeps a period of the user's own as typed once the input loses focus", async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('90');
+      await userEvent.tab();
+
+      expect(field()!.value).toBe('90');
+      expect(unit()!.textContent).toBe('minutes');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '5400');
+    });
+
+    it('shows a period in the form that is not one of the options in its largest whole unit', () => {
+      renderField({maxValidityPeriod: 86400, formValues: {[key]: '12345'}});
+
+      expect(remember()).toBeChecked();
+      expect(field()!.value).toBe('12345');
+      expect(unit()!.textContent).toBe('seconds');
+      expect(screen.getByText('Enter a whole number, up to 86400.')).toBeTruthy();
+    });
+
+    it('shows a period in the form that is whole minutes as minutes', () => {
+      renderField({maxValidityPeriod: 86400, formValues: {[key]: '420'}});
+
+      expect(field()!.value).toBe('7');
+      expect(unit()!.textContent).toBe('minutes');
+    });
+  });
+
+  it('shows nothing when the limit leaves no room for the short value', () => {
+    renderField({maxValidityPeriod: 1});
+
+    expect(remember()).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 });
 

@@ -270,7 +270,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 
 	validityTime := int64(0)
 	if validityPeriod > 0 {
-		validityTime = time.Now().Unix() + validityPeriod
+		validityTime = time.Now().Unix() + min(validityPeriod, MaxValidityPeriod)
 	}
 
 	var consentRecord *consent.Consent
