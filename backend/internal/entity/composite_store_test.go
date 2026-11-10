@@ -671,6 +671,50 @@ func (s *CompositeStoreTestSuite) TestGetEntityListByProject_LimitExceeded() {
 	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }
 
+func (s *CompositeStoreTestSuite) TestListingOutsideProjects_MergesStores() {
+	e1 := compEntity("e1", "ou1")
+	e2 := compEntity("e2", "ou1")
+	filters := map[string]interface{}{"email": "a@b.com"}
+	s.dbStore.On("GetEntityListCountOutsideProjects", mock.Anything, "user", filters).Return(1, nil)
+	s.fileStore.On("GetEntityListCountOutsideProjects", mock.Anything, "user", filters).Return(1, nil)
+	s.dbStore.On("GetEntityListOutsideProjects", mock.Anything, "user", 1, 0, filters).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityListOutsideProjects", mock.Anything, "user", 1, 0, filters).
+		Return([]providers.Entity{e2}, nil)
+
+	count, err := s.store.GetEntityListCountOutsideProjects(s.ctx, "user", filters)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	list, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0, filters)
+	s.NoError(err)
+	s.Len(list, 2)
+}
+
+func (s *CompositeStoreTestSuite) TestGetEntityListOutsideProjects_Errors() {
+	s.Run("limit exceeded", func() {
+		s.SetupTest()
+		limit := serverconst.MaxCompositeStoreRecords + 1
+		s.dbStore.On("GetEntityListCountOutsideProjects", mock.Anything, "user",
+			map[string]interface{}(nil)).Return(limit, nil)
+		s.fileStore.On("GetEntityListCountOutsideProjects", mock.Anything, "user",
+			map[string]interface{}(nil)).Return(0, nil)
+
+		_, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0, nil)
+
+		s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+	})
+	s.Run("store error", func() {
+		s.SetupTest()
+		s.dbStore.On("GetEntityListCountOutsideProjects", mock.Anything, "user",
+			map[string]interface{}(nil)).Return(0, s.testErr)
+
+		_, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0, nil)
+
+		s.Error(err)
+	})
+}
+
 func (s *CompositeStoreTestSuite) TestProjectHasEntities() {
 	s.Run("found in the database", func() {
 		s.SetupTest()

@@ -25,7 +25,7 @@ export default function AdministratorsListPage(): JSX.Element {
         <Alert severity="info" sx={{mb: 3}} data-testid="administrators-notice">
           {t(
             'administratorsNotice',
-            "Administrators sign in to this console to manage the configuration and deploy it. This list also shows the users of each project, which a deploy of the project carries to its gateways. Users added in a gateway's admin portal are managed there.",
+            "Administrators sign in to this console to manage the configuration and deploy it. The users of a project are listed in that project, and a deploy of the project carries them to its gateways. Users added in a gateway's admin portal are managed there.",
           )}
         </Alert>
       }

@@ -142,7 +142,7 @@ export default function AgentOverview({
   const {t} = useTranslation();
   const {getDocumentationLink} = useConfig();
   const externalLinkConfirmation = useExternalLinkConfirmation();
-  const {data: usersData} = useGetUsers({limit: 100, offset: 0});
+  const {data: usersData} = useGetUsers({limit: 100, offset: 0, includeAll: true});
   const {data: userTypesData} = useGetUserTypes();
 
   // The endpoints below are for someone to copy into their own agent, so they have to name

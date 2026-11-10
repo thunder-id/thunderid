@@ -795,6 +795,88 @@ func (_c *ResourceServiceInterfaceMock_GetDeclaredPermissions_Call) RunAndReturn
 	return _c
 }
 
+// GetOrganizationResourceServerList provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) GetOrganizationResourceServerList(ctx context.Context, limit int, offset int, includeAll bool) (*ResourceServerList, *common.ServiceError) {
+	ret := _mock.Called(ctx, limit, offset, includeAll)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationResourceServerList")
+	}
+
+	var r0 *ResourceServerList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, bool) (*ResourceServerList, *common.ServiceError)); ok {
+		return returnFunc(ctx, limit, offset, includeAll)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, bool) *ResourceServerList); ok {
+		r0 = returnFunc(ctx, limit, offset, includeAll)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ResourceServerList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, limit, offset, includeAll)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationResourceServerList'
+type ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationResourceServerList is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+//   - includeAll bool
+func (_e *ResourceServiceInterfaceMock_Expecter) GetOrganizationResourceServerList(ctx any, limit any, offset any, includeAll any) *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call {
+	return &ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call{Call: _e.mock.On("GetOrganizationResourceServerList", ctx, limit, offset, includeAll)}
+}
+
+func (_c *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call) Run(run func(ctx context.Context, limit int, offset int, includeAll bool)) *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call) Return(resourceServerList *ResourceServerList, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call {
+	_c.Call.Return(resourceServerList, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, includeAll bool) (*ResourceServerList, *common.ServiceError)) *ResourceServiceInterfaceMock_GetOrganizationResourceServerList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResource provides a mock function for the type ResourceServiceInterfaceMock
 func (_mock *ResourceServiceInterfaceMock) GetResource(ctx context.Context, resourceServerID string, id string) (*providers.Resource, *common.ServiceError) {
 	ret := _mock.Called(ctx, resourceServerID, id)

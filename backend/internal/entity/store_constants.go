@@ -807,6 +807,67 @@ func buildProjectQuery(queryID, baseQuery, category, projectID string, ouIDs []s
 	return utils.AppendDeploymentIDToFilterQuery(query, args, deploymentID)
 }
 
+// buildEntityCountQueryOutsideProjects constructs a query to count the entities of a category that
+// belong to no project.
+func buildEntityCountQueryOutsideProjects(category string, filters map[string]interface{},
+	indexedAttrs map[string]bool, deploymentID string) (model.DBQuery, []interface{}, error) {
+	return buildOutsideProjectsQuery("ASQ-ENTITY_MGT-42", `SELECT COUNT(*) as total FROM "ENTITY"`,
+		category, filters, indexedAttrs, deploymentID)
+}
+
+// buildEntityListQueryOutsideProjects constructs a paginated query to list the entities of a category
+// that belong to no project.
+func buildEntityListQueryOutsideProjects(category string, filters map[string]interface{},
+	indexedAttrs map[string]bool, limit, offset int, deploymentID string) (model.DBQuery, []interface{}, error) {
+	query, args, err := buildOutsideProjectsQuery("ASQ-ENTITY_MGT-43",
+		`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`,
+		category, filters, indexedAttrs, deploymentID)
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	postgresQuery, err := buildPaginatedQuery(query.PostgresQuery, len(args), "$")
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	sqliteQuery, err := buildPaginatedQuery(query.SQLiteQuery, len(args), "?")
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	return model.DBQuery{
+		ID:            query.ID,
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, append(args, limit, offset), nil
+}
+
+// buildOutsideProjectsQuery adds the category condition, the condition that the entity belongs to no
+// project, the filter conditions, and the deployment
+// condition to a query.
+func buildOutsideProjectsQuery(queryID, baseQuery, category string,
+	filters map[string]interface{}, indexedAttrs map[string]bool,
+	deploymentID string) (model.DBQuery, []interface{}, error) {
+	baseWithConditions := baseQuery + ` WHERE CATEGORY = $1 AND PROJECT_ID IS NULL`
+	args := []interface{}{category}
+	query := model.DBQuery{
+		ID:            queryID,
+		Query:         baseWithConditions,
+		PostgresQuery: baseWithConditions,
+		SQLiteQuery:   strings.Replace(baseWithConditions, "$1", "?", 1),
+	}
+	if len(filters) > 0 {
+		fq, filterArgs, err := buildFilterQueryWithOffset(
+			queryID, baseWithConditions, filters, indexedAttrs, len(args))
+		if err != nil {
+			return model.DBQuery{}, nil, err
+		}
+		query = fq
+		args = append(args, filterArgs...)
+	}
+	query, args = utils.AppendDeploymentIDToFilterQuery(query, args, deploymentID)
+	return query, args, nil
+}
+
 // buildGetEntitiesByIDsQuery constructs a query to fetch entities by a list of IDs.
 func buildGetEntitiesByIDsQuery(entityIDs []string, deploymentID string) (model.DBQuery, []interface{}, error) {
 	return buildEntityINClauseQuery(

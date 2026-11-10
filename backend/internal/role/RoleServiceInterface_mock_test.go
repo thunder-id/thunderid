@@ -667,6 +667,94 @@ func (_c *RoleServiceInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call
 	return _c
 }
 
+// GetOrganizationRoleList provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) GetOrganizationRoleList(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeAll bool) (*RoleList, *common.ServiceError) {
+	ret := _mock.Called(ctx, limit, offset, filters, includeAll)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationRoleList")
+	}
+
+	var r0 *RoleList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, bool) (*RoleList, *common.ServiceError)); ok {
+		return returnFunc(ctx, limit, offset, filters, includeAll)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, bool) *RoleList); ok {
+		r0 = returnFunc(ctx, limit, offset, filters, includeAll)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*RoleList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, map[string]interface{}, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, limit, offset, filters, includeAll)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_GetOrganizationRoleList_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationRoleList'
+type RoleServiceInterfaceMock_GetOrganizationRoleList_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationRoleList is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+//   - includeAll bool
+func (_e *RoleServiceInterfaceMock_Expecter) GetOrganizationRoleList(ctx any, limit any, offset any, filters any, includeAll any) *RoleServiceInterfaceMock_GetOrganizationRoleList_Call {
+	return &RoleServiceInterfaceMock_GetOrganizationRoleList_Call{Call: _e.mock.On("GetOrganizationRoleList", ctx, limit, offset, filters, includeAll)}
+}
+
+func (_c *RoleServiceInterfaceMock_GetOrganizationRoleList_Call) Run(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeAll bool)) *RoleServiceInterfaceMock_GetOrganizationRoleList_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 map[string]interface{}
+		if args[3] != nil {
+			arg3 = args[3].(map[string]interface{})
+		}
+		var arg4 bool
+		if args[4] != nil {
+			arg4 = args[4].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_GetOrganizationRoleList_Call) Return(roleList *RoleList, serviceError *common.ServiceError) *RoleServiceInterfaceMock_GetOrganizationRoleList_Call {
+	_c.Call.Return(roleList, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_GetOrganizationRoleList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeAll bool) (*RoleList, *common.ServiceError)) *RoleServiceInterfaceMock_GetOrganizationRoleList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type RoleServiceInterfaceMock
 func (_mock *RoleServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)

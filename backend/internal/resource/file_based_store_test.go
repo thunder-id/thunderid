@@ -912,6 +912,34 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByProject() {
 	s.Equal(1, count)
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListOutsideProjects() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-p1",
+		&providers.ResourceServer{ID: "rs-p1", OUID: "ou1", ProjectID: "proj1"}))
+	s.Require().NoError(fileStore.Create("rs-org-a", &providers.ResourceServer{ID: "rs-org-a", OUID: "ou1"}))
+	s.Require().NoError(fileStore.Create("rs-org-b", &providers.ResourceServer{ID: "rs-org-b", OUID: "ou2"}))
+
+	count, err := s.store.GetResourceServerListCountOutsideProjects(s.ctx)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	servers, err := s.store.GetResourceServerListOutsideProjects(s.ctx, 10, 0)
+	s.NoError(err)
+	s.Len(servers, 2)
+	for _, rs := range servers {
+		s.Empty(rs.ProjectID)
+	}
+
+	servers, err = s.store.GetResourceServerListOutsideProjects(s.ctx, 1, 1)
+	s.NoError(err)
+	s.Len(servers, 1)
+
+	servers, err = s.store.GetResourceServerListOutsideProjects(s.ctx, 10, 5)
+	s.NoError(err)
+	s.Empty(servers)
+}
+
 func (s *FileBasedResourceStoreTestSuite) TestGetDeclaredPermissionsIncludesNestedResources() {
 	store, ok := s.store.(*fileBasedResourceStore)
 	s.Require().True(ok)

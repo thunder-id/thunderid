@@ -298,6 +298,49 @@ func (f *entityFileBasedStore) GetEntityListByProject(ctx context.Context, categ
 	return applyPagination(entities, limit, offset), nil
 }
 
+// GetEntityListCountOutsideProjects retrieves the number of entities of a category that belong to no
+// project.
+func (f *entityFileBasedStore) GetEntityListCountOutsideProjects(ctx context.Context, category string,
+	filters map[string]interface{}) (int, error) {
+	entities, err := f.listEntitiesOutsideProjects(category, filters)
+	if err != nil {
+		return 0, err
+	}
+	return len(entities), nil
+}
+
+// GetEntityListOutsideProjects retrieves a page of the entities of a category that belong to no
+// project.
+func (f *entityFileBasedStore) GetEntityListOutsideProjects(ctx context.Context, category string,
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	entities, err := f.listEntitiesOutsideProjects(category, filters)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(entities, limit, offset), nil
+}
+
+// listEntitiesOutsideProjects returns the entities of a category that belong to no project and match
+// the filters.
+func (f *entityFileBasedStore) listEntitiesOutsideProjects(category string,
+	filters map[string]interface{}) ([]providers.Entity, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+	entities := make([]providers.Entity, 0)
+	for _, resource := range resources {
+		e := resource.Entity
+		if string(e.Category) != category || e.ProjectID != "" {
+			continue
+		}
+		if matchesFilters(mergeJSONObjects(e.Attributes, e.SystemAttributes), filters) {
+			entities = append(entities, e)
+		}
+	}
+	return entities, nil
+}
+
 // ProjectHasEntities reports whether any entity, of any category, is in a project.
 func (f *entityFileBasedStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
 	resources, err := f.listEntityResources()

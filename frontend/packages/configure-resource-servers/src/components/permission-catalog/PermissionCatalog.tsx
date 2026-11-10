@@ -511,7 +511,11 @@ export default function PermissionCatalog({
 }: PermissionCatalogProps): JSX.Element {
   const {t} = useTranslation();
 
-  const {data: serversData, isLoading: loadingServers, error: serversError} = useGetResourceServers({limit: 100, ouId});
+  const {
+    data: serversData,
+    isLoading: loadingServers,
+    error: serversError,
+  } = useGetResourceServers({limit: 100, ouId, includeAll: true});
   const servers = serversData?.resourceServers ?? [];
 
   if (serversError) {

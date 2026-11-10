@@ -68,6 +68,40 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListCountAndList() {
 	suite.Len(pagedRoles, 1)
 }
 
+func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListOutsideProjects() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Admin", OUID: "ou1"})
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role2", Name: "Viewer", OUID: "ou2"})
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role3", Name: "Shop Admin", OUID: "ou1",
+		ProjectID: "proj1"})
+
+	count, err := suite.store.GetRoleListCountOutsideProjects(context.Background())
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	roles, err := suite.store.GetRoleListOutsideProjects(context.Background(), 10, 0)
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	for _, role := range roles {
+		suite.NotEqual("role3", role.ID)
+		suite.Empty(role.ProjectID)
+		suite.True(role.IsReadOnly, "a declarative role is read-only")
+	}
+
+	paged, err := suite.store.GetRoleListOutsideProjects(context.Background(), 1, 1)
+	suite.NoError(err)
+	suite.Len(paged, 1)
+
+	for _, page := range []struct{ limit, offset int }{{0, 0}, {-1, 0}, {10, 2}, {10, -1}} {
+		roles, err = suite.store.GetRoleListOutsideProjects(context.Background(), page.limit, page.offset)
+		suite.NoError(err)
+		if page.offset < 0 {
+			suite.Len(roles, 2)
+		} else {
+			suite.Empty(roles)
+		}
+	}
+}
+
 func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListCountByOUIDAndListByOUID() {
 	suite.seedRole(RoleWithPermissionsAndAssignments{
 		ID:   "role1",

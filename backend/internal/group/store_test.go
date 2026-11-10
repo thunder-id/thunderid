@@ -2164,3 +2164,133 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListByProjectRefusesABa
 
 	suite.Require().ErrorContains(err, "failed to build group from result row")
 }
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListCountOutsideProjects() {
+	testCases := []struct {
+		name      string
+		setup     func(*providermock.DBProviderInterfaceMock, *providermock.DBClientInterfaceMock)
+		wantCount int
+		wantErr   string
+	}{
+		{
+			name: "success",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				dbClientMock *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+				dbClientMock.On("QueryContext", mock.Anything, QueryGetGroupListCountOutsideProjects,
+					testDeploymentID).Return([]map[string]interface{}{{"total": int64(3)}}, nil).Once()
+			},
+			wantCount: 3,
+		},
+		{
+			name: "provider error",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				_ *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(nil, errors.New("boom")).Once()
+			},
+			wantErr: "failed to get database client",
+		},
+		{
+			name: "query error",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				dbClientMock *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+				dbClientMock.On("QueryContext", mock.Anything, QueryGetGroupListCountOutsideProjects,
+					testDeploymentID).Return(nil, errors.New("query fail")).Once()
+			},
+			wantErr: "failed to execute group list count outside projects query",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+			store := &groupStore{dbProvider: providerMock}
+			tc.setup(providerMock, dbClientMock)
+
+			count, err := store.GetGroupListCountOutsideProjects(context.Background())
+
+			if tc.wantErr != "" {
+				suite.Require().ErrorContains(err, tc.wantErr)
+				return
+			}
+			suite.Require().NoError(err)
+			suite.Require().Equal(tc.wantCount, count)
+		})
+	}
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListOutsideProjects() {
+	testCases := []struct {
+		name    string
+		setup   func(*providermock.DBProviderInterfaceMock, *providermock.DBClientInterfaceMock)
+		wantIDs []string
+		wantErr string
+	}{
+		{
+			name: "success",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				dbClientMock *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+				dbClientMock.On("QueryContext", mock.Anything, QueryGetGroupListOutsideProjects, 5, 0,
+					testDeploymentID).Return([]map[string]interface{}{
+					{"id": "g1", "name": "Group 1", "description": "Desc 1", "ou_id": "ou-1"},
+					{"id": "g2", "name": "Group 2", "description": "Desc 2", "ou_id": "ou-2"},
+				}, nil).Once()
+			},
+			wantIDs: []string{"g1", "g2"},
+		},
+		{
+			name: "provider error",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				_ *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(nil, errors.New("boom")).Once()
+			},
+			wantErr: "failed to get database client",
+		},
+		{
+			name: "query error",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				dbClientMock *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+				dbClientMock.On("QueryContext", mock.Anything, QueryGetGroupListOutsideProjects, 5, 0,
+					testDeploymentID).Return(nil, errors.New("query fail")).Once()
+			},
+			wantErr: "failed to execute group list outside projects query",
+		},
+		{
+			name: "invalid row",
+			setup: func(providerMock *providermock.DBProviderInterfaceMock,
+				dbClientMock *providermock.DBClientInterfaceMock) {
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+				dbClientMock.On("QueryContext", mock.Anything, QueryGetGroupListOutsideProjects, 5, 0,
+					testDeploymentID).Return([]map[string]interface{}{{"id": "g1", "name": "Group 1"}}, nil).Once()
+			},
+			wantErr: "failed to build group from result row",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+			store := &groupStore{dbProvider: providerMock}
+			tc.setup(providerMock, dbClientMock)
+
+			groups, err := store.GetGroupListOutsideProjects(context.Background(), 5, 0)
+
+			if tc.wantErr != "" {
+				suite.Require().ErrorContains(err, tc.wantErr)
+				suite.Require().Nil(groups)
+				return
+			}
+			suite.Require().NoError(err)
+			ids := make([]string, 0, len(groups))
+			for _, g := range groups {
+				ids = append(ids, g.ID)
+			}
+			suite.Require().Equal(tc.wantIDs, ids)
+		})
+	}
+}

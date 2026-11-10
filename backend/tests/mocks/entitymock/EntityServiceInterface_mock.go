@@ -2140,6 +2140,164 @@ func (_c *EntityServiceInterfaceMock_GetEntityListCountBySystemAttributesAndOUID
 	return _c
 }
 
+// GetEntityListCountOutsideProjects provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) GetEntityListCountOutsideProjects(ctx context.Context, category providers.EntityCategory, filters map[string]interface{}) (int, error) {
+	ret := _mock.Called(ctx, category, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityListCountOutsideProjects")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, map[string]interface{}) (int, error)); ok {
+		return returnFunc(ctx, category, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, map[string]interface{}) int); ok {
+		r0 = returnFunc(ctx, category, filters)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, map[string]interface{}) error); ok {
+		r1 = returnFunc(ctx, category, filters)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityListCountOutsideProjects'
+type EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetEntityListCountOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category providers.EntityCategory
+//   - filters map[string]interface{}
+func (_e *EntityServiceInterfaceMock_Expecter) GetEntityListCountOutsideProjects(ctx any, category any, filters any) *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call {
+	return &EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call{Call: _e.mock.On("GetEntityListCountOutsideProjects", ctx, category, filters)}
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call) Run(run func(ctx context.Context, category providers.EntityCategory, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.EntityCategory
+		if args[1] != nil {
+			arg1 = args[1].(providers.EntityCategory)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call) Return(n int, err error) *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, filters map[string]interface{}) (int, error)) *EntityServiceInterfaceMock_GetEntityListCountOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEntityListOutsideProjects provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) GetEntityListOutsideProjects(ctx context.Context, category providers.EntityCategory, limit int, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	ret := _mock.Called(ctx, category, limit, offset, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityListOutsideProjects")
+	}
+
+	var r0 []providers.Entity
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, int, int, map[string]interface{}) ([]providers.Entity, error)); ok {
+		return returnFunc(ctx, category, limit, offset, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, int, int, map[string]interface{}) []providers.Entity); ok {
+		r0 = returnFunc(ctx, category, limit, offset, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, int, int, map[string]interface{}) error); ok {
+		r1 = returnFunc(ctx, category, limit, offset, filters)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityListOutsideProjects'
+type EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetEntityListOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category providers.EntityCategory
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+func (_e *EntityServiceInterfaceMock_Expecter) GetEntityListOutsideProjects(ctx any, category any, limit any, offset any, filters any) *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call {
+	return &EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call{Call: _e.mock.On("GetEntityListOutsideProjects", ctx, category, limit, offset, filters)}
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call) Run(run func(ctx context.Context, category providers.EntityCategory, limit int, offset int, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.EntityCategory
+		if args[1] != nil {
+			arg1 = args[1].(providers.EntityCategory)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 map[string]interface{}
+		if args[4] != nil {
+			arg4 = args[4].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call) Return(entitys []providers.Entity, err error) *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call {
+	_c.Call.Return(entitys, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, limit int, offset int, filters map[string]interface{}) ([]providers.Entity, error)) *EntityServiceInterfaceMock_GetEntityListOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityPageInOU provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) GetEntityPageInOU(ctx context.Context, category providers.EntityCategory, ouID string, scope entity.OUEntityScope, limit int, offset int, filters map[string]interface{}) (*entity.OUEntityPage, error) {
 	ret := _mock.Called(ctx, category, ouID, scope, limit, offset, filters)

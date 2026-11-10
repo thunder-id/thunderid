@@ -1000,6 +1000,140 @@ func (_c *groupStoreInterfaceMock_GetGroupListCountByProject_Call) RunAndReturn(
 	return _c
 }
 
+// GetGroupListCountOutsideProjects provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) GetGroupListCountOutsideProjects(ctx context.Context) (int, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGroupListCountOutsideProjects")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGroupListCountOutsideProjects'
+type groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetGroupListCountOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListCountOutsideProjects(ctx any) *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call {
+	return &groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call{Call: _e.mock.On("GetGroupListCountOutsideProjects", ctx)}
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call) Run(run func(ctx context.Context)) *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call) Return(n int, err error) *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *groupStoreInterfaceMock_GetGroupListCountOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetGroupListOutsideProjects provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) GetGroupListOutsideProjects(ctx context.Context, limit int, offset int) ([]GroupBasicDAO, error) {
+	ret := _mock.Called(ctx, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGroupListOutsideProjects")
+	}
+
+	var r0 []GroupBasicDAO
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]GroupBasicDAO, error)); ok {
+		return returnFunc(ctx, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []GroupBasicDAO); ok {
+		r0 = returnFunc(ctx, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]GroupBasicDAO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
+		r1 = returnFunc(ctx, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_GetGroupListOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGroupListOutsideProjects'
+type groupStoreInterfaceMock_GetGroupListOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetGroupListOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListOutsideProjects(ctx any, limit any, offset any) *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call {
+	return &groupStoreInterfaceMock_GetGroupListOutsideProjects_Call{Call: _e.mock.On("GetGroupListOutsideProjects", ctx, limit, offset)}
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call) Run(run func(ctx context.Context, limit int, offset int)) *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call) Return(groupBasicDAOs []GroupBasicDAO, err error) *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call {
+	_c.Call.Return(groupBasicDAOs, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]GroupBasicDAO, error)) *groupStoreInterfaceMock_GetGroupListOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGroupMember provides a mock function for the type groupStoreInterfaceMock
 func (_mock *groupStoreInterfaceMock) GetGroupMember(ctx context.Context, groupID string, memberID string) (*Member, error) {
 	ret := _mock.Called(ctx, groupID, memberID)

@@ -59,7 +59,8 @@ func (gh *groupHandler) HandleGroupListRequest(w http.ResponseWriter, r *http.Re
 		groupListResponse, svcErr = gh.groupService.GetGroupListByProject(ctx,
 			sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset, filters, includeDisplay)
 	} else {
-		groupListResponse, svcErr = gh.groupService.GetGroupList(ctx, limit, offset, filters, includeDisplay)
+		groupListResponse, svcErr = gh.groupService.GetOrganizationGroupList(ctx, limit, offset, filters,
+			includeDisplay, query.Get(includeAllQueryParam) == "true")
 	}
 	if svcErr != nil {
 		gh.handleError(ctx, w, svcErr)

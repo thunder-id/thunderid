@@ -2862,6 +2862,56 @@ func (suite *RoleStoreTestSuite) TestGetRoleListCountByProject() {
 	suite.Error(err)
 }
 
+func (suite *RoleStoreTestSuite) TestGetRoleListCountOutsideProjects() {
+	ctx := context.Background()
+	suite.Contains(queryGetRoleListCountOutsideProjects.Query, "PROJECT_ID IS NULL")
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListCountOutsideProjects, testDeploymentID).
+		Return([]map[string]interface{}{{"total": int64(4)}}, nil).Once()
+
+	count, err := suite.store.GetRoleListCountOutsideProjects(ctx)
+	suite.NoError(err)
+	suite.Equal(4, count)
+
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListCountOutsideProjects, testDeploymentID).
+		Return(nil, errors.New("query error")).Once()
+	_, err = suite.store.GetRoleListCountOutsideProjects(ctx)
+	suite.ErrorContains(err, "failed to execute count query")
+}
+
+func (suite *RoleStoreTestSuite) TestGetRoleListOutsideProjects() {
+	ctx := context.Background()
+	suite.Contains(queryGetRoleListOutsideProjects.Query, "PROJECT_ID IS NULL")
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListOutsideProjects, 10, 0, testDeploymentID).
+		Return([]map[string]interface{}{
+			{"id": "role1", "name": "Admin", "description": "Admin role", "ou_id": "ou1"},
+		}, nil).Once()
+
+	roles, err := suite.store.GetRoleListOutsideProjects(ctx, 10, 0)
+	suite.NoError(err)
+	suite.Equal([]Role{{ID: "role1", Name: "Admin", Description: "Admin role", OUID: "ou1"}}, roles)
+
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListOutsideProjects, 10, 0, testDeploymentID).
+		Return([]map[string]interface{}{{"id": 123, "name": "Admin", "ou_id": "ou1"}}, nil).Once()
+	_, err = suite.store.GetRoleListOutsideProjects(ctx, 10, 0)
+	suite.ErrorContains(err, "failed to build role from result row")
+
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListOutsideProjects, 10, 0, testDeploymentID).
+		Return(nil, errors.New("query error")).Once()
+	_, err = suite.store.GetRoleListOutsideProjects(ctx, 10, 0)
+	suite.ErrorContains(err, "failed to execute role list query")
+}
+
+func (suite *RoleStoreTestSuite) TestListOutsideProjects_DBClientError() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+
+	_, err := suite.store.GetRoleListCountOutsideProjects(context.Background())
+	suite.Error(err)
+	_, err = suite.store.GetRoleListOutsideProjects(context.Background(), 10, 0)
+	suite.Error(err)
+}
+
 func (suite *RoleStoreTestSuite) TestCreateAndUpdateRoleStoreTheProject() {
 	ctx := context.Background()
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)

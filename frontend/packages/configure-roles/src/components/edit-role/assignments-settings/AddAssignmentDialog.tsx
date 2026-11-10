@@ -101,6 +101,7 @@ export default function AddAssignmentDialog({
       limit: userPaginationModel.pageSize,
       offset: userPaginationModel.page * userPaginationModel.pageSize,
       filter: ouFilter,
+      includeAll: true,
     }),
     [userPaginationModel, ouFilter],
   );
@@ -109,6 +110,7 @@ export default function AddAssignmentDialog({
       limit: groupPaginationModel.pageSize,
       offset: groupPaginationModel.page * groupPaginationModel.pageSize,
       filter: ouFilter,
+      includeAll: true,
     }),
     [groupPaginationModel, ouFilter],
   );

@@ -43,6 +43,10 @@ const loggerComponentName = "RoleMgtService"
 type RoleServiceInterface interface {
 	GetRoleList(ctx context.Context, limit, offset int, filters map[string]interface{}) (
 		*RoleList, *tidcommon.ServiceError)
+	// GetOrganizationRoleList lists the roles for the organization view. On a deployment that serves
+	// projects it leaves out the roles of a project unless includeAll is set.
+	GetOrganizationRoleList(ctx context.Context, limit, offset int, filters map[string]interface{},
+		includeAll bool) (*RoleList, *tidcommon.ServiceError)
 	GetRoleListByProject(ctx context.Context, projectID string, limit, offset int,
 		filters map[string]interface{}) (*RoleList, *tidcommon.ServiceError)
 	CreateRole(ctx context.Context, role RoleCreationDetail) (
@@ -171,6 +175,27 @@ func newRoleService(
 func (rs *roleService) GetRoleList(
 	ctx context.Context, limit, offset int, filters map[string]interface{},
 ) (*RoleList, *tidcommon.ServiceError) {
+	return rs.listRoles(ctx, limit, offset, filters, false, "")
+}
+
+// GetOrganizationRoleList retrieves the roles for the organization view. On a deployment that serves
+// projects, the organization-wide listing leaves out the roles of a project unless includeAll is set.
+func (rs *roleService) GetOrganizationRoleList(
+	ctx context.Context, limit, offset int, filters map[string]interface{}, includeAll bool,
+) (*RoleList, *tidcommon.ServiceError) {
+	extraQuery := ""
+	if includeAll {
+		extraQuery = "&" + includeAllQueryParam + "=true"
+	}
+	return rs.listRoles(ctx, limit, offset, filters, !includeAll && rs.projectValidator != nil, extraQuery)
+}
+
+// listRoles lists roles, leaving the roles of a project out of the organization-wide listing when
+// excludeProjects is set. extraQuery is carried into the pagination links.
+func (rs *roleService) listRoles(
+	ctx context.Context, limit, offset int, filters map[string]interface{}, excludeProjects bool,
+	extraQuery string,
+) (*RoleList, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if err := validatePaginationParams(limit, offset); err != nil {
@@ -181,6 +206,7 @@ func (rs *roleService) GetRoleList(
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
+	linkQuery := extraQuery + utils.FilterQueryParam(filters)
 	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, rs.logger, security.ActionListRoles, ouID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -189,7 +215,7 @@ func (rs *roleService) GetRoleList(
 		return &RoleList{
 			Roles:      []Role{},
 			StartIndex: offset + 1,
-			Links:      utils.BuildPaginationLinks("/roles", limit, offset, 0, utils.FilterQueryParam(filters)),
+			Links:      utils.BuildPaginationLinks("/roles", limit, offset, 0, linkQuery),
 		}, nil
 	}
 
@@ -203,7 +229,11 @@ func (rs *roleService) GetRoleList(
 			return nil, svcErr
 		}
 	} else {
-		totalCount, err = rs.roleStore.GetRoleListCount(ctx)
+		if excludeProjects {
+			totalCount, err = rs.roleStore.GetRoleListCountOutsideProjects(ctx)
+		} else {
+			totalCount, err = rs.roleStore.GetRoleListCount(ctx)
+		}
 		if err != nil {
 			if errors.Is(err, errResultLimitExceededInCompositeMode) {
 				return nil, &ResultLimitExceededInCompositeMode
@@ -212,7 +242,11 @@ func (rs *roleService) GetRoleList(
 			return nil, &tidcommon.InternalServerError
 		}
 
-		roles, err = rs.roleStore.GetRoleList(ctx, limit, offset)
+		if excludeProjects {
+			roles, err = rs.roleStore.GetRoleListOutsideProjects(ctx, limit, offset)
+		} else {
+			roles, err = rs.roleStore.GetRoleList(ctx, limit, offset)
+		}
 		if err != nil {
 			if errors.Is(err, errResultLimitExceededInCompositeMode) {
 				return nil, &ResultLimitExceededInCompositeMode
@@ -233,7 +267,7 @@ func (rs *roleService) GetRoleList(
 		Roles:        roles,
 		StartIndex:   offset + 1,
 		Count:        len(roles),
-		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, utils.FilterQueryParam(filters)),
+		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, linkQuery),
 	}
 
 	return response, nil

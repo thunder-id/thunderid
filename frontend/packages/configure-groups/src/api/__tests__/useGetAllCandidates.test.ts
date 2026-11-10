@@ -65,7 +65,7 @@ describe('useGetAllCandidates', () => {
     expect(mockHttpRequest).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        url: 'https://localhost:8090/users?limit=100&offset=100&include=display',
+        url: 'https://localhost:8090/users?limit=100&offset=100&include=display&includeAll=true',
       }),
     );
   });
@@ -85,7 +85,7 @@ describe('useGetAllCandidates', () => {
 
     expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: 'https://localhost:8090/users?limit=100&offset=0&include=display&filter=ouId+eq+%22ou-1%22',
+        url: 'https://localhost:8090/users?limit=100&offset=0&include=display&includeAll=true&filter=ouId+eq+%22ou-1%22',
       }),
     );
   });

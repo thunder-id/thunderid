@@ -4077,6 +4077,58 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServerListCountByProject() {
 	suite.Equal(1, count)
 }
 
+func (suite *ResourceStoreTestSuite) TestGetResourceServerListOutsideProjects() {
+	ctx := context.Background()
+
+	suite.Run("Success", func() {
+		suite.projectQueryClient().On("QueryContext", ctx, queryGetResourceServerListOutsideProjects,
+			10, 5, "test-deployment").Return([]map[string]interface{}{
+			{"id": "rs1", "ou_id": "ou1", "name": "Server 1"},
+		}, nil)
+
+		servers, err := suite.store.GetResourceServerListOutsideProjects(ctx, 10, 5)
+
+		suite.NoError(err)
+		suite.Require().Len(servers, 1)
+		suite.Equal("rs1", servers[0].ID)
+		suite.Empty(servers[0].ProjectID)
+	})
+
+	suite.Run("QueryError", func() {
+		suite.projectQueryClient().On("QueryContext", ctx, queryGetResourceServerListOutsideProjects,
+			10, 5, "test-deployment").Return(nil, errors.New("query error"))
+
+		servers, err := suite.store.GetResourceServerListOutsideProjects(ctx, 10, 5)
+
+		suite.Error(err)
+		suite.Nil(servers)
+	})
+
+	suite.Run("InvalidRowData", func() {
+		suite.projectQueryClient().On("QueryContext", ctx, queryGetResourceServerListOutsideProjects,
+			10, 5, "test-deployment").Return([]map[string]interface{}{{"id": 123}}, nil)
+
+		_, err := suite.store.GetResourceServerListOutsideProjects(ctx, 10, 5)
+
+		suite.Error(err)
+	})
+}
+
+func (suite *ResourceStoreTestSuite) TestGetResourceServerListCountOutsideProjects() {
+	ctx := context.Background()
+
+	suite.projectQueryClient().On("QueryContext", ctx, queryGetResourceServerListCountOutsideProjects,
+		"test-deployment").Return([]map[string]interface{}{{"total": int64(4)}}, nil)
+	count, err := suite.store.GetResourceServerListCountOutsideProjects(ctx)
+	suite.NoError(err)
+	suite.Equal(4, count)
+
+	suite.projectQueryClient().On("QueryContext", ctx, queryGetResourceServerListCountOutsideProjects,
+		"test-deployment").Return(nil, errors.New("query error"))
+	_, err = suite.store.GetResourceServerListCountOutsideProjects(ctx)
+	suite.Error(err)
+}
+
 func (suite *ResourceStoreTestSuite) TestGetDeclaredPermissionsUsesOneScopedQuery() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDeclaredPermissions,

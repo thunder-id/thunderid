@@ -196,11 +196,11 @@ Deleting a role also removes its assignments and revokes the role's scopes from 
 
 On the control plane, a role can belong to a project. A role without a `projectId` belongs to no project, so the roles that exist today stay organization-level.
 
-When a project is selected in the Console, **Roles** lists only that project's roles, and **Create role** creates the role in the project. When the project has organization units, it asks which one the role belongs to, with the system organization unit as the default. With no project selected, **Roles** lists every role.
+When a project is selected in the Console, **Roles** lists only that project's roles, and **Create role** creates the role in the project. When the project has organization units, it asks which one the role belongs to, with the system organization unit as the default. With no project selected, **Roles** lists only the roles outside projects.
 
 - **Create or update**: set `projectId` in the request body of `POST /roles` or `PUT /roles/{id}`. On create, a role in a project without `ouId` is placed in the system organization unit. An update without `ouId` keeps the role's organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit fails the request with `ROL-1041`, and a project that does not exist fails it with `ROL-1040`.
 - **Update without `projectId` or `ouId`**: the role keeps its current project and organization unit. A different `projectId` moves the role to that project, unless the role is shared with other organization units, which fails the request with `ROL-1029`.
-- **List**: `GET /roles?projectId=<project-id>` returns the roles of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
+- **List**: `GET /roles?projectId=<project-id>` returns the roles of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list. Without `projectId`, `GET /roles` leaves out the roles of projects. Add `includeAll=true` to list every role. A `filter=ouId eq "<ou-id>"` still lists every role that organization unit holds, including the ones in projects.
 
 Role names are unique per organization unit. A project's roles in the system organization unit share it with every other project, so such a role cannot take the name of another project's role or of an organization-level role there.
 

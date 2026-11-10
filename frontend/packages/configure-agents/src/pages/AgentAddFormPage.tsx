@@ -111,7 +111,7 @@ export default function AgentAddFormPage(): JSX.Element {
     isLoading: usersLoading,
     error: usersError,
     refetch: refetchUsers,
-  } = useGetUsers({limit: 100, offset: 0});
+  } = useGetUsers({limit: 100, offset: 0, includeAll: true});
   // Without an owner the API makes the caller the owner, and a gateway refuses an agent whose owner it
   // cannot find. A caller who signed in through another deployment has no profile here, so they are
   // not offered as the owner, and neither is one this deployment does not find. A lookup refused for

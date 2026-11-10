@@ -47,6 +47,11 @@ type RoleAssignmentResolver interface {
 type GroupServiceInterface interface {
 	GetGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
 		includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError)
+	// GetOrganizationGroupList is the organization-view listing. It lists the same groups as GetGroupList,
+	// except that a caller who can list every group sees only the groups outside projects on a deployment that
+	// serves projects, unless includeAll is set.
+	GetOrganizationGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
+		includeDisplay, includeAll bool) (*GroupListResponse, *tidcommon.ServiceError)
 	GetGroupListByProject(ctx context.Context, projectID string, limit, offset int,
 		filters map[string]interface{}, includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError)
 	// ProjectHasGroups reports whether any group, runtime or declared, belongs to the project.
@@ -147,6 +152,25 @@ func newGroupServiceWithStore(
 // integer. An organization unit filter lists the groups that unit owns.
 func (gs *groupService) GetGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
 	includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError) {
+	return gs.getGroupList(ctx, limit, offset, filters, includeDisplay, false, "")
+}
+
+// GetOrganizationGroupList retrieves the organization-view list of groups. On a deployment that serves
+// projects, a caller who can list every group sees only the groups outside projects unless includeAll is set.
+func (gs *groupService) GetOrganizationGroupList(ctx context.Context, limit, offset int,
+	filters map[string]interface{}, includeDisplay, includeAll bool) (*GroupListResponse, *tidcommon.ServiceError) {
+	linkQuery := ""
+	if includeAll {
+		linkQuery = "&" + includeAllQueryParam + "=true"
+	}
+	return gs.getGroupList(ctx, limit, offset, filters, includeDisplay,
+		!includeAll && gs.projectValidator != nil, linkQuery)
+}
+
+// getGroupList lists groups for GetGroupList and GetOrganizationGroupList. excludeProjects leaves out the
+// groups of projects when the caller can list every group, and linkQuery is appended to the pagination links.
+func (gs *groupService) getGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
+	includeDisplay, excludeProjects bool, linkQuery string) (*GroupListResponse, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
@@ -155,7 +179,7 @@ func (gs *groupService) GetGroupList(ctx context.Context, limit, offset int, fil
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
-	listQuery := utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay)
+	listQuery := utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay) + linkQuery
 
 	accessibleOUs, svcErr := gs.getAccessibleOUs(ctx, security.ActionListGroups)
 	if svcErr != nil {
@@ -171,7 +195,7 @@ func (gs *groupService) GetGroupList(ctx context.Context, limit, offset int, fil
 	}
 
 	if accessibleOUs.AllAllowed {
-		return gs.listAllGroups(ctx, limit, offset, includeDisplay, listQuery)
+		return gs.listAllGroups(ctx, limit, offset, includeDisplay, excludeProjects, listQuery)
 	}
 
 	return gs.listGroupsByOUIDs(ctx, accessibleOUs.IDs, limit, offset, includeDisplay, listQuery)
@@ -258,16 +282,22 @@ func (gs *groupService) ProjectHasGroups(ctx context.Context, projectID string) 
 	return count > 0, nil
 }
 
-func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, includeDisplay bool,
+// listAllGroups lists every group, or only the groups outside projects when excludeProjects is set.
+func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, includeDisplay, excludeProjects bool,
 	listQuery string) (*GroupListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	totalCount, err := gs.groupStore.GetGroupListCount(ctx)
+	countGroups, listGroups := gs.groupStore.GetGroupListCount, gs.groupStore.GetGroupList
+	if excludeProjects {
+		countGroups = gs.groupStore.GetGroupListCountOutsideProjects
+		listGroups = gs.groupStore.GetGroupListOutsideProjects
+	}
+	totalCount, err := countGroups(ctx)
 	if err != nil {
 		logger.Error(ctx, "Failed to get group count", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	groups, err := gs.groupStore.GetGroupList(ctx, limit, offset)
+	groups, err := listGroups(ctx, limit, offset)
 	if err != nil {
 		logger.Error(ctx, "Failed to list groups", log.Error(err))
 		return nil, &tidcommon.InternalServerError

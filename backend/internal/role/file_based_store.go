@@ -92,6 +92,63 @@ func (f *fileBasedStore) GetRoleList(ctx context.Context, limit, offset int) ([]
 	return roles[start:end], nil
 }
 
+// GetRoleListCountOutsideProjects returns the count of the declared roles that belong to no project.
+func (f *fileBasedStore) GetRoleListCountOutsideProjects(ctx context.Context) (int, error) {
+	roles, err := f.rolesOutsideProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(roles), nil
+}
+
+// GetRoleListOutsideProjects returns a page of the declared roles that belong to no project.
+func (f *fileBasedStore) GetRoleListOutsideProjects(ctx context.Context, limit, offset int) ([]Role, error) {
+	if limit <= 0 {
+		return []Role{}, nil
+	}
+
+	roles, err := f.rolesOutsideProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(roles) {
+		return []Role{}, nil
+	}
+	end := min(start+limit, len(roles))
+	return roles[start:end], nil
+}
+
+// rolesOutsideProjects returns the declared roles that belong to no project.
+func (f *fileBasedStore) rolesOutsideProjects(ctx context.Context) ([]Role, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	roles := make([]Role, 0, len(list))
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed role in rolesOutsideProjects",
+				log.String("roleID", item.ID.ID), log.Error(err))
+			continue
+		}
+		if roleData.ProjectID != "" {
+			continue
+		}
+		roles = append(roles, Role{
+			ID:          roleData.ID,
+			Name:        roleData.Name,
+			Description: roleData.Description,
+			OUID:        roleData.OUID,
+			IsReadOnly:  true,
+		})
+	}
+	return roles, nil
+}
+
 // GetRoleListCountByOUID returns the count of roles belonging to the given organization unit
 // in the file-based store.
 func (f *fileBasedStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {

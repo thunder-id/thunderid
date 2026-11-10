@@ -50,7 +50,7 @@ func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter,
 
 	// With a project, the list is of the project's resource servers, narrowed to the ones an organization
 	// unit owns when the filter names one. With only an organization unit filter, the list is of the resource
-	// servers it owns. Without either, it is of every resource server.
+	// servers it owns. Without either, it is the organization-view listing.
 	var result *ResourceServerList
 	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
 		result, svcErr = h.resourceService.GetResourceServerListByProject(
@@ -58,7 +58,8 @@ func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter,
 	} else if ouID != "" {
 		result, svcErr = h.resourceService.GetResourceServerListByOUID(ctx, ouID, limit, offset)
 	} else {
-		result, svcErr = h.resourceService.GetResourceServerList(ctx, limit, offset)
+		result, svcErr = h.resourceService.GetOrganizationResourceServerList(
+			ctx, limit, offset, query.Get(includeAllQueryParam) == "true")
 	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)

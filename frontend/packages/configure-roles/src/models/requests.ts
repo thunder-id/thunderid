@@ -53,6 +53,8 @@ export interface RoleListParams {
   offset?: number;
   /** Lists only the roles of this project */
   projectId?: string;
+  /** Without a project, also lists the roles of a project, which the control plane otherwise leaves out */
+  includeAll?: boolean;
 }
 
 /**

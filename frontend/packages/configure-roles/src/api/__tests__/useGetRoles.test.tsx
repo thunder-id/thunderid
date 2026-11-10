@@ -416,4 +416,26 @@ describe('useGetRoles', () => {
     });
     expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('projectId');
   });
+
+  it('should ask for the roles of a project as well with includeAll', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockRoleListResponse});
+
+    renderHook(() => useGetRoles({includeAll: true}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).toContain('includeAll=true');
+  });
+
+  it('should not send includeAll by default', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockRoleListResponse});
+
+    renderHook(() => useGetRoles());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('includeAll');
+  });
 });

@@ -479,6 +479,100 @@ func (_c *ConfigurableUserServiceMock_GetAccessibleOrganizationUnits_Call) RunAn
 	return _c
 }
 
+// GetOrganizationUserList provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) GetOrganizationUserList(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool, includeAll bool) (*UserListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, limit, offset, filters, includeDisplay, includeAll)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationUserList")
+	}
+
+	var r0 *UserListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, bool, bool) (*UserListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, limit, offset, filters, includeDisplay, includeAll)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, bool, bool) *UserListResponse); ok {
+		r0 = returnFunc(ctx, limit, offset, filters, includeDisplay, includeAll)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UserListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, map[string]interface{}, bool, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, limit, offset, filters, includeDisplay, includeAll)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableUserServiceMock_GetOrganizationUserList_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationUserList'
+type ConfigurableUserServiceMock_GetOrganizationUserList_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationUserList is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+//   - includeDisplay bool
+//   - includeAll bool
+func (_e *ConfigurableUserServiceMock_Expecter) GetOrganizationUserList(ctx any, limit any, offset any, filters any, includeDisplay any, includeAll any) *ConfigurableUserServiceMock_GetOrganizationUserList_Call {
+	return &ConfigurableUserServiceMock_GetOrganizationUserList_Call{Call: _e.mock.On("GetOrganizationUserList", ctx, limit, offset, filters, includeDisplay, includeAll)}
+}
+
+func (_c *ConfigurableUserServiceMock_GetOrganizationUserList_Call) Run(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool, includeAll bool)) *ConfigurableUserServiceMock_GetOrganizationUserList_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 map[string]interface{}
+		if args[3] != nil {
+			arg3 = args[3].(map[string]interface{})
+		}
+		var arg4 bool
+		if args[4] != nil {
+			arg4 = args[4].(bool)
+		}
+		var arg5 bool
+		if args[5] != nil {
+			arg5 = args[5].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetOrganizationUserList_Call) Return(userListResponse *UserListResponse, serviceError *common.ServiceError) *ConfigurableUserServiceMock_GetOrganizationUserList_Call {
+	_c.Call.Return(userListResponse, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetOrganizationUserList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool, includeAll bool) (*UserListResponse, *common.ServiceError)) *ConfigurableUserServiceMock_GetOrganizationUserList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSharingPolicy provides a mock function for the type ConfigurableUserServiceMock
 func (_mock *ConfigurableUserServiceMock) GetSharingPolicy(ctx context.Context, userID string, policyID string) (sharing.Policy, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, policyID)

@@ -549,3 +549,83 @@ func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer
 		})
 	}
 }
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListCountOutsideProjects_Deduplicates() {
+	suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleListOutsideProjects", mock.Anything, 2, 0).
+		Return([]Role{{ID: "role1"}, {ID: "role2"}}, nil)
+	suite.mockFileStore.On("GetRoleListOutsideProjects", mock.Anything, 2, 0).
+		Return([]Role{{ID: "role2"}, {ID: "role3"}}, nil)
+
+	count, err := suite.store.GetRoleListCountOutsideProjects(context.Background())
+
+	suite.NoError(err)
+	suite.Equal(3, count)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListOutsideProjects_Pagination() {
+	suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetRoleListOutsideProjects", mock.Anything, 2, 0).
+		Return([]Role{{ID: "role1"}, {ID: "role2"}}, nil)
+	suite.mockFileStore.On("GetRoleListOutsideProjects", mock.Anything, 2, 0).
+		Return([]Role{{ID: "role2"}, {ID: "role3"}}, nil)
+
+	roles, err := suite.store.GetRoleListOutsideProjects(context.Background(), 2, 1)
+
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetRoleList", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListOutsideProjects_Errors() {
+	storeErr := errors.New("test error")
+	cases := []struct {
+		name  string
+		setup func()
+	}{
+		{"db count fails", func() {
+			suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(0, storeErr)
+		}},
+		{"file count fails", func() {
+			suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockFileStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(0, storeErr)
+		}},
+		{"db list fails", func() {
+			suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockFileStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockDBStore.On("GetRoleListOutsideProjects", mock.Anything, 1, 0).Return(nil, storeErr)
+		}},
+		{"file list fails", func() {
+			suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockFileStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockDBStore.On("GetRoleListOutsideProjects", mock.Anything, 1, 0).
+				Return([]Role{{ID: "role1"}}, nil)
+			suite.mockFileStore.On("GetRoleListOutsideProjects", mock.Anything, 1, 0).Return(nil, storeErr)
+		}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup()
+			_, err := suite.store.GetRoleListCountOutsideProjects(context.Background())
+			suite.ErrorIs(err, storeErr)
+			roles, err := suite.store.GetRoleListOutsideProjects(context.Background(), 10, 0)
+			suite.ErrorIs(err, storeErr)
+			suite.Nil(roles)
+		})
+	}
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListOutsideProjects_LimitExceeded() {
+	suite.mockDBStore.On("GetRoleListCountOutsideProjects", mock.Anything).
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	suite.mockFileStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+
+	_, err := suite.store.GetRoleListCountOutsideProjects(context.Background())
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+	roles, err := suite.store.GetRoleListOutsideProjects(context.Background(), 5, 0)
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+	suite.Nil(roles)
+}

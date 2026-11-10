@@ -31,7 +31,7 @@ const formatUserLabel = (user: {id: string; display?: string; attributes?: Recor
 export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerSectionProps): JSX.Element {
   const {t} = useTranslation();
 
-  const {data: usersData, isLoading: usersLoading} = useGetUsers({limit: 100, offset: 0});
+  const {data: usersData, isLoading: usersLoading} = useGetUsers({limit: 100, offset: 0, includeAll: true});
 
   const options: UserOption[] = useMemo(
     () => (usersData?.users ?? []).map((user) => ({id: user.id, label: formatUserLabel(user)})),

@@ -90,6 +90,61 @@ func (f *fileBasedGroupStore) GetGroupList(ctx context.Context, limit, offset in
 	return groups[start:end], nil
 }
 
+// GetGroupListCountOutsideProjects returns the number of declared groups that belong to no project.
+func (f *fileBasedGroupStore) GetGroupListCountOutsideProjects(ctx context.Context) (int, error) {
+	groups, err := f.groupsOutsideProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(groups), nil
+}
+
+// GetGroupListOutsideProjects returns a page of the declared groups that belong to no project.
+func (f *fileBasedGroupStore) GetGroupListOutsideProjects(
+	ctx context.Context, limit, offset int,
+) ([]GroupBasicDAO, error) {
+	groups, err := f.groupsOutsideProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(groups) {
+		return []GroupBasicDAO{}, nil
+	}
+	end := min(start+max(limit, 0), len(groups))
+	return groups[start:end], nil
+}
+
+// groupsOutsideProjects returns the declared groups that belong to no project.
+func (f *fileBasedGroupStore) groupsOutsideProjects(ctx context.Context) ([]GroupBasicDAO, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]GroupBasicDAO, 0, len(list))
+	for _, item := range list {
+		grpData, err := groupFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed group in groupsOutsideProjects",
+				log.String("groupID", item.ID.ID), log.Error(err))
+			continue
+		}
+		if grpData.ProjectID != "" {
+			continue
+		}
+		groups = append(groups, GroupBasicDAO{
+			ID:          grpData.ID,
+			Name:        grpData.Name,
+			Description: grpData.Description,
+			OUID:        grpData.OUID,
+			IsReadOnly:  true,
+		})
+	}
+	return groups, nil
+}
+
 // GetGroupListCountByOUIDs returns the count of groups belonging to any of the given OUs.
 func (f *fileBasedGroupStore) GetGroupListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
 	if len(ouIDs) == 0 {

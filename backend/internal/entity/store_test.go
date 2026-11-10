@@ -386,6 +386,76 @@ func (s *DBStoreTestSuite) TestGetEntityListByProject() {
 	})
 }
 
+func (s *DBStoreTestSuite) TestGetEntityListCountOutsideProjects() {
+	s.Run("returns the count", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny([]map[string]interface{}{{"total": int64(3)}}, nil)
+
+		count, err := s.store.GetEntityListCountOutsideProjects(s.ctx, "user", nil)
+
+		s.NoError(err)
+		s.Equal(3, count)
+	})
+	s.Run("invalid filter", func() {
+		s.SetupTest()
+		s.expectClient()
+
+		_, err := s.store.GetEntityListCountOutsideProjects(s.ctx, "user",
+			map[string]interface{}{"bad key;": "x"})
+
+		s.Error(err)
+	})
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+
+		_, err := s.store.GetEntityListCountOutsideProjects(s.ctx, "user", nil)
+
+		s.Error(err)
+	})
+}
+
+func (s *DBStoreTestSuite) TestGetEntityListOutsideProjects() {
+	s.Run("returns the page", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil)
+
+		entities, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0,
+			map[string]interface{}{"email": "a@b.com"})
+
+		s.NoError(err)
+		s.Len(entities, 1)
+	})
+	s.Run("invalid filter", func() {
+		s.SetupTest()
+		s.expectClient()
+
+		_, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0,
+			map[string]interface{}{"bad key;": "x"})
+
+		s.Error(err)
+	})
+	s.Run("query error", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onQueryAny(nil, s.testErr)
+
+		_, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0, nil)
+
+		s.Error(err)
+	})
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+
+		_, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0, nil)
+
+		s.Error(err)
+	})
+}
+
 func (s *DBStoreTestSuite) TestProjectHasEntities() {
 	scope := deployment.Resolve(s.ctx)
 	for name, tc := range map[string]struct {

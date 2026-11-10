@@ -24,6 +24,21 @@ var (
 			`WHERE DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $1 OFFSET $2`,
 	}
 
+	// QueryGetGroupListCountOutsideProjects is the query to get the total count of groups that belong to
+	// no project.
+	QueryGetGroupListCountOutsideProjects = dbmodel.DBQuery{
+		ID:    "GRQ-GROUP_MGT-29",
+		Query: `SELECT COUNT(*) as total FROM "GROUP" WHERE PROJECT_ID IS NULL AND DEPLOYMENT_ID = $1`,
+	}
+
+	// QueryGetGroupListOutsideProjects is the query to get the groups that belong to no project with
+	// pagination.
+	QueryGetGroupListOutsideProjects = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-30",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
+			`WHERE PROJECT_ID IS NULL AND DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $1 OFFSET $2`,
+	}
+
 	// QueryGetTransitiveGroupsForMember retrieves all groups a member belongs to, including groups
 	// inherited through nested group membership, using a recursive CTE.
 	QueryGetTransitiveGroupsForMember = dbmodel.DBQuery{

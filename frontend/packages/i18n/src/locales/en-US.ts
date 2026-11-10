@@ -660,7 +660,7 @@ const translations = {
     title: 'Users',
     administratorsTitle: 'Administrators',
     administratorsNotice:
-      "Administrators sign in to this console to manage the configuration and deploy it. This list also shows the users of each project, which a deploy of the project carries to its gateways. Users added in a gateway's admin portal are managed there.",
+      "Administrators sign in to this console to manage the configuration and deploy it. The users of a project are listed in that project, and a deploy of the project carries them to its gateways. Users added in a gateway's admin portal are managed there.",
     subtitle: 'Manage users, roles, and permissions across your organization',
     addUser: 'Add user',
     inviteUser: 'Invite user',

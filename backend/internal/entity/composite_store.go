@@ -382,6 +382,52 @@ func (c *entityCompositeStore) GetEntityListByProject(ctx context.Context, categ
 	return entities, nil
 }
 
+// GetEntityListCountOutsideProjects retrieves the number of entities of a category that belong to no
+// project from both stores.
+func (c *entityCompositeStore) GetEntityListCountOutsideProjects(ctx context.Context, category string,
+	filters map[string]interface{}) (int, error) {
+	dbCount, fileCount, dbList, fileList := c.outsideProjectsReaders(ctx, category, filters)
+	return c.getDistinctEntityCount(dbCount, fileCount, dbList, fileList)
+}
+
+// GetEntityListOutsideProjects retrieves a page of the entities of a category that belong to no
+// project from both stores.
+func (c *entityCompositeStore) GetEntityListOutsideProjects(ctx context.Context, category string,
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	dbCount, fileCount, dbList, fileList := c.outsideProjectsReaders(ctx, category, filters)
+	entities, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		dbCount, fileCount, dbList, fileList, mergeAndDeduplicateEntities,
+		limit, offset, serverconst.MaxCompositeStoreRecords)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return entities, nil
+}
+
+// outsideProjectsReaders returns the count and list reads of each store for the entities of a category
+// that belong to no project.
+func (c *entityCompositeStore) outsideProjectsReaders(ctx context.Context, category string,
+	filters map[string]interface{}) (
+	dbCount, fileCount func() (int, error), dbList, fileList func(int) ([]providers.Entity, error),
+) {
+	dbCount = func() (int, error) {
+		return c.dbStore.GetEntityListCountOutsideProjects(ctx, category, filters)
+	}
+	fileCount = func() (int, error) {
+		return c.fileStore.GetEntityListCountOutsideProjects(ctx, category, filters)
+	}
+	dbList = func(count int) ([]providers.Entity, error) {
+		return c.dbStore.GetEntityListOutsideProjects(ctx, category, count, 0, filters)
+	}
+	fileList = func(count int) ([]providers.Entity, error) {
+		return c.fileStore.GetEntityListOutsideProjects(ctx, category, count, 0, filters)
+	}
+	return dbCount, fileCount, dbList, fileList
+}
+
 // ProjectHasEntities reports whether any entity, of any category, is in a project in either store.
 func (c *entityCompositeStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
 	found, err := c.dbStore.ProjectHasEntities(ctx, projectID)

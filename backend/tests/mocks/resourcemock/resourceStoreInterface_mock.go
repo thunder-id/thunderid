@@ -2215,6 +2215,140 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call) R
 	return _c
 }
 
+// GetResourceServerListCountOutsideProjects provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListCountOutsideProjects(ctx context.Context) (int, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListCountOutsideProjects")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListCountOutsideProjects'
+type resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListCountOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListCountOutsideProjects(ctx any) *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call{Call: _e.mock.On("GetResourceServerListCountOutsideProjects", ctx)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call) Run(run func(ctx context.Context)) *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call) Return(n int, err error) *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCountOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceServerListOutsideProjects provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListOutsideProjects(ctx context.Context, limit int, offset int) ([]providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListOutsideProjects")
+	}
+
+	var r0 []providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.ResourceServer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
+		r1 = returnFunc(ctx, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListOutsideProjects'
+type resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListOutsideProjects(ctx any, limit any, offset any) *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call{Call: _e.mock.On("GetResourceServerListOutsideProjects", ctx, limit, offset)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call) Run(run func(ctx context.Context, limit int, offset int)) *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call) Return(resourceServers []providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call {
+	_c.Call.Return(resourceServers, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerListOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsActionExist provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) IsActionExist(ctx context.Context, id string, resServerID string, resID *string) (bool, error) {
 	ret := _mock.Called(ctx, id, resServerID, resID)

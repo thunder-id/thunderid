@@ -21,6 +21,8 @@ type resourceStoreInterface interface {
 	GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error)
 	GetResourceServerList(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCount(ctx context.Context) (int, error)
+	GetResourceServerListOutsideProjects(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
+	GetResourceServerListCountOutsideProjects(ctx context.Context) (int, error)
 	GetResourceServerListByOUID(ctx context.Context, ouID string, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetResourceServerListByProject(
@@ -187,6 +189,51 @@ func (s *resourceStore) GetResourceServerListCount(ctx context.Context) (int, er
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerListCount, s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to get resource server count: %w", err)
+		}
+
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
+}
+
+// GetResourceServerListOutsideProjects retrieves the resource servers that belong to no project with pagination.
+func (s *resourceStore) GetResourceServerListOutsideProjects(
+	ctx context.Context, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(
+			ctx, queryGetResourceServerListOutsideProjects, limit, offset, s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list outside projects: %w", err)
+		}
+
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountOutsideProjects retrieves the total count of resource servers that belong to no
+// project.
+func (s *resourceStore) GetResourceServerListCountOutsideProjects(ctx context.Context) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryGetResourceServerListCountOutsideProjects, s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count outside projects: %w", err)
 		}
 
 		count, err = parseCountResult(results)

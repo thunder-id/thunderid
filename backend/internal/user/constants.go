@@ -39,6 +39,10 @@ const queryParamOUID = "ouId"
 // queryParamProjectID is the query parameter that lists the users of one project.
 const queryParamProjectID = "projectId"
 
+// queryParamIncludeAll is the query parameter that lists the users of projects alongside the others in
+// the organization view.
+const queryParamIncludeAll = "includeAll"
+
 // The system flows a user deletion and a credential update run around their writes, and the input naming
 // the user they act on.
 const (
