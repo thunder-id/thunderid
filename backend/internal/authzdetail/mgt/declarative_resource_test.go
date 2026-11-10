@@ -145,7 +145,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
-	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz, nil)
 	s.Require().NoError(err)
 	s.Equal(resourceTypeAuthorizationDetailType, exporter.GetResourceType())
 
@@ -185,12 +185,30 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_RegistersWriteToolsOnlyUnd
 			authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: tc.boundary})
 			server := mcp.NewServer(&mcp.Implementation{Name: "test"}, nil)
 
-			_, _, err := Initialize(http.NewServeMux(), server, nil, authz)
+			_, _, err := Initialize(http.NewServeMux(), server, nil, authz, nil)
 
 			s.Require().NoError(err)
 			s.ElementsMatch(tc.want, toolNames(s.T(), connectMCP(s.T(), server)))
 		})
 	}
+}
+
+// A deployment that serves projects requires one for every type, and refuses to start on a declared type
+// without one.
+func (s *DeclarativeResourceTestSuite) TestInitialize_RequiresAProjectWhereProjectsAreServed() {
+	s.setupConfig("", "mutable", false)
+	service, _, err := Initialize(http.NewServeMux(), nil, nil, nil, newProjectCheckerMock(s.T()))
+	s.Require().NoError(err)
+	s.True(service.(*authorizationDetailMgtService).projectRequired)
+
+	home := s.T().TempDir()
+	s.writeResource(home, declarativeTypeYAML)
+	s.setupConfig(home, "declarative", false)
+	s.Require().NoError(newTypeFileBasedStore().ClearByType())
+	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
+	_, _, err = Initialize(http.NewServeMux(), nil, nil, nil, newProjectCheckerMock(s.T()))
+	s.Require().Error(err)
+	s.Contains(err.Error(), "must belong to a project")
 }
 
 func (s *DeclarativeResourceTestSuite) TestInitialize_FailsOnInvalidFile() {
@@ -199,7 +217,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_FailsOnInvalidFile() {
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 
-	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil)
+	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to load authorization details type resources")
 }
@@ -272,27 +290,41 @@ func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper() {
 	}
 	fileStore := newTestFileStore(s.T(), paymentType())
 
-	s.NoError(validateTypeWrapper(valid(), fileStore, nil))
-	s.Error(validateTypeWrapper("not a type", fileStore, nil))
+	s.NoError(validateTypeWrapper(valid(), fileStore, nil, false))
+	s.Error(validateTypeWrapper("not a type", fileStore, nil, false))
 
 	noID := valid()
 	noID.ID = ""
-	s.ErrorContains(validateTypeWrapper(noID, fileStore, nil), "ID is required")
+	s.ErrorContains(validateTypeWrapper(noID, fileStore, nil, false), "ID is required")
 
 	invalid := valid()
 	invalid.ConsentTemplate = "Book {{passenger}}"
-	s.ErrorContains(validateTypeWrapper(invalid, fileStore, nil),
+	s.ErrorContains(validateTypeWrapper(invalid, fileStore, nil, false),
 		"{{passenger}} is not a field of the schema")
 
 	sameID := valid()
 	sameID.ID = paymentType().ID
-	s.ErrorContains(validateTypeWrapper(sameID, fileStore, nil),
+	s.ErrorContains(validateTypeWrapper(sameID, fileStore, nil, false),
 		"already exists in declarative resources")
 
 	sameValue := valid()
 	sameValue.Type = testPaymentType
-	s.ErrorContains(validateTypeWrapper(sameValue, fileStore, nil),
+	s.ErrorContains(validateTypeWrapper(sameValue, fileStore, nil, false),
 		"already used in declarative resources")
+}
+
+// Where a project is required, a declared type has to name one, and a project ID longer than the column is refused
+// either way.
+func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper_Project() {
+	fileStore := newTestFileStore(s.T())
+	t := flightType()
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, nil, true), "must belong to a project")
+
+	t.ProjectID = testProjectID
+	s.NoError(validateTypeWrapper(&t, fileStore, nil, true))
+
+	t.ProjectID = strings.Repeat("p", 37)
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, nil, false), "No project exists")
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper_DatabaseDuplicates() {
@@ -301,24 +333,24 @@ func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper_DatabaseDuplicate
 
 	dbStore := newTypeStoreInterfaceMock(s.T())
 	dbStore.EXPECT().GetTypeByID(mock.Anything, t.ID).Return(t, nil).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore), "already exists in the database store")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore, false), "already exists in the database store")
 
 	dbStore.EXPECT().GetTypeByID(mock.Anything, t.ID).Return(providers.AuthorizationDetailType{}, errTypeNotFound)
 	dbStore.EXPECT().GetTypeByValue(mock.Anything, t.Type).Return(t, nil).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore), "already used in the database store")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore, false), "already used in the database store")
 
 	dbStore.EXPECT().GetTypeByValue(mock.Anything, t.Type).Return(providers.AuthorizationDetailType{},
 		errTypeNotFound).Once()
-	s.NoError(validateTypeWrapper(&t, fileStore, dbStore))
+	s.NoError(validateTypeWrapper(&t, fileStore, dbStore, false))
 
 	dbStore.EXPECT().GetTypeByValue(mock.Anything, t.Type).
 		Return(providers.AuthorizationDetailType{}, errors.New("db down")).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore), "failed to check")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore, false), "failed to check")
 
 	failing := newTypeStoreInterfaceMock(s.T())
 	failing.EXPECT().GetTypeByID(mock.Anything, t.ID).Return(providers.AuthorizationDetailType{},
 		errors.New("db down")).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, failing), "failed to check")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, failing, false), "failed to check")
 }
 
 func (s *DeclarativeResourceTestSuite) TestExporter() {
@@ -366,6 +398,8 @@ func (s *DeclarativeResourceTestSuite) TestExporter() {
 
 func (s *DeclarativeResourceTestSuite) TestExportRoundTrip() {
 	original := flightType()
+	// A project deploy sends a type with the project its export names.
+	original.ProjectID = testProjectID
 	original.Schema = json.RawMessage(`{"type":"object","properties":{"route":{"type":"string"},` +
 		`"maxFare":{"type":"object","properties":{"currency":{"type":"string"},"amount":{"type":"number"}}},` +
 		`"actions":{"type":"array","items":{"type":"string"}}}}`)

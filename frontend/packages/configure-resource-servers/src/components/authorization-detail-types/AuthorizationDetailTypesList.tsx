@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -17,7 +17,7 @@ import type {AuthorizationDetailType} from '../../models/authorization-detail-ty
 
 /**
  * Lists the RFC 9396 authorization details types, opens them for editing, and deletes them. Types
- * defined in declarative configuration can only be viewed.
+ * defined in declarative configuration can only be viewed. Inside a project only the project's types are listed.
  */
 export default function AuthorizationDetailTypesList(): JSX.Element {
   const {t} = useTranslation();
@@ -26,10 +26,12 @@ export default function AuthorizationDetailTypesList(): JSX.Element {
   const logger = useLogger('AuthorizationDetailTypesList');
   const dataGridLocaleText = useDataGridLocaleText();
   const {can} = useCapabilitiesContext();
+  const {projectId} = useProjectScope();
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
   const {data, isLoading, isPlaceholderData, error, refetch} = useGetAuthorizationDetailTypes({
     limit: paginationModel.pageSize,
     offset: paginationModel.page * paginationModel.pageSize,
+    projectId,
   });
   // A page left empty, as when its last type is deleted, gives way to the page before it.
   if (!isPlaceholderData && data?.types.length === 0 && paginationModel.page > 0) {

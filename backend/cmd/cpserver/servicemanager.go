@@ -216,9 +216,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authorization details type management.
 	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(
-		mux, mcpServer, valueCapture, ouAuthzService)
+		mux, mcpServer, valueCapture, ouAuthzService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
+	projectService.AddResourceCheck(authzDetailMgtService.ProjectHasAuthorizationDetailTypes)
 
 	// Notification: only the sender-management (CRUD) service and the notification section handler are
 	// kept. The OTP and sender runtime services this returns are data plane concerns and are dropped.

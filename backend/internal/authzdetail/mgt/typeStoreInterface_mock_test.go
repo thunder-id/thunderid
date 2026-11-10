@@ -107,6 +107,72 @@ func (_c *typeStoreInterfaceMock_CountTypes_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// CountTypesByProject provides a mock function for the type typeStoreInterfaceMock
+func (_mock *typeStoreInterfaceMock) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountTypesByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// typeStoreInterfaceMock_CountTypesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountTypesByProject'
+type typeStoreInterfaceMock_CountTypesByProject_Call struct {
+	*mock.Call
+}
+
+// CountTypesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *typeStoreInterfaceMock_Expecter) CountTypesByProject(ctx any, projectID any) *typeStoreInterfaceMock_CountTypesByProject_Call {
+	return &typeStoreInterfaceMock_CountTypesByProject_Call{Call: _e.mock.On("CountTypesByProject", ctx, projectID)}
+}
+
+func (_c *typeStoreInterfaceMock_CountTypesByProject_Call) Run(run func(ctx context.Context, projectID string)) *typeStoreInterfaceMock_CountTypesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *typeStoreInterfaceMock_CountTypesByProject_Call) Return(n int, err error) *typeStoreInterfaceMock_CountTypesByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *typeStoreInterfaceMock_CountTypesByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) (int, error)) *typeStoreInterfaceMock_CountTypesByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateType provides a mock function for the type typeStoreInterfaceMock
 func (_mock *typeStoreInterfaceMock) CreateType(ctx context.Context, t providers.AuthorizationDetailType) error {
 	ret := _mock.Called(ctx, t)
@@ -489,6 +555,86 @@ func (_c *typeStoreInterfaceMock_ListTypePage_Call) Return(authorizationDetailTy
 }
 
 func (_c *typeStoreInterfaceMock_ListTypePage_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]providers.AuthorizationDetailType, error)) *typeStoreInterfaceMock_ListTypePage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListTypePageByProject provides a mock function for the type typeStoreInterfaceMock
+func (_mock *typeStoreInterfaceMock) ListTypePageByProject(ctx context.Context, projectID string, limit int, offset int) ([]providers.AuthorizationDetailType, error) {
+	ret := _mock.Called(ctx, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTypePageByProject")
+	}
+
+	var r0 []providers.AuthorizationDetailType
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]providers.AuthorizationDetailType, error)); ok {
+		return returnFunc(ctx, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []providers.AuthorizationDetailType); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.AuthorizationDetailType)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// typeStoreInterfaceMock_ListTypePageByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListTypePageByProject'
+type typeStoreInterfaceMock_ListTypePageByProject_Call struct {
+	*mock.Call
+}
+
+// ListTypePageByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *typeStoreInterfaceMock_Expecter) ListTypePageByProject(ctx any, projectID any, limit any, offset any) *typeStoreInterfaceMock_ListTypePageByProject_Call {
+	return &typeStoreInterfaceMock_ListTypePageByProject_Call{Call: _e.mock.On("ListTypePageByProject", ctx, projectID, limit, offset)}
+}
+
+func (_c *typeStoreInterfaceMock_ListTypePageByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int)) *typeStoreInterfaceMock_ListTypePageByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *typeStoreInterfaceMock_ListTypePageByProject_Call) Return(authorizationDetailTypes []providers.AuthorizationDetailType, err error) *typeStoreInterfaceMock_ListTypePageByProject_Call {
+	_c.Call.Return(authorizationDetailTypes, err)
+	return _c
+}
+
+func (_c *typeStoreInterfaceMock_ListTypePageByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int) ([]providers.AuthorizationDetailType, error)) *typeStoreInterfaceMock_ListTypePageByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

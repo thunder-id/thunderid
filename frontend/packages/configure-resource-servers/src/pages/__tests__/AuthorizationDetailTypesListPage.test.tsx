@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import type {AuthorizationDetailTypeListResponse} from '../../models/authorization-detail-type';
@@ -100,6 +100,28 @@ describe('AuthorizationDetailTypesListPage', () => {
       </CapabilitiesProvider>,
     );
 
+    expect(screen.queryByRole('button', {name: 'Add intent'})).not.toBeInTheDocument();
+  });
+
+  it("lists only the selected project's types inside a project", async () => {
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AuthorizationDetailTypesListPage createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    expect(await screen.findByText('Payment initiation')).toBeInTheDocument();
+    expect(mockHttpRequest).toHaveBeenCalledWith({
+      url: 'https://localhost:8090/authorization-detail-types?limit=10&offset=0&projectId=project-1',
+      method: 'GET',
+    });
+    expect(screen.getByRole('button', {name: 'Add intent'})).toBeInTheDocument();
+  });
+
+  it('offers no add button outside a project when intents are created in projects only', async () => {
+    renderWithProviders(<AuthorizationDetailTypesListPage createInProjectsOnly />);
+
+    expect(await screen.findByText('Payment initiation')).toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Add intent'})).not.toBeInTheDocument();
   });
 

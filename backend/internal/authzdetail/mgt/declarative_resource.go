@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -110,6 +111,7 @@ func declarativeResourceOf(t *providers.AuthorizationDetailType) (*typeDeclarati
 		ConsentTemplate: t.ConsentTemplate,
 		Processor:       processor,
 		Reuse:           &reuse,
+		ProjectID:       t.ProjectID,
 	}, nil
 }
 
@@ -203,6 +205,7 @@ type typeDeclarativeResource struct {
 	ConsentTemplate string                `yaml:"consentTemplate,omitempty"`
 	Processor       *declarativeProcessor `yaml:"processor,omitempty"`
 	Reuse           *bool                 `yaml:"reuse,omitempty"`
+	ProjectID       string                `yaml:"projectId,omitempty"`
 }
 
 // declarativeProcessor is the declarative form of a type's processor and its outbound authentication.
@@ -283,6 +286,7 @@ func ParseAuthorizationDetailTypeNode(node *yaml.Node) (*providers.Authorization
 		ConsentTemplate: doc.ConsentTemplate,
 		Processor:       processor,
 		Reuse:           doc.Reuse != nil && *doc.Reuse,
+		ProjectID:       doc.ProjectID,
 	}, nil
 }
 
@@ -333,14 +337,16 @@ func writeYAMLNodeAsJSON(buf *bytes.Buffer, node *yaml.Node) error {
 	return nil
 }
 
-// loadDeclarativeResources loads declarative authorization details types from files.
-func loadDeclarativeResources(fileStore *typeFileBasedStore, dbStore typeStoreInterface) error {
+// loadDeclarativeResources loads declarative authorization details types from files. Where projectRequired is set,
+// every type has to name its project.
+func loadDeclarativeResources(fileStore *typeFileBasedStore, dbStore typeStoreInterface,
+	projectRequired bool) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  paramTypeAuthorizationDetailType,
 		DirectoryName: "authorization_detail_types",
 		Parser:        parseToTypeWrapper,
 		Validator: func(data interface{}) error {
-			return validateTypeWrapper(data, fileStore, dbStore)
+			return validateTypeWrapper(data, fileStore, dbStore, projectRequired)
 		},
 		IDExtractor: func(data interface{}) string {
 			return data.(*providers.AuthorizationDetailType).ID
@@ -371,8 +377,10 @@ func parseToTypeWrapper(data []byte) (interface{}, error) {
 	return t, nil
 }
 
-// validateTypeWrapper validates a declarative type and rejects duplicate ids or type values.
-func validateTypeWrapper(data interface{}, fileStore *typeFileBasedStore, dbStore typeStoreInterface) error {
+// validateTypeWrapper validates a declarative type and rejects duplicate ids or type values, and a type without a
+// project where projectRequired is set.
+func validateTypeWrapper(data interface{}, fileStore *typeFileBasedStore, dbStore typeStoreInterface,
+	projectRequired bool) error {
 	t, ok := data.(*providers.AuthorizationDetailType)
 	if !ok {
 		return errors.New("invalid type: expected *providers.AuthorizationDetailType")
@@ -382,6 +390,14 @@ func validateTypeWrapper(data interface{}, fileStore *typeFileBasedStore, dbStor
 	}
 	if svcErr := validateTypeDefinition(*t); svcErr != nil {
 		return fmt.Errorf("invalid authorization details type '%s': %s", t.ID, svcErr.ErrorDescription.String())
+	}
+	if projectRequired && t.ProjectID == "" {
+		return fmt.Errorf("invalid authorization details type '%s': %s", t.ID,
+			ErrorProjectRequired.ErrorDescription.String())
+	}
+	if utf8.RuneCountInString(t.ProjectID) > maxProjectIDLength {
+		return fmt.Errorf("invalid authorization details type '%s': %s", t.ID,
+			ErrorInvalidProject.ErrorDescription.String())
 	}
 
 	ctx := context.Background()

@@ -30,10 +30,17 @@ paths:
         - Authorization Detail Types
       summary: List authorization details types
       description: |
-        Returns the registered RFC 9396 authorization details types, a page at a time, ordered by type value.
+        Returns the registered RFC 9396 authorization details types, a page at a time, ordered by type value. With `projectId`, returns the types of that project only. A project that does not exist has none.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - in: query
+          name: projectId
+          required: false
+          description: ID of the project whose types are listed.
+          schema:
+            type: string
+            maxLength: 36
       responses:
         "200":
           description: List of authorization details types
@@ -132,6 +139,8 @@ paths:
       description: |
         Registers an RFC 9396 authorization details type. The new type starts at version 1. Any client can request it through the `authorization_details` parameter. A type is not bound to a resource server: the access token audience comes from the request's `resource` parameter, or the default resource server when there is none, as for permission scopes.
 
+        On the Control Plane, every type belongs to a project. A create without `projectId` fails with `RAR-1031`, and a project that does not exist fails with `RAR-1032`. The project only organizes management: any client can request the type, whichever project the client belongs to. A deployment without projects does not require `projectId`, and keeps one it is given unchecked.
+
         Validation rules:
         - `type` is required, at most 512 characters of printable ASCII without spaces, and unique across the deployment.
         - `name` is required and at most 100 characters.
@@ -182,6 +191,7 @@ paths:
                   properties:
                     token: "<processor_token>"
               reuse: false
+              projectId: "019a3000-0000-7000-8000-0000000000a1"
       responses:
         "201":
           description: Authorization details type created
@@ -226,6 +236,7 @@ paths:
                       token: "******"
                 reuse: false
                 isReadOnly: false
+                projectId: "019a3000-0000-7000-8000-0000000000a1"
         "400":
           description: Bad request
           content:
@@ -313,6 +324,26 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_create_type_in_declarative_only_mode_description"
                       defaultValue: "Authorization details type creation is not allowed when running in declarative-only mode. Types must be defined in declarative configuration files"
+                project-required:
+                  summary: Created without a project on the Control Plane
+                  value:
+                    code: "RAR-1031"
+                    message:
+                      key: "error.authorizationdetailservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.authorizationdetailservice.project_required_description"
+                      defaultValue: "An authorization details type must belong to a project. Set projectId to the project it belongs to"
+                invalid-project:
+                  summary: Project does not exist
+                  value:
+                    code: "RAR-1032"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
         "403":
           description: |
             The caller may not write authorization details types. On a data plane, no token writes them,
@@ -428,6 +459,8 @@ paths:
       summary: Update an authorization details type
       description: |
         Replaces the definition of an authorization details type. The `type` value is immutable and must match the registered value. `version` increments when the update changes the schema, the consent template or `reuse`, or adds or removes the processor, since earlier approvals only count for the version they were given on; other changes keep it, and an update that changes nothing is not saved. The same validation rules as registration apply.
+
+        An update without `projectId` keeps the type in its project. A different `projectId` moves the type to that project, which must exist (`RAR-1032`), and keeps its version.
       parameters:
         - in: path
           name: id
@@ -580,6 +613,16 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_modify_declarative_type_description"
                       defaultValue: "The authorization details type is defined in declarative configuration and cannot be modified"
+                invalid-project:
+                  summary: Moved to a project that does not exist
+                  value:
+                    code: "RAR-1032"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
         "403":
           description: |
             The caller may not write authorization details types. On a data plane, no token writes them,
@@ -783,6 +826,11 @@ components:
             Summary shown on the consent prompt, at most 1000 bytes. Each `{{path}}` placeholder is replaced with the value at that dot-separated path in the detail, and must name a property the schema declares or `type`. When a placeholder has no value in a detail, such as an optional field the client left out, the summary is not shown for that detail rather than shown with a gap; the detail's fields are still listed.
         processor:
           $ref: '#/components/schemas/AuthorizationDetailProcessor'
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project the type belongs to. Required on the Control Plane when the type is created. An update without it keeps the type's project.
         reuse:
           type: boolean
           default: false
@@ -826,6 +874,9 @@ components:
           type: boolean
           description: |
             Whether the type is defined in declarative configuration. A read-only type cannot be updated or deleted through the API.
+        projectId:
+          type: string
+          description: ID of the project the type belongs to. Omitted for a type in no project.
 
     AuthorizationDetailTypeListResponse:
       type: object

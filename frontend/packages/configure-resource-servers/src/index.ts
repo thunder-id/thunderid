@@ -74,8 +74,10 @@ export {default as ResourceServersListPage} from './pages/ResourceServersListPag
 export {default as ResourceServerEditPage} from './pages/ResourceServerEditPage';
 export {default as CreateResourceServerPage} from './pages/CreateResourceServerPage';
 export {default as AuthorizationDetailTypesListPage} from './pages/AuthorizationDetailTypesListPage';
+export type {AuthorizationDetailTypesListPageProps} from './pages/AuthorizationDetailTypesListPage';
 export {default as AuthorizationDetailTypeEditPage} from './pages/AuthorizationDetailTypeEditPage';
 export {default as CreateAuthorizationDetailTypePage} from './pages/CreateAuthorizationDetailTypePage';
+export type {CreateAuthorizationDetailTypePageProps} from './pages/CreateAuthorizationDetailTypePage';
 
 // Routes
 export type {ResourceServerRoutePaths} from './hooks/useResourceServerRoutes';

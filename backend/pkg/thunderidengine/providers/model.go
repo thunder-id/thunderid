@@ -1279,6 +1279,9 @@ type AuthorizationDetailType struct {
 	Reuse bool
 	// IsReadOnly reports that the type is declaratively defined and cannot be changed through the API.
 	IsReadOnly bool
+	// ProjectID is the project the type belongs to, which a deployment that serves projects requires. It only
+	// organizes management: the type value is used across every project at runtime.
+	ProjectID string
 }
 
 // AuthorizationDetailProcessor identifies the endpoint that authorizes and enriches a type's details.
