@@ -17,7 +17,7 @@ import (
 //
 //   1. consent ran and an authorization step ran: the consented set intersected with the currently
 //      authorized set, so a stale consent record cannot re-grant a revoked permission.
-//   2. consent ran without an authorization step: the consented set is used verbatim.
+//   2. consent ran without an authorization step: the claim is empty, as there is no authorized set.
 //   3. consent did not run: the authorized set is used (covered by FlowAuthzTestSuite).
 //
 // Each scenario uses its own user because consent records are keyed by (application, user) and an
@@ -550,9 +550,7 @@ func (ts *ConsentPermissionsTestSuite) TestConsentDeniedForAllPermissions() {
 }
 
 // TestConsentWithoutAuthorizationStep covers case 4: when consent runs in a flow that has no
-// authorization step there is no authorized set to intersect against, so the consented set is used
-// verbatim. No permission can be consented to in such a flow (the permissions purpose is built from
-// the authorized set), so the consented set is empty and the claim is omitted, while the consented
+// authorization step there is no authorized set, so the claim is omitted, while the consented
 // attributes still reach the assertion, proving the consent step did run.
 func (ts *ConsentPermissionsTestSuite) TestConsentWithoutAuthorizationStep() {
 	flowStep, purposes := ts.authenticateUpToConsent(ts.noAuthzAppID, "consent_no_authz_user", "")
