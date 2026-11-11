@@ -20509,6 +20509,317 @@
   },
   {
     "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK",
+    "flowType": "ADMIN_INITIATED",
+    "display": {
+      "label": "Administrator Attribute Verification with Email Link",
+      "description": "An administrator starts verification of a user's email address, and the user confirms it from an emailed link",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Administrator Attribute Verification with Email Link Flow",
+      "handle": "admin-attribute-verification-email-link-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "permission_validator",
+          "layout": {
+            "size": {
+              "width": 60,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 345
+            }
+          }
+        },
+        {
+          "id": "permission_validator",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "requiredScopes": ["system:user:update", "org:user:update"]
+          },
+          "executor": {
+            "name": "PermissionValidator"
+          },
+          "onSuccess": "prepare_verification",
+          "layout": {
+            "size": {
+              "width": 264,
+              "height": 113
+            },
+            "position": {
+              "x": 218,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "prepare_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "prepare",
+            "inputs": [
+              {
+                "identifier": "attribute",
+                "type": "TEXT_INPUT",
+                "required": true,
+                "defaultValue": "email"
+              }
+            ]
+          },
+          "onSuccess": "generate_link",
+          "layout": {
+            "size": {
+              "width": 260,
+              "height": 113
+            },
+            "position": {
+              "x": 578,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "generate_link",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_link",
+          "layout": {
+            "size": {
+              "width": 222,
+              "height": 113
+            },
+            "position": {
+              "x": 934,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "send_link",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "admin-initiated-email-verification"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "link_sent",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1252,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "link_sent",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "link_sent_heading",
+                "label": "{{ t(verification:admin.email.link.sent.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "link_sent_message",
+                "label": "{{ t(verification:admin.email.link.sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "verify_link",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 350
+            },
+            "position": {
+              "x": 1548,
+              "y": 187
+            }
+          }
+        },
+        {
+          "id": "verify_link",
+          "type": "TASK_EXECUTION",
+          "inputs": [
+            {
+              "ref": "input_invite_token",
+              "identifier": "inviteToken",
+              "type": "HIDDEN",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "confirm",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1994,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "confirm",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "confirm_heading",
+                "label": "{{ t(verification:admin.email.link.confirm.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "confirm_message",
+                "label": "{{ t(verification:admin.email.link.confirm.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_confirm",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_confirm",
+                    "label": "{{ t(verification:admin.email.link.confirm.action) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_confirm",
+                "nextNode": "record_verification"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 600
+            },
+            "position": {
+              "x": 2290,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "record_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "record"
+          },
+          "onSuccess": "verification_complete",
+          "layout": {
+            "size": {
+              "width": 254,
+              "height": 113
+            },
+            "position": {
+              "x": 2736,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "verification_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "verification_complete_heading",
+                "label": "{{ t(verification:admin.email.link.complete.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "verification_complete_message",
+                "label": "{{ t(verification:admin.email.link.complete.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "end",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 325
+            },
+            "position": {
+              "x": 3086,
+              "y": 199
+            }
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 50,
+              "height": 34
+            },
+            "position": {
+              "x": 3532,
+              "y": 345
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
     "category": "PASSWORD",
     "type": "ORGANIZATION_SIGNUP",
     "flowType": "REGISTRATION",
@@ -21243,7 +21554,6 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_ENTERPRISE_SSO",
     "flowType": "AUTHENTICATION",
-    "configureBeforeSave": true,
     "display": {
       "label": "Basic + Enterprise SSO",
       "description": "Password sign-in, or sign-in through the identity provider each organization sets for itself",
@@ -21502,7 +21812,8 @@
               "defaultValue": ""
             }
           ],
-          "onSuccess": "enterprise_auth"
+          "onSuccess": "enterprise_auth",
+          "onFailure": "prompt_signin"
         },
         {
           "id": "enterprise_auth",

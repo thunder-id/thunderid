@@ -59,11 +59,19 @@ const signUps = [
 const all = [...signUps, {type: 'BASIC_ENTERPRISE_SSO', flowType: 'AUTHENTICATION'}];
 
 describe('organization templates', () => {
-  it.each(all)('$type should exist and open unsaved, since it names values only the deployment has', (key) => {
+  it.each(signUps)('$type should exist and open unsaved, since it names roles only the deployment has', (key) => {
     const template = find(key.type, key.flowType);
 
     expect(template).toBeDefined();
     expect(template?.configureBeforeSave).toBe(true);
+  });
+
+  // The parent OU is set to the flow's own organization unit when the flow is created, so it saves at once.
+  it('BASIC_ENTERPRISE_SSO should exist and be saved when it is created', () => {
+    const template = find('BASIC_ENTERPRISE_SSO', 'AUTHENTICATION');
+
+    expect(template).toBeDefined();
+    expect(template?.configureBeforeSave).toBeUndefined();
   });
 
   // The designer neither draws nor saves node conditions, so the templates branch only on edges it shows.
@@ -128,6 +136,9 @@ describe('organization templates', () => {
     expect(nodes.get('resolve_organization')?.properties).toEqual(resolver);
     expect(nodes.get('resolve_organization')?.onSuccess).toBe('organization_settings');
     expect(nodes.get('organization_settings')?.type).toBe('VARIABLES');
+    // An organization with no identity provider goes back to the sign-in page, which shows the error.
+    expect(nodes.get('organization_settings')?.onFailure).toBe('prompt_signin');
+    expect(nodes.get(nodes.get('organization_settings')?.onFailure ?? '')?.type).toBe('PROMPT');
     expect(nodes.get('enterprise_auth')?.properties).toEqual({
       idpId: '{{var(enterpriseIdp)}}',
       allowAuthenticationWithoutLocalUser: true,

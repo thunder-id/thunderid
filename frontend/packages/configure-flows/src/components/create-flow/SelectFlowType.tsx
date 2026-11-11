@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Card, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Lock, LogOut, Send, UserCheck, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Lock, LogOut, Send, ShieldCheck, UserCheck, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {FlowType} from '../../models/flows';
@@ -89,6 +89,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionKey: 'flows:create.type.self.description',
       descriptionDefault: 'Let signed-in users manage their own account, such as verifying an email address',
       icon: <UserCheck size={28} />,
+    },
+    {
+      type: FlowType.ADMIN_INITIATED,
+      labelKey: 'flows:create.type.adminInitiated.label',
+      labelDefault: 'Administrator-initiated',
+      descriptionKey: 'flows:create.type.adminInitiated.description',
+      descriptionDefault: 'Let administrators start an action for a user, such as verifying their email address',
+      icon: <ShieldCheck size={28} />,
     },
   ];
 

@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/attributeverificationprovidermock"
@@ -125,6 +126,24 @@ func flowPrepareContext(flowType providers.FlowType, inputs, runtime map[string]
 		SharedRuntimeData: map[string]string{}}
 }
 
+// adminPrepareContext is a prepare node of an administrator-initiated flow bound to the subject, on the
+// request context.
+func adminPrepareContext(requestCtx context.Context, subject string,
+	inputs, shared map[string]string) *providers.NodeContext {
+	ctx := &providers.NodeContext{Context: requestCtx, ExecutionID: "verification-1",
+		FlowType: providers.FlowTypeAdminInitiated, ExecutorMode: ExecutorModePrepare, UserInputs: inputs,
+		RuntimeData: map[string]string{}, SharedRuntimeData: shared}
+	ctx.SetBoundSubject(subject)
+	return ctx
+}
+
+// callerContext is the request context of an authenticated administrator with the permissions.
+func callerContext(permissions ...string) context.Context {
+	security.InitControlPlanePermissions("")
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "ou-1", "token", permissions, map[string]interface{}{}))
+}
+
 // recordContext is a record node of a flow of the given type over the evidence.
 func recordContext(flowType providers.FlowType, shared map[string]string) *providers.NodeContext {
 	return &providers.NodeContext{Context: context.Background(), FlowType: flowType,
@@ -214,6 +233,66 @@ func (s *AttributeVerificationExecutorTestSuite) TestPrepareFailsWithoutAUserSou
 		})
 	}
 	s.verification.AssertNotCalled(s.T(), "PrepareAttributeVerification", mock.Anything, mock.Anything)
+}
+
+// An administrator-initiated flow pins the user bound at its start, never one a later input names, on the
+// administrator's request and on the user's continuation alike.
+func (s *AttributeVerificationExecutorTestSuite) TestPrepareTakesTheUserBoundToAnAdministratorFlow() {
+	for name, requestCtx := range map[string]context.Context{
+		"administrator's token": callerContext("system:user:update"),
+		"user's continuation": security.WithRecordedCaller(context.Background(), "admin-1", "ou-1",
+			[]string{"system"}),
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			pin := emailPin()
+			s.verification.On("PrepareAttributeVerification", mock.Anything, existingRequest("user-a", "email")).
+				Return(pin, nil).Once()
+			ctx := adminPrepareContext(requestCtx, "user-a",
+				map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{})
+
+			prepared, err := s.executor.Execute(ctx)
+
+			s.Require().NoError(err)
+			s.Require().Equal(providers.ExecComplete, prepared.Status)
+			s.Equal(&verificationEvidence{Pin: pin}, s.decodedEvidence(prepared))
+			s.Equal("user-a", prepared.RuntimeData[userAttributeUserID])
+		})
+	}
+}
+
+// An administrator-initiated flow bound to no one verifies no one, whatever subject an input names.
+func (s *AttributeVerificationExecutorTestSuite) TestPrepareRefusesAnAdministratorFlowBoundToNoOne() {
+	for name, ctx := range map[string]*providers.NodeContext{
+		"administrator naming a subject": adminPrepareContext(callerContext("system"), "",
+			map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{}),
+		"user's continuation naming a subject": adminPrepareContext(
+			security.WithRecordedCaller(context.Background(), "admin-1", "ou-1", []string{"system"}), "",
+			map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{}),
+	} {
+		s.Run(name, func() {
+			result, err := s.executor.Execute(ctx)
+
+			s.Require().NoError(err)
+			s.Equal(providers.ExecFailure, result.Status)
+			s.Equal(ErrVerificationChannelUnavailable.Code, result.Error.Code)
+			s.Equal(clearedShared(), result.SharedRuntimeData)
+		})
+	}
+	s.verification.AssertNotCalled(s.T(), "PrepareAttributeVerification", mock.Anything, mock.Anything)
+}
+
+// The verification service refusing the bound user fails the node with the executor's refusal code.
+func (s *AttributeVerificationExecutorTestSuite) TestPrepareRefusedForTheBoundUserFails() {
+	s.verification.On("PrepareAttributeVerification", mock.Anything, existingRequest("user-a", "email")).
+		Return(nil, &tidcommon.ServiceError{Code: "AVS-1001", Type: tidcommon.ClientErrorType}).Once()
+
+	result, err := s.executor.Execute(adminPrepareContext(callerContext("system"), "user-a",
+		map[string]string{"attribute": "email"}, map[string]string{}))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecFailure, result.Status)
+	s.Equal(ErrIdentityGovernanceFailed.Code, result.Error.Code)
 }
 
 // Recovery, registration and onboarding pin the user the flow established; a self flow bound
@@ -638,9 +717,10 @@ func (s *AttributeVerificationExecutorTestSuite) TestRecordRecordsThePinInAnyFlo
 		flowType providers.FlowType
 		pin      *providers.AttributeVerificationPin
 	}{
-		"self email":           {providers.FlowTypeSelf, emailPin()},
-		"self mobile":          {providers.FlowTypeSelf, mobilePin()},
-		"authentication email": {providers.FlowTypeAuthentication, emailPin()},
+		"self email":            {providers.FlowTypeSelf, emailPin()},
+		"self mobile":           {providers.FlowTypeSelf, mobilePin()},
+		"admin-initiated email": {providers.FlowTypeAdminInitiated, emailPin()},
+		"authentication email":  {providers.FlowTypeAuthentication, emailPin()},
 	} {
 		s.Run(name, func() {
 			s.SetupTest()
@@ -777,7 +857,7 @@ func (s *AttributeVerificationExecutorTestSuite) expectProviderCall(step string)
 	s.verification.On("RecordAttributeVerification", mock.Anything, *emailPin()).Return(nil).Once()
 }
 
-// A suspended user is refused at both steps with the suspension stated, before the provider is asked.
+// A suspended user is refused at both steps with the suspension stated, and nothing is recorded.
 func (s *AttributeVerificationExecutorTestSuite) TestASuspendedUserIsRefused() {
 	for name, ctx := range s.accessCheckedSteps() {
 		s.Run(name, func() {
@@ -795,6 +875,38 @@ func (s *AttributeVerificationExecutorTestSuite) TestASuspendedUserIsRefused() {
 			s.verification.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything)
 		})
 	}
+}
+
+// An administrator-initiated prepare asks the provider, which checks the caller, before the hold, so a caller
+// refused for the user never learns whether the user is held.
+func (s *AttributeVerificationExecutorTestSuite) TestAdminInitiatedPrepareChecksTheCallerBeforeTheHold() {
+	s.governance = identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	s.executor = newAttributeVerificationExecutor(s.factory, s.verification, s.authn, newAccessGuard(s.governance))
+	s.verification.On("PrepareAttributeVerification", mock.Anything, existingRequest("user-a", "email")).
+		Return(nil, &tidcommon.ErrorUnauthorized).Once()
+
+	result, err := s.executor.Execute(adminPrepareContext(context.Background(), "user-a",
+		map[string]string{"attribute": "email"}, map[string]string{}))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecFailure, result.Status)
+	s.Equal(ErrIdentityGovernanceFailed.Code, result.Error.Code)
+	s.governance.AssertNotCalled(s.T(), "EvaluateAccess", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An administrator-initiated prepare states the hold of a suspended user the caller may update.
+func (s *AttributeVerificationExecutorTestSuite) TestAdminInitiatedPrepareStatesTheHoldAfterTheCaller() {
+	s.withAccessDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil)
+	s.expectProviderCall(ExecutorModePrepare)
+
+	result, err := s.executor.Execute(adminPrepareContext(context.Background(), "user-a",
+		map[string]string{"attribute": "email"}, map[string]string{}))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecFailure, result.Status)
+	s.Equal(ErrAccountSuspended.Code, result.Error.Code)
+	s.Equal(clearedShared(), result.SharedRuntimeData)
+	s.Equal(clearedRuntime(), result.RuntimeData)
 }
 
 // A refusal that names no hold is answered with the executor's refusal code.

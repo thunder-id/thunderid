@@ -547,6 +547,22 @@ sections:
         extend. It provides OIDC discovery, PKCE, token exchange, session management, JWT decoding, and agent/OBO authentication.
         Instantiate it directly only when writing a custom platform adapter: for browser use, prefer `@thunderid/browser`;
         for React, use `@thunderid/react`.'
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: 'getAccessibleOrganizationUnits(config)'
+        type: Promise<AccessibleOrganizationUnitList>
+        description: 'An exported function rather than a method. Lists the organization units the signed-in user can
+          access, from `GET /users/me/ous`. `scope: ''siblings''` narrows the list to the accessible units that share the parent of the current unit; `limit` and `offset` page it. The request must carry the user''s access token, in
+          `headers` or through a `fetcher`.'
+      - name: 'getCurrentOrganizationUnit(userId?)'
+        type: Promise<CurrentOrganizationUnit | null>
+        description: The organization unit the session was issued for, from its `ouId`, `ouHandle`, and `ouName` claims,
+          or `null` when it names none. The claims are not verified, so use the result for display only.
+      - name: 'switchOrganizationUnit(organizationUnitId, options?)'
+        type: Promise<User | TokenResponse | undefined>
+        description: 'Signs in again, bounded to another organization unit. Each platform client implements it; the base
+          class rejects with `JS-AUTH_CORE-SWOU-NS01`. A failed switch keeps the previous session, unless a backend reports that its
+          session has ended, and the error carries a code from `OrganizationUnitSwitchErrorCodes`.'
       example: const client = new ThunderIDJavaScriptClient(storage?, cryptoUtils?)
     - group: Functions
       kind: function

@@ -63,6 +63,8 @@ type ProjectAPITestSuite struct {
 	presentationDefinitions []string
 	// credentialConfigurations are the credential configurations a test created.
 	credentialConfigurations []string
+	// authorizationDetailTypes are the authorization details types a test created.
+	authorizationDetailTypes []string
 	// users are the users a test created.
 	users []string
 	// userTypes are the user types a test created.
@@ -116,6 +118,9 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.credentialConfigurations {
 		ts.do(http.MethodDelete, configurationsPath+"/"+id, "")
 	}
+	for _, id := range ts.authorizationDetailTypes {
+		ts.do(http.MethodDelete, authorizationDetailTypesPath+"/"+id, "")
+	}
 	for _, id := range ts.users {
 		_ = testutils.DeleteUser(id)
 	}
@@ -135,7 +140,7 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 		nil, nil, nil, nil, nil, nil, nil, nil
 	ts.themes, ts.templates, ts.smsTemplates, ts.presentationDefinitions, ts.credentialConfigurations =
 		nil, nil, nil, nil, nil
-	ts.users, ts.userTypes, ts.groups = nil, nil, nil
+	ts.users, ts.userTypes, ts.groups, ts.authorizationDetailTypes = nil, nil, nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {

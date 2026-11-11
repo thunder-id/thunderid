@@ -1577,8 +1577,12 @@ function apply_dev_quickstart_overrides() {
 
     write_cors_bootstrap "$root/dp/bootstrap/03-dev-cors.yaml" \
         "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+    # The Control Plane deploys its own cors list to the managed Data Plane (replacing the Data Plane's
+    # and marking it read-only), so the Control Plane list must also include the Data Plane dev origins.
     write_cors_bootstrap "$root/cp/bootstrap/03-dev-cors.yaml" \
-        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
+        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT" \
+        "https://localhost:$GATE_APP_DEFAULT_PORT" \
+        "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
     # auth-dp keeps the pack's allowance for the Control Plane's own origin and gains the dev one:
     # the console calls its /oauth2/token and discovery endpoints from the browser.
     write_cors_bootstrap "$root/auth-dp/bootstrap/03-quickstart-cors.yaml" \

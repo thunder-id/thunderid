@@ -21,6 +21,7 @@ import ConfigureBasicInfo from '../components/create-role/ConfigureBasicInfo';
 import ConfigurePermissions from '../components/create-role/ConfigurePermissions';
 import RoleConstraints from '../constants/role-constraints';
 import useRoleCreate from '../contexts/RoleCreate/useRoleCreate';
+import useRoleRoutes from '../hooks/useRoleRoutes';
 import type {CreateRoleRequest} from '../models/requests';
 import {RoleCreateFlowStep} from '../models/role-create-flow';
 
@@ -29,6 +30,7 @@ export default function CreateRolePage(): JSX.Element {
   const {t} = useTranslation('roles');
   const logger = useLogger('CreateRolePage');
   const createRole = useCreateRole();
+  const routes = useRoleRoutes();
 
   const {currentStep, setCurrentStep, name, setName, ouId, setOuId, error, setError, permissions, setPermissions} =
     useRoleCreate();
@@ -78,7 +80,7 @@ export default function CreateRolePage(): JSX.Element {
     return map;
   }, [t, hasMultipleOUs]);
 
-  const listUrl = '/roles';
+  const listUrl = routes.roles.list();
 
   const handleClose = (): void => {
     if (createRole.isPending) return;

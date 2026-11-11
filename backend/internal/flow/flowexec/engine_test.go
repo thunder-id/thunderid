@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -5263,6 +5264,52 @@ func (s *EngineTestSuite) TestApplyVariableValues_StopsWhenAConnectionIsStillNot
 		s.Equal(&ErrorFlowConnectionNotSet, fe.applyVariableValues(ctx, node, resp, fe.logger))
 	})
 
+	s.Run("the node routes to its onFailure node", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		node.(core.VariablesNodeInterface).SetOnFailure("retry-prompt")
+		values := newVariableValueProviderMock(t)
+		values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-child").
+			Return(map[string]string{}, nil)
+		fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+		resolver := coremock.NewExecutorBackedNodeInterfaceMock(t)
+		resolver.On("GetExecutorName").Return(executormeta.ExecutorNameOUResolver)
+		resolver.On("GetInputs").Return([]providers.Input{{Identifier: "orgHandle"}})
+		other := coremock.NewExecutorBackedNodeInterfaceMock(t)
+		other.On("GetExecutorName").Return("BasicAuthExecutor")
+		nodesGraph := coremock.NewGraphInterfaceMock(t)
+		nodesGraph.On("GetID").Return("flow-1")
+		nodesGraph.On("GetNodes").Return(map[string]core.NodeInterface{"resolve": resolver, "login": other})
+		ctx := &EngineContext{Context: context.Background(), Graph: nodesGraph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child"},
+			UserInputs: map[string]string{
+				"ouHandle": "child-ou", "orgHandle": "child-ou", "username": "alice"}}
+
+		s.Nil(fe.applyVariableValues(ctx, node, resp, fe.logger))
+		s.Equal(map[string]string{"username": "alice"}, ctx.UserInputs)
+		s.NotContains(ctx.RuntimeData, common.RuntimeKeyOUID)
+		s.Equal(common.NodeStatusForward, resp.Status)
+		s.Equal("retry-prompt", resp.NextNodeID)
+		s.Equal(&ErrorFlowConnectionNotSet, resp.Error)
+		s.Contains(resp.RuntimeData["failureReasonJSON"], ErrorFlowConnectionNotSet.Code)
+	})
+
+	s.Run("an organization unit fixed before the flow stays when the node routes to its onFailure node", func() {
+		node, resp := s.unsetConnectionNodeAndResponse()
+		node.(core.VariablesNodeInterface).SetOnFailure("retry-prompt")
+		values := newVariableValueProviderMock(t)
+		values.EXPECT().GetEffectiveVariableValues(mock.Anything, "flow-1", app, "ou-child").
+			Return(map[string]string{}, nil)
+		fe := &flowEngine{variableValuesProvider: values, logger: log.GetLogger()}
+		emptyGraph := coremock.NewGraphInterfaceMock(t)
+		emptyGraph.On("GetID").Return("flow-1")
+		emptyGraph.On("GetNodes").Return(map[string]core.NodeInterface{})
+		ctx := &EngineContext{Context: context.Background(), Graph: emptyGraph, Application: app,
+			RuntimeData: map[string]string{common.RuntimeKeyOUID: "ou-child", common.RuntimeKeyOUFixed: "true"}}
+
+		s.Nil(fe.applyVariableValues(ctx, node, resp, fe.logger))
+		s.Equal("ou-child", ctx.RuntimeData[common.RuntimeKeyOUID])
+	})
+
 	s.Run("an engine with no values to apply", func() {
 		node, resp := s.unsetConnectionNodeAndResponse()
 		fe := &flowEngine{logger: log.GetLogger()}
@@ -5573,16 +5620,22 @@ func (c *signInCallee) end(t *testing.T) (core.NodeInterface, bool, *FlowStep, *
 // calleeOf switches a caller of calleeAppID with the given type, boundedness and ouId into a callee of calleeType.
 func (s *EngineTestSuite) calleeOf(callerType providers.FlowType, callerBounded bool, callerOUID string,
 	calleeType providers.FlowType) *EngineContext {
+	runtimeData := map[string]string{}
+	if callerOUID != "" {
+		runtimeData[common.RuntimeKeyOUID] = callerOUID
+	}
+	return s.calleeWithRuntimeData(callerType, callerBounded, runtimeData, calleeType)
+}
+
+// calleeWithRuntimeData is calleeOf for a caller holding the given runtime data.
+func (s *EngineTestSuite) calleeWithRuntimeData(callerType providers.FlowType, callerBounded bool,
+	runtimeData map[string]string, calleeType providers.FlowType) *EngineContext {
 	t := s.T()
 	callNode := coremock.NewNodeInterfaceMock(t)
 	callNode.On("GetID").Return("call").Maybe()
 	calleeGraph := coremock.NewGraphInterfaceMock(t)
 	calleeGraph.On("GetType").Return(calleeType)
 	calleeGraph.On("GetStartNode").Return(coremock.NewNodeInterfaceMock(t), nil)
-	runtimeData := map[string]string{}
-	if callerOUID != "" {
-		runtimeData[common.RuntimeKeyOUID] = callerOUID
-	}
 	ctx := &EngineContext{
 		Context:       context.Background(),
 		AppID:         calleeAppID,
@@ -5606,6 +5659,24 @@ func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCalleeKeepsTheOUItsSig
 
 	ctx.popFrame()
 	s.Equal("caller-ou", ctx.RuntimeData[common.RuntimeKeyOUID])
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCalleeKeepsTheOUFixedMarkOfItsCaller() {
+	ctx := s.calleeWithRuntimeData(providers.FlowTypeAuthentication, true,
+		map[string]string{common.RuntimeKeyOUID: "caller-ou", common.RuntimeKeyOUFixed: "true"},
+		providers.FlowTypeAuthentication)
+
+	s.Equal("caller-ou", ctx.RuntimeData[common.RuntimeKeyOUID])
+	s.Equal("true", ctx.RuntimeData[common.RuntimeKeyOUFixed])
+
+	ctx.popFrame()
+	s.Equal("true", ctx.RuntimeData[common.RuntimeKeyOUFixed])
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCalleeOfACallerThatPickedItsOUHasNoFixedMark() {
+	ctx := s.calleeOf(providers.FlowTypeAuthentication, true, "caller-ou", providers.FlowTypeAuthentication)
+
+	s.NotContains(ctx.RuntimeData, common.RuntimeKeyOUFixed)
 }
 
 func (s *EngineTestSuite) TestSwitchContextToCallee_SignInCallerWithoutAnOUPassesNone() {

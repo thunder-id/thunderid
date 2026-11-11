@@ -9,6 +9,7 @@ import FlowConstants from '../../constants/FlowConstants';
 import {ElementTypes, ButtonVariants, ButtonTypes, ElementCategories, BlockTypes} from '../../models/elements';
 import type {Element} from '../../models/elements';
 import {ExecutionTypes, StepTypes} from '../../models/steps';
+import {REGISTRATION_GRAPH_VALIDATION_RULES} from '../../validation/validation-rules';
 import FlowBuilder from '../FlowBuilder';
 
 // Use vi.hoisted for mock functions that need to be available during vi.mock hoisting
@@ -6470,6 +6471,30 @@ describe('isEditingExistingFlow Branch Coverage', () => {
       expect(mockUpdateFlowMutate).toHaveBeenCalled();
       expect(mockCreateFlowMutate).not.toHaveBeenCalled();
     });
+  });
+
+  // A sign-up flow is checked for a role assignment step with no roles, which the server refuses to save.
+  it('should register the sign-up graph validation rules for a registration flow', () => {
+    const setGraphValidationRules = vi.fn();
+    mockUseFlowConfig.mockImplementation(() => ({
+      setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules,
+      edgeStyle: mockEdgeStyle.value,
+      isVerboseMode: true,
+    }));
+    mockUseParams.mockReturnValue({flowId: 'sign-up-flow'});
+    mockExistingFlowData.value = {
+      id: 'sign-up-flow',
+      ouId: 'ou-1',
+      name: 'Sign-up',
+      handle: 'sign-up',
+      flowType: 'REGISTRATION',
+      nodes: [],
+    };
+
+    render(<FlowBuilder />);
+
+    expect(setGraphValidationRules).toHaveBeenCalledWith(REGISTRATION_GRAPH_VALIDATION_RULES);
   });
 
   it('should NOT be editing when both flowId and existingFlowData are missing', async () => {

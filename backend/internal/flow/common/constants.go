@@ -188,6 +188,9 @@ const (
 	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
 	// prompt.
 	RuntimeKeyOUID = "ouId"
+	// RuntimeKeyOUFixed marks a sign-in whose organization unit was fixed before the flow ran, by the request or by
+	// the application, so that no step of the flow may choose another.
+	RuntimeKeyOUFixed = "ouFixed"
 	// RuntimeKeyInviter holds the subject that started an invitation flow.
 	RuntimeKeyInviter = "inviter"
 	// RuntimeKeyAuthorizedShare holds the "resourceType:targetOuId" share an invitation flow authorized.
@@ -242,8 +245,6 @@ const (
 	// RuntimeKeyRedirectURIHost holds the host of the redirect URI of a client registered from a Client ID
 	// Metadata Document, set by the authorization request so that consent shows it.
 	RuntimeKeyRedirectURIHost = "redirect_uri_host"
-	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
-	RuntimeKeyConsentID = "consent_id"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.
 	RuntimeKeyStepTimeout = "step_timeout"
 	// RuntimeKeyConsentedAttributes holds a space-separated set of attributes that the user has consented to share.

@@ -52,4 +52,16 @@ describe('useGetAuthorizationDetailTypes', () => {
       method: 'GET',
     });
   });
+
+  it("fetches a project's types when a project is given", async () => {
+    mockHttpRequest.mockResolvedValue({data: {totalResults: 0, startIndex: 0, count: 0, types: [], links: []}});
+
+    const {result} = renderHook(() => useGetAuthorizationDetailTypes({limit: 10, projectId: 'project-1'}));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockHttpRequest).toHaveBeenCalledWith({
+      url: 'https://localhost:8090/authorization-detail-types?limit=10&offset=0&projectId=project-1',
+      method: 'GET',
+    });
+  });
 });

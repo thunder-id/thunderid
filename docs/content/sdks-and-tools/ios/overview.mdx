@@ -97,6 +97,9 @@ struct ContentView: View {
 | `signOut(options:sessionId:)` | Revoke the refresh token and clear the session |
 | `exchangeToken(config:sessionId:)` | Perform an OAuth 2.0 token exchange (STS) |
 | `decodeJwtToken(_:)` | Decode a JWT string into a `Decodable` type |
+| `getAccessibleOrganizationUnits(scope:limit:offset:)` | List the organization units the signed-in user can access |
+| `getCurrentOrganizationUnit()` | Read the organization unit the session was issued for, for display only |
+| `switchOrganizationUnit(_:options:)` | Sign in again, bounded to another organization unit |
 
 ### <ProductName />SwiftUI: Components
 
@@ -114,12 +117,14 @@ struct ContentView: View {
 
 | Component | Description |
 |-----------|-------------|
-| `SignIn(applicationId:onComplete:onError:)` | Full embedded sign-in form driven by the Flow Execution API |
+| `SignIn(applicationId:organizationUnitId:onComplete:onError:)` | Full embedded sign-in form driven by the Flow Execution API |
 | `BaseSignIn<Content>(applicationId:onComplete:onError:content:)` | Builder variant; receives a `SignInState` for custom form UI |
 | `SignUp(applicationId:onComplete:onError:)` | Full embedded registration form |
 | `BaseSignUp<Content>(...)` | Builder variant for custom registration UI |
 | `UserProfile(onSaved:onError:)` | Editable profile form; loads from `/scim2/Me` and saves via `updateUserProfile` |
 | `BaseUserProfile<Content>(...)` | Builder variant with full control over the form layout |
+| `OrganizationUnitSwitcher(scope:limit:switchOptions:onSelect:onSwitched:onSignInRequired:)` | Shows the current organization unit and a menu that switches the session to another |
+| `BaseOrganizationUnitSwitcher<Content>(...)` | The same field and menu, drawn from units and callbacks you pass in |
 
 #### Guards
 

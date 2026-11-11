@@ -631,6 +631,11 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
     if (nextNode) {
       flowNode.onSuccess = nextNode;
     }
+
+    const failureEdge = edges.find((edge) => edge.source === canvasNode.id && edge.sourceHandle === 'failure');
+    if (failureEdge) {
+      flowNode.onFailure = failureEdge.target;
+    }
   }
 
   // Handle START nodes

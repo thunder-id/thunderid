@@ -43,6 +43,9 @@ const (
 	FlowTypeUserOnboarding FlowType = "USER_ONBOARDING"
 	// FlowTypeSelf represents a flow a signed-in user runs on their own account.
 	FlowTypeSelf FlowType = "SELF"
+	// FlowTypeAdminInitiated represents a flow an administrator starts for a user, which the user
+	// finishes.
+	FlowTypeAdminInitiated FlowType = "ADMIN_INITIATED"
 	// FlowTypeRecovery represents a flow execution for account recovery (e.g., password reset).
 	FlowTypeRecovery FlowType = "RECOVERY"
 	// FlowTypeSignOut represents a flow execution for terminating an SSO session.
@@ -64,6 +67,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeRegistration,
 	FlowTypeUserOnboarding,
 	FlowTypeSelf,
+	FlowTypeAdminInitiated,
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,

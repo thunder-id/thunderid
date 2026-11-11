@@ -45,6 +45,8 @@ type AuthorizationDetailTypeRequest struct {
 	ConsentTemplate string            `json:"consentTemplate,omitempty"`
 	Processor       *ProcessorRequest `json:"processor,omitempty"`
 	Reuse           *bool             `json:"reuse,omitempty"`
+	// ProjectID is the project the type belongs to. An update without one keeps the type's project.
+	ProjectID string `json:"projectId,omitempty"`
 }
 
 // typeRequestWire is the management API request body. It also accepts the fields a GET returns, so a
@@ -68,6 +70,7 @@ type AuthorizationDetailTypeResponse struct {
 	Processor       *ProcessorResponse `json:"processor,omitempty"`
 	Reuse           bool               `json:"reuse"`
 	IsReadOnly      bool               `json:"isReadOnly"`
+	ProjectID       string             `json:"projectId,omitempty"`
 }
 
 // AuthorizationDetailTypePage is one page of the registered types.

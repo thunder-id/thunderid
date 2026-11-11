@@ -174,58 +174,80 @@ const result = await updateUserProfileAction({
 })
 ```
 
-## Organization Management
+## Organization Units
 
-### `getMyOrganizations()`
+Switching organization units runs through a server action inside the SDK, so call it from a client component with `useThunderID()` from `@thunderid/nextjs`. The hook returns these organization unit members:
 
-List organizations the current user belongs to.
+| Member | Type | Description |
+|--------|------|-------------|
+| `currentOrganizationUnit` | `CurrentOrganizationUnit \| null` | The organization unit the session was issued for, or `null`. The SDK reads it on the server from the `ouId`, `ouHandle`, and `ouName` claims of the session's access token, for display only. An access token carries `ouId` only when the application's token configuration includes it. |
+| `getCurrentOrganizationUnit` | `() => Promise<CurrentOrganizationUnit \| null>` | Reads the current organization unit from the session's access token again. |
+| `switchOrganizationUnit` | `(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<User \| undefined>` | Signs in again bounded to another organization unit. |
 
-```ts
-import { getMyOrganizations } from '@thunderid/nextjs/server'
+For how organizations map to organization units and what the new tokens carry, see [Switch Organizations](../../../../use-cases/b2b/journeys/switch-organizations). To let the user pick a unit, render [`<OrganizationUnitSwitcher />`](../components/organization-unit-switcher).
 
-const organizations = await getMyOrganizations()
+### `switchOrganizationUnit()`
+
+Signs the user in again bounded to the organization unit `organizationUnitId`. <ProductName /> reuses the single sign-on (SSO) session when the user can sign in to that unit, so the user normally enters no credentials.
+
+```tsx title="app/components/OpenOrganization.tsx" showLineNumbers
+'use client'
+import { useState } from 'react'
+import { useThunderID } from '@thunderid/nextjs'
+
+function OpenOrganization({ organizationUnitId }: { organizationUnitId: string }) {
+  const { currentOrganizationUnit, switchOrganizationUnit } = useThunderID()
+  const [error, setError] = useState<string | null>(null)
+
+  const open = () => {
+    setError(null)
+    switchOrganizationUnit?.(organizationUnitId).catch(() => setError('The organization could not be opened.'))
+  }
+
+  return (
+    <>
+      <p>Working in {currentOrganizationUnit?.name}</p>
+      <button onClick={open}>Open organization</button>
+      {error && <p role="alert">{error}</p>}
+    </>
+  )
+}
+
+export default OpenOrganization
 ```
 
-### `switchOrganization()`
+The path the switch takes depends on the sign-in mode:
 
-Switch the current session to a different organization.
+- **Redirect mode**, the default: the server action builds the unit's authorization URL, `{baseUrl}/ou/{ouId}/oauth2/authorize`, and marks the session so the OAuth callback completes the switch. The browser goes to that URL, and the callback redeems the code at the unit's token endpoint and replaces the session. The promise resolves with `undefined`. A server cannot switch silently, so `{ redirect: false }` always fails with `InteractionRequired`.
+- **Embedded mode** (`mode: 'embedded'`): the server action starts an `AUTHENTICATION` flow with `ouId`. When the flow completes at once, its assertion replaces the session cookie. The SDK then reads the user and the current organization unit again, refreshes the route, and resolves with the user. A flow that needs input fails with `InteractionRequired`.
 
-```ts
-import { switchOrganization } from '@thunderid/nextjs/server'
+Only `options.redirect` applies. A failed switch keeps the previous session and rejects with an error whose `code` is one of the `OrganizationUnitSwitchErrorCodes` values. `@thunderid/nextjs` does not export that constant, so compare `code` with the values:
 
-await switchOrganization(targetOrganization)
-```
+| Code | Value | Cause |
+|------|-------|-------|
+| `UnauthorizedClient` | `switchOrganizationUnit-UnauthorizedClient-001` | The unit does not exist, or the application cannot be used from it. |
+| `InteractionRequired` | `switchOrganizationUnit-InteractionRequired-001` | The user has to sign in again, and the switch could not interact with the user. |
+| `InvalidOrganizationUnit` | `switchOrganizationUnit-ValidationError-001` | No organization unit ID was given. |
+| `Failed` | `switchOrganizationUnit-ResponseError-001` | The switch failed for another reason, including a request with no session. |
 
-### `createOrganization()`
+### `getAccessibleOrganizationUnits()`
 
-Create a new organization.
-
-```ts
-import { createOrganization } from '@thunderid/nextjs/server'
-
-const org = await createOrganization({ name: 'Acme Corp' })
-```
-
-### `getAllOrganizations()`
-
-List all organizations (requires admin privileges).
+List the organization units the signed-in user can access, from `/users/me/ous`, on the server. The request uses the access token of the session in the request's cookie, and the token stays on the server.
 
 ```ts
-import { getAllOrganizations } from '@thunderid/nextjs/server'
+import { thunderid } from '@thunderid/nextjs/server'
 
-const response = await getAllOrganizations()
+const client = await thunderid()
+const { current, organizationUnits, totalResults } = await client.getAccessibleOrganizationUnits({ scope: 'siblings' })
 ```
 
-### `getCurrentOrganizationAction()`
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `scope` | `'siblings'` | Optional. Lists only the accessible units that share the parent of the current unit. Omit it to list every accessible unit. |
+| `limit` | `number` | Optional. The maximum number of units to return. |
+| `offset` | `number` | Optional. The zero-based offset of the first unit to return. |
 
-Retrieve the organization for the current session.
-
-```ts
-import { getCurrentOrganizationAction, getSessionId } from '@thunderid/nextjs/server'
-
-const sessionId = await getSessionId()
-const result = await getCurrentOrganizationAction(sessionId)
-```
+**Returns:** `Promise<AccessibleOrganizationUnitList>`, one page with `current`, `organizationUnits`, `totalResults`, `startIndex`, and `count`. On failure it throws a `ThunderIDAPIError` with the status and code of the failure.
 
 ## `thunderid()` Client Access
 
@@ -245,4 +267,5 @@ const result = await client.exchangeToken(config, sessionId)
 | `getAccessToken(sessionId)` | Retrieve the access token for a session |
 | `getSessionId()` | Retrieve the current session ID |
 | `exchangeToken(config, sessionId)` | Perform a custom token exchange |
+| `getAccessibleOrganizationUnits(options)` | List the organization units the signed-in user can access. See [`getAccessibleOrganizationUnits()`](#getaccessibleorganizationunits) |
 | `reInitialize(config)` | Update SDK configuration at runtime |

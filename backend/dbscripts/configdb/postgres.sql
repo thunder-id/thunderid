@@ -285,6 +285,7 @@ CREATE TABLE "AUTHORIZATION_DETAIL_TYPE" (
     DESCRIPTION TEXT,
     VERSION INTEGER NOT NULL DEFAULT 1,
     SCHEMA_DEFINITION TEXT NOT NULL,
+    PROJECT_ID VARCHAR(36),
     PROPERTIES JSONB,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -294,6 +295,9 @@ CREATE TABLE "AUTHORIZATION_DETAIL_TYPE" (
 -- Unique constraint: an authorization details type value is unique per deployment
 CREATE UNIQUE INDEX uq_authorization_detail_type
     ON "AUTHORIZATION_DETAIL_TYPE"(DEPLOYMENT_ID, TYPE);
+
+-- Composite index for listing the authorization details types of a project
+CREATE INDEX idx_authorization_detail_type_project ON "AUTHORIZATION_DETAIL_TYPE" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store resources within resource servers.
 CREATE TABLE "RESOURCE" (

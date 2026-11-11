@@ -28,6 +28,8 @@ export interface AuthorizationDetailType {
   reuse: boolean;
   /** Whether the type is defined in declarative configuration, so it cannot be edited or deleted. */
   isReadOnly?: boolean;
+  /** The project the type belongs to, which a deployment that serves projects requires. */
+  projectId?: string;
 }
 
 /**
@@ -41,6 +43,8 @@ export interface AuthorizationDetailTypeRequest {
   consentTemplate?: string;
   processor?: ProcessorConfig;
   reuse: boolean;
+  /** The project the type is created in. An update without it keeps the type's project. */
+  projectId?: string;
 }
 
 /**

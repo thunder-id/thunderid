@@ -55,14 +55,20 @@ func typeRow() map[string]interface{} {
 func (s *StoreTestSuite) TestCreateType() {
 	s.dbProvider.EXPECT().GetConfigDBClient().Return(s.dbClient, nil)
 	s.dbClient.EXPECT().ExecuteContext(mock.Anything, queryCreateType, "type-1", testFlightType, "Flight",
-		nil, 1, []byte(flightSchema), mock.Anything, testDeploymentID).Return(int64(1), nil).Once()
+		nil, 1, []byte(flightSchema), mock.Anything, nil, testDeploymentID).Return(int64(1), nil).Once()
 
 	t := flightType()
 	t.Name, t.Description, t.Schema = "Flight", "", json.RawMessage(flightSchema)
 	s.NoError(s.types.CreateType(s.ctx, t))
 
+	s.dbClient.EXPECT().ExecuteContext(mock.Anything, queryCreateType, "type-1", testFlightType, "Flight",
+		nil, 1, []byte(flightSchema), mock.Anything, testProjectID, testDeploymentID).Return(int64(1), nil).Once()
+	inProject := t
+	inProject.ProjectID = testProjectID
+	s.NoError(s.types.CreateType(s.ctx, inProject), "a type in a project stores its project")
+
 	s.dbClient.EXPECT().ExecuteContext(mock.Anything, queryCreateType, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(int64(0), errors.New("insert failed")).Once()
 	s.Error(s.types.CreateType(s.ctx, t))
 }
@@ -153,6 +159,34 @@ func (s *StoreTestSuite) TestCountTypesAndListTypePage() {
 	s.Error(err)
 }
 
+func (s *StoreTestSuite) TestCountTypesAndListTypePageByProject() {
+	s.dbProvider.EXPECT().GetConfigDBClient().Return(s.dbClient, nil)
+	s.dbClient.EXPECT().QueryContext(mock.Anything, queryCountTypesByProject, testProjectID, testDeploymentID).
+		Return([]map[string]interface{}{{"total": int64(2)}}, nil).Once()
+	count, err := s.types.CountTypesByProject(s.ctx, testProjectID)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	s.dbClient.EXPECT().QueryContext(mock.Anything, queryCountTypesByProject, testProjectID, testDeploymentID).
+		Return(nil, errors.New("db down")).Once()
+	_, err = s.types.CountTypesByProject(s.ctx, testProjectID)
+	s.Error(err)
+
+	row := typeRow()
+	row["project_id"] = testProjectID
+	s.dbClient.EXPECT().QueryContext(mock.Anything, queryListTypePageByProject, 2, 1, testProjectID,
+		testDeploymentID).Return([]map[string]interface{}{row}, nil).Once()
+	types, err := s.types.ListTypePageByProject(s.ctx, testProjectID, 2, 1)
+	s.NoError(err)
+	s.Require().Len(types, 1)
+	s.Equal(testProjectID, types[0].ProjectID, "the project is read from its column")
+
+	s.dbClient.EXPECT().QueryContext(mock.Anything, queryListTypePageByProject, 2, 1, testProjectID,
+		testDeploymentID).Return(nil, errors.New("db down")).Once()
+	_, err = s.types.ListTypePageByProject(s.ctx, testProjectID, 2, 1)
+	s.Error(err)
+}
+
 func (s *StoreTestSuite) TestListTypesAndValues() {
 	s.dbProvider.EXPECT().GetConfigDBClient().Return(s.dbClient, nil)
 	s.dbClient.EXPECT().QueryContext(mock.Anything, queryListTypes, testDeploymentID).
@@ -195,17 +229,19 @@ func (s *StoreTestSuite) TestGetTypeByIDAndIsTypeDeclarative() {
 func (s *StoreTestSuite) TestUpdateAndDeleteType() {
 	s.dbProvider.EXPECT().GetConfigDBClient().Return(s.dbClient, nil)
 	anyUpdate := []interface{}{mock.Anything, queryUpdateType, "type-1", mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, 1, 1, testDeploymentID}
+		mock.Anything, mock.Anything, 1, 1, testProjectID, testDeploymentID}
 
+	inProject := flightType()
+	inProject.ProjectID = testProjectID
 	s.dbClient.EXPECT().ExecuteContext(anyUpdate[0], anyUpdate[1], anyUpdate[2:]...).Return(int64(1), nil).Once()
-	s.NoError(s.types.UpdateType(s.ctx, flightType(), true))
+	s.NoError(s.types.UpdateType(s.ctx, inProject, true))
 
 	s.dbClient.EXPECT().ExecuteContext(anyUpdate[0], anyUpdate[1], anyUpdate[2:]...).Return(int64(0), nil).Once()
-	s.ErrorIs(s.types.UpdateType(s.ctx, flightType(), true), errTypeNotFound)
+	s.ErrorIs(s.types.UpdateType(s.ctx, inProject, true), errTypeNotFound)
 
 	s.dbClient.EXPECT().ExecuteContext(anyUpdate[0], anyUpdate[1], anyUpdate[2:]...).
 		Return(int64(0), errors.New("db down")).Once()
-	s.Error(s.types.UpdateType(s.ctx, flightType(), true))
+	s.Error(s.types.UpdateType(s.ctx, inProject, true))
 
 	s.dbClient.EXPECT().ExecuteContext(mock.Anything, queryDeleteType, "type-1", testDeploymentID).
 		Return(int64(1), nil).Once()

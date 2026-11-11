@@ -14,6 +14,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateFlow from '../api/useCreateFlow';
 import useGetFlowsMeta from '../api/useGetFlowsMeta';
+import useUpdateFlow from '../api/useUpdateFlow';
 import ConfigureFlowName from '../components/create-flow/ConfigureFlowName';
 import type {ConfigureFlowNameValue} from '../components/create-flow/ConfigureFlowName';
 import FlowOrganizationUnitStep from '../components/create-flow/FlowOrganizationUnitStep';
@@ -21,7 +22,9 @@ import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
 import {FlowType} from '../models/flows';
+import type {FlowDefinitionResponse} from '../models/responses';
 import type {FlowTemplate} from '../models/templates';
+import {fillParentOrganizationUnit, PARENT_OU_ID_PLACEHOLDER} from '../utils/parentOrganizationUnit';
 import resolveConnectionPlaceholders from '../utils/resolveConnectionPlaceholders';
 
 const FlowCreateStep = {
@@ -39,6 +42,7 @@ export default function FlowCreatePage(): JSX.Element {
   const flowRoutes = useFlowRoutes();
   const logger = useLogger('FlowCreatePage');
   const createFlow = useCreateFlow();
+  const updateFlow = useUpdateFlow();
   const {data: deviceGrantMeta} = useGetFlowsMeta({flowType: FlowType.DEVICE_GRANT});
   const deviceGrantTemplate = deviceGrantMeta.templates.find((template) => template.type === 'DEVICE_GRANT') ?? null;
 
@@ -116,6 +120,23 @@ export default function FlowCreatePage(): JSX.Element {
     }
   }, [createFlow]);
 
+  // Sets a parent OU the flow was created with the placeholder for to the organization unit the API placed the flow in.
+  // On failure the placeholder stays, which the builder reports as a missing parent OU, so the flow still opens.
+  const setParentOrganizationUnit = async (flow: FlowDefinitionResponse): Promise<void> => {
+    const nodes = fillParentOrganizationUnit(flow.nodes, flow.flowType, flow.ouId);
+    if (nodes === flow.nodes) {
+      return;
+    }
+    try {
+      await updateFlow.mutateAsync({
+        flowId: flow.id,
+        flowData: {name: flow.name, handle: flow.handle, flowType: flow.flowType, ouId: flow.ouId, nodes},
+      });
+    } catch (error: unknown) {
+      logger.warn('Failed to set the parent organization unit of the new flow', {error, flowId: flow.id});
+    }
+  };
+
   const handleNextStep = (): void => {
     if (currentStep === FlowCreateStep.ORGANIZATION_UNIT) {
       setCurrentStep(FlowCreateStep.TYPE);
@@ -147,11 +168,18 @@ export default function FlowCreatePage(): JSX.Element {
         flowType: selectedType,
         ...(isInProject ? {projectId} : {}),
         ...(ouId ? {ouId} : {}),
-        nodes: resolveConnectionPlaceholders(selectedTemplate.config.nodes, {
-          identityProviders: identityProviders.data,
-          smsProviders: smsProviders.data,
-          emailProviders: emailProviders.data,
-        }),
+        // A Resolve OU step's parent OU defaults to the organization unit the flow is created in. A project without
+        // organization units has the API place the flow in the system organization unit, known only once the flow
+        // exists.
+        nodes: fillParentOrganizationUnit(
+          resolveConnectionPlaceholders(selectedTemplate.config.nodes, {
+            identityProviders: identityProviders.data,
+            smsProviders: smsProviders.data,
+            emailProviders: emailProviders.data,
+          }),
+          selectedType,
+          ouId || PARENT_OU_ID_PLACEHOLDER,
+        ),
       };
       setError(null);
       if (selectedType === FlowType.DEVICE_GRANT || selectedTemplate.configureBeforeSave) {
@@ -161,6 +189,7 @@ export default function FlowCreatePage(): JSX.Element {
       createFlow.mutate(flowRequest, {
         onSuccess: (savedFlow) => {
           (async () => {
+            await setParentOrganizationUnit(savedFlow);
             await navigate(flowRoutes.flows.detail(savedFlow.id));
           })().catch((_error: unknown) => {
             logger.error('Failed to navigate to flow builder', {error: _error, flowId: savedFlow.id});

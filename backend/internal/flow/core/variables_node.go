@@ -21,6 +21,16 @@ const propertyVariables = "variables"
 // runtimeKeyPrefix prefixes the runtime data key a variable's value is kept under, as a JSON encoded value.
 const runtimeKeyPrefix = "var."
 
+// VariablesNodeInterface extends NodeInterface for VARIABLES nodes, which go on to their onSuccess node, or to their
+// onFailure node when a variable cannot be resolved.
+type VariablesNodeInterface interface {
+	NodeInterface
+	GetOnSuccess() string
+	SetOnSuccess(nodeID string)
+	GetOnFailure() string
+	SetOnFailure(nodeID string)
+}
+
 // variablesNode is a VARIABLES node. It resolves the variables of the flow into the flow's context, where the
 // {{var(name)}} placeholders of the steps after it read them, and goes on to its onSuccess node. It asks the user for
 // nothing and shows nothing.
@@ -31,10 +41,11 @@ const runtimeKeyPrefix = "var."
 type variablesNode struct {
 	*node
 	onSuccess string
+	onFailure string
 	logger    *log.Logger
 }
 
-var _ RepresentationNodeInterface = (*variablesNode)(nil)
+var _ VariablesNodeInterface = (*variablesNode)(nil)
 
 // newVariablesNode creates a new variables node. The properties carry the variable declarations.
 func newVariablesNode(id string, properties map[string]interface{}, isStartNode, isFinalNode bool) NodeInterface {
@@ -143,6 +154,16 @@ func (n *variablesNode) GetOnSuccess() string {
 // SetOnSuccess sets the ID of the node the flow goes on to.
 func (n *variablesNode) SetOnSuccess(nodeID string) {
 	n.onSuccess = nodeID
+}
+
+// GetOnFailure returns the ID of the node the flow goes on to when a variable cannot be resolved.
+func (n *variablesNode) GetOnFailure() string {
+	return n.onFailure
+}
+
+// SetOnFailure sets the ID of the node the flow goes on to when a variable cannot be resolved.
+func (n *variablesNode) SetOnFailure(nodeID string) {
+	n.onFailure = nodeID
 }
 
 // definitions reads the variable declarations the node carries in its properties. It returns none when the property

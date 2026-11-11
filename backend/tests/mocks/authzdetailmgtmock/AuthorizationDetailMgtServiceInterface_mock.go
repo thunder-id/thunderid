@@ -526,6 +526,156 @@ func (_c *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailType
 	return _c
 }
 
+// ListAuthorizationDetailTypesByProject provides a mock function for the type AuthorizationDetailMgtServiceInterfaceMock
+func (_mock *AuthorizationDetailMgtServiceInterfaceMock) ListAuthorizationDetailTypesByProject(ctx context.Context, projectID string, limit int, offset int) (*authzdetailmgt.AuthorizationDetailTypePage, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAuthorizationDetailTypesByProject")
+	}
+
+	var r0 *authzdetailmgt.AuthorizationDetailTypePage
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*authzdetailmgt.AuthorizationDetailTypePage, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *authzdetailmgt.AuthorizationDetailTypePage); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*authzdetailmgt.AuthorizationDetailTypePage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAuthorizationDetailTypesByProject'
+type AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call struct {
+	*mock.Call
+}
+
+// ListAuthorizationDetailTypesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *AuthorizationDetailMgtServiceInterfaceMock_Expecter) ListAuthorizationDetailTypesByProject(ctx any, projectID any, limit any, offset any) *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call {
+	return &AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call{Call: _e.mock.On("ListAuthorizationDetailTypesByProject", ctx, projectID, limit, offset)}
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int)) *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call) Return(authorizationDetailTypePage *authzdetailmgt.AuthorizationDetailTypePage, serviceError *common.ServiceError) *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call {
+	_c.Call.Return(authorizationDetailTypePage, serviceError)
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int) (*authzdetailmgt.AuthorizationDetailTypePage, *common.ServiceError)) *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypesByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ProjectHasAuthorizationDetailTypes provides a mock function for the type AuthorizationDetailMgtServiceInterfaceMock
+func (_mock *AuthorizationDetailMgtServiceInterfaceMock) ProjectHasAuthorizationDetailTypes(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasAuthorizationDetailTypes")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasAuthorizationDetailTypes'
+type AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call struct {
+	*mock.Call
+}
+
+// ProjectHasAuthorizationDetailTypes is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *AuthorizationDetailMgtServiceInterfaceMock_Expecter) ProjectHasAuthorizationDetailTypes(ctx any, projectID any) *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call {
+	return &AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call{Call: _e.mock.On("ProjectHasAuthorizationDetailTypes", ctx, projectID)}
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call) Run(run func(ctx context.Context, projectID string)) *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call) Return(b bool, serviceError *common.ServiceError) *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *AuthorizationDetailMgtServiceInterfaceMock_ProjectHasAuthorizationDetailTypes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateAuthorizationDetailType provides a mock function for the type AuthorizationDetailMgtServiceInterfaceMock
 func (_mock *AuthorizationDetailMgtServiceInterfaceMock) UpdateAuthorizationDetailType(ctx context.Context, id string, t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, t)

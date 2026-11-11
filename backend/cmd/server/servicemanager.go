@@ -229,7 +229,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
 	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
-		observabilitySvc)
+		observabilitySvc, ouAuthzService)
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=
@@ -286,7 +286,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceServerProvider := resource.NewDefaultAwareResourceServerProvider(resourceService, serverConfigService)
 
 	// Initialize authorization details type management and processing.
-	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, nil, ouAuthzService)
+	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(
+		mux, mcpServer, nil, ouAuthzService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 	authzDetailService := authzdetailexec.Initialize(authzDetailMgtService,

@@ -1098,9 +1098,9 @@ const translations = {
     'createWizard.steps.general': 'General',
     'createWizard.steps.properties': 'Properties',
     'createWizard.onlyOrganizationUnitTaken':
-      'The only organization unit already has the agent type {{name}}. Create another organization unit first, or edit {{name}} instead.',
+      'There is currently one organization unit, and it already has the agent type {{name}}. Create another organization unit for a new agent type, or edit {{name}} instead.',
     'createWizard.onlyOrganizationUnitTakenReadOnly':
-      'The only organization unit already has the agent type {{name}}, which is read-only. Create another organization unit first.',
+      'There is currently one organization unit, and it already has the agent type {{name}}, which is read-only. Create another organization unit for a new agent type.',
     'createWizard.openTakenAgentType': 'Open agent type',
     'createWizard.organizationUnitTaken':
       'This organization unit already has the agent type {{name}}. Choose another organization unit, or edit {{name}} instead.',
@@ -2572,10 +2572,13 @@ const translations = {
     'authorizationRules.target.type.permission': 'Permission',
     'authorizationRules.target.role.label': 'Role',
     'authorizationRules.target.role.placeholder': 'Select a role',
+    'authorizationRules.target.role.unavailable': 'Unavailable: {{id}}',
     'authorizationRules.target.group.label': 'Group',
     'authorizationRules.target.group.placeholder': 'Select a group',
+    'authorizationRules.target.group.unavailable': 'Unavailable: {{id}}',
     'authorizationRules.target.resourceServer.label': 'Resource server',
     'authorizationRules.target.resourceServer.placeholder': 'Select a resource server',
+    'authorizationRules.target.resourceServer.unavailable': 'Unavailable: {{id}}',
     'authorizationRules.targetType.label': 'Target type',
 
     // Delete dialog
@@ -4342,6 +4345,9 @@ const translations = {
     'create.type.onboarding.description': 'Onboard invited users to your organization',
     'create.type.self.label': 'Self',
     'create.type.self.description': 'Let signed-in users manage their own account, such as verifying an email address',
+    'create.type.adminInitiated.label': 'Administrator-initiated',
+    'create.type.adminInitiated.description':
+      'Let administrators start an action for a user, such as verifying their email address',
     'create.template.title': 'Choose a starting template',
     'create.template.recommended': 'Recommended',
     'create.template.search': 'Search templates...',
@@ -4880,10 +4886,18 @@ const translations = {
     // Validation messages - Resolve OU placement
     'core.validation.ouResolver.afterSession':
       'Resolve OU step <code>{{id}}</code> comes after a Save / Load Session step, so the flow will be rejected on save. Place it between the sign-in steps and Save / Load Session, or before Check SSO Session.',
+    'core.validation.ouResolver.noParent':
+      "Resolve OU step <code>{{id}}</code> has no parent organization unit, so the flow can't be saved. Enter the ID of the organization unit whose child organization units users select from.",
+
+    // Validation messages - role assignment
+    'core.validation.roleExecutor.noRoles':
+      "Role Executor step <code>{{id}}</code> names no roles to assign, so the flow can't be saved. Enter the IDs of the roles to assign to the new user in its properties.",
 
     // Validation messages - Resolve Variables
     'core.validation.variables.noneDeclared':
       'Resolve Variables step <code>{{id}}</code> declares no variables, so the flow will be rejected on save. Add at least one variable to a Resolve Variables step.',
+    'core.validation.variables.failureInvalidTarget':
+      'The failure path of Resolve Variables step <code>{{id}}</code> does not lead to a prompt view, so the flow will be rejected on save. Connect its failure handle to a prompt view.',
 
     // Validation messages - sign out
     'core.validation.signOut.confirmNotConnected':
@@ -6228,6 +6242,7 @@ const translations = {
     'permissionCatalog.loadError': 'Failed to load permissions for this resource server.',
     'permissionCatalog.loadServersError': 'Failed to load resource servers.',
     'permissionCatalog.serverNotFound': 'Resource server not found',
+    'permissionCatalog.serverUnavailable': 'Unavailable',
     'create.separator.hierarchyLabel': 'Use hierarchy-aware matching',
     'create.separator.hierarchyHint':
       'When enabled, granting a permission also grants its descendants, including permissions added later.',

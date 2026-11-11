@@ -233,6 +233,37 @@ describe('GatewayPage', () => {
     expect(await screen.findByTestId('gateway-other-variable')).toBeInTheDocument();
   });
 
+  it('lists a value the next deploy needs that the version the gateway runs does not refer to', async () => {
+    const password = 'USER__019000000000700080000000000000F9__PASSWORD';
+    const reference = {
+      name: password,
+      kind: 'secret',
+      resourceType: 'user',
+      resourceId: 'u-9',
+      resourceName: 'self.registered@example.com',
+      field: 'password',
+    };
+    routes[`GET /configuration-versions/${v1}`] = {
+      ...versions[1],
+      references: [{name: 'APP_SECRET', kind: 'secret', resourceType: 'application', resourceId: 'a-1'}],
+    };
+    routes['POST /gateways/gw-dev/apply'] = {
+      gatewayId: 'gw-dev',
+      dryRun: true,
+      diff: {
+        toVersion: v2,
+        changes: [{key: 'user/u-9', resourceType: 'user', id: 'u-9', name: 'Self registered', change: 'added'}],
+      },
+      missing: {secrets: [password], references: [reference]},
+    };
+    render(<GatewayPage section="values" />);
+
+    const identities = await screen.findByRole('region', {name: 'Users and groups'});
+    const user = within(identities).getByTestId('resource-card-user/u-9');
+    expect(user).toHaveTextContent('self.registered@example.com');
+    expect(within(user).getByTestId(`resource-value-${password}`)).toHaveTextContent('Not set');
+  });
+
   it("speaks of the project's own resources and values within a project", async () => {
     routes['POST /gateways/gw-dev/apply'] = {
       gatewayId: 'gw-dev',

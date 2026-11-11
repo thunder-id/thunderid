@@ -51,6 +51,15 @@ sequenceDiagram
 
 A failed switch leaves the previous session as it was.
 
+### When Your Application Signs In Another Way
+
+The order above applies when your application redirects people to <ProductName /> to sign in. The SDKs switch differently in the other sign-in modes:
+
+- **App-native sign-in.** When your application renders the sign-in screens itself, the SDK starts the sign-in flow again with the other OU's ID. It sends the SSO session handles that earlier flow steps returned, so <ProductName /> can reuse the session without asking for credentials. When the flow needs the person, the web SDKs fail the switch with `InteractionRequired`, so render the sign-in for that OU instead. The iOS and Android SDKs return the flow step for you to continue.
+- **Sign-in through your own backend.** When your backend holds the tokens (`endpoints.backend`), the SDK asks the backend to switch. It sends `POST {ouSwitch}?ouId=<ou-id>` with `{"ouId": "<ou-id>"}` as a JSON body. `ouSwitch` defaults to `/api/auth/switch`. The backend switches the session it holds, for example by exchanging its device secret at the other OU's token endpoint, and answers `200`. The SDK then reads the session again without leaving the page. A `401` with `session_expired` makes the SDK refresh the backend session once and try the switch again. When the backend answers that the person has to sign in (`interaction_required`, `login_required`, `consent_required`, or `account_selection_required`), or answers `401` again, the SDK opens the backend's sign-in for that OU instead. A `login_required` or a remaining `401` means the backend's session has ended, so the SDK also treats the person as signed out. With `{redirect: false}` in the web SDKs, or without a browser handler in the iOS and Android SDKs, the switch fails instead.
+
+The iOS and Android SDKs take the first way that applies: your backend, then a device secret, then the browser, and then the app-native sign-in flow.
+
 ## List the Organizations a Person Can Access
 
 `GET /users/me/ous` lists the OUs the signed-in person can access: the one they live in and every one they are shared into. It needs no management permission, only the person's own access token. `current` is the OU the token was issued for.
@@ -74,7 +83,7 @@ curl 'https://localhost:8090/users/me/ous?scope=siblings' \
 }
 ```
 
-Without `scope`, the list also includes the OU the consultant lives in, Wayfinder Enterprise. `scope=siblings` keeps only `current` and the accessible OUs that share its parent, which in Wayfinder Enterprise means the companies.
+Without `scope`, the list also includes the OU the consultant lives in, Wayfinder Enterprise. `scope=siblings` keeps only the accessible OUs that share the parent of `current`, which in Wayfinder Enterprise means the companies.
 
 ## Add the Switcher
 
@@ -97,7 +106,7 @@ export default function Header() {
 
 | Prop | Description |
 |---|---|
-| `scope` | `siblings` lists the current organization and the ones that share its parent. Omit it to list every accessible organization. |
+| `scope` | `siblings` lists the accessible organizations that share the parent of the current organization. Omit it to list every accessible organization. |
 | `onSwitch` | Called with the organization and the refreshed user after a switch that completes in place. A switch that leaves the page completes on the callback instead. |
 | `onSelect` | Takes over a pick. The switcher calls it with the organization instead of switching, so your application decides what happens. |
 | `onError` | Called with the SDK error when a switch or a load fails. The switcher shows the message either way. |
@@ -130,7 +139,9 @@ export default function useOpenOrganization() {
 
 With `redirect: false`, a switch that needs the person fails with `InteractionRequired` instead of leaving the page. Leave it out to fall back to a full-page redirect.
 
-In a Next.js application, call `switchOrganizationUnit` from `useThunderID()` the same way. The `@thunderid/nextjs` provider runs the switch on the server and sends the browser to the organization's authorization endpoint, and the callback replaces the session. A server cannot switch silently, so `{redirect: false}` always fails with `InteractionRequired`.
+In a Next.js application, call `switchOrganizationUnit` from `useThunderID()` too, but leave out `{redirect: false}` in redirect mode. The `@thunderid/nextjs` provider runs the switch on the server and sends the browser to the organization's authorization endpoint, and the callback replaces the session. A server cannot switch silently, so `{redirect: false}` always fails with `InteractionRequired`. In embedded mode, the provider starts the sign-in flow for the organization instead, and a flow that needs the person fails with `InteractionRequired`. `@thunderid/nextjs` does not export `OrganizationUnitSwitchErrorCodes`, so compare `error.code` with the code values in the [Next.js reference](../../../sdks-and-tools/nextjs/apis/server-actions.mdx#organization-units).
+
+In a Nuxt application, `switchOrganizationUnit` from `useThunderID()` always sends the browser to the Nuxt server's sign-in route with the organization's ID, and the callback replaces the session. It does not switch silently, and it ignores `redirect`.
 
 ## Sign In Straight Into One Organization
 

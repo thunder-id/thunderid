@@ -6367,6 +6367,13 @@ translations:
     self.mobile.code.label: Verification code
     self.mobile.verify: Verify
     self.mobile.resend: Resend code
+    admin.email.link.sent.title: Verification link sent
+    admin.email.link.sent.message: We sent a verification link to the user's email address. The address is verified once the user opens the link and confirms.
+    admin.email.link.confirm.title: Verify your email address
+    admin.email.link.confirm.message: An administrator asked you to confirm that this email address belongs to you.
+    admin.email.link.confirm.action: Verify email address
+    admin.email.link.complete.title: Email address verified
+    admin.email.link.complete.message: Your email address is verified. You can close this page.
   consent:
     title: Review access
     message: Review what is being requested and choose what to allow.
@@ -6791,6 +6798,12 @@ translations:
     accountUnlocked.email.subject: "Your account has been unlocked"
     accountUnlocked.email.heading: "Your account has been unlocked"
     accountUnlocked.email.intro: "An administrator has unlocked your account. You can sign in again."
+    adminEmailVerification.email.subject: "Verify your email address"
+    adminEmailVerification.email.heading: "Verify your email address"
+    adminEmailVerification.email.intro: "An administrator asked you to verify this email address. Open the link below and select <strong>Verify email address</strong>:"
+    adminEmailVerification.email.cta: "Verify email address"
+    adminEmailVerification.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    adminEmailVerification.email.ignore: "If you did not expect this request, you can ignore this email. The address stays unverified."
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000087
@@ -7860,6 +7873,31 @@ content:
     </body>
     </html>
 ---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b3
+channel: email
+handle: admin-initiated-email-verification
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+displayName: Administrator Initiated Email Verification
+description: Sent when an administrator asks a user to verify their email address.
+content:
+  subject: "{{t(adminEmailVerification.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(adminEmailVerification.email.heading)}}</h2>
+      <p>{{t(adminEmailVerification.email.intro)}}</p>
+      <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(adminEmailVerification.email.cta)}}</a></p>
+      <p>{{t(adminEmailVerification.email.linkFallback)}}</p>
+      <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+      <p>{{t(adminEmailVerification.email.ignore)}}</p>
+    </body>
+    </html>
+---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000008a
 ouHandle: default
@@ -8221,3 +8259,208 @@ nodes:
     position:
       x: 3013
       y: 511
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008c
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: Default Admin Attribute Verification Flow
+handle: default-admin-attribute-verification-flow
+flowType: ADMIN_INITIATED
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 60
+      height: 34
+    position:
+      x: 62
+      y: 345
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user:update
+    - org:user:update
+  executor:
+    name: PermissionValidator
+  onSuccess: prepare_verification
+  layout:
+    size:
+      width: 264
+      height: 113
+    position:
+      x: 218
+      y: 305
+- id: prepare_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: prepare
+    inputs:
+    - identifier: attribute
+      type: TEXT_INPUT
+      required: true
+      defaultValue: email
+  onSuccess: generate_link
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 578
+      y: 305
+- id: generate_link
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_link
+  layout:
+    size:
+      width: 222
+      height: 113
+    position:
+      x: 934
+      y: 305
+- id: send_link
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: admin-initiated-email-verification
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: link_sent
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1252
+      y: 305
+- id: link_sent
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: link_sent_heading
+      label: '{{ t(verification:admin.email.link.sent.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: link_sent_message
+      label: '{{ t(verification:admin.email.link.sent.message) }}'
+      variant: HEADING_6
+  next: verify_link
+  layout:
+    size:
+      width: 350
+      height: 350
+    position:
+      x: 1548
+      y: 187
+- id: verify_link
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_invite_token
+    identifier: inviteToken
+    type: HIDDEN
+    required: true
+  executor:
+    name: InviteExecutor
+    mode: verify
+  onSuccess: confirm
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1994
+      y: 305
+- id: confirm
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: confirm_heading
+      label: '{{ t(verification:admin.email.link.confirm.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: confirm_message
+      label: '{{ t(verification:admin.email.link.confirm.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_confirm
+      components:
+      - type: ACTION
+        id: action_confirm
+        label: '{{ t(verification:admin.email.link.confirm.action) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_confirm
+      nextNode: record_verification
+  layout:
+    size:
+      width: 350
+      height: 600
+    position:
+      x: 2290
+      y: 62
+- id: record_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: record
+  onSuccess: verification_complete
+  layout:
+    size:
+      width: 254
+      height: 113
+    position:
+      x: 2736
+      y: 305
+- id: verification_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: verification_complete_heading
+      label: '{{ t(verification:admin.email.link.complete.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: verification_complete_message
+      label: '{{ t(verification:admin.email.link.complete.message) }}'
+      variant: HEADING_6
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 325
+    position:
+      x: 3086
+      y: 199
+- id: end
+  type: END
+  layout:
+    size:
+      width: 50
+      height: 34
+    position:
+      x: 3532
+      y: 345

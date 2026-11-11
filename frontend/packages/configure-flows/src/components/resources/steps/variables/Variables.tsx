@@ -11,7 +11,7 @@ import useInteractionState from '../../../../hooks/useInteractionState';
 import useUIPanelState from '../../../../hooks/useUIPanelState';
 import {ResourceTypes} from '../../../../models/resources';
 import {StaticStepTypes, StepCategories, type Step, type StepData} from '../../../../models/steps';
-import {executionSurfaceMixin, nodeShadowMixin} from '../flowNodeStyles';
+import OutcomeHandleWrapper, {executionSurfaceMixin, nodeShadowMixin} from '../flowNodeStyles';
 import StepTitle from '../StepTitle';
 
 /**
@@ -173,6 +173,11 @@ function Variables({data = {}, id}: VariablesPropsInterface): ReactElement {
         type="source"
         position={Position.Right}
       />
+      <Tooltip title={t('flows:core.executions.handles.failure', 'Failure')} placement="bottom">
+        <OutcomeHandleWrapper kind="failure" handleSize={8}>
+          <Handle type="source" position={Position.Bottom} id="failure" data-testid="variables-node-handle-failure" />
+        </OutcomeHandleWrapper>
+      </Tooltip>
     </Box>
   );
 }

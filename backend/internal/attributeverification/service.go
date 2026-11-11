@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -39,17 +40,19 @@ type attributeVerificationService struct {
 	entityService     entity.EntityServiceInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
 	observability     providers.ObservabilityProvider
+	authorizer        sysauthz.SystemAuthorizationServiceInterface
 	logger            *log.Logger
 }
 
 // newAttributeVerificationService creates the attribute verification service.
 func newAttributeVerificationService(entityService entity.EntityServiceInterface,
-	entityTypeService entitytype.EntityTypeServiceInterface,
-	observability providers.ObservabilityProvider) *attributeVerificationService {
+	entityTypeService entitytype.EntityTypeServiceInterface, observability providers.ObservabilityProvider,
+	authorizer sysauthz.SystemAuthorizationServiceInterface) *attributeVerificationService {
 	return &attributeVerificationService{
 		entityService:     entityService,
 		entityTypeService: entityTypeService,
 		observability:     observability,
+		authorizer:        authorizer,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AttributeVerificationService")),
 	}
 }
@@ -133,8 +136,8 @@ func (s *attributeVerificationService) GetVerifiedAttributes(ctx context.Context
 }
 
 // readStoredContact reads the stored contact of a user and pins its canonical value. An unknown entity,
-// an entity that is not a user, a declarative user and an attribute that is not a non-empty email or
-// mobile contact of the user's type are refused.
+// an entity that is not a user, a declarative user, a user the caller may not update and an attribute that
+// is not a non-empty email or mobile contact of the user's type are refused.
 func (s *attributeVerificationService) readStoredContact(ctx context.Context, entityID, attribute string) (
 	*storedContact, *tidcommon.ServiceError) {
 	profile, err := s.entityService.GetEntityProfile(ctx, entityID)
@@ -148,6 +151,10 @@ func (s *attributeVerificationService) readStoredContact(ctx context.Context, en
 
 	if profile.Category != providers.EntityCategoryUser || profile.IsReadOnly {
 		return nil, &ErrorAttributeNotVerifiable
+	}
+
+	if svcErr := s.authorize(ctx, profile); svcErr != nil {
+		return nil, svcErr
 	}
 
 	var values map[string]json.RawMessage
@@ -169,6 +176,26 @@ func (s *attributeVerificationService) readStoredContact(ctx context.Context, en
 
 	pin.Subject = entityID
 	return &storedContact{pin: *pin, category: profile.Category, entityType: profile.Type}, nil
+}
+
+// authorize requires the caller to be allowed to update the user in the user's organization unit. A runtime
+// caller, such as a flow acting for whoever drives it, is allowed by the authorizer.
+func (s *attributeVerificationService) authorize(ctx context.Context,
+	profile *providers.Entity) *tidcommon.ServiceError {
+	allowed, svcErr := s.authorizer.IsActionAllowed(ctx, security.ActionUpdateUser, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeUser, OUID: profile.OUID, ResourceID: profile.ID,
+	})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to authorize attribute verification",
+			log.MaskedString(log.LoggerKeyEntityID, profile.ID), log.String("errorCode", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+
+	return nil
 }
 
 // prepareContact checks the entity type's schema and pins a canonical contact value without writing.

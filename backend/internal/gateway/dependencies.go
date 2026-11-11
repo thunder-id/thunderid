@@ -36,18 +36,30 @@ var describingKeys = map[string]bool{"name": true, "displayName": true, "descrip
 var kindKeys = map[string]bool{"resource_type": true, "type": true, "category": true}
 
 const (
-	resourceTypeAgentType = "agent_type"
-	resourceTypeUserType  = "user_type"
+	resourceTypeAgentType            = "agent_type"
+	resourceTypeUserType             = "user_type"
+	resourceTypeNotificationTemplate = "notification_template"
 )
 
-// typeReferences are, by the kind of resource that holds them, the fields that name a type by its handle,
-// and the kind of type each names: an agent's and a user's own type at the top of the document, the user
-// types an application admits, and the agent types a flow's node admits.
+// emailTemplates and smsTemplates are the kinds a flow's node names a notification template by: its
+// handle is unique only within its channel.
+const (
+	emailTemplates = resourceTypeNotificationTemplate + "/email"
+	smsTemplates   = resourceTypeNotificationTemplate + "/sms"
+)
+
+// channelField reads the channel a notification template is sent on.
+var channelField = regexp.MustCompile(`(?m)^channel:\s*(.+?)\s*$`)
+
+// typeReferences are, by the kind of resource that holds them, the fields that name a resource by its
+// handle, and the kind each names: an agent's and a user's own type at the top of the document, the user
+// types an application admits, and the agent types and the email and SMS templates a flow's node names.
 var typeReferences = map[string]map[string]string{
 	resourceTypeAgent: {"type": resourceTypeAgentType},
 	resourceTypeUser:  {"type": resourceTypeUserType},
 	"application":     {"allowedUserTypes": resourceTypeUserType},
-	"flow":            {"allowedAgentTypes": resourceTypeAgentType},
+	"flow": {"allowedAgentTypes": resourceTypeAgentType, "emailTemplate": emailTemplates,
+		"smsTemplate": smsTemplates},
 }
 
 // fieldLine reads a block-style mapping line's indent, key and value.
@@ -107,9 +119,16 @@ func needsOf(resources []bundleResource) map[string][]string {
 	}
 	typeByHandle := map[string]string{}
 	for _, resource := range resources {
-		if resource.Type == resourceTypeAgentType || resource.Type == resourceTypeUserType {
-			if handle := firstMatch(handleField, resource.Content); handle != "" {
-				typeByHandle[resource.Type+"/"+handle] = resource.key()
+		handle := firstMatch(handleField, resource.Content)
+		if handle == "" {
+			continue
+		}
+		switch resource.Type {
+		case resourceTypeAgentType, resourceTypeUserType:
+			typeByHandle[resource.Type+"/"+handle] = resource.key()
+		case resourceTypeNotificationTemplate:
+			if channel := strings.ToLower(firstMatch(channelField, resource.Content)); channel != "" {
+				typeByHandle[resourceTypeNotificationTemplate+"/"+channel+"/"+handle] = resource.key()
 			}
 		}
 	}

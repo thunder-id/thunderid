@@ -255,6 +255,10 @@ type ConnectionAPITestSuite struct {
 	authzResourceServerID string
 	authzRoleID           string
 	authzGroupID          string
+	childOUID             string
+	childRoleID           string
+	childGroupID          string
+	childResourceServerID string
 }
 
 func TestConnectionAPISuite(t *testing.T) {
@@ -270,6 +274,14 @@ var attributeConfigOU = testutils.OrganizationUnit{
 	Name:        "Connection Attribute Config OU",
 	Description: "Organization unit for connection attributeConfiguration tests",
 	Parent:      nil,
+}
+
+// attributeConfigChildOU sits under attributeConfigOU. Its role and group are outside the parent's
+// organization unit, and the parent's role can be shared into it.
+var attributeConfigChildOU = testutils.OrganizationUnit{
+	Handle:      "connection-attr-config-child-ou",
+	Name:        "Connection Attribute Config Child OU",
+	Description: "Child organization unit for connection authorization mapping tests",
 }
 
 var attributeConfigUserType = testutils.UserType{
@@ -311,9 +323,52 @@ func (s *ConnectionAPITestSuite) SetupSuite() {
 	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Connection Attr Config Group", OUID: ouID})
 	s.Require().NoError(err, "failed to create group")
 	s.authzGroupID = groupID
+
+	childOU := attributeConfigChildOU
+	childOU.Parent = &ouID
+	childOUID, err := testutils.CreateOrganizationUnit(childOU)
+	s.Require().NoError(err, "failed to create child organization unit")
+	s.childOUID = childOUID
+
+	childRoleID, err := testutils.CreateRole(testutils.Role{Name: "Connection Attr Config Child Role", OUID: childOUID})
+	s.Require().NoError(err, "failed to create child role")
+	s.childRoleID = childRoleID
+
+	childGroupID, err := testutils.CreateGroup(
+		testutils.Group{Name: "Connection Attr Config Child Group", OUID: childOUID})
+	s.Require().NoError(err, "failed to create child group")
+	s.childGroupID = childGroupID
+
+	childRSID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Connection Attribute Config Child API",
+		Identifier: "connection-attr-config-child-api",
+		OUID:       childOUID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read access"}})
+	s.Require().NoError(err, "failed to create child resource server")
+	s.childResourceServerID = childRSID
 }
 
 func (s *ConnectionAPITestSuite) TearDownSuite() {
+	if s.childResourceServerID != "" {
+		if err := testutils.DeleteResourceServer(s.childResourceServerID); err != nil {
+			s.T().Logf("failed to delete child resource server: %v", err)
+		}
+	}
+	if s.childGroupID != "" {
+		if err := testutils.DeleteGroup(s.childGroupID); err != nil {
+			s.T().Logf("failed to delete child group: %v", err)
+		}
+	}
+	if s.childRoleID != "" {
+		if err := testutils.DeleteRole(s.childRoleID); err != nil {
+			s.T().Logf("failed to delete child role: %v", err)
+		}
+	}
+	if s.childOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(s.childOUID); err != nil {
+			s.T().Logf("failed to delete child organization unit: %v", err)
+		}
+	}
 	if s.authzGroupID != "" {
 		if err := testutils.DeleteGroup(s.authzGroupID); err != nil {
 			s.T().Logf("failed to delete group: %v", err)
@@ -1180,7 +1235,7 @@ type invalidAttributeConfig struct {
 }
 
 // invalidAttributeConfigs enumerates one configuration per validation class the IdP service enforces.
-// Shared by the create cases (A3-A9, A20-A22) and the update table (A16): create and update reach validation by
+// Shared by the create cases (A3-A9, A20-A22, A25-A27, A29) and the update table (A16): create and update reach validation by
 // separate paths, so a class proven on one says nothing about the other.
 func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeConfig {
 	mapping := func(attrs ...testutils.AttributeMapping) []testutils.UserTypeAttributeMapping {
@@ -1308,6 +1363,55 @@ func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeCon
 							Type:             testutils.AuthorizationTargetPermission,
 							ResourceServerID: "00000000-0000-0000-0000-000000000003",
 							Permission:       "write",
+						}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A25_authorization_mapping_role_not_in_ou",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_role_not_in_ou_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.childRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A26_authorization_mapping_group_not_in_ou",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_group_not_in_ou_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "editors",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetGroup, ID: s.childGroupID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A27_authorization_mapping_permission_not_in_ou",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_permission_not_in_ou_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "readers",
+						Targets: []testutils.AuthorizationTarget{{
+							Type:             testutils.AuthorizationTargetPermission,
+							ResourceServerID: s.childResourceServerID,
+							Permission:       "read",
 						}},
 					}},
 				}}},
@@ -1550,6 +1654,18 @@ func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeCon
 				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
 					Claim:      "",
 					TargetType: testutils.AuthorizationTargetRole,
+				}}},
+			},
+		},
+		{
+			name:         "A29_authorization_direct_mapping_resource_server_not_in_ou",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_not_in_ou_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:            "scope",
+					TargetType:       testutils.AuthorizationTargetPermission,
+					ResourceServerID: s.childResourceServerID,
 				}}},
 			},
 		},
@@ -2086,6 +2202,48 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationWithExistingAuthoriza
 		s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+}
+
+// A28: a rule may target a role shared with the connection's organization unit, which is not the
+// role's owner.
+func (s *ConnectionAPITestSuite) TestAuthorizationRuleMappingAcceptsSharedRole() {
+	res, err := doRequest(http.MethodPost, "/roles/"+s.authzRoleID+"/sharing-policies",
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode":  "selected",
+			"units": []map[string]string{{"ouId": s.childOUID, "reach": "unit"}},
+		}})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, res.status, string(res.body))
+	var policy struct {
+		ID string `json:"id"`
+	}
+	s.Require().NoError(res.decode(&policy))
+	defer func() {
+		if _, err := doRequest(http.MethodDelete,
+			"/roles/"+s.authzRoleID+"/sharing-policies/"+policy.ID, nil); err != nil {
+			s.T().Logf("failed to delete sharing policy: %v", err)
+		}
+	}()
+
+	config := &testutils.AttributeConfiguration{
+		UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+		AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+			Claim: "groups",
+			Values: []testutils.AuthorizationRule{{
+				Operator: testutils.AuthorizationOperatorEquals,
+				Value:    "admins",
+				Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+			}},
+		}}},
+	}
+	res, err = doRequest(http.MethodPost, "/connections/oauth",
+		ownedBy(s.T(), s.childOUID, s.oauthRequestWithConfig("OAuth Authz Mapping Shared Role", config)))
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, res.status, string(res.body))
+	var created connectionResponse
+	s.Require().NoError(res.decode(&created))
+	defer s.deleteConnection("oauth", created.ID)
+	s.Equal(config.AuthorizationMapping, created.AttributeConfiguration.AuthorizationMapping)
 }
 
 // General headers remain separate from the outbound authentication block.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {fireEvent} from '@testing-library/react';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {ProjectScopeProvider, RoutesProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -599,6 +599,31 @@ describe('CreateRolePage', () => {
 
         await vi.waitFor(() => {
           expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1'});
+        });
+      });
+
+      it("should return to the project's roles list after creating the role", async () => {
+        mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS);
+        render(
+          <RoutesProvider
+            paths={{
+              roles: {
+                list: () => '/project/shop/roles',
+                detail: (id: string) => `/project/shop/roles/${id}`,
+                create: () => '/project/shop/roles/create',
+              },
+            }}
+          >
+            <ProjectScopeProvider project={{id: 'project-1'}}>
+              <CreateRolePage />
+            </ProjectScopeProvider>
+          </RoutesProvider>,
+        );
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledWith('/project/shop/roles');
         });
       });
     });

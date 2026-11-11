@@ -111,15 +111,15 @@ If you set `server.security.system_permission_prefix`, the management APIs expec
 
 ### Permissions for Administration Flows
 
-Administration and user onboarding flows run as the caller who starts them. To start one of these, or an invitation flow, present an access token that carries at least one system permission. An administration or invitation flow started by its ID must be owned by, or shared with, the organization unit your token is issued for. Otherwise it is refused with the code `FES-1029`. The service that owns each action the flow takes authorizes that action as the caller, so you need the permission for every action, confined to your organization unit where the permission is confined to one. For example, deleting a user needs `system:user:delete`.
+Administration, user onboarding and administrator-initiated flows run as the caller who starts them. To start one of these, or an invitation flow, present an access token that carries at least one system permission. An administration or invitation flow started by its ID, and an administrator-initiated flow started by its handle, must be owned by, or shared with, the organization unit your token is issued for. Otherwise it is refused with the code `FES-1029`. The service that owns each action the flow takes authorizes that action as the caller, so you need the permission for every action, confined to your organization unit where the permission is confined to one. For example, deleting a user needs `system:user:delete`.
 
 The **Validate Permission** step at the start of a flow refuses a caller early with a clear error. The services still check each later action, so a flow can need more than the permission its **Validate Permission** step names. A **Validate Permission** step with no `requiredScopes` requires the root `system` permission.
 
-Only the caller who started an administration or user onboarding flow can continue it with a token. Another caller is refused with `403` and the code `FES-1030`. An administration flow cannot be continued without a token. A user onboarding flow that the invitee continues without a token runs with the permissions the caller who started it still holds. If that caller is suspended or locked in the meantime, the invitee's step is refused. A user onboarding flow started before an upgrade to this release has no recorded authority, so it cannot be continued and is refused with the code `FES-1032`. Start it again, for example by resending the invitation.
+Only the caller who started an administration, user onboarding or administrator-initiated flow can continue it with a token. Another caller is refused with `403` and the code `FES-1030`. An administration flow cannot be continued without a token. A user onboarding flow that the invitee continues without a token, and an administrator-initiated flow that the user continues without one, run with the permissions the caller who started the flow still holds. If that caller is suspended or locked in the meantime, the step is refused. A user onboarding flow started before an upgrade to this release has no recorded authority, so it cannot be continued and is refused with the code `FES-1032`. Start it again, for example by resending the invitation.
 
 An invitation flow does not run as the caller who starts it. Each of the admin's steps runs with the token it is sent with, and the **Validate Share** and **Select Roles** steps refuse anyone but the admin who started the flow. The invitee's steps run with the server's authority, so the user is created and shared without the admin's permissions. The roles are assigned as the admin, with the permissions the admin still holds when the invitee accepts. If the admin holds none of them by then, the user is still shared in, without the roles.
 
-Other flow types, such as authentication and registration flows, run with the server's authority. A flow that runs with the server's authority cannot call an administration, user onboarding, or invitation flow, and the call is refused with the code `FES-1031`.
+Other flow types, such as authentication and registration flows, run with the server's authority. A flow that runs with the server's authority cannot call an administration, user onboarding, administrator-initiated, or invitation flow, and the call is refused with the code `FES-1031`.
 
 The default flows and the Console flow templates check the following permissions in their **Validate Permission** step:
 
@@ -129,6 +129,7 @@ The default flows and the Console flow templates check the following permissions
 | `default-user-suspend-flow`, `default-user-unsuspend-flow`, `default-user-unlock-flow` | Administration | `system:user:update` |
 | `default-agent-suspend-flow`, `default-agent-unsuspend-flow`, `default-agent-unlock-flow` | Administration | `system:agent:update` |
 | `default-agent-onboarding-flow` | Administration | `system:agent:create` |
+| `default-admin-attribute-verification-flow` | Administrator-initiated | `system:user:update` or `org:user:update` |
 | `default-application-suspend-flow`, `default-application-unsuspend-flow` | Administration | `system:app:update` |
 | `default-secret-regeneration-flow` | Administration | `system:app:update` |
 | `default-group-deletion-flow` | Administration | `system:group:delete` |

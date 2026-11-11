@@ -879,8 +879,8 @@ type Agent struct {
 	// and checked when the agent is created and is not stored.
 	Delegated bool `json:"delegated,omitempty"`
 
-	// ProjectID places the agent in the project's root organization unit, or checks that the
-	// organization unit named belongs to the project. It is not stored.
+	// ProjectID is the project the agent belongs to. On a deployment that serves projects, the project
+	// must exist and the agent must be in the system organization unit.
 	ProjectID string `json:"projectId,omitempty"`
 
 	// The service-level model carries the full internal profile.
@@ -1209,9 +1209,18 @@ type ConsentAuthorization struct {
 	UpdatedTime int64
 }
 
-// ConsentPromptData holds the structured data needed to render a consent prompt for the user.
+// ConsentResolution is the outcome of resolving consent for a user and application.
+type ConsentResolution struct {
+	// Prompt holds the purposes that need user consent and the session token. Nil when no prompt is needed.
+	Prompt *ConsentPrompt
+	// Consent is the user's saved consent for the application, used to restrict the assertion when no
+	// prompt is needed. Only its "attributes:<appID>" and "permissions:<appID>" purposes are read. Optional.
+	Consent *Consent
+}
+
+// ConsentPrompt holds the structured data needed to render a consent prompt for the user.
 // It contains all purposes whose consent is required, with their elements grouped under each purpose.
-type ConsentPromptData struct {
+type ConsentPrompt struct {
 	// Purposes is the list of consent purposes that require user consent, along with their elements
 	Purposes []ConsentPurposePrompt `json:"purposes"`
 	// SessionToken is the signed JWT token that encapsulates the consent session data
@@ -1279,6 +1288,9 @@ type AuthorizationDetailType struct {
 	Reuse bool
 	// IsReadOnly reports that the type is declaratively defined and cannot be changed through the API.
 	IsReadOnly bool
+	// ProjectID is the project the type belongs to, which a deployment that serves projects requires. It only
+	// organizes management: the type value is used across every project at runtime.
+	ProjectID string
 }
 
 // AuthorizationDetailProcessor identifies the endpoint that authorizes and enriches a type's details.
@@ -1656,8 +1668,8 @@ func (nc *NodeContext) SetInitiatorRequest(req *InitiatorRequest) {
 	nc.initiatorRequest = req
 }
 
-// GetBoundSubject returns the user the engine bound to a self flow execution at its start, or ""
-// when the execution has none. It is not an authenticated user.
+// GetBoundSubject returns the user the engine bound to a self or administrator-initiated flow execution at its
+// start, or "" when the execution has none. It is not an authenticated user.
 func (nc *NodeContext) GetBoundSubject() string {
 	return nc.boundSubject
 }

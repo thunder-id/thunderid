@@ -63,6 +63,26 @@ describe('useGetResourceServers', () => {
     expect(callArgs.url).toContain('projectId=project-1');
   });
 
+  it('should list only the resource servers the given organization unit owns', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: firstPageData});
+
+    const {result} = renderHook(() => useGetResourceServers({ouId: 'ou-1'}));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(new URL(callArgs.url as string).searchParams.get('filter')).toBe('ouId eq "ou-1"');
+  });
+
+  it('should not fetch while disabled', () => {
+    renderHook(() => useGetResourceServers({enabled: false}));
+
+    expect(mockHttpRequest).not.toHaveBeenCalled();
+  });
+
   it('should list every resource server without a project', async () => {
     mockHttpRequest.mockResolvedValueOnce({data: firstPageData});
 

@@ -344,8 +344,8 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusedInAnOUItsSubjectCannotS
 	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
 }
 
-// The snapshot leaves out the flow's organization unit, which is decided per sign-in, and the caller's
-// runtime data is not modified.
+// The snapshot leaves out the flow's organization unit and its fixed mark, which are decided per sign-in, and the
+// caller's runtime data is not modified.
 func (suite *ServiceTestSuite) TestSaveCheckpoint_SnapshotDropsTheOrganizationUnit() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
@@ -358,13 +358,15 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SnapshotDropsTheOrganizationUn
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
 	in := saveInput()
 	in.HandleHint = testHandle
-	in.RuntimeData = map[string]string{common.RuntimeKeyOUID: "ou-old", "email": "alice@example.com"}
+	in.RuntimeData = map[string]string{
+		common.RuntimeKeyOUID: "ou-old", common.RuntimeKeyOUFixed: "true", "email": "alice@example.com"}
 
 	_, err := svc.SaveCheckpoint(context.Background(), in)
 
 	suite.Require().NoError(err)
 	suite.Equal(map[string]string{"email": "alice@example.com"}, savedCtx.RuntimeData)
 	suite.Equal("ou-old", in.RuntimeData[common.RuntimeKeyOUID])
+	suite.Equal("true", in.RuntimeData[common.RuntimeKeyOUFixed])
 }
 
 // TestSaveCheckpoint_ReauthRefreshFailureStillSaves pins the degradation: a failure to refresh the

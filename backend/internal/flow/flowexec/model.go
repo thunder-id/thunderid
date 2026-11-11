@@ -92,8 +92,9 @@ type EngineContext struct {
 	// flow fetched when the context is loaded. Transient; used by the SSO-Check node to reject
 	// sessions established at an incompatible flow version.
 	SSOFlowVersion int
-	// boundSubject is the user a self flow was started for, taken from the caller's token at the
-	// start. Persisted with the context and shared by every call frame; executors read it, never write it.
+	// boundSubject is the user a self or administrator-initiated flow was started for, taken at the start
+	// from the caller's token or the administrator's subject input. Persisted with the context and shared by
+	// every call frame; executors read it, never write it.
 	boundSubject string
 	// authority is what a flow that acts for its caller runs with. Persisted with the context; executors never
 	// see it.

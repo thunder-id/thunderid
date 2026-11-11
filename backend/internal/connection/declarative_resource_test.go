@@ -1236,9 +1236,31 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOOwner() {
 		dto := newIDP("", "acme")
 		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).
 			Run(func(mock.Arguments) { dto.OUID = resolvedOUID }).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.mockIDP.On("ValidateAuthorizationRuleMappingTargets", mock.Anything, dto).
+			Return((*tidcommon.ServiceError)(nil)).Once()
 		s.mockIDP.On("ApplySchemaAwareDefaults", mock.Anything, dto).Return().Once()
 		s.NoError(validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil))
 		s.Equal(resolvedOUID, dto.OUID)
+	})
+	s.Run("an identity provider fails when its rules name a target its owner cannot grant", func() {
+		dto := newIDP(resolvedOUID, "")
+		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.mockIDP.On("ValidateAuthorizationRuleMappingTargets", mock.Anything, dto).Return(
+			tidcommon.CustomServiceError(idp.ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.authorization_rule_mapping_group_not_in_ou_description",
+				DefaultValue: "authorization rule mapping names a group outside the identity provider's " +
+					"organization unit: '{{param(groupId)}}'",
+				Params: map[string]string{"groupId": "group-9"},
+			})).Once()
+		err := validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil)
+		s.ErrorContains(err, `connection resource "idp-1" has an invalid authorization mapping`)
+		s.ErrorContains(err, "'group-9'")
+	})
+	s.Run("an identity provider with no owner fails on the owner, before its rules are checked", func() {
+		dto := newIDP("", "")
+		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).Return((*tidcommon.ServiceError)(nil)).Once()
+		err := validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil)
+		s.ErrorContains(err, `connection resource "idp-1" needs an organization unit`)
 	})
 	s.Run("an identity provider fails when its owner cannot be resolved", func() {
 		dto := newIDP("", "missing")

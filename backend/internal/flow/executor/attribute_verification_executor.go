@@ -17,10 +17,10 @@ import (
 )
 
 // attributeVerificationExecutor pins a user's contact before a challenge and records the proof after
-// it. The contact type decides the channel, so one executor serves email and mobile. In a self
-// flow the user is the one the engine bound to the execution at its start; in recovery, registration
-// and onboarding it is the user the flow established, and a flow that creates its user may pin before
-// the user exists.
+// it. The contact type decides the channel, so one executor serves email and mobile. In a self or
+// administrator-initiated flow the user is the one the engine bound to the execution at its start; in
+// recovery, registration and onboarding it is the user the flow established, and a flow that creates its
+// user may pin before the user exists.
 type attributeVerificationExecutor struct {
 	providers.Executor
 	verification  providers.AttributeVerificationProvider
@@ -120,13 +120,26 @@ func (e *attributeVerificationExecutor) prepare(ctx *providers.NodeContext) (*pr
 		PendingCreation: subject == ""}
 	if request.PendingCreation {
 		request.EntityType, request.Value = ctx.RuntimeData[categoryTypeKey], collectedValue(ctx, attribute)
-	} else if held, err := e.heldRefusal(ctx, subject); held != nil || err != nil {
-		return held, err
+	}
+
+	// A held user is refused before the service publishes the request, except in an administrator-initiated
+	// flow, where the service checks the caller first so a hold is stated only for a user the caller may update.
+	holdFirst := !request.PendingCreation && ctx.FlowType != providers.FlowTypeAdminInitiated
+	if holdFirst {
+		if held, err := e.heldRefusal(ctx, subject); held != nil || err != nil {
+			return held, err
+		}
 	}
 
 	pin, svcErr := e.verification.PrepareAttributeVerification(ctx.Context, request)
 	if svcErr != nil || pin == nil {
 		return e.refusal(ctx, svcErr)
+	}
+
+	if !request.PendingCreation && !holdFirst {
+		if held, err := e.heldRefusal(ctx, subject); held != nil || err != nil {
+			return held, err
+		}
 	}
 
 	shared, err := sharedVerificationEvidence(verificationEvidence{Pin: pin})
@@ -189,19 +202,18 @@ func (e *attributeVerificationExecutor) record(ctx *providers.NodeContext) (*pro
 	return resp, nil
 }
 
-// verificationSubject returns the user prepare pins for, or "" when there is none. A self flow
-// has only the user bound at its start, so a self flow CALLed from another flow type has none.
-// Recovery has the user it identified. Registration and onboarding have the user they established, or
-// none yet when they will create it.
+// verificationSubject returns the user prepare pins for, or "" when there is none. A self or
+// administrator-initiated flow has only the user bound at its start, so one CALLed from another flow type
+// has none. Recovery has the user it identified. Registration and onboarding have the user they
+// established, or none yet when they will create it.
 func (e *attributeVerificationExecutor) verificationSubject(ctx *providers.NodeContext,
 	resp *providers.ExecutorResponse) string {
 	switch ctx.FlowType {
-	case providers.FlowTypeSelf:
+	case providers.FlowTypeSelf, providers.FlowTypeAdminInitiated:
 		return ctx.GetBoundSubject()
 	case providers.FlowTypeRecovery, providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding:
 		return e.GetUserIDFromContext(ctx, resp, e.authnProvider)
 	default:
-		// TODO: Support ADMINISTRATION with an authorized target user, apart from the administrator.
 		return ""
 	}
 }

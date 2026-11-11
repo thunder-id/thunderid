@@ -101,6 +101,11 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks-and-tools/react/apis/components/change-credential',
                   label: '<ChangeCredential />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/organization-unit-switcher',
+                  label: '<OrganizationUnitSwitcher />',
+                },
               ],
             },
             {

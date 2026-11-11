@@ -16,7 +16,7 @@ import type {Project} from '../models/project';
 
 /**
  * Every project in the deployment, shown once the project selection is cleared. Opening a project
- * selects it and opens its applications.
+ * selects it and opens its overview.
  */
 export default function ProjectsListPage(): ReactNode {
   const {t} = useTranslation();
@@ -41,7 +41,7 @@ export default function ProjectsListPage(): ReactNode {
   }, [projects, search]);
 
   const handleOpen = (project: Project): void => {
-    selectProject(project.handle, routes.applications.list());
+    selectProject(project.handle);
   };
 
   const title = t('projects:listing.title', 'All projects');

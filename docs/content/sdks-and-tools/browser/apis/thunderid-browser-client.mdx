@@ -264,6 +264,80 @@ console.log(endpoints.authorizationEndpoint)
 
 **Returns:** `Promise<Partial<OIDCEndpoints>>`
 
+### Organization Units
+
+These methods read and change the organization unit the session belongs to. For how a switch works and how to build a switcher, see [Switch Organizations](../../../../use-cases/b2b/journeys/switch-organizations).
+
+To bound the first sign-in to an organization unit instead, pass its ID as `organizationUnitId` in the [`signIn(config?)`](#signinconfig) options. This works in redirect and backend modes.
+
+#### `switchOrganizationUnit(organizationUnitId, options?)`
+
+Sign the user in again, bounded to the organization unit `organizationUnitId`, and replace the session with the new one. When the application's sign-in flow keeps a single sign-on (SSO) session and the user can sign in to that unit, <ProductName /> reuses the session and asks for no credentials.
+
+```javascript
+import { OrganizationUnitSwitchErrorCodes } from '@thunderid/browser'
+
+try {
+  await auth.switchOrganizationUnit('<organization-unit-id>', { redirect: false })
+} catch (error) {
+  if (error.code === OrganizationUnitSwitchErrorCodes.InteractionRequired) {
+    // The user has to sign in again. Ask first, then switch with redirects allowed.
+    await auth.switchOrganizationUnit('<organization-unit-id>')
+  }
+}
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `organizationUnitId` | `string` | - | ID of the organization unit to switch to |
+| `options.redirect` | `boolean` | `true` | Redirect and backend modes. When <ProductName /> needs the user, leave the page for a sign-in to the unit. Set it to `false` to fail with `InteractionRequired` instead |
+| `options[param]` | `unknown` | - | Redirect mode only. Any other key is sent as an authorization request parameter on the silent sign-in and the redirect |
+
+**Returns:** `Promise<User | undefined>`, the user of the new session, or `undefined` when the page leaves for a sign-in.
+
+How the switch runs depends on the mode the client is configured for:
+
+- **Redirect mode** (the default) tries the quietest route first:
+  1. When the session holds a device secret, the client exchanges it at `{baseUrl}/ou/{ouId}/oauth2/token`, with no browser round trip. A sign-in returns a device secret when it requests the `device_sso` scope. See [Sign-In With a Device Secret](../../../../guides/organization-units/sign-in-to-organization-units#sign-in-with-a-device-secret).
+  2. Without a device secret, the client tries a silent `prompt=none` sign-in at `{baseUrl}/ou/{ouId}/oauth2/authorize` in a hidden iframe. It works under the same conditions as [`signInSilently()`](#signinsilentlyadditionalparams).
+  3. When <ProductName /> needs the user, or refuses the device secret as no longer usable, the page redirects to the unit's authorization endpoint, unless `redirect` is `false`. On the callback, `signIn()` redeems the code at the unit's token endpoint and replaces the session. When the callback carries an error instead, `signIn()` throws it as a switch error.
+- **App-native mode** (`mode: 'embedded'`): the client starts an `AUTHENTICATION` flow with `ouId` at the flow execution endpoint, and presents the SSO session handles that earlier flow responses returned. When the flow completes at once, its assertion replaces the session. A flow that needs input fails with `InteractionRequired`, so render the sign-in for that unit instead.
+- **Backend mode** (`endpoints.backend` set): the client sends `POST {ouSwitch}?ouId=<id>` to your backend, with `{"ouId": "<id>"}` as a JSON body. When the backend switches, the client reads the session again, so the page stays where it is. A `401` with the error `session_expired` refreshes the session once and retries. Any other `401` counts as `login_required`, which also ends the session in the client. When the backend's `error` says the user has to sign in (`interaction_required`, `login_required`, `consent_required`, or `account_selection_required`), the page goes to the backend's `signIn` endpoint with `ouId`, unless `redirect` is `false`. See [`endpoints.backend.ouSwitch`](../configuration#backend-parameters) for what the backend must do.
+
+A failed switch leaves the previous session as it was, except in backend mode when the backend reports that its session has ended (`login_required`, or a `401` left after one refresh). The client then signs the user out. On success, the client fires [`Hooks.SignIn`](../hooks) with the new user.
+
+**Throws:** `ThunderIDAPIError` with a code from [`OrganizationUnitSwitchErrorCodes`](../../../javascript/apis/errors#organizationunitswitcherrorcodes):
+
+| Code | Cause |
+|------|-------|
+| `InvalidOrganizationUnit` | `organizationUnitId` is empty |
+| `UnauthorizedClient` | The organization unit does not exist, or the application cannot be used from it. <ProductName /> answers both with `unauthorized_client`, so the two cannot be told apart |
+| `InteractionRequired` | The user has to sign in again and `redirect` is `false`, or an app-native flow needs input |
+| `Failed` | The switch failed for another reason, such as a network error. The message carries the OAuth `error` |
+
+#### `getCurrentOrganizationUnit()`
+
+Read the organization unit the session was issued for from the `ouId`, `ouHandle`, and `ouName` claims of the ID token. In backend mode, the claims come from the user that the backend's session endpoint returns. The claims are not verified, so use the result for display only, never for an authorization decision.
+
+```javascript
+const unit = await auth.getCurrentOrganizationUnit()
+console.log(unit?.name)
+```
+
+**Returns:** `Promise<CurrentOrganizationUnit | null>`, an object with `id` and, when the claims carry them, `handle` and `name`. `null` when the user is signed out or the ID token has no `ouId` claim.
+
+To list the organization units the user can access, call the exported [`getAccessibleOrganizationUnits()`](../../../javascript/apis/thunderid-javascript-client#getaccessibleorganizationunitsconfig) function with a fetcher that attaches the access token, such as one from [`createHttpClientFetcher()`](../utilities/create-http-client-fetcher):
+
+```javascript
+import { createHttpClientFetcher, getAccessibleOrganizationUnits } from '@thunderid/browser'
+
+const { current, organizationUnits } = await getAccessibleOrganizationUnits({
+  baseUrl: 'https://localhost:8090',
+  fetcher: createHttpClientFetcher(),
+  scope: 'siblings',
+})
+```
+
 ### HTTP Requests
 
 #### `httpRequest(config)`

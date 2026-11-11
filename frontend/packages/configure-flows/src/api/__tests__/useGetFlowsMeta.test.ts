@@ -164,6 +164,41 @@ describe('useGetFlowsMeta', () => {
   });
 
   describe('Filtering by flowType', () => {
+    type TemplateNode = FlowTemplate['config']['nodes'][number];
+
+    // Walks the graph from a node, taking a prompt's first action, and lists each step as
+    // the executor and mode it runs or the prompt's id.
+    const walk = (template: FlowTemplate, from: string): string[] => {
+      const byId = new Map<string, TemplateNode>(template.config.nodes.map((node) => [node.id, node]));
+      const steps: string[] = [];
+      let current = byId.get(from);
+      while (current && current.type !== 'END') {
+        steps.push(current.executor ? `${current.executor.name} ${String(current.executor['mode'])}` : current.id);
+        const next: string | undefined =
+          current.onSuccess ?? current.next ?? current.prompts?.[0]?.action?.nextNode ?? undefined;
+        current = next ? byId.get(next) : undefined;
+      }
+      return steps;
+    };
+
+    const node = (template: FlowTemplate, id: string): TemplateNode | undefined =>
+      template.config.nodes.find((item) => item.id === id);
+
+    // Each node's outgoing links, for comparing a graph before and after the builder.
+    const links = (nodes: TemplateNode[]): Record<string, unknown> =>
+      Object.fromEntries(
+        nodes.map((item) => [
+          item.id,
+          {
+            onSuccess: item.onSuccess,
+            onFailure: item.onFailure,
+            onIncomplete: item.onIncomplete,
+            next: item.next,
+            actions: item.prompts?.map((entry) => entry.action?.nextNode),
+          },
+        ]),
+      );
+
     it('should filter templates by AUTHENTICATION flowType', () => {
       const {result} = renderHook(() => useGetFlowsMeta({flowType: 'AUTHENTICATION'}));
 
@@ -181,32 +216,12 @@ describe('useGetFlowsMeta', () => {
     });
 
     describe('Self templates', () => {
-      type TemplateNode = FlowTemplate['config']['nodes'][number];
-
       const selfTemplate = (type: string): FlowTemplate => {
         const {result} = renderHook(() => useGetFlowsMeta({flowType: 'SELF'}));
         const template = result.current.data.templates.find((item) => item.type === type);
         expect(template).toBeDefined();
         return template!;
       };
-
-      // Walks the graph from a node, taking a prompt's first action, and lists each step as
-      // the executor and mode it runs or the prompt's id.
-      const walk = (template: FlowTemplate, from: string): string[] => {
-        const byId = new Map<string, TemplateNode>(template.config.nodes.map((node) => [node.id, node]));
-        const steps: string[] = [];
-        let current = byId.get(from);
-        while (current && current.type !== 'END') {
-          steps.push(current.executor ? `${current.executor.name} ${String(current.executor['mode'])}` : current.id);
-          const next: string | undefined =
-            current.onSuccess ?? current.next ?? current.prompts?.[0]?.action?.nextNode ?? undefined;
-          current = next ? byId.get(next) : undefined;
-        }
-        return steps;
-      };
-
-      const node = (template: FlowTemplate, id: string): TemplateNode | undefined =>
-        template.config.nodes.find((item) => item.id === id);
 
       it('should offer a blank and the self attribute verification templates for the Self type', () => {
         const {result} = renderHook(() => useGetFlowsMeta({flowType: 'SELF'}));
@@ -246,21 +261,6 @@ describe('useGetFlowsMeta', () => {
       // The node the mobile branch starts with: where the email branch's condition skips to.
       const mobileFirst = (template: FlowTemplate): string =>
         node(template, emailFirst(template))?.condition?.onSkip ?? '';
-
-      // Each node's outgoing links, for comparing a graph before and after the builder.
-      const links = (nodes: TemplateNode[]): Record<string, unknown> =>
-        Object.fromEntries(
-          nodes.map((item) => [
-            item.id,
-            {
-              onSuccess: item.onSuccess,
-              onFailure: item.onFailure,
-              onIncomplete: item.onIncomplete,
-              next: item.next,
-              actions: item.prompts?.map((entry) => entry.action?.nextNode),
-            },
-          ]),
-        );
 
       it.each(EMAIL_FIRST_NODES)(
         'should prepare, then take the email branch only for an email address in %s',
@@ -400,6 +400,80 @@ describe('useGetFlowsMeta', () => {
           expect(notification?.hasResourceFieldNotification('send_mobile_otp_data.properties.senderId')).toBe(true);
         },
       );
+    });
+
+    describe('Administrator-initiated templates', () => {
+      const adminTemplates = (): FlowTemplate[] => {
+        const {result} = renderHook(() => useGetFlowsMeta({flowType: 'ADMIN_INITIATED'}));
+        return result.current.data.templates;
+      };
+
+      it('should offer only the administrator attribute verification template', () => {
+        expect(
+          adminTemplates().map((template) => [
+            template.type,
+            template.display.label,
+            template.config.name,
+            template.config.handle,
+          ]),
+        ).toEqual([
+          [
+            'ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK',
+            'Administrator Attribute Verification with Email Link',
+            'Administrator Attribute Verification with Email Link Flow',
+            'admin-attribute-verification-email-link-flow',
+          ],
+        ]);
+      });
+
+      it('should check the permission, prepare the email, send a link, confirm and record in order', () => {
+        const [template] = adminTemplates();
+
+        expect(walk(template, 'start')).toEqual([
+          'start',
+          'PermissionValidator undefined',
+          'AttributeVerificationExecutor prepare',
+          'InviteExecutor generate',
+          'EmailExecutor send',
+          'link_sent',
+          'InviteExecutor verify',
+          'confirm',
+          'AttributeVerificationExecutor record',
+          'verification_complete',
+        ]);
+        expect(node(template, 'permission_validator')?.properties).toEqual({
+          requiredScopes: ['system:user:update', 'org:user:update'],
+        });
+        // A start without an attribute verifies the email address; a start may name another one.
+        expect(node(template, 'prepare_verification')?.executor?.inputs).toEqual([
+          {identifier: 'attribute', type: 'TEXT_INPUT', required: true, defaultValue: 'email'},
+        ]);
+        expect(node(template, 'send_link')?.properties).toEqual({emailTemplate: 'admin-initiated-email-verification'});
+        expect(template.config.nodes.filter((item) => item.condition)).toEqual([]);
+      });
+
+      it('should keep every link and need only an email sender through a load and save', () => {
+        const [template] = adminTemplates();
+        // The operator assigns the email provider before saving.
+        const nodes = structuredClone(template.config.nodes).map((item) =>
+          item.id === 'send_link' ? {...item, properties: {...item.properties, senderId: 'sender-1'}} : item,
+        );
+
+        const canvas = transformFlowToCanvas({nodes} as FlowDefinitionResponse);
+        const saved = transformReactFlow(canvas);
+
+        expect(links(saved.nodes as TemplateNode[])).toEqual(links(template.config.nodes));
+        expect(validateFlowGraph(saved)).toEqual([]);
+        expect([
+          ...computeValidationNotifications(
+            canvas.nodes,
+            VALIDATION_RULES,
+            ((key: string) => key) as TFunction,
+            COMMON_GRAPH_VALIDATION_RULES,
+            canvas.edges,
+          ).keys(),
+        ]).toEqual([]);
+      });
     });
 
     it('should not affect non-template resources when filtering by flowType', () => {

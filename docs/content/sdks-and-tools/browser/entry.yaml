@@ -69,6 +69,27 @@ sections:
       description: The `ThunderIDBrowserClient` is the core class of the `@thunderid/browser` SDK. It manages the full
         authentication lifecycle for browser-based applications, including sign-in, sign-out, token management, and
         authenticated HTTP requests.
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: 'getAccessibleOrganizationUnits(config)'
+        type: Promise<AccessibleOrganizationUnitList>
+        description: 'An exported function rather than a method. Lists the organization units the signed-in user can
+          access, from `GET /users/me/ous`. `scope: ''siblings''` narrows the list to the accessible units that share the parent of the current unit; `limit` and `offset` page it. Pass `fetcher: createHttpClientFetcher()` to attach the
+          access token.'
+      - name: 'getCurrentOrganizationUnit()'
+        type: Promise<CurrentOrganizationUnit | null>
+        description: The organization unit the session was issued for, from its `ouId`, `ouHandle`, and `ouName` claims,
+          or `null` when it names none. The claims are not verified, so use the result for display only.
+      - name: 'switchOrganizationUnit(organizationUnitId, options?)'
+        type: Promise<User | undefined>
+        description: 'Signs in again, bounded to another organization unit, reusing the SSO session where it can. In
+          redirect mode, it exchanges a device secret from a `device_sso` sign-in at `{baseUrl}/ou/{ouId}/oauth2/token`.
+          Without one, it tries a silent `prompt=none` sign-in in a hidden iframe, then redirects to the unit''s
+          authorization endpoint unless `redirect` is `false`. App-native mode starts an `AUTHENTICATION` flow with
+          `ouId`. Backend mode calls the backend''s `ouSwitch` endpoint (`POST {ouSwitch}?ouId=<id>`, `/api/auth/switch`
+          by default), reads the session again in place, and falls back to the backend''s sign-in with `ouId` when the
+          backend needs the user. A failed switch keeps the previous session, unless the backend reports that its session
+          has ended, and throws a code from `OrganizationUnitSwitchErrorCodes`.'
       example: |-
         import { ThunderIDBrowserClient } from '@thunderid/browser'
 

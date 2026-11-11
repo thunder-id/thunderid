@@ -1,11 +1,12 @@
 name: "🤖 PR Automation"
 
 # Uses pull_request_target (not pull_request) so PRs opened from forks get the
-# GOOGLE_CHAT_WEBHOOK secret and a token that can comment on and close the PR.
+# GOOGLE_CHAT_WEBHOOK secret and a token that can comment on the PR.
 # Only PR metadata is read; PR code is never checked out or run.
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review, synchronize, labeled, unlabeled]
+  merge_group:
 
 permissions:
   contents: read
@@ -16,14 +17,19 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     concurrency:
-      group: pr-size-${{ github.event.pull_request.number }}
+      group: pr-size-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     permissions:
       pull-requests: write
     outputs:
-      closed: ${{ steps.size.outputs.closed }}
+      approved_by: ${{ steps.size.outputs.approved_by }}
     steps:
-      - name: Close PR if too large
+      - name: Skip size check for merge queue
+        if: github.event_name == 'merge_group'
+        run: echo "Skipping size check for merge queue."
+
+      - name: Fail if PR is too large
+        if: github.event_name == 'pull_request_target'
         id: size
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -58,8 +64,36 @@ jobs:
             const pr = context.payload.pull_request;
             const { owner, repo } = context.repo;
 
+            // Hidden marker to find an earlier size check comment.
+            const MARKER = '<!-- pr-size-check -->';
+            const findComment = async () => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr.number, per_page: 100,
+              });
+              return comments.find(c => c.user?.login === 'github-actions[bot]' && c.body?.includes(MARKER));
+            };
+            // Removes the earlier size check comment once the check passes.
+            const removeComment = async () => {
+              const comment = await findComment();
+              if (comment) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: comment.id });
+              }
+            };
+
             if (pr.user.login === 'thunder-automation-bot') {
               core.info('PR is opened by the automation bot. Skipping.');
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            const lines = files
+              .filter(f => f.status !== 'removed' && !EXCLUDED.some(p => p.test(f.filename)))
+              .reduce((sum, f) => sum + f.additions + f.deletions, 0);
+            core.info(`Reviewable lines: ${lines} (limit ${MAX_LINES}).`);
+            if (lines <= MAX_LINES) {
+              await removeComment();
               return;
             }
 
@@ -77,52 +111,45 @@ jobs:
               const labeledBy = labeled?.actor?.login;
               if (labeledBy && maintainers.includes(labeledBy.toLowerCase())) {
                 core.info(`${APPROVAL_LABEL} added by maintainer ${labeledBy}. Skipping.`);
+                // Announce the approval only on the label event, so later pushes don't repeat it.
+                const justLabeled = context.payload.action === 'labeled'
+                  && context.payload.label?.name === APPROVAL_LABEL;
+                if (justLabeled && await findComment()) {
+                  const body = `Large PR is approved by @${labeledBy}.`;
+                  await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+                  core.setOutput('approved_by', labeledBy);
+                }
                 return;
               }
               core.info(`Ignoring ${APPROVAL_LABEL} added by ${labeledBy}, who is not a maintainer.`);
             }
 
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner, repo, pull_number: pr.number, per_page: 100,
-            });
-            const lines = files
-              .filter(f => f.status !== 'removed' && !EXCLUDED.some(p => p.test(f.filename)))
-              .reduce((sum, f) => sum + f.additions + f.deletions, 0);
-            core.info(`Reviewable lines: ${lines} (limit ${MAX_LINES}).`);
-            if (lines <= MAX_LINES) {
-              return;
-            }
-
-            // Hidden marker to find an earlier size check comment, so a reopened PR
-            // is not commented on again.
-            const MARKER = '<!-- pr-size-check -->';
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number: pr.number, per_page: 100,
-            });
-            const alreadyCommented = comments.some(c => c.body?.includes(MARKER));
-
             const body = [
               MARKER,
               `Hi @${pr.user.login}, thanks for the contribution!`,
               '',
-              `This PR changes ${lines} lines, above our limit of ${MAX_LINES}. Large PRs are hard to review, so it's closed automatically.`,
+              `This PR changes ${lines} lines, above our limit of ${MAX_LINES}. Tests, docs, generated files and API specs aren't counted.`,
+              'Large PRs are hard to review, so the PR size check fails and the PR can\'t be merged.',
               '',
               'Please split it into smaller PRs. Each PR should be independently mergeable: it builds, passes tests and doesn\'t break existing features.',
               'If it can\'t be split, comment with the reason and a maintainer will take a look.',
             ].join('\n');
-            if (!alreadyCommented) {
+            const comment = await findComment();
+            if (comment) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: comment.id, body });
+            } else {
               await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
             }
-            await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' });
-            core.setOutput('closed', 'true');
+            core.setFailed(`PR changes ${lines} lines, above the limit of ${MAX_LINES}.`);
 
   notify-google-chat:
     needs: check-size
     permissions: {}
     if: |
       !cancelled()
-      && (github.event.action == 'opened' || github.event.action == 'reopened' || needs.check-size.outputs.closed == 'true')
-      && !contains(format(',{0},', vars.PROJECT_MEMBERS), format(',{0},', github.actor))
+      && (needs.check-size.outputs.approved_by != ''
+        || ((github.event.action == 'opened' || github.event.action == 'reopened')
+          && !contains(format(',{0},', vars.PROJECT_MEMBERS), format(',{0},', github.actor))))
     runs-on: ubuntu-latest
     steps:
       - name: Send Notification to Google Chat
@@ -133,16 +160,16 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_BASE: ${{ github.event.pull_request.base.ref }}
           PR_ACTION: ${{ github.event.action }}
-          PR_CLOSED_TOO_LARGE: ${{ needs.check-size.outputs.closed }}
+          PR_APPROVED_BY: ${{ needs.check-size.outputs.approved_by }}
         run: |
           if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
             echo "GOOGLE_CHAT_WEBHOOK secret is not set. Skipping notification."
             exit 1
           fi
 
-          # Set header title based on the size check result and the action (opened or reopened).
-          if [ "$PR_CLOSED_TOO_LARGE" = "true" ]; then
-            header_title="Github PR - Closed (too large)"
+          # Set header title based on the large PR approval and the action (opened or reopened).
+          if [ -n "$PR_APPROVED_BY" ]; then
+            header_title="Github PR - Large PR approved"
           elif [ "$PR_ACTION" = "reopened" ]; then
             header_title="Github PR - Reopened"
           else
@@ -155,6 +182,7 @@ jobs:
             --arg url "$PR_URL" \
             --arg base "$PR_BASE" \
             --arg header "$header_title" \
+            --arg approver "$PR_APPROVED_BY" \
             '{
               "cards": [{
                 "header": {
@@ -181,7 +209,15 @@ jobs:
                         "topLabel": "Created By",
                         "content": $creator
                       }
-                    },
+                    }
+                  ] + (if $approver != "" then [
+                    {
+                      "keyValue": {
+                        "topLabel": "Approved By",
+                        "content": $approver
+                      }
+                    }
+                  ] else [] end) + [
                     {
                       "buttons": [{
                         "textButton": {

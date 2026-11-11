@@ -9,7 +9,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Alert,
@@ -38,7 +38,7 @@ import {
   type SyntheticEvent,
 } from 'react';
 import {useTranslation} from 'react-i18next';
-import {Link, useNavigate, useParams} from 'react-router';
+import {Link, Navigate, useNavigate, useParams} from 'react-router';
 import useGetAuthorizationDetailType from '../api/useGetAuthorizationDetailType';
 import useUpdateAuthorizationDetailType from '../api/useUpdateAuthorizationDetailType';
 import AskEveryTimeSetting from '../components/authorization-detail-types/AskEveryTimeSetting';
@@ -680,6 +680,7 @@ function AuthorizationDetailTypeEditor({
 export default function AuthorizationDetailTypeEditPage(): JSX.Element {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
+  const {projectId} = useProjectScope();
   const routes = useAuthorizationDetailTypeRoutes();
   const {t} = useTranslation();
   const logger = useLogger('AuthorizationDetailTypeEditPage');
@@ -757,6 +758,12 @@ export default function AuthorizationDetailTypeEditPage(): JSX.Element {
         {backButton}
       </PageContent>
     );
+  }
+
+  // Another project's intent is not shown in the selected one: a deep link, a stale tab or a switch of project
+  // goes to the selected project's intents instead.
+  if (projectId && base.projectId !== projectId) {
+    return <Navigate to={routes.list()} replace />;
   }
 
   // The type may change or go away elsewhere while it is open: a refresh tells.

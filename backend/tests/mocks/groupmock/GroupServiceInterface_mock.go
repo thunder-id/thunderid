@@ -960,8 +960,8 @@ func (_c *GroupServiceInterfaceMock_GetGroupsByIDs_Call) RunAndReturn(run func(c
 }
 
 // GetGroupsByNames provides a mock function for the type GroupServiceInterfaceMock
-func (_mock *GroupServiceInterfaceMock) GetGroupsByNames(ctx context.Context, names []string) (map[string][]*group.Group, *common.ServiceError) {
-	ret := _mock.Called(ctx, names)
+func (_mock *GroupServiceInterfaceMock) GetGroupsByNames(ctx context.Context, names []string, ouID string) (map[string][]*group.Group, *common.ServiceError) {
+	ret := _mock.Called(ctx, names, ouID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetGroupsByNames")
@@ -969,18 +969,18 @@ func (_mock *GroupServiceInterfaceMock) GetGroupsByNames(ctx context.Context, na
 
 	var r0 map[string][]*group.Group
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (map[string][]*group.Group, *common.ServiceError)); ok {
-		return returnFunc(ctx, names)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, string) (map[string][]*group.Group, *common.ServiceError)); ok {
+		return returnFunc(ctx, names, ouID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) map[string][]*group.Group); ok {
-		r0 = returnFunc(ctx, names)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, string) map[string][]*group.Group); ok {
+		r0 = returnFunc(ctx, names, ouID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string][]*group.Group)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, names)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, names, ouID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -997,11 +997,12 @@ type GroupServiceInterfaceMock_GetGroupsByNames_Call struct {
 // GetGroupsByNames is a helper method to define mock.On call
 //   - ctx context.Context
 //   - names []string
-func (_e *GroupServiceInterfaceMock_Expecter) GetGroupsByNames(ctx any, names any) *GroupServiceInterfaceMock_GetGroupsByNames_Call {
-	return &GroupServiceInterfaceMock_GetGroupsByNames_Call{Call: _e.mock.On("GetGroupsByNames", ctx, names)}
+//   - ouID string
+func (_e *GroupServiceInterfaceMock_Expecter) GetGroupsByNames(ctx any, names any, ouID any) *GroupServiceInterfaceMock_GetGroupsByNames_Call {
+	return &GroupServiceInterfaceMock_GetGroupsByNames_Call{Call: _e.mock.On("GetGroupsByNames", ctx, names, ouID)}
 }
 
-func (_c *GroupServiceInterfaceMock_GetGroupsByNames_Call) Run(run func(ctx context.Context, names []string)) *GroupServiceInterfaceMock_GetGroupsByNames_Call {
+func (_c *GroupServiceInterfaceMock_GetGroupsByNames_Call) Run(run func(ctx context.Context, names []string, ouID string)) *GroupServiceInterfaceMock_GetGroupsByNames_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1011,9 +1012,14 @@ func (_c *GroupServiceInterfaceMock_GetGroupsByNames_Call) Run(run func(ctx cont
 		if args[1] != nil {
 			arg1 = args[1].([]string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -1024,7 +1030,7 @@ func (_c *GroupServiceInterfaceMock_GetGroupsByNames_Call) Return(stringToGroups
 	return _c
 }
 
-func (_c *GroupServiceInterfaceMock_GetGroupsByNames_Call) RunAndReturn(run func(ctx context.Context, names []string) (map[string][]*group.Group, *common.ServiceError)) *GroupServiceInterfaceMock_GetGroupsByNames_Call {
+func (_c *GroupServiceInterfaceMock_GetGroupsByNames_Call) RunAndReturn(run func(ctx context.Context, names []string, ouID string) (map[string][]*group.Group, *common.ServiceError)) *GroupServiceInterfaceMock_GetGroupsByNames_Call {
 	_c.Call.Return(run)
 	return _c
 }

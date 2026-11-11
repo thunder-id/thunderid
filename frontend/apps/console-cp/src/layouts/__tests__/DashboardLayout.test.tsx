@@ -288,6 +288,18 @@ describe('DashboardLayout', () => {
     expect(hintOf('navigation:pages.resourceServers')).toBe('navigation:badges.undeployed:1');
   });
 
+  it("lists the selected project's intents under it, with what is not deployed yet", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {authorization_detail_type: 2};
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:pages.authorizationDetailTypes').closest('a')).toHaveAttribute(
+      'href',
+      '/project/shop/authorization-detail-types',
+    );
+    expect(hintOf('navigation:pages.authorizationDetailTypes')).toBe('navigation:badges.undeployed:2');
+  });
+
   it("lists the selected project's roles under it, with what is not deployed yet", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     mockProjectChanges = {role: 1};
@@ -570,6 +582,12 @@ describe('DashboardLayout', () => {
     expect(within(shared).getByText('navigation:pages.settings')).toBeInTheDocument();
     expect(within(shared).queryByText('navigation:pages.projects')).not.toBeInTheDocument();
     expect(within(shared).queryByText('navigation:pages.gateways')).not.toBeInTheDocument();
+  });
+
+  it('lists intents only inside a project, since each belongs to one', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.queryByText('navigation:pages.authorizationDetailTypes')).not.toBeInTheDocument();
   });
 
   it('offers no Deploy in the header or the navigation', () => {

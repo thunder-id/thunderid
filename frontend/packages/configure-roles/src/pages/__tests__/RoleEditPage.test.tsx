@@ -3,7 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import type {ResourcePermissions} from '@thunderid/configure-resource-servers';
-import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider, RoutesProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -734,6 +734,33 @@ describe('RoleEditPage', () => {
 
       expect(screen.getAllByText('Admin Role').length).toBeGreaterThan(0);
       expect(mockNavigate).not.toHaveBeenCalledWith('/roles', {replace: true});
+    });
+
+    it("should link back to the project's roles list", () => {
+      vi.mocked(useGetRole).mockReturnValue({
+        data: {...mockRole, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useGetRole>);
+
+      render(
+        <RoutesProvider
+          paths={{
+            roles: {
+              list: () => '/project/shop/roles',
+              detail: (id: string) => `/project/shop/roles/${id}`,
+              create: () => '/project/shop/roles/create',
+            },
+          }}
+        >
+          <ProjectScopeProvider project={{id: 'project-1'}}>
+            <RoleEditPage />
+          </ProjectScopeProvider>
+        </RoutesProvider>,
+      );
+
+      expect(screen.getByRole('link', {name: 'Back to roles'})).toHaveAttribute('href', '/project/shop/roles');
     });
   });
 });

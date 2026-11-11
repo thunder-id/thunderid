@@ -13,6 +13,8 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
@@ -20,16 +22,23 @@ import (
 //
 // valueCapturer is optional. Given one, the service hands it every type it creates or changes, so the
 // processor credential the type's export refers to is kept where a reference finds it.
+//
+// projects is nil on a deployment that serves no projects, which keeps a type's project ID unchecked. Given one,
+// every type belongs to a project.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, valueCapturer declarativeresource.ValueCapturer,
-	authzService sysauthz.SystemAuthorizationServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface, projects projectChecker,
 ) (AuthorizationDetailMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	typeStore, fileStore, dbStore := initializeStore()
 	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService)
-	service.(*authorizationDetailMgtService).managed = managedresource.GetStore()
+	impl := service.(*authorizationDetailMgtService)
+	impl.managed = managedresource.GetStore()
+	impl.projects = projects
+	impl.projectRequired = projects != nil &&
+		projectscope.ProjectRequired(security.ResourceTypeAuthorizationDetailType)
 
 	if fileStore != nil {
-		if err := loadDeclarativeResources(fileStore, dbStore); err != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, impl.projectRequired); err != nil {
 			return nil, nil, err
 		}
 	}

@@ -228,6 +228,10 @@ type Change struct {
 	// updates or removes what the gateway holds, the other projects whose resources there name it.
 	Section string   `json:"section,omitempty"`
 	UsedBy  []string `json:"usedBy,omitempty"`
+	// Carried marks a shared change a project's deploy sends unless it is left out: a resource no
+	// application names, such as the allowed origins or a translation, that the project's applications
+	// still rely on.
+	Carried bool `json:"carried,omitempty"`
 	// Lines is the resource's document diffed line by line, from what the gateway holds to what is
 	// applied. An unchanged resource has none.
 	Lines []LineOp `json:"lines,omitempty"`

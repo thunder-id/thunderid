@@ -101,7 +101,7 @@ export default function RoleEditPage(): JSX.Element {
   const submittingRef = useRef(false);
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
-  const listUrl = '/roles';
+  const listUrl = routes.roles.list();
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);

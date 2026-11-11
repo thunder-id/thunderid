@@ -36,13 +36,6 @@ var (
 			`WHERE MESSAGE_KEY = $1 AND NAMESPACE = $2 AND DEPLOYMENT_ID = $3`,
 	}
 
-	// queryInsertTranslation inserts a new translation.
-	queryInsertTranslation = dbmodel.DBQuery{
-		ID: "I18N-05",
-		Query: `INSERT INTO "TRANSLATION" (MESSAGE_KEY, LANGUAGE_CODE, NAMESPACE, VALUE, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5)`,
-	}
-
 	// queryUpsertTranslation inserts or updates a translation.
 	queryUpsertTranslation = dbmodel.DBQuery{
 		ID: "I18N-06",
