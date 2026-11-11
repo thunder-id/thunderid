@@ -554,14 +554,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             path: RouteConfig.projects.list(),
           },
           {
-            id: 'users',
-            resource: 'user',
-            text: t('navigation:pages.administrators', 'Administrators'),
-            description: t('navigation:pages.administratorsHint', 'People who manage your gateways'),
-            icon: <UserStar />,
-            path: paths.users.list(),
-          },
-          {
             id: 'gateways',
             resource: 'gateway',
             text: t('navigation:pages.gateways', 'Deployment'),
@@ -619,8 +611,15 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       },
       {
         shared: true,
-        category: t('navigation:categories.system', 'System'),
+        category: t('navigation:categories.organization', 'Organization'),
         routes: [
+          {
+            id: 'administrators',
+            resource: 'user',
+            text: t('navigation:pages.administrators', 'Administrators'),
+            icon: <UserStar />,
+            path: paths.administrators.list(),
+          },
           {
             id: 'settings',
             resource: 'serverconfig',

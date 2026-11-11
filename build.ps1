@@ -905,6 +905,15 @@ function Prepare-Cp-Frontend-For-Packaging {
     if (Test-Path $dist) {
         Write-Host "Copying Control Plane console build output..."
         Copy-Item -Path (Join-Path $dist "*") -Destination $console_dir -Recurse -Force
+
+        # The Control Plane console gives the administrators it creates the bootstrap's Administrator role.
+        $cp_console_config = Join-Path $console_dir "config.js"
+        Add-QuickstartLine -Path $cp_console_config -Pattern '^};$' -Before -Lines @(
+            "  administrators: {",
+            "    role_ids: [`"01900000-0000-7000-8000-000000000050`"],",
+            "  },"
+        )
+        Assert-QuickstartPatch $cp_console_config "01900000-0000-7000-8000-000000000050"
     }
     else {
         Write-Host "Warning: Control Plane console build output not found at $dist"
@@ -1166,6 +1175,12 @@ function Package-Quickstart {
     Write-QuickstartFile -Path $dp_console_config -Content ((Read-QuickstartFile $dp_console_config).Replace(
             "client_id: 'CONSOLE'", "client_id: 'ADMIN_CONSOLE'"))
 
+    # The Control Plane's console gives the administrators it creates the Administrator role, which
+    # Set-QuickstartServiceDeskAdmin above moved to the Service Desk Administrator role's ID.
+    $cp_console_config = Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js"
+    Write-QuickstartFile -Path $cp_console_config -Content ((Read-QuickstartFile $cp_console_config).Replace(
+            '01900000-0000-7000-8000-000000000050', '01900000-0000-7000-8000-0000000000f5'))
+
     # auth-dp runs on its own port, distinct from the managed dp it shares a generated certificate
     # and signing keys with (see quickstart/setup.ps1). Patched into this copy of deployment.yaml
     # only; the checked-in source is never touched, and the managed dp keeps the default port.
@@ -1224,6 +1239,7 @@ function Package-Quickstart {
     Assert-QuickstartPatch (Join-Path $dp_dir "deployment.yaml") "  security:"
     Assert-QuickstartPatch (Join-Path $cp_dir "deployment.yaml") "issuer: `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
     Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "trusted_issuer"
+    Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "01900000-0000-7000-8000-0000000000f5"
     Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "  gate_client: {"
     Assert-QuickstartPatch (Join-Path $cp_dir "config/resources/server_configs/csp.yaml") "https://localhost:$QUICKSTART_AUTH_DP_PORT"
 

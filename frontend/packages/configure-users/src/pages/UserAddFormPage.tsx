@@ -1,9 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useMutation} from '@tanstack/react-query';
 import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useGetOrganizationUnits} from '@thunderid/configure-organization-units';
-import {useProjectScope} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {
   Alert,
@@ -21,11 +22,12 @@ import {useState, type JSX} from 'react';
 import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useAddUserToRoles from '../api/useAddUserToRoles';
 import useCreateUser from '../api/useCreateUser';
 import useGetUserType from '../api/useGetUserType';
 import useGetUserTypes from '../api/useGetUserTypes';
 import useUserRoutes from '../hooks/useUserRoutes';
-import type {PropertyDefinition, SchemaInterface} from '../models/users';
+import type {CreateUserRequest, PropertyDefinition, SchemaInterface} from '../models/users';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 import orderSchemaAttributes from '../utils/orderSchemaAttributes';
 import renderSchemaField from '../utils/renderSchemaField';
@@ -45,7 +47,22 @@ export default function UserAddFormPage(): JSX.Element {
   const routes = useUserRoutes();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createUser = useCreateUser();
+  const addToRoles = useAddUserToRoles();
   const {projectId} = useProjectScope();
+  // A user added outside any project is an administrator, given the roles the console's config names.
+  const {config} = useConfig();
+  const administratorRoleIds: string[] = config.administrators?.role_ids ?? [];
+  // An administrator is created and then given the administrators' roles, as one mutation, so the roles are
+  // still given if the page is closed while the user is being created. Should assigning fail, the page stays
+  // and says so, since the user exists without those roles.
+  const addUser = useMutation<void, Error, CreateUserRequest>({
+    mutationFn: async (request: CreateUserRequest): Promise<void> => {
+      const created = await createUser.mutateAsync(request);
+      if (!request.projectId && administratorRoleIds.length > 0) {
+        await addToRoles.mutateAsync({userId: created.id, roleIds: administratorRoleIds});
+      }
+    },
+  });
   // Inside a project the user goes to the system organization unit or one of the project's own,
   // picked on the organization unit step. The step is offered only when the project has
   // organization units; without any, the API places the user in the system organization unit.
@@ -104,7 +121,7 @@ export default function UserAddFormPage(): JSX.Element {
       Object.entries(values).filter(([, value]) => value !== '' && value !== undefined && value !== null),
     );
 
-    createUser.mutate(
+    addUser.mutate(
       {...(isInProject ? {projectId} : {}), ...(ouId ? {ouId} : {}), type: selectedType?.handle ?? '', attributes},
       {
         onSuccess: () => {
@@ -147,6 +164,40 @@ export default function UserAddFormPage(): JSX.Element {
               (key, options) => t(key.includes(':') ? key : `users:${key}`, options),
               'create.error',
               'Failed to create user. Please try again.',
+            )}
+          </Alert>
+        )}
+
+        {addToRoles.isError && (
+          <Alert
+            severity="error"
+            data-testid="administrator-roles-error"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                disabled={addToRoles.isPending}
+                onClick={() => {
+                  const {variables, error} = addToRoles;
+                  if (!variables || !error) return;
+                  addToRoles.mutate(
+                    {userId: variables.userId, roleIds: error.failedRoles.map((role) => role.id)},
+                    {
+                      onSuccess: () => {
+                        void navigate(routes.list());
+                      },
+                    },
+                  );
+                }}
+              >
+                {t('users:addForm.retryRoles', 'Try again')}
+              </Button>
+            }
+          >
+            {t(
+              'users:addForm.administratorRolesError',
+              'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
+              {roles: addToRoles.error?.failedRoles.map((role) => role.name).join(', ') ?? ''},
             )}
           </Alert>
         )}
@@ -256,10 +307,14 @@ export default function UserAddFormPage(): JSX.Element {
                       Boolean(placementsReadError) ||
                       isAwaitingPick)) ||
                   !userType ||
-                  createUser.isPending
+                  addUser.isPending ||
+                  // The user exists once assigning its roles is tried, so submitting again would create another.
+                  addToRoles.isError
                 }
               >
-                {createUser.isPending ? t('users:addForm.creating') : t('users:addForm.submit')}
+                {addUser.isPending
+                  ? t('users:addForm.creating', 'Creating...')
+                  : t('users:addForm.submit', 'Create user')}
               </Button>
               <Button variant="outlined" onClick={handleClose}>
                 {t('common:actions.cancel', 'Cancel')}

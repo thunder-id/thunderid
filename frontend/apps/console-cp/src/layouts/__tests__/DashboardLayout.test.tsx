@@ -519,7 +519,7 @@ describe('DashboardLayout', () => {
     expect(screen.queryByTestId('project-switcher')).not.toBeInTheDocument();
   });
 
-  it('lists Projects, Administrators and Deployment after the overview, and keeps settings in its own group at the end', () => {
+  it('lists Projects and Deployment after the overview, and keeps administrators and settings under Organization at the end', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop]}));
     mockPath = '/home';
 
@@ -528,17 +528,15 @@ describe('DashboardLayout', () => {
     const projects = screen.getByText('navigation:pages.projects');
     expect(projects.closest('a')).toHaveAttribute('href', '/projects');
     expect(screen.getByText('navigation:pages.projectsHint')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.administratorsHint')).toBeInTheDocument();
     const overview = screen.getByText('navigation:pages.overview');
     expect(overview.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(
-      projects.compareDocumentPosition(screen.getByText('navigation:pages.administrators')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
     expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
-    const system = screen.getByText('navigation:categories.system');
+    const organization = screen.getByText('navigation:categories.organization');
+    const administrators = screen.getByText('navigation:pages.administrators');
     const settings = screen.getByText('navigation:pages.settings');
-    expect(system.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(administrators.closest('a')).toHaveAttribute('href', '/administrators');
+    expect(organization.compareDocumentPosition(administrators) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(administrators.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("leads out of a project from the header's project selector, not the navigation", () => {
@@ -566,7 +564,7 @@ describe('DashboardLayout', () => {
       'navigation:categories.identitySetup',
       'navigation:categories.signInExperience',
       'navigation:categories.apisAndCredentials',
-      'navigation:categories.system',
+      'navigation:categories.organization',
     ]) {
       expect(screen.getByText(category)).toBeInTheDocument();
     }
@@ -670,10 +668,12 @@ describe('DashboardLayout', () => {
       mockCapabilities = {can: (resource) => resource === 'user', canManageRoot: false, isLoading: false};
       render(<DashboardLayout />);
 
+      // Administrators keep the Organization category showing, without the settings this admin cannot view.
+      expect(screen.getByText('navigation:categories.organization')).toBeInTheDocument();
       expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
       expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
       expect(screen.queryByText('navigation:pages.gateways')).not.toBeInTheDocument();
-      expect(screen.queryByText('navigation:categories.system')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.settings')).not.toBeInTheDocument();
       expect(screen.queryByText('navigation:categories.identitySetup')).not.toBeInTheDocument();
       expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
     });
