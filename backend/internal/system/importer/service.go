@@ -550,10 +550,14 @@ func (s *importService) importResources(
 
 		pendingBefore := len(mandating)
 		docCtx, replayReport := sharing.WithReplayReport(ctx)
-		outcome, resolved := s.resolveReferences(docCtx, doc)
-		if resolved {
-			outcome = s.importDocument(docCtx, doc, options, request.DryRun, flowIDAliases, &mandating,
-				plan)
+		outcome, skipped := s.skipDeployed(docCtx, request, options, doc)
+		if !skipped {
+			var resolved bool
+			outcome, resolved = s.resolveReferences(docCtx, doc)
+			if resolved {
+				outcome = s.importDocument(docCtx, doc, options, request.DryRun, flowIDAliases, &mandating,
+					plan)
+			}
 		}
 		listRemovedSharing(&outcome, replayReport)
 		outcome = s.markManaged(ctx, request, doc.ResourceType, outcome)

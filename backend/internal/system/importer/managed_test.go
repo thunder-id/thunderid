@@ -5,6 +5,7 @@ package importer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -544,4 +545,132 @@ func TestImportAuthorizationDetailType_DryRunOfADeployedType(t *testing.T) {
 			assert.Equal(t, authzdetailmgt.ErrorManagedType.Code, resp.Results[0].Code)
 		}
 	}
+}
+
+// An import that asks to skip what a control plane deployed leaves that resource alone and reports it
+// skipped, so a bootstrap run after a deploy does not fail on the refusal.
+func TestASkipManagedImportLeavesADeployedResourceAlone(t *testing.T) {
+	groupSvc := &fakeGroupService{}
+	svc, store := managedImportService(t, groupSvc, nil, nil)
+	store.EXPECT().IsManaged(mock.Anything, "group-new", managedresource.TypeGroup).Return(true, nil).Once()
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: managedGroupDocument,
+		Options: &ImportOptions{SkipManaged: true},
+	})
+
+	require.Nil(t, svcErr)
+	assert.Empty(t, groupSvc.created)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationSkip, resp.Results[0].Operation)
+	assert.Equal(t, "group-new", resp.Results[0].ResourceID)
+}
+
+// What a control plane did not deploy is imported as usual, and so is everything when the option is off.
+func TestASkipManagedImportStillWritesWhatIsNotDeployed(t *testing.T) {
+	groupSvc := &fakeGroupService{}
+	svc, store := managedImportService(t, groupSvc, nil, nil)
+	store.EXPECT().IsManaged(mock.Anything, "group-new", managedresource.TypeGroup).Return(false, nil).Once()
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: managedGroupDocument,
+		Options: &ImportOptions{SkipManaged: true},
+	})
+
+	require.Nil(t, svcErr)
+	assert.Len(t, groupSvc.created, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.NotEqual(t, operationSkip, resp.Results[0].Operation)
+
+	// Without the option the marks are not even read.
+	plain := &fakeGroupService{}
+	svc, _ = managedImportService(t, plain, nil, nil)
+	_, svcErr = svc.ImportResources(context.Background(), &ImportRequest{Content: managedGroupDocument})
+	require.Nil(t, svcErr)
+	assert.Len(t, plain.created, 1)
+}
+
+// A failed read of the marks does not skip: the service writing the resource decides, as for any import.
+func TestASkipManagedImportDoesNotSkipWhenTheMarksCannotBeRead(t *testing.T) {
+	groupSvc := &fakeGroupService{}
+	svc, store := managedImportService(t, groupSvc, nil, nil)
+	store.EXPECT().IsManaged(mock.Anything, "group-new", managedresource.TypeGroup).
+		Return(false, errMarkerStore).Once()
+
+	_, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: managedGroupDocument,
+		Options: &ImportOptions{SkipManaged: true},
+	})
+
+	require.Nil(t, svcErr)
+	assert.Len(t, groupSvc.created, 1)
+}
+
+// A managed import ignores the option: it is the one import allowed to change what a control plane deployed.
+func TestAManagedImportIgnoresSkipManaged(t *testing.T) {
+	groupSvc := &fakeGroupService{}
+	svc, store := managedImportService(t, groupSvc, nil, nil)
+	store.EXPECT().PartKeys(isManagedImport, managedresource.TypeGroup, "group-new", managedresource.PartMember).
+		Return(nil, nil).Once()
+	store.EXPECT().UnmarkParts(isManagedImport, managedresource.TypeGroup, "group-new",
+		managedresource.PartMember, []string(nil)).Return(nil).Maybe()
+	store.EXPECT().MarkParts(isManagedImport, managedresource.TypeGroup, "group-new",
+		managedresource.PartMember, []string{"user/user-1"}).Return(nil).Once()
+	store.EXPECT().Mark(isManagedImport, managedresource.TypeGroup, "group-new").Return(nil).Once()
+
+	_, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: managedGroupDocument,
+		Managed: true,
+		Options: &ImportOptions{SkipManaged: true},
+	})
+
+	require.Nil(t, svcErr)
+	assert.Len(t, groupSvc.created, 1)
+}
+
+// A bundle in which a control plane deployed every resource is skipped whole, and nothing fails.
+func TestASkipManagedImportOfOnlyDeployedResourcesFailsNothing(t *testing.T) {
+	groupSvc := &fakeGroupService{}
+	svc, store := managedImportService(t, groupSvc, nil, nil)
+	store.EXPECT().IsManaged(mock.Anything, "group-a", managedresource.TypeGroup).Return(true, nil).Once()
+	store.EXPECT().IsManaged(mock.Anything, "group-b", managedresource.TypeGroup).Return(true, nil).Once()
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: group\nid: group-a\nname: A\nouId: ou-1\n---\n" +
+			"resource_type: group\nid: group-b\nname: B\nouId: ou-1\n",
+		Options: &ImportOptions{SkipManaged: true, ContinueOnError: new(false)},
+	})
+
+	require.Nil(t, svcErr)
+	assert.Empty(t, groupSvc.created)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	require.Len(t, resp.Results, 2)
+	for _, result := range resp.Results {
+		assert.Equal(t, operationSkip, result.Operation)
+	}
+}
+
+// A document that names neither an id nor a name cannot be told apart from another, so it is not skipped and
+// the marks are not read for it.
+func TestASkipManagedImportDoesNotSkipADocumentWithNoIdentity(t *testing.T) {
+	svc, _ := managedImportService(t, &fakeGroupService{}, nil, nil)
+	docs, err := parseDocuments("resource_type: group\nouId: ou-1\n")
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+
+	_, skipped := svc.skipDeployed(context.Background(), &ImportRequest{},
+		&ImportOptions{SkipManaged: true}, docs[0])
+
+	assert.False(t, skipped)
+}
+
+// A request body cannot ask for the skip: only code that builds the request, such as the bootstrap, can.
+func TestSkipManagedIsNotReadFromARequestBody(t *testing.T) {
+	var request ImportRequest
+
+	require.NoError(t, json.Unmarshal([]byte(`{"content":"x","options":{"skipManaged":true}}`), &request))
+
+	require.NotNil(t, request.Options)
+	assert.False(t, request.Options.SkipManaged)
 }
