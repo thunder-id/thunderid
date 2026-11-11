@@ -201,7 +201,8 @@ func (s *ProjectScopeTestSuite) TestAProjectsRollbackPointIsKeptPastTheBound() {
 func (s *ProjectScopeTestSuite) TestARollbackThatChangesNothingIsNotOffered() {
 	ctx := context.Background()
 	s.captureDocs(docs(flow("flow-1"))...)
-	_, svcErr := s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop"})
+	own := []string{"application/app-shop", "organization_unit/ou-team", "organization_unit/ou-shop", "flow/flow-1"}
+	_, svcErr := s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop", Selection: &own})
 	s.Require().Nil(svcErr)
 	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop", Selection: &[]string{"translation/en-US"}})
 	s.Require().Nil(svcErr)

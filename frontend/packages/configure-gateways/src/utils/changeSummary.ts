@@ -41,5 +41,13 @@ export const carriedWithProject = (change: Change): boolean =>
 /** Whether a change is a shared resource the target does not hold at all. */
 export const sharedMissing = (change: Change): boolean => change.section === 'shared' && change.change === 'added';
 
+/**
+ * Whether a project's deploy carries a shared change unless it is left out: a shared resource the target
+ * does not hold at all, or one the project's applications rely on without naming it. One an earlier deploy
+ * held back stays out until it is ticked, since sending it stops holding it back.
+ */
+export const sharedByDefault = (change: Change): boolean =>
+  change.heldBack !== true && (sharedMissing(change) || (change.section === 'shared' && change.carried === true));
+
 /** Whether a change is something a project's resources need that the target lacks or refused. */
 export const projectNeeds = (change: Change): boolean => change.section === 'needed' && change.required === true;

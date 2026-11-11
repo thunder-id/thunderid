@@ -164,8 +164,8 @@ func (s *ProjectScopeTestSuite) TestAnUnknownProjectIsRefused() {
 	s.Equal(&tidcommon.InternalServerError, svcErr)
 }
 
-// Without a selection, an apply scoped to a project sends the project's own changes and what they need
-// that the gateway lacks, and nothing shared or of another project.
+// Without a selection, an apply scoped to a project sends the project's own changes, what they need
+// that the gateway lacks, and the translations, and nothing else shared or of another project.
 func (s *ProjectScopeTestSuite) TestAnApplyScopedToAProjectSendsItsDefaults() {
 	s.captureDocs(docs(flow("flow-1"))...)
 
@@ -179,10 +179,12 @@ func (s *ProjectScopeTestSuite) TestAnApplyScopedToAProjectSendsItsDefaults() {
 	for _, id := range []string{"app-bill", "ou-bill", "flow-2", "usr-1"} {
 		s.NotContains(sent, "id: "+id+"\n", "%s was sent with the shop", id)
 	}
-	s.NotContains(sent, "en-US", "a shared resource nobody selected was sent")
+	s.Contains(sent, "en-US", "a translation was not carried")
 	s.True(changeNamed(&result.Diff, "flow/flow-1").Required)
 	s.True(changeNamed(&result.Diff, "flow/flow-1").Selected)
-	s.False(changeNamed(&result.Diff, "translation/en-US").Selected)
+	s.True(changeNamed(&result.Diff, "translation/en-US").Selected)
+	s.True(changeNamed(&result.Diff, "translation/en-US").Carried)
+	s.False(changeNamed(&result.Diff, "flow/flow-2").Carried)
 }
 
 // A selection may add shared changes, but not another project's, and may not leave out what the
@@ -207,6 +209,63 @@ func (s *ProjectScopeTestSuite) TestAProjectSelectionIsChecked() {
 		Selection: &[]string{own[0], own[1], own[2], "flow/flow-1", "translation/en-US"}})
 	s.Require().Nil(svcErr)
 	s.Contains(s.f.client.last().Content, "en-US")
+}
+
+// No application names the allowed origins or a translation, yet a project's applications rely on them,
+// so a project's deploy carries their additions and updates unless they are left out. A removal is not
+// carried, and the other shared changes still go only when selected.
+func (s *ProjectScopeTestSuite) TestAProjectDeployCarriesTheAllowedOriginsAndTranslations() {
+	cors := func(origin string) string {
+		return "resource_type: server_config\nname: cors\nallowedOrigins:\n  - " + origin
+	}
+	s.captureDocs(append(docs(flow("flow-1")), cors("https://old.test"),
+		"resource_type: translation\nlanguage: fr-FR\ntext: salut")...)
+	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	s.Require().Nil(svcErr)
+	s.captureDocs(append(docs(flow("flow-1")), cors("https://spa.test"),
+		"resource_type: translation\nlanguage: de-DE\ntext: hallo")...)
+
+	diff, svcErr := s.f.svc.Diff(context.Background(), "gw-1", "", "shop")
+	s.Require().Nil(svcErr)
+	s.Equal(sectionShared, changeNamed(diff, "server_config/cors").Section)
+	s.True(changeNamed(diff, "server_config/cors").Carried)
+	s.True(changeNamed(diff, "translation/de-DE").Carried)
+	s.False(changeNamed(diff, "translation/fr-FR").Carried, "a removal was carried")
+
+	result, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	s.True(changeNamed(&result.Diff, "server_config/cors").Selected)
+	s.True(changeNamed(&result.Diff, "translation/de-DE").Selected)
+	s.False(changeNamed(&result.Diff, "translation/fr-FR").Selected)
+	s.Contains(s.f.client.last().Content, "https://spa.test")
+
+	own := []string{"application/app-shop", "organization_unit/ou-team", "organization_unit/ou-shop", "flow/flow-1"}
+	result, svcErr = s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "shop", Selection: &own,
+		DryRun: true})
+	s.Require().Nil(svcErr)
+	s.False(changeNamed(&result.Diff, "server_config/cors").Selected, "the allowed origins could not be left out")
+}
+
+// A template that belongs to no project, but that the project's flow names by its handle, is needed by the
+// project, so a deploy carries it while the gateway lacks it. One no flow of the project names stays shared.
+func (s *ProjectScopeTestSuite) TestAProjectDeployCarriesTheTemplatesItsFlowsName() {
+	welcome := "resource_type: notification_template\nid: nt-1\nchannel: email\nhandle: welcome\ndisplayName: W"
+	unused := "resource_type: notification_template\nid: nt-2\nchannel: email\nhandle: unused\ndisplayName: U"
+	shopFlow := "resource_type: flow\nid: flow-1\nname: flow-1\nnodes:\n  - id: send\n    properties:\n" +
+		"      emailTemplate: welcome\n"
+	s.captureDocs(append(docs(shopFlow), welcome, unused)...)
+
+	diff, svcErr := s.f.svc.Diff(context.Background(), "gw-1", "", "shop")
+	s.Require().Nil(svcErr)
+	s.Equal(sectionNeeded, changeNamed(diff, "notification_template/nt-1").Section)
+	s.True(changeNamed(diff, "notification_template/nt-1").Required)
+	s.Equal(sectionShared, changeNamed(diff, "notification_template/nt-2").Section)
+
+	_, svcErr = s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	sent := s.f.client.last().Content
+	s.Contains(sent, "id: nt-1")
+	s.NotContains(sent, "id: nt-2")
 }
 
 // A dependency the gateway holds in another form is needed but not required, and names the other
@@ -244,15 +303,16 @@ func (s *ProjectScopeTestSuite) TestAPromotionScopedToAProjectSendsWhatTheSource
 	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	s.Require().Nil(svcErr)
 
+	own := []string{"application/app-shop", "organization_unit/ou-team", "organization_unit/ou-shop", "flow/flow-1"}
 	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
-		TargetGatewayID: scopeTarget, Project: "shop"})
+		TargetGatewayID: scopeTarget, Project: "shop", Selection: &own})
 
 	s.Require().Nil(svcErr)
 	sent := s.f.client.last().Content
 	s.Contains(sent, "id: app-shop")
 	s.Contains(sent, "id: flow-1")
 	s.NotContains(sent, "id: app-bill")
-	s.NotContains(sent, "en-US")
+	s.NotContains(sent, "en-US", "a translation left out was sent")
 
 	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
 		TargetGatewayID: scopeTarget, Project: "shop", Selection: &[]string{"translation/en-US"}})

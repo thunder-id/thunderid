@@ -128,6 +128,23 @@ func (s *DependenciesTestSuite) TestTheTypesAnApplicationOrAFlowAdmitAreNeeded()
 	s.Equal([]string{"agent_type/at-1"}, needs["flow/flow-1"])
 }
 
+// A flow needs the email and SMS templates its nodes name by handle, each on its own channel: a template of
+// the other channel with that handle is not taken for it.
+func (s *DependenciesTestSuite) TestAFlowNeedsTheTemplatesItsNodesName() {
+	needs := needsOf(parseBundle(joinBundle([]string{
+		"resource_type: notification_template\nid: nt-1\nchannel: email\nhandle: welcome\ndisplayName: Welcome",
+		"resource_type: notification_template\nid: nt-2\nchannel: sms\nhandle: welcome\ndisplayName: Welcome",
+		"resource_type: notification_template\nid: nt-3\nchannel: sms\nhandle: otp\ndisplayName: OTP",
+		"resource_type: flow\nid: flow-1\nname: f\nnodes:\n  - id: n-1\n    properties:\n" +
+			"      emailTemplate: welcome\n  - id: n-2\n    properties:\n      smsTemplate: \"otp\"",
+		"resource_type: flow\nid: flow-2\nname: g\nnodes:\n  - id: n-1\n    properties:\n" +
+			"      emailTemplate: password-recovery",
+	})))
+
+	s.Equal([]string{"notification_template/nt-1", "notification_template/nt-3"}, needs["flow/flow-1"])
+	s.Empty(needs["flow/flow-2"], "a template the bundle does not hold was needed")
+}
+
 // A selection is widened to what it needs that the gateway lacks, through what those need in turn;
 // a dependency the gateway holds as it is stays out.
 func (s *DependenciesTestSuite) TestASelectionIsWidenedToWhatItNeeds() {
