@@ -9,6 +9,9 @@ vi.mock('@thunderid/components', () => ({
   SettingsCard: ({title, children}: {title: string; children: React.ReactNode}) => (
     <section aria-label={title}>{children}</section>
   ),
+  ReadOnlyFieldset: ({readOnly, children}: {readOnly: boolean; children: React.ReactNode}) => (
+    <fieldset disabled={readOnly}>{children}</fieldset>
+  ),
 }));
 
 // The target pickers are out of scope for this component; these are mocked only so the always-present
@@ -38,8 +41,8 @@ const {useGetRolesForMapping, useGetGroupsForMapping, useGetResourceServers, SER
 vi.mock('../../api/useGetRolesForMapping', () => ({default: useGetRolesForMapping}));
 vi.mock('../../api/useGetGroupsForMapping', () => ({default: useGetGroupsForMapping}));
 vi.mock('@thunderid/configure-resource-servers', () => ({
-  PermissionCatalog: ({ouId = undefined}: {ouId?: string}) => (
-    <div data-testid="permission-catalog" data-ou-id={ouId} />
+  PermissionCatalog: ({ouId = undefined, readOnly = false}: {ouId?: string; readOnly?: boolean}) => (
+    <div data-testid="permission-catalog" data-ou-id={ouId} data-readonly={String(readOnly)} />
   ),
   removePermissions: () => [],
   useGetResourceServers,
@@ -100,6 +103,28 @@ describe('AuthorizationMappingSection', () => {
 
     expect(screen.getByRole('switch', {name: ADVANCED_TOGGLE})).toBeChecked();
     expect(screen.getByLabelText(VALUE_TYPE)).toBeInTheDocument();
+  });
+
+  it('locks every control but keeps the permission tree outside the lock when read-only', () => {
+    render(
+      <AuthorizationMappingSection
+        ouId="ou-1"
+        initialRuleConfig={[
+          {claim: 'groups', values: [{operator: 'equals', value: 'x', targets: [{type: 'role', id: 'role-1'}]}]},
+        ]}
+        onRuleChange={onRuleChange}
+        onDirectChange={onDirectChange}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByRole('textbox', {name: CLAIM})).toBeDisabled();
+    expect(screen.getByRole('switch', {name: ADVANCED_TOGGLE})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: ADD_MAPPING})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: ADD_VALUE})).not.toBeInTheDocument();
+    const catalog = screen.getByTestId('permission-catalog');
+    expect(catalog).toHaveAttribute('data-readonly', 'true');
+    expect(catalog.closest('fieldset:disabled')).toBeNull();
   });
 
   it('opens a row on the simple side when the connection has only direct mappings', () => {

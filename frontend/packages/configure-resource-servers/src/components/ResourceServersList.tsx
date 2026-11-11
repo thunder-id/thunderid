@@ -1,12 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice} from '@thunderid/components';
 import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, DataGrid, IconButton, ListingTable, Menu, MenuItem, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {EllipsisVertical, Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {EllipsisVertical, Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -182,24 +182,16 @@ export default function ResourceServersList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                {can('rs', 'update') && (
-                  <Tooltip title={t('common:actions.edit', 'Edit')}>
-                    <IconButton
-                      aria-label={t('common:actions.edit', 'Edit')}
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        (async (): Promise<void> => {
-                          await navigate(routes.detail(params.row.id));
-                        })().catch((err: unknown) => {
-                          logger.error('Failed to navigate to resource server detail', {error: err});
-                        });
-                      }}
-                    >
-                      <Pencil size={16} />
-                    </IconButton>
-                  </Tooltip>
-                )}
+                <EditOrViewAction
+                  canEdit={can('rs', 'update')}
+                  onClick={() => {
+                    (async (): Promise<void> => {
+                      await navigate(routes.detail(params.row.id));
+                    })().catch((err: unknown) => {
+                      logger.error('Failed to navigate to resource server detail', {error: err});
+                    });
+                  }}
+                />
                 {can('rs', 'delete') && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton
@@ -215,15 +207,17 @@ export default function ResourceServersList(): JSX.Element {
                     </IconButton>
                   </Tooltip>
                 )}
-                <Tooltip title={t('resourceServers:listing.actions.more', 'More actions')}>
-                  <IconButton
-                    size="small"
-                    aria-label={t('resourceServers:listing.actions.more', 'More actions')}
-                    onClick={(e) => handleMenuOpen(e, params.row)}
-                  >
-                    <EllipsisVertical size={16} />
-                  </IconButton>
-                </Tooltip>
+                {can('serverconfig', 'update') && (
+                  <Tooltip title={t('resourceServers:listing.actions.more', 'More actions')}>
+                    <IconButton
+                      size="small"
+                      aria-label={t('resourceServers:listing.actions.more', 'More actions')}
+                      onClick={(e) => handleMenuOpen(e, params.row)}
+                    >
+                      <EllipsisVertical size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </>
             )}
           </ListingTable.RowActions>

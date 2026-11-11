@@ -283,7 +283,14 @@ export default function App(): JSX.Element {
                   />
                 </Route>
                 <Route path="create" element={<FullScreenLayout />}>
-                  <Route index element={<CreateOrganizationUnitPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="ou" action="create">
+                        <CreateOrganizationUnitPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
               </Route>
               <Route
@@ -296,7 +303,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateGroupPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="group" action="create">
+                      <CreateGroupPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.roles.create()}
@@ -308,7 +322,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateRolePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="role" action="create">
+                      <CreateRolePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.users.add()}
@@ -318,7 +339,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<UserAddPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="user" action="create">
+                      <UserAddPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.userTypes.create()}
@@ -330,7 +358,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateUserTypePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="usertype" action="create">
+                      <CreateUserTypePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.agentTypes.create()}
@@ -342,7 +377,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateAgentTypePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="agenttype" action="create">
+                      <CreateAgentTypePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.verifiablePresentations.create()}
@@ -352,7 +394,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<VerifiablePresentationCreatePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="vc" action="create">
+                      <VerifiablePresentationCreatePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.verifiableCredentials.create()}
@@ -362,7 +411,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<VerifiableCredentialCreatePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="vc" action="create">
+                      <VerifiableCredentialCreatePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 element={
@@ -374,10 +430,24 @@ export default function App(): JSX.Element {
                 }
               >
                 <Route path={RouteConfig.applications.types()} element={<DashboardLayout />}>
-                  <Route index element={<ApplicationTemplateSelectPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="app" action="create">
+                        <ApplicationTemplateSelectPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route path={RouteConfig.applications.create()} element={<FullScreenLayout />}>
-                  <Route index element={<ApplicationCreatePage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="app" action="create">
+                        <ApplicationCreatePage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
               </Route>
               <Route
@@ -388,7 +458,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<AgentOnboardPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="agent" action="create">
+                      <AgentOnboardPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.resourceServers.create()}
@@ -398,7 +475,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateResourceServerPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="rs" action="create">
+                      <CreateResourceServerPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.authorizationDetailTypes.create()}
@@ -408,7 +492,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateAuthorizationDetailTypePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="authzdetail" action="create">
+                      <CreateAuthorizationDetailTypePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.flows.create()}
@@ -418,7 +509,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<FlowCreatePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="flow" action="create">
+                      <FlowCreatePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.connections.create()}
@@ -428,7 +526,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ConnectionCreateWizardPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="connection" action="create">
+                      <ConnectionCreateWizardPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
@@ -438,7 +543,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ConnectionConfigureWizardPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="connection" action="create">
+                      <ConnectionConfigureWizardPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.flows.detail(':flowId')}
@@ -535,7 +647,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ThemeCreatePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="design" action="create">
+                      <ThemeCreatePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
@@ -571,7 +690,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<TranslationCreatePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="i18n" action="create">
+                      <TranslationCreatePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.translations.list()}
@@ -604,7 +730,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<NotificationTemplateCreatePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="notificationtemplate" action="create">
+                      <NotificationTemplateCreatePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
             </Routes>
           </Suspense>

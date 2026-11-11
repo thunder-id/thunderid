@@ -86,6 +86,7 @@ export default function StageCard({
   const {t} = useTranslation('deploy');
   const {can} = useCapabilitiesContext();
   const canConfigure = can('gatewayvariable') && can('gatewaysecret');
+  const canDeploy = can('gateway', 'update');
   const owed = changedCount(changed);
   const owedNames = [...(changed?.variables ?? []), ...(changed?.secrets ?? [])].join(', ');
   const header = (
@@ -138,7 +139,7 @@ export default function StageCard({
           {t('stage.configure', 'Configure')}
         </Button>
       )}
-      {onRedeploy && version && changedCheckFailed && (
+      {canDeploy && onRedeploy && version && changedCheckFailed && (
         <Tooltip
           title={t(
             'stage.changedCheckFailed',
@@ -160,7 +161,7 @@ export default function StageCard({
           </Box>
         </Tooltip>
       )}
-      {onRedeploy && version && !changedCheckFailed && (
+      {canDeploy && onRedeploy && version && !changedCheckFailed && (
         <Tooltip
           title={
             owed > 0
@@ -188,7 +189,7 @@ export default function StageCard({
           </Box>
         </Tooltip>
       )}
-      {onRevert && (
+      {canDeploy && onRevert && (
         <Tooltip
           title={
             revertDisabled
@@ -295,7 +296,7 @@ export default function StageCard({
                       {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
                     </Typography>
                   </Tooltip>
-                  {onRetryRefused && (
+                  {canDeploy && onRetryRefused && (
                     <Button
                       variant="text"
                       size="small"

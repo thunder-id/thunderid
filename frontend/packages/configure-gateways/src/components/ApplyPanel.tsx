@@ -279,7 +279,13 @@ export default function ApplyPanel({
     ).values(),
   ];
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
+  const canDeploy =
+    can('gateway', 'update') &&
+    Boolean(gateway) &&
+    check.isSuccess &&
+    selected.size > 0 &&
+    unfilled.length === 0 &&
+    !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.

@@ -3,6 +3,7 @@
 
 import {SettingsCard} from '@thunderid/components';
 import type {DefaultFlowsSettingsRenderProps} from '@thunderid/configure-organization-units';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Typography, TextField, Autocomplete, CircularProgress, Stack, Alert} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
@@ -46,15 +47,15 @@ function DefaultFlowSection({
   const {data: flowsData, isLoading} = useGetFlows({flowType});
   const flowOptions = flowsData?.flows ?? [];
   const selectedFlowId = editedOU[field] ?? organizationUnit[field];
+  const {can} = useCapabilitiesContext();
+  const isReadOnly = Boolean(organizationUnit.isReadOnly) || !can('ou', 'update');
 
   return (
     <SettingsCard
       title={title}
       description={description}
       enabled={enabledField ? (editedOU[enabledField] ?? organizationUnit[enabledField] ?? false) : undefined}
-      onToggle={
-        enabledField && !organizationUnit.isReadOnly ? (enabled) => onFieldChange(enabledField, enabled) : undefined
-      }
+      onToggle={enabledField && !isReadOnly ? (enabled) => onFieldChange(enabledField, enabled) : undefined}
     >
       {selectedFlowId && (
         <Alert severity="info" sx={{mb: 2}}>
@@ -83,7 +84,7 @@ function DefaultFlowSection({
         value={flowOptions.find((flow) => flow.id === selectedFlowId) ?? null}
         onChange={(_event, newValue) => onFieldChange(field, newValue?.id ?? '')}
         loading={isLoading}
-        disabled={organizationUnit.isReadOnly}
+        disabled={isReadOnly}
         renderInput={(params) => (
           <TextField
             {...params}

@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -49,6 +50,7 @@ export default function RevertPanel({
 }: RevertPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
+  const canRevert = useCapabilitiesContext().can('gateway', 'update');
   const revert = useRevert();
   // In a project only its own applications and agents go back.
   const project = useProjectScope();
@@ -117,7 +119,7 @@ export default function RevertPanel({
         color="error"
         startIcon={isWriting ? <CircularProgress size={14} color="inherit" /> : <Undo2 size={14} />}
         onClick={() => void confirm()}
-        disabled={!preview || isWriting}
+        disabled={!canRevert || !preview || isWriting}
         sx={{borderRadius: 100}}
       >
         {confirmRemovals

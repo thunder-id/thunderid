@@ -316,7 +316,11 @@ export default function AgentEditPage(): JSX.Element {
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
-  const isLogoEditable = !agent.isReadOnly;
+  // An agent shared into the organization unit is read only there.
+  const isOwned = agent.isOwnedByOU !== false;
+  const isReadOnly = Boolean(agent.isReadOnly) || !isOwned || !can('agent', 'update');
+  const editableAgent = {...agent, isReadOnly};
+  const isLogoEditable = !isReadOnly;
 
   // List every failing check by name rather than a single generic message, so the user knows
   // exactly what to fix instead of guessing which tab has the problem.
@@ -389,7 +393,7 @@ export default function AgentEditPage(): JSX.Element {
       render: () => (
         <EditAgentAttributes
           key={sectionResetKey}
-          agent={agent}
+          agent={editableAgent}
           editedAgent={editedAgent}
           onFieldChange={handleFieldChange}
           onLifespanValidationChange={setLifespanInvalid}
@@ -404,7 +408,7 @@ export default function AgentEditPage(): JSX.Element {
       label: t('agents:edit.page.tabs.credentials', 'Credentials'),
       render: () => (
         <EditCredentialsSettings
-          agent={agent}
+          agent={editableAgent}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
@@ -425,7 +429,7 @@ export default function AgentEditPage(): JSX.Element {
       label: t('agents:edit.page.tabs.flows', 'Flows'),
       render: () => (
         <EditFlowsSettings
-          agent={agent}
+          agent={editableAgent}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
@@ -438,7 +442,7 @@ export default function AgentEditPage(): JSX.Element {
       label: t('agents:edit.page.tabs.tokens', 'Tokens'),
       render: () => (
         <EditTokensSettings
-          agent={agent}
+          agent={editableAgent}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
@@ -458,7 +462,8 @@ export default function AgentEditPage(): JSX.Element {
     render: () => (
       <EditAdvancedSettings
         key={sectionResetKey}
-        agent={agent}
+        agent={editableAgent}
+        deletable={agent.isReadOnly !== true && isOwned}
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}
         onFieldChange={handleFieldChange}
@@ -583,7 +588,7 @@ export default function AgentEditPage(): JSX.Element {
                     agent.description ??
                     t('agents:edit.page.description.empty', 'No description')}
                 </Typography>
-                {!agent.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -599,15 +604,17 @@ export default function AgentEditPage(): JSX.Element {
             )}
           </Stack>
         </PageTitle.SubHeader>
-        {/* Read-only records too: the flows change only runtime state. */}
+        {/* Declarative records too: the flows change only runtime state. The default flows need update. */}
         <PageTitle.Actions>
-          <AccountStatusAction
-            category="agent"
-            subject={agent.id}
-            status={agent.status}
-            listQueryKey={[AgentQueryKeys.AGENTS]}
-            onChanged={handleStatusChanged}
-          />
+          {isOwned && can('agent', 'update') && (
+            <AccountStatusAction
+              category="agent"
+              subject={agent.id}
+              status={agent.status}
+              listQueryKey={[AgentQueryKeys.AGENTS]}
+              onChanged={handleStatusChanged}
+            />
+          )}
         </PageTitle.Actions>
       </PageTitle>
 
@@ -636,9 +643,7 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={
-            hasAnyValidationError || agent.isReadOnly === true || !can('agent', 'update') || typeSchemaError !== null
-          }
+          saveDisabled={hasAnyValidationError || isReadOnly || typeSchemaError !== null}
           error={
             updateAgent.error
               ? (getBackchannelLogoutUriServerError(updateAgent.error, tForErrors) ??

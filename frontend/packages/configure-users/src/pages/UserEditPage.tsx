@@ -333,6 +333,9 @@ export default function UserEditPage() {
   }
 
   const picture = user.attributes?.['picture'] as string | undefined;
+  // A user shared into the organization unit is read only there.
+  const isOwned = user.isOwnedByOU !== false;
+  const permittedUser = isOwned && can('user', 'update') ? user : {...user, isReadOnly: true};
 
   const tabs: TabConfig[] = [
     {
@@ -443,7 +446,7 @@ export default function UserEditPage() {
       render: () => (
         <EditUserAttributes
           key={attributesResetKey}
-          user={user}
+          user={permittedUser}
           editedUser={editedUser}
           onFieldChange={handleFieldChange}
         />
@@ -451,7 +454,7 @@ export default function UserEditPage() {
     },
   ];
 
-  if (!user.isReadOnly && credentialFields.length > 0) {
+  if (!permittedUser.isReadOnly && credentialFields.length > 0) {
     tabs.push({
       key: 'credentials',
       label: t('users:manageUser.tabs.credentials', 'Credentials'),
@@ -468,10 +471,10 @@ export default function UserEditPage() {
   tabs.push({
     key: 'affiliations',
     label: t('users:manageUser.tabs.affiliations', 'Affiliations'),
-    render: () => <EditOrganizationAccessSettings user={user} access={organizationAccess} />,
+    render: () => <EditOrganizationAccessSettings user={permittedUser} access={organizationAccess} />,
   });
 
-  if (!user.isReadOnly && can('user', 'delete')) {
+  if (!user.isReadOnly && isOwned && can('user', 'delete')) {
     tabs.push({
       key: 'advanced',
       label: t('users:manageUser.tabs.advanced', 'Advanced'),
@@ -533,8 +536,8 @@ export default function UserEditPage() {
             <Chip label={matchedSchema?.displayName ?? user.type} size="small" sx={{px: 0.5}} />
           </Stack>
         </PageTitle.SubHeader>
-        {/* Read-only records too: the flows change only runtime state. */}
-        {!isSignedInUser && (
+        {/* Declarative records too: the flows change only runtime state. The default flows need update. */}
+        {!isSignedInUser && isOwned && can('user', 'update') && (
           <PageTitle.Actions>
             <AccountStatusAction
               category="user"
@@ -584,7 +587,7 @@ export default function UserEditPage() {
           savingLabel={t('users:manageUser.saving', 'Saving…')}
           isSaving={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
           resetDisabled={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
-          saveDisabled={user.isReadOnly === true || !can('user', 'update')}
+          saveDisabled={permittedUser.isReadOnly === true}
           error={
             (updateUserMutation.error
               ? getUserErrorMessage(

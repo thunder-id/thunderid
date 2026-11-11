@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, Chip, CircularProgress, IconButton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {ChevronRight, Rocket} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
@@ -94,6 +95,7 @@ export default function VersionsCard({
   targetsWithChangedValues = [],
 }: VersionsCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   // One version is open at a time, the newest until another is opened; closing it leaves none open.
   const [opened, setOpened] = useState<string | null | undefined>(undefined);
   const openVersion = opened === undefined ? versions[0]?.version : opened;
@@ -110,7 +112,7 @@ export default function VersionsCard({
   // still take the rest, and one with a value set since can take it again.
   const reachable = deployTargets ?? targets;
   const deployButton = (version: Version, deployedTo: string[]): JSX.Element | null => {
-    if (!onDeploy) return null;
+    if (!onDeploy || !canDeploy) return null;
     const partly = partlyRunners[version.version] ?? [];
     const everywhere =
       reachable.length > 0 &&

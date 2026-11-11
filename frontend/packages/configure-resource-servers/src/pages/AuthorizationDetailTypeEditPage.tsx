@@ -205,7 +205,8 @@ function AuthorizationDetailTypeEditor({
   }, [focusHeading]);
 
   const listUrl = routes.list();
-  const readOnly = Boolean(detailType.isReadOnly);
+  const readOnly = Boolean(detailType.isReadOnly) || !can('authzdetail', 'update');
+  const canDelete = !detailType.isReadOnly && can('authzdetail', 'delete');
 
   const tabLabels: Record<AuthorizationDetailTypeFormSection, string> = {
     general: t('authorizationDetailTypes:edit.tab.general', 'General'),
@@ -333,7 +334,7 @@ function AuthorizationDetailTypeEditor({
   return (
     <PageContent>
       <DocumentTitle title={detailType.name} />
-      {readOnly && (
+      {detailType.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
         </Alert>
@@ -554,7 +555,7 @@ function AuthorizationDetailTypeEditor({
             />
           ))}
           {/* A read-only type has nothing to show on the Advanced tab. */}
-          {!readOnly && can('authzdetail', 'delete') && (
+          {canDelete && (
             <Tab
               label={t('authorizationDetailTypes:edit.tab.advanced', 'Advanced')}
               id={`authorization-detail-type-tab-${TAB_ADVANCED}`}
@@ -610,7 +611,7 @@ function AuthorizationDetailTypeEditor({
           </SettingsCard>
         </TabPanel>
 
-        {!readOnly && can('authzdetail', 'delete') && (
+        {canDelete && (
           <TabPanel value={activeTab} index={TAB_ADVANCED}>
             <SettingsCard
               title={t('authorizationDetailTypes:edit.dangerZone.title', 'Danger zone')}

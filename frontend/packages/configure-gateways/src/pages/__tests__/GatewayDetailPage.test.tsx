@@ -80,8 +80,7 @@ describe('GatewayDetailPage', () => {
     expect(mockHttpRequest).toHaveBeenCalledWith(expect.objectContaining({method: 'DELETE'}));
   });
 
-  it('offers no remove, key rotation or save when the admin may only view gateways', async () => {
-    const user = userEvent.setup();
+  it('offers no remove or key rotation, and locks the fields, when the admin may only view gateways', async () => {
     mockHttpRequest.mockImplementation(createHttpRouter(routes));
     renderWithProviders(
       <CapabilitiesProvider capabilities={viewOnly}>
@@ -93,9 +92,7 @@ describe('GatewayDetailPage', () => {
     expect(screen.queryByRole('button', {name: 'Remove gateway'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Rotate key'})).not.toBeInTheDocument();
 
-    await user.clear(baseUrl);
-    await user.type(baseUrl, 'https://new.example.com');
-    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    expect(baseUrl).toBeDisabled();
   });
 
   it('saves only the fields that changed', async () => {

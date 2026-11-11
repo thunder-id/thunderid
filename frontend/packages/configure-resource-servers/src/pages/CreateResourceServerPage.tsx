@@ -3,7 +3,7 @@
 
 import {DocumentTitle} from '@thunderid/components';
 import {OrganizationUnitPickerScreen, useHasMultipleOUs} from '@thunderid/configure-organization-units';
-import {useProjectScope, useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -63,7 +63,8 @@ export default function CreateResourceServerPage(): JSX.Element {
   // ticked. A declarative (read-only) default is locked: the backend rejects any write to it.
   const isDefaultReady = !isDefaultLoading && !defaultError;
   const isDefaultLocked = Boolean(defaultConfig?.readOnly?.resourceServerId);
-  const canSetDefault = isDefaultReady && !isDefaultLocked;
+  const {can} = useCapabilitiesContext();
+  const canSetDefault = isDefaultReady && !isDefaultLocked && can('serverconfig', 'update');
   const hasExistingDefault = Boolean(defaultConfig?.merged?.resourceServerId);
 
   const [currentStep, setCurrentStep] = useState<ResourceServerCreateStep>(ResourceServerCreateStep.ORGANIZATION_UNIT);

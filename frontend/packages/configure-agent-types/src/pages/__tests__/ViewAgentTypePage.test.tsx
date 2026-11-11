@@ -421,32 +421,25 @@ describe('ViewAgentTypePage', () => {
       expect(mockNavigate).not.toHaveBeenCalled();
     });
 
-    it('should not offer deleting when the admin may not delete agent types', async () => {
-      const user = userEvent.setup();
+    it('should not offer deleting when the admin may not delete agent types', () => {
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
           <ViewAgentTypePage />
         </CapabilitiesProvider>,
       );
 
-      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
-
-      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
     });
 
     // The detail response has no read-only flag, so it comes from the agent type list.
-    it('should not offer deleting a read-only agent type', async () => {
-      const user = userEvent.setup();
+    it('should not offer deleting a read-only agent type', () => {
       mockUseGetAllAgentTypes.mockReturnValue({
         data: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1', isReadOnly: true}],
         isLoading: false,
       });
       render(<ViewAgentTypePage />);
 
-      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
-
-      expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
     });
 
     it('should show a read-only agent type without letting its schema be saved', async () => {
@@ -465,14 +458,11 @@ describe('ViewAgentTypePage', () => {
       expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
-    it('should not offer deleting until the agent type list says whether the type is read-only', async () => {
-      const user = userEvent.setup();
+    it('should not offer deleting until the agent type list says whether the type is read-only', () => {
       mockUseGetAllAgentTypes.mockReturnValue({data: undefined, isLoading: true});
       render(<ViewAgentTypePage />);
 
-      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
-
-      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
     });
 
     it('should keep the schema from being edited until the agent type list says the type is editable', () => {
@@ -502,8 +492,7 @@ describe('ViewAgentTypePage', () => {
       await user.click(screen.getByRole('button', {name: 'Refresh'}));
       expect(refetchAgentTypes).toHaveBeenCalledTimes(1);
 
-      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
-      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
     });
 
     it('should close the dialog on cancel without deleting', async () => {

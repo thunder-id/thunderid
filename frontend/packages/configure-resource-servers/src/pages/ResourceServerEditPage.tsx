@@ -270,6 +270,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   // Only API and custom servers are eligible, as in the list menu and the creation wizard. The badge
   // above is deliberately not gated on this, so a default set outside the console still shows up.
   const isDefaultEligible = isDefaultEligibleType(resourceServer.type);
+  const isReadOnly = Boolean(resourceServer.isReadOnly) || !can('rs', 'update');
 
   return (
     <PageContent>
@@ -311,7 +312,7 @@ export default function ResourceServerEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedFields.name ?? resourceServer.name}</Typography>
-                {!resourceServer.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -341,7 +342,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                 />
               </Tooltip>
             )}
-            {isDefaultReady && !isDefault && !isDefaultLocked && isDefaultEligible && (
+            {isDefaultReady && !isDefault && !isDefaultLocked && isDefaultEligible && can('serverconfig', 'update') && (
               <Button variant="contained" size="small" onClick={() => setDefaultDialogOpen(true)}>
                 {t('resourceServers:actions.setAsDefault', 'Set as default')}
               </Button>
@@ -380,7 +381,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                     resourceServer.description ??
                     t('resourceServers:edit.noDescription', 'No description')}
                 </Typography>
-                {!resourceServer.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -516,7 +517,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
           isSaving={updateRs.isPending}
-          saveDisabled={Boolean(resourceServer.isReadOnly) || isIdentifierInvalid || !can('rs', 'update')}
+          saveDisabled={isReadOnly || isIdentifierInvalid}
           error={
             updateRs.error
               ? getErrorMessage(updateRs.error, tForErrors, 'edit.saveError', 'Failed to save changes.')

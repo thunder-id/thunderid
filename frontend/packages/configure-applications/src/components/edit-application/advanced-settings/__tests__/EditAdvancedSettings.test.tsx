@@ -631,6 +631,36 @@ describe('EditAdvancedSettings', () => {
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
     });
 
+    it('should not render DangerZoneSection when told the application is not deletable', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          deletable={false}
+          editedApp={{}}
+          oauth2Config={confidentialConfig}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
+    });
+
+    it('keeps DangerZoneSection for an admin who may delete but not update, when told it is deletable', () => {
+      render(
+        <CapabilitiesProvider capabilities={{can: (_r, a = 'view') => a !== 'update', isLoading: false}}>
+          <EditAdvancedSettings
+            application={{...mockApplication, isReadOnly: true}}
+            deletable
+            editedApp={{}}
+            oauth2Config={confidentialConfig}
+            onFieldChange={mockOnFieldChange}
+          />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
+    });
+
     it('should not render DangerZoneSection when the admin may not delete applications', () => {
       render(
         <CapabilitiesProvider capabilities={viewOnly}>

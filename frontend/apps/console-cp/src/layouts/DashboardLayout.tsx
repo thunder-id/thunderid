@@ -446,7 +446,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             },
             {
               id: 'project-pipeline',
-              resource: 'project',
+              resource: 'gateway',
               text: t('navigation:pages.deploymentPipeline', 'Deployment pipeline'),
               icon: <Rocket />,
               path: RouteConfig.projects.home(project.handle, '/pipeline'),

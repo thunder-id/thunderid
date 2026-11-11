@@ -159,6 +159,16 @@ describe('App', () => {
     mockCan = () => true;
   });
 
+  it('shows a notice instead of a create page the admin may not create on', async () => {
+    mockCan = (resource, action) => !(resource === 'group' && action === 'create');
+    window.history.pushState({}, '', '/groups/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('You do not have permission to view this page.')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('create-group-page')).not.toBeInTheDocument();
+  });
+
   it('shows a notice instead of import / export to admins who may do neither', async () => {
     mockCan = (resource) => resource !== 'import' && resource !== 'export';
     window.history.pushState({}, '', '/import-export');

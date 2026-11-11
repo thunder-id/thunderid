@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {AllowedOriginTypes, createRow, rowKey, type AllowedOriginDraftRow} from '@thunderid/configure-settings';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -260,7 +261,8 @@ export default function ConfigureRedirectUris(): JSX.Element {
   } = useApplicationCreate();
 
   const {devServer, capabilities} = selectedTemplateConfig ?? {};
-  const showCors = Boolean(capabilities?.cors);
+  const {can} = useCapabilitiesContext();
+  const showCors = Boolean(capabilities?.cors) && can('serverconfig', 'update');
 
   // Post-logout redirect URIs default to mirroring the authorized redirect URIs, so admins don't
   // have to maintain two identical lists. Unchecking reveals a separate editor; re-checking

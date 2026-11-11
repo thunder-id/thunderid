@@ -42,6 +42,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
   const routes = useGatewayRoutes();
   const logger = useLogger('GatewayDetailPage');
   const {can} = useCapabilitiesContext();
+  const canUpdate = can('gateway', 'update');
   const {data: gateway, isLoading, error, refetch} = useGetGateway(gatewayId);
   const updateGateway = useUpdateGateway();
   const [edited, setEdited] = useState<Partial<Record<EditableField, string>>>({});
@@ -168,7 +169,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
               fullWidth
               value={valueOf('name', gateway)}
               onChange={(e) => handleChange('name', e.target.value)}
-              disabled={updateGateway.isPending}
+              disabled={!canUpdate || updateGateway.isPending}
             />
             <TextField
               labelPlacement="top"
@@ -178,7 +179,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
               fullWidth
               value={valueOf('baseUrl', gateway)}
               onChange={(e) => handleChange('baseUrl', e.target.value)}
-              disabled={updateGateway.isPending}
+              disabled={!canUpdate || updateGateway.isPending}
             />
             <TextField
               labelPlacement="top"
@@ -189,7 +190,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
               minRows={4}
               value={valueOf('caCertificate', gateway)}
               onChange={(e) => handleChange('caCertificate', e.target.value)}
-              disabled={updateGateway.isPending}
+              disabled={!canUpdate || updateGateway.isPending}
               helperText={t(
                 'gateways:form.caCertificate.hint',
                 'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
@@ -244,7 +245,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
         )}
       </Stack>
 
-      {(hasChanges || isInvalid) && (
+      {canUpdate && (hasChanges || isInvalid) && (
         <UnsavedChangesBar
           message={t('gateways:edit.unsavedChanges', 'You have unsaved changes.')}
           resetLabel={t('common:actions.reset', 'Reset')}

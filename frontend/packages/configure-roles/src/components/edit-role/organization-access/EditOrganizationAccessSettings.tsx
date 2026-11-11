@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {OrganizationAccessSettings, type OrganizationAccessState} from '@thunderid/configure-resource-sharing';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import type {JSX} from 'react';
 import type {Role} from '../../../models/role';
 
@@ -31,12 +32,14 @@ export default function EditOrganizationAccessSettings({
   role,
   access,
 }: EditOrganizationAccessSettingsProps): JSX.Element {
+  const {can} = useCapabilitiesContext();
+
   return (
     <OrganizationAccessSettings
       access={access}
       ownerOuId={role.ouId}
       resourceName={role.name}
-      readOnly={role.isReadOnly === true}
+      readOnly={role.isReadOnly === true || !can('role', 'update')}
       errorNamespace="roles"
     />
   );

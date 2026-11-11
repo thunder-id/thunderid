@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {CircleAlert, CircleCheck, Info, RefreshCw, Rocket, Undo2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
@@ -153,6 +154,7 @@ export default function GatewayCard({
   extra = undefined,
 }: GatewayCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   const {gateway} = stage;
   const color = gatewayColor(index);
   const hash = applied?.appliedVersion ?? undefined;
@@ -347,7 +349,7 @@ export default function GatewayCard({
                 message: projectStatus.autoSync.lastRun.error,
               })}
             </Highlight>
-            {onReview && (
+            {canDeploy && onReview && (
               <Button
                 variant="text"
                 size="small"
@@ -386,7 +388,7 @@ export default function GatewayCard({
             size="small"
             color="inherit"
             onClick={onReview}
-            disabled={!onReview}
+            disabled={!canDeploy || !onReview}
             sx={{alignSelf: 'flex-start', px: 0, minHeight: 0, color: 'text.secondary', textAlign: 'left'}}
             data-testid="card-needed-differing"
           >
@@ -469,42 +471,44 @@ export default function GatewayCard({
         sx={{flexWrap: 'nowrap', minWidth: 0}}
         data-testid="card-actions"
       >
-        <Tooltip
-          title={
-            scoped
-              ? rollback
-                ? rollbackHint(t, rollback, previous ?? '', stage.name)
-                : t('card.projectRevertNone', 'Nothing to roll back to for this project on {{name}}.', {
-                    name: stage.name,
-                  })
-              : previous
-                ? t('stage.revertHint', 'Go back one step, to the version {{name}} ran before.', {name: stage.name})
-                : t(
-                    'stage.revertNone',
-                    'Nothing to roll back to. A rollback goes back one step, once; deploy a version to {{name}} to roll back again.',
-                    {name: stage.name},
-                  )
-          }
-        >
-          {/* A disabled button takes no hover, so the hint is held by what wraps it. */}
-          <Box component="span" sx={{display: 'flex', minWidth: 0, flex: '0 1 auto'}}>
-            <Button
-              variant="text"
-              size="small"
-              color="inherit"
-              startIcon={<Undo2 size={14} />}
-              onClick={onRevert}
-              disabled={!previous}
-              sx={{color: 'text.secondary', minWidth: 0, maxWidth: '100%'}}
-              data-testid="card-revert"
-            >
-              <Box component="span" sx={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                {rollbackLabel}
-              </Box>
-            </Button>
-          </Box>
-        </Tooltip>
-        {onPromote && (
+        {canDeploy && (
+          <Tooltip
+            title={
+              scoped
+                ? rollback
+                  ? rollbackHint(t, rollback, previous ?? '', stage.name)
+                  : t('card.projectRevertNone', 'Nothing to roll back to for this project on {{name}}.', {
+                      name: stage.name,
+                    })
+                : previous
+                  ? t('stage.revertHint', 'Go back one step, to the version {{name}} ran before.', {name: stage.name})
+                  : t(
+                      'stage.revertNone',
+                      'Nothing to roll back to. A rollback goes back one step, once; deploy a version to {{name}} to roll back again.',
+                      {name: stage.name},
+                    )
+            }
+          >
+            {/* A disabled button takes no hover, so the hint is held by what wraps it. */}
+            <Box component="span" sx={{display: 'flex', minWidth: 0, flex: '0 1 auto'}}>
+              <Button
+                variant="text"
+                size="small"
+                color="inherit"
+                startIcon={<Undo2 size={14} />}
+                onClick={onRevert}
+                disabled={!previous}
+                sx={{color: 'text.secondary', minWidth: 0, maxWidth: '100%'}}
+                data-testid="card-revert"
+              >
+                <Box component="span" sx={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                  {rollbackLabel}
+                </Box>
+              </Button>
+            </Box>
+          </Tooltip>
+        )}
+        {canDeploy && onPromote && (
           <Button
             variant="text"
             size="small"
