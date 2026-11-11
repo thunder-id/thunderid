@@ -92,8 +92,8 @@ All three delegation fields are required when delegated mode is selected. **Logi
 
 Configure these assignments when every agent created by the flow needs the same access:
 
-1. Create the required [groups](../../users/manage-groups) and [roles](../../users/manage-roles). Copy their IDs.
-2. Open the flow's **Provisioning** node. Set **Assign group** (`assignGroup`) to the group IDs, separated by commas. Set **Assign role** (`assignRole`) to the role IDs in the same format.
+1. Create the required [groups](../../users/manage-groups) and [roles](../../users/manage-roles).
+2. Open the flow's **Provisioning** node. Select the groups in **Assign group** (`assignGroup`) and the roles in **Assign role** (`assignRole`). Both fields list the existing groups and roles by name.
 3. Save the flow. Leave either property empty when no assignment is needed.
 
 Provisioning creates the agent, then adds it to the configured groups and roles. These settings apply to both own-identity and OBO agents. Review the resulting assignments on the agent's **Access** tab.
