@@ -66,6 +66,7 @@ import isRedirectCapableTemplate from '../utils/isRedirectCapableTemplate';
 import mergeCorsOrigins from '../utils/mergeCorsOrigins';
 import resolveApplicationType from '../utils/resolveApplicationType';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
+import resolveRedirectUris from '../utils/resolveRedirectUris';
 
 export default function ApplicationCreatePage(): JSX.Element {
   const routes = useApplicationRoutes();
@@ -393,20 +394,12 @@ export default function ApplicationCreatePage(): JSX.Element {
 
   const effectiveOauthConfig = useMemo(() => {
     if (!oauthConfig) return oauthConfig;
-    let config: OAuth2Config = callbackUrlFromConfig
-      ? {...oauthConfig, redirectUris: [callbackUrlFromConfig]}
-      : oauthConfig;
+    let config: OAuth2Config = {
+      ...oauthConfig,
+      redirectUris: resolveRedirectUris(oauthConfig.redirectUris ?? [], callbackUrlFromConfig, redirectUris),
+    };
     if (walletClientId.trim()) {
       config = {...config, clientId: walletClientId.trim()};
-    }
-    // Merge in any additional redirect / post-logout redirect URIs entered on the Configuration
-    // step, on top of the template-derived defaults above.
-    const extraRedirectUris = redirectUris.map((uri) => uri.trim()).filter(Boolean);
-    if (extraRedirectUris.length > 0) {
-      config = {
-        ...config,
-        redirectUris: Array.from(new Set([...(config.redirectUris ?? []), ...extraRedirectUris])),
-      };
     }
     const validPostLogoutRedirectUris = postLogoutRedirectUris.map((uri) => uri.trim()).filter(Boolean);
     if (validPostLogoutRedirectUris.length > 0) {
