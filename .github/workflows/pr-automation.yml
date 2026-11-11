@@ -6,6 +6,7 @@ name: "🤖 PR Automation"
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize, labeled, unlabeled]
+  merge_group:
 
 permissions:
   contents: read
@@ -16,14 +17,19 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     concurrency:
-      group: pr-size-${{ github.event.pull_request.number }}
+      group: pr-size-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     permissions:
       pull-requests: write
     outputs:
       approved_by: ${{ steps.size.outputs.approved_by }}
     steps:
+      - name: Skip size check for merge queue
+        if: github.event_name == 'merge_group'
+        run: echo "Skipping size check for merge queue."
+
       - name: Fail if PR is too large
+        if: github.event_name == 'pull_request_target'
         id: size
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
