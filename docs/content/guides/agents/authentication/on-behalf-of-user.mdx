@@ -3,7 +3,7 @@ title: Agent Access on Behalf of Users
 docType: guide
 sidebar_position: 7
 persona: iam
-description: Configure an agent in {{ProductName}} to act on behalf of a user by signing them in, requesting out-of-band approval, or exchanging an existing user token, with the actor claim and refresh.
+description: Configure an agent in {{ProductName}} to act on behalf of a user with sign-in, Device Code, out-of-band approval, or token exchange.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -12,7 +12,7 @@ import diagramStyles from '@site/src/components/AgentDiagram.module.css';
 
 # Agent Access on Behalf of Users
 
-An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim, and on the sign-in, exchange, and ID-JAG redemption paths it also names the agent in the `act` (actor) claim, so a resource sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
+An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim, and on the sign-in, Device Code, exchange, and ID-JAG redemption paths it also names the agent in the `act` (actor) claim, so a resource sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
 
 <div className={diagramStyles.diagram}>
 
@@ -40,23 +40,23 @@ To extend an existing own-identity agent, configure it in the Console as follows
 
 1. On the **Advanced** tab, under **Operating mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to act for a user. Turning the toggle on adds the authorization code (`authorization_code` with PKCE) and refresh token grants by default.
 2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and set **Allowed user types** to the user types allowed to register through the agent.
-3. On the **Flows** tab, pick the **Authentication** and **Registration** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies). The tab applies only when the agent signs users in with the authorization code or CIBA grant.
+3. On the **Flows** tab, pick the **Authentication** and **Registration** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies). The tab applies only when the agent signs users in with the authorization code, CIBA, or Device Code grant.
 
 :::note
 Flows are designed in the flow builder, not here. See [Login and Registration Flows](../../../flows/build-a-flow) to build them; this page only selects which flow the agent uses.
 :::
 
-Through the API, send `delegated: true` on the agent and add the grants for the method you use. The flag is not stored, so send it on every update. With `delegated: true` and any grant beyond `client_credentials`, the agent must hold at least one grant that lets it act for a user: `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:token-exchange`, or `urn:ietf:params:oauth:grant-type:jwt-bearer`. With `delegated: true` and no grant beyond `client_credentials`, <ProductName /> adds `authorization_code` and `refresh_token`. The methods below cover the authorization code, CIBA, and token exchange grants. To let the agent redeem an ID-JAG from an external identity provider with the `jwt-bearer` grant, see [Accept Identity Assertions from an External IdP](../../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
+Through the API, send `delegated: true` on the agent and add the grants for the method you use. The flag is not stored, so send it on every update. With `delegated: true` and any grant beyond `client_credentials`, the agent must hold at least one grant that lets it act for a user: `authorization_code`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:token-exchange`, or `urn:ietf:params:oauth:grant-type:jwt-bearer`. With `delegated: true` and no grant beyond `client_credentials`, <ProductName /> adds `authorization_code` and `refresh_token`. The methods below cover the authorization code, Device Code, CIBA, and token exchange grants. To let the agent redeem an ID-JAG from an external identity provider with the `jwt-bearer` grant, see [Accept Identity Assertions from an External IdP](../../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
 
 ## Choose what the user token carries
 
 Once the agent is extended to act for users, the **User** token becomes editable on the **Tokens** tab (under **Issued to**, alongside the Agent token). Open it to choose which of the user's attributes the access token carries and to set the validity periods for the access, ID, and refresh tokens. The agent's actor (`act`) claim is shown here too. The access token validity you set here also applies to the access tokens the agent receives by redeeming an ID-JAG with the JWT bearer grant. Through the API, configure these in the agent's OAuth token settings; see the [Agents API Reference](../../../../apis#tag/agents).
 
-All of these settings appear when the agent signs users in with the authorization code or CIBA grant. Token exchange and JWT bearer issue only an access token, so an agent whose delegated grants are only token exchange, JWT bearer, or both sees the access token validity and the scope mapping, plus, with token exchange, the attributes to keep from the incoming token. Tokens from a redeemed ID-JAG carry no user attributes.
+All of these settings appear when the agent signs users in with the authorization code, CIBA, or Device Code grant. Each grant can issue an ID token when `openid` is authorized and a refresh token when the agent allows the `refresh_token` grant. Token exchange and JWT bearer issue only an access token, so an agent whose delegated grants are only token exchange, JWT bearer, or both sees the access token validity and the scope mapping, plus, with token exchange, the attributes to keep from the incoming token. Tokens from a redeemed ID-JAG carry no user attributes.
 
 ## Get a token for the user
 
-An agent gets a token that represents the user in one of three ways: by signing a present user in, by asking an absent user to approve out of band, or by exchanging a user token that already exists. Choose the method that fits. An agent can also receive one by redeeming an ID-JAG from an external identity provider; see [Use identity assertions](#use-identity-assertions).
+An agent gets a token that represents the user in one of four ways: by signing a present user in, asking an absent user to approve out of band, using Device Code, or exchanging a user token that already exists. Choose the method that fits. An agent can also receive one by redeeming an ID-JAG from an external identity provider; see [Use identity assertions](#use-identity-assertions).
 
 <DelegationMethodSelector />
 
@@ -110,6 +110,34 @@ The agent cannot open a browser for the user, so it requests approval over a bac
 The backchannel request and approval flow is the same as for any client. See [Backchannel Authentication (CIBA)](../../../protocols/oauth-oidc/backchannel-authentication), using this agent as the client.
 
 The token the agent polls out of the token endpoint names the user as `sub` and the agent as `act`, exactly as the sign-in path does:
+
+```json
+{
+  "sub": "<user-id>",
+  "act": { "sub": "<agent-id>" }
+}
+```
+
+</DelegationContent>
+
+<DelegationContent value="device-code">
+
+Device Code suits an agent whose client cannot keep a browser open. The client requests authorization, then the user opens the verification page on another device, enters the user code, and completes the agent's Authentication flow.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+On the **Advanced** tab, turn on **Delegated mode** if it is not already on and add **Device Code** under **Grant types**. The Console automatically selects the default **Device Grant** flow when it is available. On the **Flows** tab, check that its **Call** node targets the agent's configured Authentication flow. If it does not, select a Device Grant flow whose **Call** node targets that Authentication flow.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Set `delegated` to `true`, add `urn:ietf:params:oauth:grant-type:device_code` to the OAuth profile's `grantTypes`, and set the top-level `deviceGrantFlowId` to the assigned Device Grant flow ID. The flow's **Call** node must target the agent's Authentication flow. The API requires this assignment when Device Code is enabled.
+
+</TabItem>
+</Tabs>
+
+The device client uses the agent's OAuth client ID and configured authentication method to request and poll for tokens. After the user approves, the access token identifies the user in `sub` and the agent in `act`. Device Code can also return an ID token when `openid` is authorized and a refresh token when the agent allows `refresh_token`. See [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628) for the grant protocol.
 
 ```json
 {
@@ -193,7 +221,7 @@ A resource reads `sub` to apply the user's permissions and `act` to see which ag
 | `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) when the request carries no permission scopes or `resource`. |
 | `scope` | A subset of the user's scopes, never more than the user's own token held. For a JWT bearer token, bounded by the assertion's `scope` claim and narrowed by the request's `scope`. |
 | `client_id` | The agent's client ID. |
-| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code`, CIBA, `refresh_token`, and JWT bearer grants. On a token exchange it names the `actor_token`'s subject, or the agent itself when the request has no `actor_token`. Earlier actors in a `subject_token` that <ProductName /> issued stay nested beneath it. See [The nested act claim](../agent-to-agent#the-nested-act-claim). |
+| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code`, Device Code, CIBA, `refresh_token`, and JWT bearer grants. On a token exchange it names the `actor_token`'s subject, or the agent itself when the request has no `actor_token`. Earlier actors in a `subject_token` that <ProductName /> issued stay nested beneath it. See [The nested act claim](../agent-to-agent#the-nested-act-claim). |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
 
 ## Troubleshooting
@@ -204,4 +232,4 @@ The common token-endpoint errors, `invalid_client`, `unauthorized_client`, `inva
 |---|---|
 | `invalid_request` | On a token exchange, the `subject_token` is missing or its `subject_token_type` is unsupported. Pass the user's token as `subject_token` with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`. |
 | `invalid_scope` | On a refresh, a requested `scope` is broader than the original grant. On a token exchange, scopes were requested but the subject token carries none; scopes the subject token does not hold are otherwise dropped, not rejected. |
-| `authorization_pending`, `slow_down`, `expired_token`, `access_denied` | Backchannel (CIBA) polling outcomes while waiting for the user to approve. See [Backchannel Authentication (CIBA)](../../../protocols/oauth-oidc/backchannel-authentication). |
+| `authorization_pending`, `slow_down`, `expired_token`, `access_denied` | Backchannel (CIBA) and Device Code polling outcomes while waiting for the user to approve. See [Backchannel Authentication (CIBA)](../../../protocols/oauth-oidc/backchannel-authentication) and [Device Authorization Grant](../../../protocols/oauth-oidc/device-authorization). |
