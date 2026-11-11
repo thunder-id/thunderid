@@ -6,6 +6,9 @@
 // into @thunderid/configure-agents yet; once it is, this file should be deleted and
 // AddMemberDialog should import from that package instead.
 
+/** The kind of a personal agent, which acts only for its owner and cannot hold roles or groups. */
+export const PERSONAL_AGENT_KIND = 'personal-assistant';
+
 export interface BasicAgent {
   id: string;
   ouId: string;
@@ -16,6 +19,7 @@ export interface BasicAgent {
   clientId?: string;
   display?: string;
   isReadOnly?: boolean;
+  kind?: string;
 }
 
 export interface AgentListResponse {

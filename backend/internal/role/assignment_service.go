@@ -15,6 +15,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	agentcommon "github.com/thunder-id/thunderid/internal/agent/common"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
@@ -719,7 +720,7 @@ func (as *roleAssignmentService) prepareAssignments(
 	if adding {
 		assigneeOUID = ouID
 	}
-	if err := validateAssignmentIDs(ctx, assignments, assigneeOUID, as.entityService, as.groupService,
+	if err := validateAssignmentIDs(ctx, assignments, assigneeOUID, adding, as.entityService, as.groupService,
 		as.sharingService, assignmentLoggerComponentName); err != nil {
 		return nil, err
 	}
@@ -907,11 +908,13 @@ func (as *roleAssignmentService) validateAssignmentsRequest(
 
 // validateAssignmentIDs validates assignment IDs checking entity/group existence and type matching.
 // A non-empty ouID also requires every assignee to be available there: an entity owned by or shared
-// with it, or a group owned by it, since groups are never shared.
+// with it, or a group owned by it, since groups are never shared. isAddingOp also refuses entities that
+// cannot be assigned roles.
 func validateAssignmentIDs(
 	ctx context.Context,
 	assignments []RoleAssignment,
 	ouID string,
+	isAddingOp bool,
 	entitySvc entity.EntityServiceInterface,
 	groupSvc group.GroupServiceInterface,
 	sharingSvc sharing.SharingServiceInterface,
@@ -958,6 +961,11 @@ func validateAssignmentIDs(
 				logger.Debug(ctx, "Assignment type mismatch", log.String("id", e.ID),
 					log.String("claimed", string(claimed)), log.String("actual", string(actual)))
 				return &ErrorInvalidAssignmentID
+			}
+			if isAddingOp && e.Category == providers.EntityCategoryAgent {
+				if agentcommon.IsPersonalAgent(e) {
+					return &ErrorPersonalAgentNotAssignable
+				}
 			}
 			if ouID == "" || e.OUID == ouID {
 				continue

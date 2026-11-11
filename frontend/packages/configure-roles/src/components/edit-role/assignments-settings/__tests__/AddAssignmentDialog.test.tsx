@@ -288,6 +288,29 @@ describe('AddAssignmentDialog', () => {
       expect(screen.getByText('Admins')).toBeInTheDocument();
     });
 
+    it('should not list personal agents, which cannot be assigned roles', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useGetAgents).mockReturnValue({
+        data: {
+          ...mockAgentsData,
+          totalResults: 2,
+          count: 2,
+          agents: [
+            ...mockAgentsData.agents,
+            {id: 'agent-2', ouId: 'ou-1', type: 'agent', display: 'My Assistant', kind: 'personal-assistant'},
+          ],
+        },
+        isLoading: false,
+        error: null,
+      } as unknown as ReturnType<typeof useGetAgents>);
+      renderComponent();
+
+      await user.click(screen.getByText('Agents'));
+
+      expect(screen.getByText('Automation Agent')).toBeInTheDocument();
+      expect(screen.queryByText('My Assistant')).not.toBeInTheDocument();
+    });
+
     it('should switch to Apps tab when clicked', async () => {
       const user = userEvent.setup();
       renderComponent();

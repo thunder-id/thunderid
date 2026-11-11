@@ -388,6 +388,21 @@ describe('AgentEditPage', () => {
 
       expect(screen.queryByText('Personal')).not.toBeInTheDocument();
     });
+
+    it('has no Access tab, since a personal agent cannot have roles or groups', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, kind: 'personal-assistant', owner: {id: 'user-1'}},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+
+      expect(screen.queryByRole('tab', {name: /Access/i})).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /Overview/i})).toBeInTheDocument();
+    });
   });
 
   describe('Loading and Error States', () => {

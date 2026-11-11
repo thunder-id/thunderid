@@ -218,6 +218,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be assigned roles
+                  value:
+                    code: "ROL-1046"
+                    message:
+                      key: "error.roleservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be assigned roles"
+                    description:
+                      key: "error.roleservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be assigned roles"
                 invalid-assignment-id:
                   summary: Invalid assignment ID
                   value:
@@ -1019,6 +1029,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be assigned roles
+                  value:
+                    code: "ROL-1046"
+                    message:
+                      key: "error.roleservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be assigned roles"
+                    description:
+                      key: "error.roleservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be assigned roles"
                 invalid-assignment-id:
                   summary: Invalid assignment ID
                   value:

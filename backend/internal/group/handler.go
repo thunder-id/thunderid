@@ -420,7 +420,7 @@ func (gh *groupHandler) handleError(ctx context.Context, w http.ResponseWriter, 
 			ErrorEmptyMembers.Code, ErrorInvalidMemberType.Code,
 			ErrorInvalidMemberID.Code, ErrorInvalidGroupMemberID.Code,
 			ErrorMemberOUMismatch.Code, ErrorGroupOUChangeNotAllowed.Code,
-			ErrorInvalidProject.Code, ErrorOUNotInProject.Code:
+			ErrorInvalidProject.Code, ErrorOUNotInProject.Code, ErrorPersonalAgentNotAssignable.Code:
 			statusCode = http.StatusBadRequest
 		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code:
 			statusCode = http.StatusForbidden
