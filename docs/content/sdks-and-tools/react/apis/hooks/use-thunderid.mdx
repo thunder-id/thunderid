@@ -52,6 +52,9 @@ The hook returns all properties and methods provided by `ThunderIDContextProps`:
 | `signOut` | `() => Promise<void>` | Initiates the sign-out flow |
 | `loading` | `boolean` | Indicates if an authentication operation is in progress |
 | `error` | `Error \| null` | The last error encountered during authentication, if any |
+| `currentOrganizationUnit` | `CurrentOrganizationUnit \| null` | The organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName` claims for display only, or `null` |
+| `getCurrentOrganizationUnit` | `() => Promise<CurrentOrganizationUnit \| null>` | Reads the current organization unit from the session's claims |
+| `switchOrganizationUnit` | `(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<User \| undefined>` | Signs in again bounded to another organization unit. See [Switch Organization Units](#switch-organization-units) |
 
 ## Request Authorization Details
 
@@ -107,6 +110,63 @@ export const getGrantedAuthorizationDetails = async (
 ```
 
 Call it with the `getAccessToken` function that `useThunderID()` returns, once `isSignedIn` is `true`. When the server rejects the authorization details, it redirects back with `error=invalid_authorization_details` and an `error_description` in the query. The user stays signed out, and `isLoading` stays `true` while the error is in the URL. The next `signIn()` call rejects with a `ThunderIDRuntimeError` whose message starts with `Sign in failed:` followed by the description, and removes the error from the URL, so handle the rejection and let the user try again.
+
+## Switch Organization Units
+
+`switchOrganizationUnit(organizationUnitId, options)` signs the user in again bounded to the organization unit `organizationUnitId`, and replaces the session when that sign-in succeeds. <ProductName /> reuses the single sign-on (SSO) session when the user can sign in to that unit, so the user normally enters no credentials. On success the hook's `user` and `currentOrganizationUnit` refresh, and the promise resolves with the user. For how organizations map to organization units and what the new tokens carry, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+```jsx title="src/OpenOrganization.jsx" showLineNumbers
+import { useState } from 'react'
+import { OrganizationUnitSwitchErrorCodes, useThunderID } from '@thunderid/react'
+
+function OpenOrganization({ organizationUnitId }) {
+  const { currentOrganizationUnit, switchOrganizationUnit } = useThunderID()
+  const [error, setError] = useState(null)
+
+  const open = () => {
+    setError(null)
+    switchOrganizationUnit(organizationUnitId, { redirect: false }).catch((err) => {
+      setError(
+        err.code === OrganizationUnitSwitchErrorCodes.InteractionRequired
+          ? 'Sign in again to open this organization.'
+          : 'The organization could not be opened.',
+      )
+    })
+  }
+
+  return (
+    <>
+      <p>Working in {currentOrganizationUnit?.name}</p>
+      <button onClick={open}>Open organization</button>
+      {error && <p role="alert">{error}</p>}
+    </>
+  )
+}
+
+export default OpenOrganization
+```
+
+The path the switch takes depends on how the SDK signs users in:
+
+- **Redirect mode**, the default:
+    1. When the session holds a device secret, which a sign-in that requested the `device_sso` scope returns, the SDK exchanges it at `{baseUrl}/ou/{ouId}/oauth2/token` without leaving the page.
+    2. Without a device secret, the SDK tries a silent sign-in with `prompt=none` at `{baseUrl}/ou/{ouId}/oauth2/authorize` in a hidden iframe.
+    3. When the server needs the user, the SDK redirects the page to `{baseUrl}/ou/{ouId}/oauth2/authorize`, and the callback replaces the session. The promise resolves with `undefined`. With `redirect: false`, the switch fails with `InteractionRequired` instead.
+- **Embedded mode** (`mode: 'embedded'`): the SDK starts an `AUTHENTICATION` flow with `ouId`, presenting the SSO session handles it kept from earlier flow steps. When the flow completes at once, its assertion replaces the session. A flow that needs input fails with `InteractionRequired`, so render `<SignIn organizationUnitId={organizationUnitId} />` instead.
+- **Backend mode** (`endpoints.backend` set): the SDK sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, where `ouSwitch` is `endpoints.backend.ouSwitch` and defaults to `/api/auth/switch`. On success it reads the session again, and the page stays where it is. When the backend needs the user, it answers `401` or an OAuth error such as `interaction_required` or `login_required`. The SDK then sends the page to the backend's sign-in endpoint with `ouId`, unless `redirect` is `false`.
+
+`options.redirect` defaults to `true`. In redirect mode, any other key in `options` is sent as an extra authorization request parameter.
+
+A failed switch keeps the previous session, user, and current organization unit, except in backend mode when the backend reports that its session has ended (`login_required`, or a `401` left after one refresh), which signs the user out. It rejects with an error whose `code` is one of `OrganizationUnitSwitchErrorCodes`:
+
+| Code | Value | Cause |
+| :--- | :--- | :--- |
+| `UnauthorizedClient` | `switchOrganizationUnit-UnauthorizedClient-001` | The unit does not exist, or the application cannot be used from it. The server answers both with `unauthorized_client`, so they cannot be told apart. |
+| `InteractionRequired` | `switchOrganizationUnit-InteractionRequired-001` | The user has to sign in again, and the switch could not interact with the user. |
+| `InvalidOrganizationUnit` | `switchOrganizationUnit-ValidationError-001` | No organization unit ID was given. |
+| `Failed` | `switchOrganizationUnit-ResponseError-001` | The bounded sign-in failed for another reason. |
+
+To list the units the user can switch to, render [`<OrganizationUnitSwitcher />`](../../components/organization-unit-switcher), or call `getAccessibleOrganizationUnits({ baseUrl, scope, limit, offset })` from `@thunderid/react` for a custom switcher. It reads `GET /users/me/ous` with the signed-in user's access token and resolves with one page: `current`, `organizationUnits` (each with `id`, `handle`, `name`, and an optional `logoUrl`), `totalResults`, `startIndex`, and `count`. Set `scope` to `'siblings'` to list only the accessible units that share the parent of the current unit.
 
 ## Error Handling
 

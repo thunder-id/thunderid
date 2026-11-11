@@ -59,6 +59,11 @@ sections:
         type: ((String) -> Unit)?
         tag: optional
         description: Called with an error message when a flow step fails.
+      - name: organizationUnitId
+        type: String?
+        tag: optional
+        description: Bounds the sign-in to this organization unit. The SDK sends it as `ouId` on the request that
+          starts the flow. When the flow completes, its session replaces the previous one.
       example: |-
         import dev.thunderid.compose.components.presentation.auth.SignIn
 
@@ -278,6 +283,64 @@ sections:
                 ChangeCredential()
             }
         }
+    - group: Components
+      kind: component
+      name: OrganizationUnitSwitcher
+      description: The `OrganizationUnitSwitcher` composable shows the current organization unit in a dropdown field
+        whose menu lists the organization units the signed-in user can access. Picking another one calls `ThunderIDClient.switchOrganizationUnit`,
+        then reloads the list and refreshes `ThunderIDState`. Pass `content` to replace the dropdown while keeping the
+        loading, paging, and switching. `BaseOrganizationUnitSwitcher` draws the same dropdown from data you pass,
+        with no SDK state. `OrganizationUnitSwitcher` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the switcher container.
+      - name: scope
+        type: OrganizationUnitScope?
+        tag: optional
+        description: Narrows the list. `OrganizationUnitScope.SIBLINGS` lists the accessible organization units that share the parent of the current organization unit. Defaults to `null`, which lists every accessible organization unit.
+      - name: limit
+        type: Int
+        tag: optional
+        description: Page size of the list. Defaults to `10`.
+      - name: switchOptions
+        type: SwitchOrganizationUnitOptions
+        tag: optional
+        description: Options passed to `switchOrganizationUnit`. Set `browser` when the application signs in through
+          redirects or a backend.
+      - name: onSelect
+        type: ((AccessibleOrganizationUnit) -> Unit)?
+        tag: optional
+        description: Takes over a pick. The switcher calls it with the organization unit instead of switching.
+      - name: onSwitched
+        type: (() -> Unit)?
+        tag: optional
+        description: Called after a switch completes and `ThunderIDState` has been refreshed.
+      - name: onSignInRequired
+        type: ((OrganizationUnitSwitchResult.SignInRequired) -> Unit)?
+        tag: optional
+        description: Called when an app-native switch needs the user, with the flow to drive.
+      - name: content
+        type: (@Composable (OrganizationUnitSwitcherState) -> Unit)?
+        tag: optional
+        description: Replaces the built-in dropdown. The state includes `organizationUnits`, `current`, `currentName`,
+          `isLoading`, `error`, paging, `switchingId`, and `onSwitch`.
+      example: |-
+        import dev.thunderid.android.api.account.OrganizationUnitScope
+        import dev.thunderid.compose.components.account.OrganizationUnitSwitcher
+        import dev.thunderid.compose.components.auth.guards.SignedIn
+
+        @Composable
+        fun Header() {
+            SignedIn {
+                OrganizationUnitSwitcher(
+                    modifier = Modifier.fillMaxWidth(),
+                    scope = OrganizationUnitScope.SIBLINGS
+                )
+            }
+        }
     - group: Functions
       kind: function
       name: Configuration
@@ -355,6 +418,25 @@ sections:
         management, and user profile operations. When you use the `dev.thunderid:compose` library, a `ThunderIDClient`
         instance is created and managed automatically. You can access it via `LocalThunderID.current.client` from any
         composable.'
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: getAccessibleOrganizationUnits(options)
+        type: AccessibleOrganizationUnits
+        description: Lists the organization units the signed-in user can access, from `GET /users/me/ous`. `options`
+          narrows the list with `scope` and pages it with `limit` and `offset`.
+      - name: getCurrentOrganizationUnit()
+        type: CurrentOrganizationUnit?
+        description: The organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName`
+          claims, or `null` when the session names none. For display only, never for an authorization decision.
+      - name: switchOrganizationUnit(ouId, options)
+        type: OrganizationUnitSwitchResult
+        description: Signs in again, bounded to organization unit `ouId`, through the first path that applies. It tries
+          a backend's `ouSwitch` endpoint (`POST {ouSwitch}?ouId=<id>`, default `/api/auth/switch`), then a device secret exchanged
+          at `{baseUrl}/ou/{ouId}/oauth2/token`, then a redirect sign-in through `options.browser`, then the app-native
+          `AUTHENTICATION` flow with `ouId` and the kept SSO session handles. Returns `Switched`, or `SignInRequired`
+          when the app-native flow needs the user. A failed switch keeps the session, except that a backend answering
+          `login_required` or `401` leaves the user signed out. An unknown or unusable organization unit fails with
+          `ORGANIZATION_UNIT_UNAVAILABLE`.
       example: |-
         import dev.thunderid.android.ThunderIDClient
         import dev.thunderid.android.ThunderIDConfig

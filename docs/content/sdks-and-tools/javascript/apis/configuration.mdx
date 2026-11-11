@@ -121,6 +121,7 @@ By default the SDK fetches `{baseUrl}/.well-known/openid-configuration` to resol
 | `endpoints.flowExecute` | `string` | `{baseUrl}/flow/execute` | Override the flow execution endpoint (embedded sign-in, sign-up, recovery, and user onboarding flows) |
 | `endpoints.flowMeta` | `string` | `{baseUrl}/flow/meta` | Override the flow metadata endpoint |
 | `endpoints.usersMe` | `string` | `{baseUrl}/users/me` | Override the current-user profile endpoint |
+| `endpoints.usersMeOrganizationUnits` | `string` | `{baseUrl}/users/me/ous` | Override the endpoint that lists the organization units the signed-in user can access |
 | `endpoints.applications` | `string` | `{baseUrl}/applications` | Override the applications collection used by the [management](../management) operations |
 | `endpoints.users` | `string` | `{baseUrl}/users` | Override the users collection used by the [management](../management) operations |
 | `endpoints.agents` | `string` | `{baseUrl}/agents` | Override the agents collection used by the [management](../management) operations |
@@ -128,9 +129,9 @@ By default the SDK fetches `{baseUrl}/.well-known/openid-configuration` to resol
 
 The `endpoints.authorization`, `endpoints.token`, `endpoints.userInfo`, `endpoints.jwks`, `endpoints.introspection`,
 and `endpoints.endSession` overrides address OIDC/OAuth endpoints, which are otherwise resolved from the discovery
-document. The `endpoints.flowExecute`, `endpoints.flowMeta`, `endpoints.usersMe`, `endpoints.applications`,
-`endpoints.users`, `endpoints.agents`, and `endpoints.authorizationDetailTypes` overrides address resource-server endpoints, which are otherwise derived by
-concatenating `baseUrl` with a fixed path.
+document. The `endpoints.flowExecute`, `endpoints.flowMeta`, `endpoints.usersMe`, `endpoints.usersMeOrganizationUnits`,
+`endpoints.applications`, `endpoints.users`, `endpoints.agents`, and `endpoints.authorizationDetailTypes` overrides address
+resource-server endpoints, which are otherwise derived by concatenating `baseUrl` with a fixed path.
 
 Split these two groups when the OAuth authorization server and the <ProductName /> resource server are different hosts,
 for example when two <ProductName /> instances are connected as trusted issuers. Point `baseUrl` (and hence the
@@ -147,6 +148,15 @@ resource server that owns the users and flows:
   },
 }
 ```
+
+### Backend Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `endpoints.backend` | `BackendEndpoints` | - | Browser SDKs only. Hands sign-in to your application's backend, which runs the OAuth flow and keeps the tokens. The browser holds only an `HttpOnly` cookie. In this mode `baseUrl` is the backend and defaults to the application's origin. Each endpoint defaults to a path under `/api/auth`, resolved against `baseUrl` |
+| `endpoints.backend.ouSwitch` | `string` | `/api/auth/switch` | Switches the backend's session to another organization unit for `switchOrganizationUnit()`, without leaving the page. See [`ThunderIDBrowserClient`](../../../browser/apis/thunderid-browser-client#switchorganizationunitorganizationunitid-options) |
+
+A browser client's `switchOrganizationUnit()` sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, so the backend can read the unit from either. Switch the session the backend holds to that organization unit and answer `200`, or refuse with an OAuth `error` in a JSON body, such as `{"error": "interaction_required"}`. A refusal that says the user has to sign in sends the browser to the `signIn` endpoint with `ouId`, unless the call sets `redirect: false`. That endpoint must bound the sign-in to the unit. Answer `401` with `{"error": "session_expired"}` when the session needs a refresh, and the SDK refreshes it once and retries. The SDK treats any other `401` as `login_required`.
 
 ### Application Parameters
 

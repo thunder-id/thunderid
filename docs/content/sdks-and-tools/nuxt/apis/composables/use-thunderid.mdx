@@ -39,11 +39,13 @@ This composable must be used inside a component or page rendered within `<Thunde
 | `isLoading` | `ComputedRef<boolean>` | Whether an auth operation is in progress |
 | `isInitialized` | `ComputedRef<boolean>` | Whether the SDK has finished initializing |
 | `user` | `ComputedRef<User \| null>` | The authenticated user object, or `null` if not signed in |
-| `organization` | `ComputedRef<Organization \| null>` | The current organization context, or `null` |
+| `currentOrganizationUnit` | `ComputedRef<CurrentOrganizationUnit \| null>` | The organization unit the session was issued for, read on the server from its `ouId`, `ouHandle`, and `ouName` claims for display only, or `null` |
 | `signIn` | `(...args) => Promise<void>` | Initiate the sign-in flow |
 | `signOut` | `() => Promise<void>` | Sign out the current user |
 | `signUp` | `(...args) => Promise<void>` | Initiate the sign-up flow |
 | `getAccessToken` | `() => Promise<string>` | Get a client-safe access token via `/api/auth/token` |
+| `getCurrentOrganizationUnit` | `() => Promise<CurrentOrganizationUnit \| null>` | Resolve with the value of `currentOrganizationUnit` |
+| `switchOrganizationUnit` | `(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<undefined>` | Sign in again bounded to another organization unit |
 
 ## Methods
 
@@ -106,6 +108,26 @@ async function fetchProtectedResource() {
 }
 </script>
 ```
+
+### `switchOrganizationUnit()`
+
+Signs the user in again bounded to the organization unit `organizationUnitId`. The composable sends the browser to `/api/auth/signin?ouId=<id>&returnTo=<path>`, where `returnTo` is `options.returnTo` or the current path and query. That route redirects to `{baseUrl}/ou/{ouId}/oauth2/authorize`. <ProductName /> reuses the single sign-on (SSO) session when the user can sign in to that unit, so the user normally enters no credentials.
+
+The callback replaces the session cookie only when the sign-in succeeds, then returns to `returnTo`. When the callback carries an error, it answers `400` and the previous session stays. The switch always leaves the page and resolves with `undefined`: `options.redirect` does not apply, and no `OrganizationUnitSwitchErrorCodes` reach the page. For how organizations map to organization units and what the new tokens carry, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+```vue title="components/OpenOrganization.vue" showLineNumbers
+<script setup lang="ts">
+const props = defineProps<{ organizationUnitId: string }>()
+const { currentOrganizationUnit, switchOrganizationUnit } = useThunderID()
+</script>
+
+<template>
+  <p>Working in {{ currentOrganizationUnit?.name }}</p>
+  <button @click="switchOrganizationUnit(props.organizationUnitId)">Open organization</button>
+</template>
+```
+
+To let the user pick from the units they can access, render [`<OrganizationUnitSwitcher />`](../../components/organization-unit-switcher).
 
 ## SSR Behavior
 
