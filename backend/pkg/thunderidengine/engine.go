@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/agentmgtprovider"
@@ -260,9 +261,13 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 	cors.InitializeDynamicMatcher(originReader)
 
-	// The engine subscribes nothing to its event bus, so the OAuth services' audit events are dropped
-	// unwritten, no worker starts and the bus needs no stopping.
-	auditBus, _, _ := eventbus.Initialize()
+	// The engine subscribes only the sinks the embedder added. With none, the OAuth services' audit
+	// events are dropped unwritten, no worker starts and the bus needs no stopping. With sinks, each one
+	// has its own worker for the life of the process.
+	auditBus, auditRegistry, _ := eventbus.Initialize()
+	if err := subscribeAuditSinks(auditRegistry, engineCtx.auditSinks); err != nil {
+		logger.Fatal(ctx, "Failed to subscribe the audit sinks", log.Error(err))
+	}
 
 	// The embedded engine has no server-config store, so no default resource server is available: the
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
@@ -326,6 +331,9 @@ func validateEngineContext(ctx *engineContext) error {
 	}
 	if ctx.defaultAuthnProvider == nil {
 		return errors.New("thunderidengine: default authentication provider is not set")
+	}
+	if slices.Contains(ctx.auditSinks, nil) {
+		return errors.New("thunderidengine: audit sink is nil")
 	}
 	return nil
 }
@@ -446,6 +454,7 @@ type engineContext struct {
 	identityGovernance        providers.IdentityGovernanceProvider
 	attributeVerification     providers.AttributeVerificationProvider
 	permissionProvider        providers.PermissionProvider
+	auditSinks                []providers.AuditSink
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -593,6 +602,13 @@ func WithPermissionProvider(provider providers.PermissionProvider) Option {
 // WithI18nProvider supplies the i18n provider.
 func WithI18nProvider(provider providers.I18nProvider) Option {
 	return func(c *engineContext) { c.i18nProvider = provider }
+}
+
+// WithAuditSink adds a sink that receives the engine's audit events as plain values. It can be passed more
+// than once, and each sink has its own queue, so a slow sink delays neither a request nor another sink.
+// Without it the engine writes no audit output.
+func WithAuditSink(sink providers.AuditSink) Option {
+	return func(c *engineContext) { c.auditSinks = append(c.auditSinks, sink) }
 }
 
 // WithAuthorizationDetailTypeProvider supplies the authorization details type registry. Without it,

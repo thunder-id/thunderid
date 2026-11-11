@@ -640,6 +640,12 @@ packages:
 
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
+      AuditSink:
+        config:
+          dir: tests/mocks/auditsinkmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: auditsinkmock
+          filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderManager:
         config:
           dir: tests/mocks/authnprovider/managermock
