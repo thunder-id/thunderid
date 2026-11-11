@@ -14,8 +14,10 @@ import {
 import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {
   getBackchannelLogoutUriServerError,
+  hasScopeNamesChanged,
   hasUserAccess,
   isIdJagEnabled,
+  keepRemovedStandardScopes,
   validateBackchannelLogoutUri,
 } from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
@@ -193,6 +195,9 @@ export default function AgentEditPage(): JSX.Element {
     const {certificate, display, ...updatedData} = {...agent, ...editedAgent} as Agent & {certificate?: unknown};
     void certificate;
     void display;
+    if (editedAgent.inboundAuthConfig) {
+      updatedData.inboundAuthConfig = keepRemovedStandardScopes(editedAgent.inboundAuthConfig, agent.inboundAuthConfig);
+    }
 
     // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
     const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
@@ -212,7 +217,10 @@ export default function AgentEditPage(): JSX.Element {
   }, [agent, agentId, editedAgent, agentTypeDetails, updateAgent, refetch, logger]);
 
   const hasChanges = useMemo(
-    () => Object.entries(editedAgent).some(([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent])),
+    () =>
+      Object.entries(editedAgent).some(([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent])) ||
+      (editedAgent.inboundAuthConfig !== undefined &&
+        hasScopeNamesChanged(editedAgent.inboundAuthConfig, agent?.inboundAuthConfig)),
     [editedAgent, agent],
   );
 

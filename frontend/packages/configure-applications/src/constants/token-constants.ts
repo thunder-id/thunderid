@@ -16,6 +16,11 @@ const TokenConstants = {
   USER_INFO_DEFAULT_ATTRIBUTES: ['sub'],
 
   /**
+   * Standard OIDC scopes that release user attributes, as in the backend's StandardOIDCScopes.
+   */
+  STANDARD_OIDC_SCOPES: ['address', 'email', 'phone', 'profile', 'roles'],
+
+  /**
    * Additional system attributes that can be configured as user attributes
    */
   ADDITIONAL_USER_ATTRIBUTES: ['groups', 'ouHandle', 'ouId', 'ouName', 'roles', 'userTypeHandle', 'userTypeName'],

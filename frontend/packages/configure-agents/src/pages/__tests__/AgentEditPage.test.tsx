@@ -171,8 +171,17 @@ vi.mock('../../components/edit-agent/flows/EditFlowsSettings', () => ({
   default: () => <div data-testid="edit-flows" />,
 }));
 
+// The inbound auth config the Tokens tab stub hands to onFieldChange when its button is clicked.
+const tokensEdit = vi.hoisted(() => ({inboundAuthConfig: undefined as unknown}));
+
 vi.mock('../../components/edit-agent/tokens/EditTokensSettings', () => ({
-  default: () => <div data-testid="edit-tokens" />,
+  default: ({onFieldChange}: {onFieldChange: (field: string, value: unknown) => void}) => (
+    <div data-testid="edit-tokens">
+      <button type="button" onClick={() => onFieldChange('inboundAuthConfig', tokensEdit.inboundAuthConfig)}>
+        Change scopes
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../../components/edit-agent/access/EditAccessSettings', () => ({
@@ -608,6 +617,45 @@ describe('AgentEditPage', () => {
 
   // The server holds a delegated agent to the delegated grant rules and does not store the flag, so a
   // save has to say whether the agent is delegated. Delegated mode is any delegation grant.
+  describe('Scope-to-claims changes', () => {
+    const withScopeClaims = (scopeClaims: Record<string, string[]>) => [
+      {type: 'oauth2' as const, config: {...baseAgent.inboundAuthConfig[0].config, scopeClaims}},
+    ];
+
+    const renderWithScopeClaims = async (saved: Record<string, string[]>, edited: Record<string, string[]>) => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, inboundAuthConfig: withScopeClaims(saved)},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      tokensEdit.inboundAuthConfig = withScopeClaims(edited);
+      render(<AgentEditPage />);
+      await user.click(screen.getByRole('tab', {name: 'Tokens'}));
+      await user.click(await screen.findByRole('button', {name: 'Change scopes'}));
+      return user;
+    };
+
+    it('enables saving when a scope is added with no attributes', async () => {
+      await renderWithScopeClaims({email: ['email']}, {email: ['email'], profile: []});
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+    });
+
+    it('saves a removed standard scope as an empty list', async () => {
+      const user = await renderWithScopeClaims({email: ['email'], profile: ['given_name']}, {email: ['email']});
+
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled());
+      const data = (mockMutateAsync.mock.calls[0][0] as {data: {inboundAuthConfig: ReturnType<typeof withScopeClaims>}})
+        .data;
+      expect(data.inboundAuthConfig[0].config.scopeClaims).toEqual({email: ['email'], profile: []});
+    });
+  });
+
   describe('Delegated flag on save', () => {
     // A delegated agent has to pass the page's own checks before it can be saved: a callback and an
     // allowed user type.

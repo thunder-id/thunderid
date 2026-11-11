@@ -62,8 +62,10 @@ import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
 import getTemplateCapabilities from '../utils/getTemplateCapabilities';
 import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
+import hasScopeNamesChanged from '../utils/hasScopeNamesChanged';
 import isSystemConsoleClient from '../utils/isSystemConsoleClient';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
+import keepRemovedStandardScopes from '../utils/keepRemovedStandardScopes';
 import {hasUserAccess} from '../utils/oauth2Rules';
 import validateBackchannelLogoutUri from '../utils/validateBackchannelLogoutUri';
 
@@ -254,7 +256,9 @@ export default function ApplicationEditPage() {
     () =>
       Object.entries(editedApp).some(
         ([key, value]) => !isEqualIgnoringEmpty(value, application?.[key as keyof Application]),
-      ),
+      ) ||
+      (editedApp.inboundAuthConfig !== undefined &&
+        hasScopeNamesChanged(editedApp.inboundAuthConfig, application?.inboundAuthConfig)),
     [editedApp, application],
   );
   const hasChanges = hasApplicationChanges || organizationAccess.hasChanges;
@@ -272,6 +276,12 @@ export default function ApplicationEditPage() {
       ...editedApp,
     };
     void certificate;
+    if (editedApp.inboundAuthConfig) {
+      updatedData.inboundAuthConfig = keepRemovedStandardScopes(
+        editedApp.inboundAuthConfig,
+        application.inboundAuthConfig,
+      );
+    }
 
     // The application is saved first, so a refused organization access change leaves the
     // application's own settings saved and only the access draft waiting to be retried.
