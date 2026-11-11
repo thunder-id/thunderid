@@ -1,0 +1,392 @@
+---
+toc_progress: quickstart
+title: Next.js Quickstart
+docType: quickstart
+sidebar_position: 2
+persona: app
+description: Build a Next.js B2B app where companies sign up as organizations, switch between them, and plug in their own identity provider, with @thunderid/nextjs.
+---
+
+import {ArrowLeftRight, Building2, Clock, FileCode, Hexagon, KeyRound, Package} from '@wso2/oxygen-ui-icons-react';
+
+# Next.js Quickstart
+
+Use this guide to build a Next.js application for a business-to-business (B2B) product with `@thunderid/nextjs`. Each
+company that signs up becomes its own organization in <ProductName />. People sign in to one company at a time, their
+tokens name that company and the roles they hold there, and a company admin plugs in the company's own identity
+provider. Tokens stay on the server.
+
+<SdkQuickstartDownload packageId="nextjs" sample="quickstarts/nextjs-b2b" icon={<NextLogo size={22} />} />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Building2 />}>Let a company sign up as its own organization, with its first admin</TutorialHeroItem>
+<TutorialHeroItem icon={<ArrowLeftRight />}>Read the organization and roles from the token on the server</TutorialHeroItem>
+<TutorialHeroItem icon={<KeyRound />}>Let a company admin plug in the company's identity provider</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js 20.9 or later</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance:
+
+<RunThunderID />
+
+## Import the B2B Resources
+
+A B2B application needs more than an application: a platform organization that every company joins, an account type,
+two roles, a sign-up flow that creates the company, and a sign-in flow that lands in one company. The sample ships them
+as two files you import.
+
+1. Copy the resources:
+
+    ```bash
+    npx degit thunder-id/samples/quickstarts/nextjs-b2b/thunderid-config thunderid-config
+    ```
+
+2. Sign in to the Control Plane console at `https://localhost:8095/console`.
+3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
+   file, choose **Continue**, and once the import test passes, choose **Import configuration**.
+4. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
+   configuration file and `thunderid-config/thunderid.env` as the environment variables file. Choose **Continue**, then
+   **Import configuration**.
+
+The second file places every resource in the organization unit the first one creates, so import the first one on its
+own.
+
+| Resource | Name | What it does |
+|---|---|---|
+| Organization unit | Next.js B2B Quickstart | The platform organization, a root organization unit in the Default project. Every company that signs up becomes its child. |
+| User type | Next.js B2B User | The account schema, owned by the platform organization, so every company can use it |
+| Server config | `defaultResourceServer` | Makes the System resource server the default. The app names no resource when it signs in, so an admin's token carries `org`. |
+| Role | Admin | Grants the `org` permission, which manages the organization a token names. Shared with every company. |
+| Role | Member | Grants no permission. Shared with every company. |
+| Flow | Next.js B2B Quickstart Company Sign-up | Creates the company and its first admin, with the account inside the company or shared into it |
+| Flow | Next.js B2B Quickstart Sign-in | Password, enterprise single sign-on (SSO), or company sign-up. Keeps an SSO session, and lets each company set its own `enterpriseIdp`. |
+| Application | Next.js B2B Quickstart | Client ID `NEXTJS_B2B_QUICKSTART`, redirecting to `http://localhost:3000`. Shared with every company. |
+
+The import creates a root organization unit and replaces the `defaultResourceServer` setting, and only the Control
+Plane writes those, so import there. Imported straight into a Data Plane, both are refused.
+
+## Create a Next.js App
+
+```bash
+npx create-next-app@latest nextjs-b2b
+cd nextjs-b2b
+npm install @thunderid/nextjs
+```
+
+## Set Environment Variables
+
+Create a `.env` file in your project root with the values the import set up:
+
+:::warning Configuration
+Generate a random string for `THUNDERID_SECRET` (at least 32 characters):
+
+```bash
+openssl rand -base64 32
+```
+:::
+
+```dotenv title=".env" showLineNumbers
+NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+NEXT_PUBLIC_THUNDERID_CLIENT_ID=NEXTJS_B2B_QUICKSTART
+THUNDERID_CLIENT_SECRET=nextjs-b2b-quickstart-secret
+NEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL=http://localhost:3000
+NEXT_PUBLIC_THUNDERID_AFTER_SIGN_OUT_URL=http://localhost:3000
+NEXT_PUBLIC_THUNDERID_SCOPES=openid profile email roles ou org
+NEXT_PUBLIC_THUNDERID_SIGN_IN_FLOW_ID=019f0b20-0000-7000-8000-000000000021
+THUNDERID_SECRET=<a-random-secret-for-session-signing>
+# DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+NODE_TLS_REJECT_UNAUTHORIZED=0
+```
+
+`THUNDERID_SECRET` encrypts the session cookie.
+
+`ou` and `roles` put the company and the roles held there into the tokens. `org` asks for the permission a company admin
+needs.
+
+## Add `ThunderIDProvider` and the Proxy
+
+Wrap the layout in the server `<ThunderIDProvider />`, which reads the environment. `fetchUserProfile: false` reads the
+user from the ID token, which names the company the session signed in to:
+
+```tsx title="app/layout.tsx"
+import { Suspense, type ReactNode } from 'react'
+import { connection } from 'next/server'
+import { ThunderIDProvider } from '@thunderid/nextjs/server'
+import './globals.css'
+
+async function SessionProvider({ children }: { children: ReactNode }) {
+  await connection()
+  return <ThunderIDProvider preferences={{ user: { fetchUserProfile: false } }}>{children}</ThunderIDProvider>
+}
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <Suspense>
+          <SessionProvider>{children}</SessionProvider>
+        </Suspense>
+      </body>
+    </html>
+  )
+}
+```
+
+The provider reads the session cookie, so `connection()` renders it for each request rather than at build time, and
+`<Suspense>` lets Next.js stream it in. This works whether or not `cacheComponents` is on in `next.config.ts`.
+
+Add the proxy, which keeps the session fresh on every request:
+
+```ts title="proxy.ts"
+import { thunderIDProxy } from '@thunderid/nextjs/server'
+
+export default thunderIDProxy()
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+## Let Admins Plug In Their Identity Provider
+
+A company admin adds an OpenID Connect connection owned by the company, then picks it as the company's value of the
+sign-in flow's `enterpriseIdp` variable with `FlowVariablesForm`. The SDK's management fetcher sends both calls from the
+server with the admin's session, so <ProductName /> applies them to the company the token names:
+
+```tsx title="app/components/EnterpriseSso.tsx"
+'use client'
+
+import { FormEvent, useState } from 'react'
+import { FlowVariablesForm, useManagementRequestConfig, useThunderID } from '@thunderid/nextjs'
+
+const FIELDS = [
+  'name',
+  'clientId',
+  'clientSecret',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+  'userInfoEndpoint',
+  'jwksEndpoint',
+  'issuer',
+]
+
+export default function EnterpriseSso({ flowId, ouId, ouName }: { flowId: string; ouId: string; ouName?: string }) {
+  const { baseUrl } = useThunderID()
+  const { baseUrl: managementBaseUrl, fetcher, url } = useManagementRequestConfig('connections')
+  const connectionsUrl = url ?? `${managementBaseUrl}/connections`
+  const [isAdding, setIsAdding] = useState(false)
+  const [version, setVersion] = useState(0)
+  const callbackUrl = `${baseUrl}/gate/callback`
+
+  const addConnection = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await (fetcher ?? fetch)(`${connectionsUrl}/oidc`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ...Object.fromEntries(new FormData(event.currentTarget)),
+        ouId,
+        redirectUri: callbackUrl,
+        scopes: ['openid', 'profile', 'email'],
+      }),
+    })
+    setIsAdding(false)
+    setVersion((current) => current + 1)
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-black/10 p-6 dark:border-white/15">
+      <h2 className="text-xl font-semibold">Enterprise SSO</h2>
+      <p className="text-sm opacity-70">Callback URL for your identity provider: {callbackUrl}</p>
+      {isAdding ? (
+        <form className="grid gap-2" onSubmit={addConnection}>
+          {FIELDS.map((name) => (
+            <input
+              key={name}
+              name={name}
+              placeholder={name}
+              required
+              className="rounded-lg border border-black/15 px-3 py-2 dark:border-white/20"
+            />
+          ))}
+          <button type="submit" className="rounded-lg bg-foreground px-4 py-2 text-background">
+            Add identity provider
+          </button>
+        </form>
+      ) : (
+        <FlowVariablesForm
+          key={version}
+          flowId={flowId}
+          ouId={ouId}
+          ouName={ouName}
+          showScopeNotice
+          title="Enterprise SSO connection"
+          onCreateConnection={() => setIsAdding(true)}
+        />
+      )}
+    </section>
+  )
+}
+```
+
+## Show the Organization
+
+The client component shows the company the session signed in to, the user's roles there, and the organization
+switcher. Only a token whose `scope` carries `org` shows the Enterprise SSO section. The classes are Tailwind's, which
+`create-next-app` sets up in `globals.css`:
+
+```tsx title="app/components/Workspace.tsx"
+'use client'
+
+import {
+  OrganizationUnitSwitcher,
+  SignInButton,
+  SignOutButton,
+  SignedIn,
+  SignedOut,
+  useThunderID,
+} from '@thunderid/nextjs'
+import EnterpriseSso from './EnterpriseSso'
+
+type Claims = Record<string, unknown>
+
+export default function Workspace({ claims }: { claims: Claims | null }) {
+  const { currentOrganizationUnit, user } = useThunderID()
+  const roles: string[] = Array.isArray(user?.roles) ? user.roles : []
+  const isAdmin = String(claims?.scope ?? '').split(' ').includes('org')
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
+      <SignedOut>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          <h1 className="text-3xl font-semibold">Sign in to your company</h1>
+          <p className="opacity-70">New here? Choose Register your company on the sign-in page.</p>
+          <SignInButton>Sign in</SignInButton>
+        </div>
+      </SignedOut>
+      <SignedIn>
+        <header className="flex items-center justify-between gap-4">
+          <OrganizationUnitSwitcher scope="siblings" />
+          <SignOutButton>Sign out</SignOutButton>
+        </header>
+        <div>
+          <h1 className="text-3xl font-semibold">{currentOrganizationUnit?.name}</h1>
+          <p className="opacity-70">
+            Signed in as {user?.username} to <code>{currentOrganizationUnit?.handle}</code>. Your roles here:{' '}
+            {roles.join(', ') || 'none'}
+          </p>
+        </div>
+        {claims && (
+          <pre className="overflow-auto rounded-xl bg-black/5 p-4 text-xs dark:bg-white/10">
+            {JSON.stringify(claims, null, 2)}
+          </pre>
+        )}
+        {isAdmin && currentOrganizationUnit && (
+          <EnterpriseSso
+            key={currentOrganizationUnit.id}
+            flowId={process.env.NEXT_PUBLIC_THUNDERID_SIGN_IN_FLOW_ID ?? ''}
+            ouId={currentOrganizationUnit.id}
+            ouName={currentOrganizationUnit.name}
+          />
+        )}
+      </SignedIn>
+    </main>
+  )
+}
+```
+
+The page reads the access token on the server, so it never reaches the browser, and passes its claims to the client
+component:
+
+```tsx title="app/page.tsx"
+import { Suspense } from 'react'
+import { thunderid } from '@thunderid/nextjs/server'
+import Workspace from './components/Workspace'
+
+const decodePayload = (token: string): Record<string, unknown> =>
+  JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
+
+async function SessionWorkspace() {
+  const client = await thunderid()
+  const sessionId = await client.getSessionId()
+  const accessToken = sessionId ? await client.getAccessToken(sessionId).catch(() => undefined) : undefined
+
+  return <Workspace claims={accessToken ? decodePayload(accessToken) : null} />
+}
+
+export default function Home() {
+  return (
+    <Suspense>
+      <SessionWorkspace />
+    </Suspense>
+  )
+}
+```
+
+The page reads the session for each request, so it keeps that read behind a `<Suspense>` boundary of its own. On a
+client-side navigation, Next.js re-renders only the page, and the boundary in the layout does not cover it.
+
+`currentOrganizationUnit` holds the `id`, `handle`, and `name` of the company the session signed in to, read from the ID
+token. Treat it as display data. Your API routes read the organization from the access token.
+
+## Run and Try It
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+**A company with its own accounts.** Choose **Sign in**, then **Register your company**, then **My account belongs to
+this company**. Enter an account, then `Northstar Labs` with the handle `northstar`.
+
+:::tip Success
+You land in the app as Northstar Labs' `Admin`. The token's `ouHandle` is `northstar`, and its `scope` carries `org`,
+so the Enterprise SSO section shows.
+:::
+
+**Plug in the company's identity provider.** Register an OpenID Connect application in your identity provider with the
+callback URL the app shows. In **Enterprise SSO**, choose **Create a connection**, enter the application's details,
+select the connection, and save. Sign out, choose **Sign in with enterprise SSO**, and enter `northstar`: <ProductName />
+sends you to Northstar's identity provider, and a first-time employee joins Northstar as a `Member`.
+
+**One account across several companies.** Register `Initech` with **I work with several companies**. The account lives
+in the platform organization and is shared into Initech as its `Admin`. Then, as a platform administrator in the
+Console, add `Globex` and `Umbrella` as child organization units of `Next.js B2B Quickstart`, open the account under
+**Users**, and on the **Affiliations** tab add Globex with the mandated role `Admin` and Umbrella with `Member`.
+
+:::tip Success
+Sign out and sign in with the account's password. <ProductName /> asks which company to sign in to. Pick **Umbrella**:
+the page shows `Member`, the token has no `org`, and the Enterprise SSO section is gone. Sign in again and pick
+**Globex**, and you are its `Admin`.
+:::
+
+</Stepper>
+
+:::note Before you go to production
+A company admin's token carries `org`, which manages everything in their company. Grant it only to people you trust with
+the whole company, or route management calls through your own server routes that check each call and use a client that
+holds the permission. See [Let Organization Admins Manage Teams](../../use-cases/b2b/journeys/delegated-administration.mdx).
+:::
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Secure B2B SaaS Applications" href="../../../use-cases/b2b/overview" description="The organization model behind this quickstart, and each B2B journey in depth." cta="Use Case" />
+  <NextStepsCard title="See It in a Sample App" href="../../../use-cases/b2b/try-it-out" description="Run Wayfinder Enterprise, a full B2B app with team management and travel policies." cta="Sample App" />
+</NextSteps>

@@ -1573,13 +1573,15 @@ aside.theme-doc-sidebar-container {
 }
 
 /* ─── Connect section: vertical accent line down the quickstart list ─────── */
-.connect-section > .menu__list {
+.connect-section > .menu__list,
+.connect-section__panel > .menu__list {
   border-left: 2px solid color-mix(in srgb, var(--ifm-color-primary) 25%, transparent);
   margin-left: 1.5rem;
   padding-left: 0;
 }
 
-.connect-section > .menu__list .menu__link {
+.connect-section > .menu__list .menu__link,
+.connect-section__panel > .menu__list .menu__link {
   padding-bottom: 0.3rem;
   padding-left: 0.75rem;
   padding-top: 0.3rem;

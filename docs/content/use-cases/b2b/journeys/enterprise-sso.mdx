@@ -14,7 +14,7 @@ One sign-in flow serves both. Your team defines it once and shares it with every
 
 ## Prerequisites
 
-- The platform organization, the shared roles, and the shared application from [B2B Quick Start with React](../quick-start.mdx).
+- The platform organization, the shared roles, and the shared application from [Wayfinder Enterprise sample](../try-it-out/index.mdx).
 - For connecting a company's IdP through the API, the backend client and its token for one organization, from [Let Organization Admins Manage Teams](./delegated-administration.mdx#create-the-backend-client).
 
 ## How It Works
@@ -31,7 +31,7 @@ An employee reaches the right IdP by typing their organization's handle:
 sequenceDiagram
   autonumber
   participant Emp as Initech employee
-  participant App as Wayfinder Enterprise Web
+  participant App as Wayfinder Enterprise
   participant TID as ThunderID
   participant Corp as Initech IdP
   Emp->>App: Sign in
@@ -56,7 +56,7 @@ Your team does this once, for every company.
 
 ### Create the Flow From the Template
 
-If you followed the quick start, open `Wayfinder Sign-in`: it is already this flow, with both parent organizations set, so continue at [Give First-Time Employees a Role](#give-first-time-employees-a-role). Otherwise, navigate to **Flows**, click **Create new flow**, select **Sign-in** as the flow type, and select the **Basic + Enterprise SSO** template.
+If you imported the sample, open `Wayfinder Enterprise Sign-in`: it is already this flow, with both parent organizations set and its sharing in place, so continue at [Give First-Time Employees a Role](#give-first-time-employees-a-role). Otherwise, navigate to **Flows**, click **Create new flow**, select **Sign-in** as the flow type, and select the **Basic + Enterprise SSO** template.
 
 ### Set the Parent Organization
 
@@ -70,7 +70,7 @@ The template creates an employee in the organization on their first SSO sign-in,
 
 Share the flow so that it reaches every company, and make `enterpriseIdp` editable in the policy. In the Console, open the flow and click **Share**. Grant **All child organization units**, then turn on **Editable** for `enterpriseIdp`.
 
-Through the API, send the same policy to the server where you manage flows. In the quick start setup, that is the Control Plane at `https://localhost:8095`. A Data Plane that runs on its own manages its own flows. `$TOKEN` is an administrator's access token with the `system` scope:
+Through the API, send the same policy to the server where you manage flows. With the quickstart image, that is the Control Plane at `https://localhost:8095`. A Data Plane that runs on its own manages its own flows. `$TOKEN` is an administrator's access token with the `system` scope:
 
 ```bash
 curl -X POST https://localhost:8095/flows/<flow-id>/sharing-policies \
@@ -90,7 +90,7 @@ See [Share a Flow](../../../guides/flows/share-a-flow.mdx) for the other terms a
 
 ### Attach the Flow to the Application
 
-Navigate to **Applications**, open `Wayfinder Enterprise Web`, and select the **Flows** tab. Set **Sign-in flow** to this flow, then save the tab.
+Navigate to **Applications**, open `Wayfinder Enterprise`, and select the **Flows** tab. Set **Sign-in flow** to this flow, then save the tab.
 
 </Stepper>
 
@@ -180,9 +180,9 @@ The form calls the flow and connection management APIs, which need management pe
     href="../switch-organizations"
   />
   <NextStepsCard
-    title="B2B SDK Components"
-    description="FlowVariablesForm and the other components, with the API and permission each needs."
-    href="../../sdk-components"
+    title="See It in a Sample App"
+    description="Connect Initech's identity provider in Wayfinder Enterprise, which uses FlowVariablesForm."
+    href="../../try-it-out"
   />
   <NextStepsCard
     title="Design Decisions"

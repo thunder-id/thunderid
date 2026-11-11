@@ -14,8 +14,8 @@ This page also builds the backend client that the later journeys use to act for 
 
 ## Prerequisites
 
-- The platform organization, the shared `Wayfinder Admin` and `Wayfinder Member` roles, and the shared application from [B2B Quick Start with React](../quick-start.mdx).
-- An application with a server side, such as a Next.js application, registered as its own confidential application: one that holds a client secret, because it signs people in from your server instead of the browser. Configure its tokens and its **Organization Access** as the quick start configures `Wayfinder Enterprise Web`. See [Next.js Configuration](../../../sdks-and-tools/nextjs/apis/configuration.mdx).
+- The platform organization, the shared `Wayfinder Admin` and `Wayfinder Member` roles, and the shared application from [Wayfinder Enterprise sample](../try-it-out/index.mdx).
+- An application with a server side, such as a Next.js application, registered as its own confidential application: one that holds a client secret, because it signs people in from your server instead of the browser. Configure its tokens and its **Organization Access** as the [Wayfinder Enterprise sample](../try-it-out/index.mdx#what-the-import-creates) configures its `Wayfinder Enterprise` application. See [Next.js Configuration](../../../sdks-and-tools/nextjs/apis/configuration.mdx).
 
 ## Where the Boundary Sits
 
@@ -202,7 +202,7 @@ export async function POST(request: Request, {params}: {params: Promise<{path: s
 
 ### Point the SDK Components at the Proxy
 
-Override the management `endpoints` in `ThunderIDProvider`, so the components call your backend route instead of <ProductName />. `UserCreate` also lists user types, so route `userTypes` too. Request your API's permissions as scopes, and name its resource server in `resource`, so the admin's token carries what the route checks:
+Override the management `endpoints` in `ThunderIDProvider`, so the components call your backend route instead of <ProductName />. `UserCreate` also lists user types, so route `userTypes` too. `GroupMembers` and `RoleAssignments` also list agents, so route `agents` too, even if your route serves none: otherwise those lists send the admin's token to <ProductName /> directly. Request your API's permissions as scopes, and name its resource server in `resource`, so the admin's token carries what the route checks:
 
 ```tsx title="app/layout.tsx"
 import {ThunderIDProvider} from '@thunderid/nextjs/server';
@@ -222,6 +222,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
             groups: `${appUrl}/api/admin/groups`,
             roles: `${appUrl}/api/admin/roles`,
             userTypes: `${appUrl}/api/admin/user-types`,
+            agents: `${appUrl}/api/admin/agents`,
           }}
         >
           {children}
@@ -293,8 +294,8 @@ The backend client holds the root `system` permission, so the rule that you gran
     href="../enterprise-sso"
   />
   <NextStepsCard
-    title="B2B SDK Components"
-    description="Every component the Team page uses, with the API and permission each needs."
-    href="../../sdk-components"
+    title="See It in a Sample App"
+    description="Run Wayfinder Enterprise, whose Team page routes these components through its backend."
+    href="../../try-it-out"
   />
 </NextSteps>

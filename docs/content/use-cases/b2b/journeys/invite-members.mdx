@@ -14,7 +14,7 @@ An invitation does this. The admin names a person by email and picks their roles
 
 ## Prerequisites
 
-- The platform organization, its shared roles, and the shared application from [B2B Quick Start with React](../quick-start.mdx).
+- The platform organization, its shared roles, and the shared application from [Wayfinder Enterprise sample](../try-it-out/index.mdx).
 - The backend client and the token it gets for one organization, from [Let Organization Admins Manage Teams](./delegated-administration.mdx#create-the-backend-client). Your backend starts each invitation with it.
 - An email provider for the invitation emails. See [Configure an Email Provider](../../../guides/notifications/email-providers.mdx).
 - A user type with an `email` attribute. The invitation finds an existing account by its email and creates a new account with it, so an account without an email cannot be found. The **Organization Sign-up** templates collect only a username and a password, so add an email field to your sign-up flow if those accounts should be invitable later.
@@ -37,7 +37,7 @@ One invitation is a single flow run in two parts. The admin's part runs on your 
 sequenceDiagram
   autonumber
   participant Admin as Northstar admin
-  participant App as Wayfinder Enterprise Web
+  participant App as Wayfinder Enterprise
   participant TID as ThunderID
   participant Invitee
   Admin->>App: Invite a teammate by email, pick roles
@@ -179,8 +179,8 @@ Once the person belongs to more than one company, their sign-in lands in one com
     href="../switch-organizations"
   />
   <NextStepsCard
-    title="B2B SDK Components"
-    description="The React components for invitations, users, groups, and roles."
-    href="../../sdk-components"
+    title="See It in a Sample App"
+    description="Run Wayfinder Enterprise and manage a company's people from its Team page."
+    href="../../try-it-out"
   />
 </NextSteps>
