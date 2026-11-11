@@ -262,6 +262,14 @@ const translations = {
       'A role in this share is not available in the organization unit that receives it. Choose roles that the unit owns or has shared with it.',
     'errors.ROL-1038':
       'Roles cannot be mandated on this server, because its roles load only from resource files. Ask an administrator to use a role store that allows changes.',
+    'errors.PRJ-1002': 'This project no longer exists. Refresh the page to see the current projects.',
+    'errors.PRJ-1003': 'Enter a project name of up to 100 characters.',
+    'errors.PRJ-1004': 'The project description cannot exceed 255 characters.',
+    'errors.PRJ-1011':
+      'Enter a handle of up to 100 characters, using only lowercase letters, numbers, hyphens and underscores.',
+    'errors.PRJ-1013':
+      'This project still has resources. Delete or move its applications, agents, flows and other resources before deleting it.',
+    'errors.PRJ-1014': 'This project was deployed from the control plane and can only be changed there.',
 
     // Backend error code translations for flow executor failures (per the flow execution error envelope).
     'errors.FET-1002': 'Could not check whether a matching {{entity}} already exists. Please try again.',
@@ -6958,6 +6966,7 @@ const translations = {
     'create.handle.placeholder': 'e.g., customer-support',
     'create.handle.hint': 'A unique identifier for this project',
     'create.handle.required': 'Handle is required',
+    'create.handle.taken': 'A project with the handle "{{handle}}" already exists. Choose a different handle.',
     'create.handle.maxLength': 'Handle cannot exceed {{max}} characters',
     'create.handle.format':
       'Handle may contain only lowercase letters, numbers, hyphens and underscores, and must start and end with a letter or a number',

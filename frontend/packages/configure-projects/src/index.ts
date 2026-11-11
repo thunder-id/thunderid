@@ -32,6 +32,3 @@ export {default as ProjectsListPage} from './pages/ProjectsListPage';
 // Routes
 export type {ProjectRoutePaths} from './hooks/useProjectRoutes';
 export {defaultProjectRoutePaths, default as useProjectRoutes} from './hooks/useProjectRoutes';
-
-// Utils
-export {default as getProjectErrorMessage} from './utils/getProjectErrorMessage';

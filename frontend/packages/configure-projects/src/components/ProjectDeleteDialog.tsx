@@ -1,12 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle} from '@wso2/oxygen-ui';
 import {useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import useDeleteProject from '../api/useDeleteProject';
 import type {Project} from '../models/project';
-import getProjectErrorMessage from '../utils/getProjectErrorMessage';
 
 export interface ProjectDeleteDialogProps {
   /** The project to delete; the dialog is open while one is set. */
@@ -34,9 +34,7 @@ export default function ProjectDeleteDialog({project, onClose}: ProjectDeleteDia
     deleteProject.mutate(project.id, {
       onSuccess: () => onClose(),
       onError: (err: Error) => {
-        setError(
-          getProjectErrorMessage(err, t, 'projects:delete.error', 'Failed to delete the project. Please try again.'),
-        );
+        setError(getErrorMessage(err, t, 'projects:delete.error', 'Failed to delete the project. Please try again.'));
       },
     });
   };
