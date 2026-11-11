@@ -3,17 +3,19 @@
 
 import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
-import {SignIn, type EmbeddedFlowComponent} from '@thunderid/react';
+import {SignIn, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box, Alert, CircularProgress, Link, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useFlowForm from '../../hooks/useFlowForm';
+import FlowExpired from '../FlowExpired/FlowExpired';
 
 export default function SignInBox(): JSX.Element {
   const {resolve, resolveAll} = useTemplateLiteralResolver();
   const {t} = useTranslation();
   const {isDesignEnabled} = useDesign();
+  const {meta} = useThunderID();
   const {formInputs, fieldErrors, touched, collectInputComponents, validateForm, updateInput, clearInputs} =
     useFlowForm(resolve);
 
@@ -30,9 +32,21 @@ export default function SignInBox(): JSX.Element {
       showLogo={!isDesignEnabled}
       logoDisplay={!isDesignEnabled ? {xs: 'flex', md: 'none'} : {display: 'none'}}
     >
-      <SignIn>
-        {({onSubmit, isLoading, components, error, meta: flowMeta, additionalData}) =>
-          isLoading && !components?.length ? (
+      <SignIn afterFlowExpiredUrl={meta?.application?.url}>
+        {({
+          onSubmit,
+          isLoading,
+          isFlowExpired,
+          isFlowRestarted,
+          flowExpiryRedirect,
+          components,
+          error,
+          meta: flowMeta,
+          additionalData,
+        }) =>
+          isFlowExpired ? (
+            <FlowExpired applicationName={flowMeta?.application?.name} redirect={flowExpiryRedirect} />
+          ) : isLoading && !components?.length ? (
             <Box sx={{display: 'flex', justifyContent: 'center', p: 3}}>
               <CircularProgress />
             </Box>
@@ -42,6 +56,11 @@ export default function SignInBox(): JSX.Element {
                   the SDK raises its expiry error against the request already on the wire, which would
                   otherwise flash an error the user cannot act on. Errors worth showing outlive the
                   request, since the flow clears them as each submission starts. */}
+              {isFlowRestarted && (
+                <Alert severity="info" sx={{mb: 2}}>
+                  {t('auth:flowExpired.restarted', 'Your session expired, so we started again.')}
+                </Alert>
+              )}
               {error && !isLoading && (
                 <Alert severity="error" sx={{mb: 2}}>
                   {error.message ??

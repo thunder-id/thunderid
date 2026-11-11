@@ -136,6 +136,8 @@ At runtime, a flow only moves forward, never backward. When a user submits a PRO
 Flow execution does not support going back to a previous step, either through a dedicated back control or the browser's back button.
 :::
 
+A flow execution expires a set time after it starts, whatever step it is on. The time is set per flow type, as `<type>.expirySeconds` in [Flow Defaults](../../../deployment/configuration#flow-defaults). A sign-in started by a CIBA request expires with that request instead, after the `expires_in` its response returns. A response that waits for the user (`flowStatus: INCOMPLETE`) returns the seconds left as `expiresIn`. A request for an expired execution is refused with `FES-1004`, and the user has to start again from the application.
+
 ## Interceptors
 
 A flow definition can declare an optional `interceptors` array to attach cross-cutting operations that run at defined lifecycle points (before or after a request, or around individual nodes). Interceptors are declared at the flow level and apply across nodes based on their mode and scope.

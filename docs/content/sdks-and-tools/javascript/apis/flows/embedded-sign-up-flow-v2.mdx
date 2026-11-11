@@ -68,6 +68,7 @@ if (step2.flowStatus === EmbeddedSignUpFlowStatusV2.Complete) {
 | `type` | `EmbeddedSignUpFlowTypeV2` | `View` or `Redirection` |
 | `data` | `EmbeddedFlowResponseDataV2` | Component tree or redirect data |
 | `challengeToken` | `string` | Present when a verification step is required |
+| `expiresIn` | `number` | Present when `flowStatus` is `Incomplete`. How many seconds the execution stays valid |
 | `redirectUrl` | `string` | Present when `type` is `Redirection` |
 | `error` | `FlowExecutionError` | Present when `flowStatus` is `Error`. Contains `code`, `message`, and `description` |
 

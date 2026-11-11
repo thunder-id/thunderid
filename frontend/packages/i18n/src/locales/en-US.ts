@@ -2799,6 +2799,13 @@ const translations = {
     signUpSuccess: 'Account created successfully',
     passwordResetSent: 'Password reset link sent to your email',
     passwordResetSuccess: 'Password reset successfully',
+    'flowExpired.title': 'Session expired',
+    'flowExpired.description': 'Please go back to {{application}} and try again.',
+    'flowExpired.redirecting': 'Taking you back to {{application}} in {{seconds}}s.',
+    'flowExpired.backToApplication': 'Back to <name>{{application}}</name> now',
+    'flowExpired.returnToApplication': 'Back to <name>{{application}}</name>',
+    'flowExpired.theApplication': 'the application',
+    'flowExpired.restarted': 'Your session expired, so we started again.',
   },
 
   // ============================================================================
