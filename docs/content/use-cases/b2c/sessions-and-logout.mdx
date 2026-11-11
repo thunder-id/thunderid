@@ -66,10 +66,34 @@ airport lounge also signs the customer out on their phone.
 A failed message never blocks the sign-out, so decide what your team does with the record of it. See
 [Build the Flows](../build-flows#build-the-sign-out-flow) and [Run & Observe](../operations).
 
+## Who Can End a Session Early
+
+A customer who loses a phone, or sees a sign-in they do not recognize, needs that session gone before its clocks run
+out. Decide who can end it:
+
+- **Support** ends it from the customer's **Sessions** tab in the Console. This needs the `system` permission, so give it
+  only to the staff who already manage customer accounts.
+- **The customer** ends it from your account page. Build the page on the `/users/me/sessions` API, with a way to sign
+  out of every other device. The customer's own access token is enough, and it reaches only their own sessions.
+
+Offer both in a consumer product. Support covers a customer who cannot sign in to reach the account page, such as one
+whose second factor was on the stolen phone. Self-service covers everyone else without a support ticket.
+
+Revoking a session runs the same path as sign-out, so back-channel logout reaches the applications that shared it. The
+tokens those applications received are revoked as well, but only from each application's latest grant. A refresh token
+from an earlier grant still works, and gets new access tokens until it expires. Short access tokens do not close that
+gap, so keep refresh tokens short-lived too. See
+[Manage Sessions](../../../guides/users/manage-sessions).
+
+An API that verifies access tokens locally does not see the revocation, and accepts a revoked token until it expires.
+An API that calls the introspection endpoint sees it on the next request. See
+[Session and Token Strategy](../tokens-and-apis#session-and-token-strategy).
+
 ## Expected Outcome
 
-One sign-in opens the applications you grouped together and no others, and it runs out on two clocks. When it ends,
-every application that shared it is told directly.
+One sign-in opens the applications you grouped together and no others, and it runs out on two clocks. Support or the
+customer can end it sooner. When it is signed out or revoked, every application that shared it and has a back-channel
+logout URI is told directly. A session that runs out on its own sends no message.
 
 ## Continue Designing Your Architecture
 
