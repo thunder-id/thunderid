@@ -116,6 +116,64 @@ sections:
         }
 
         export default MyComponent
+    - group: Hooks
+      kind: hook
+      name: useFlowVariables()
+      description: >-
+        The `useFlowVariables` hook loads the variables a flow declares for an organization unit, the values the unit
+        has set, and what the unit may do with each variable. It also saves the unit's overrides. It is the data layer
+        behind `<FlowVariablesForm />`, for building the form with your own UI.
+      rowsLabel: Returns
+      rows:
+      - name: definitions
+        type: FlowVariableDefinition[]
+        description: The variables the flow declares for the organization unit
+      - name: overrides
+        type: FlowVariableValues
+        description: The values the unit has set. A variable it has not set is absent, and its default applies
+      - name: overlay
+        type: ResolvedOverlay | undefined
+        description: What the unit may do with each variable
+      - name: connections
+        type: ConnectionInstance[]
+        description: The connections a CONNECTION_SELECT variable can take
+      - name: isLoaded
+        type: boolean
+        description: Whether the variables, the unit's values, and its rules have all arrived
+      - name: isSaving
+        type: boolean
+        description: Whether a save is in flight
+      - name: error
+        type: Error | null
+        description: Why the variables could not be loaded
+      - name: save
+        type: "(values: FlowVariableValues) => Promise<FlowVariables | undefined>"
+        description: Replaces the unit's overrides. Never rejects, so read saveError to handle a failure
+      - name: saveError
+        type: Error | null
+        description: Why the last save failed
+      example: |-
+        import { useFlowVariables, BaseFlowVariables } from '@thunderid/react'
+
+        function FlowVariables({ flowId, ouId }) {
+          const { definitions, connections, overlay, overrides, isLoaded, isSaving, save, saveError, error } =
+            useFlowVariables({ flowId, ouId })
+
+          if (error) return <p>Could not load the variables.</p>
+          if (!isLoaded) return <p>Loading...</p>
+
+          return (
+            <BaseFlowVariables
+              variables={definitions}
+              connections={connections}
+              overlay={overlay}
+              initialValues={overrides}
+              isSubmitting={isSaving}
+              error={saveError?.message ?? null}
+              onSubmit={(values, changed) => save(changed)}
+            />
+          )
+        }
     - group: Contexts
       kind: context
       name: <ThunderIDProvider />
@@ -637,6 +695,96 @@ sections:
         }
 
         export default ProfilePage
+    - group: Components
+      kind: component
+      name: <SharedFlowList />
+      description: >-
+        The `SharedFlowList` component lists the flows shared with an organization unit, the flows it owns, or both.
+        Selecting a flow reports it through `onSelect`, so your application decides what to open.
+      rowsLabel: Props
+      rows:
+      - name: ouId
+        type: string
+        tag: required
+        description: The organization unit to list the flows of
+      - name: ownership
+        type: "'shared' | 'owned' | 'all'"
+        tag: optional
+        description: Which flows to list. Defaults to shared
+      - name: flowType
+        type: string
+        tag: optional
+        description: Restricts the list to one flow type, for example AUTHENTICATION
+      - name: limit
+        type: number
+        tag: optional
+        description: Page size. Defaults to 20
+      - name: onSelect
+        type: "(flow: ManagedFlow) => void"
+        tag: optional
+        description: Called when a flow is chosen. Rows are selectable only when set
+      - name: selectedFlowId
+        type: string
+        tag: optional
+        description: Identifier of the flow to highlight
+      example: |-
+        import { useState } from 'react'
+        import { SharedFlowList, FlowVariablesForm } from '@thunderid/react'
+
+        function DelegatedAdmin({ ouId }) {
+          const [selection, setSelection] = useState()
+          const flowId = selection?.ouId === ouId ? selection.flowId : undefined
+
+          return (
+            <>
+              <SharedFlowList ouId={ouId} selectedFlowId={flowId} onSelect={(flow) => setSelection({ ouId, flowId: flow.id })} />
+              {flowId && <FlowVariablesForm key={`${ouId}:${flowId}`} flowId={flowId} ouId={ouId} />}
+            </>
+          )
+        }
+    - group: Components
+      kind: component
+      name: <FlowVariablesForm />
+      description: >-
+        The `FlowVariablesForm` component lets a delegated admin override the variables a flow declares for their
+        organization unit. It loads the variables the flow shares with the unit and the values the unit has set, shows
+        them as a form, and saves the values that differ from their defaults.
+      rowsLabel: Props
+      rows:
+      - name: flowId
+        type: string
+        tag: required
+        description: Identifier of the flow whose variables are configured
+      - name: ouId
+        type: string
+        tag: required
+        description: The organization unit the overrides belong to
+      - name: onSaved
+        type: "(values: FlowVariableValues) => void"
+        tag: optional
+        description: Called with the saved overrides
+      - name: onCancel
+        type: () => void
+        tag: optional
+        description: Called when the admin selects Cancel
+      - name: ouName
+        type: string
+        tag: optional
+        description: The name of the organization unit, used in the notice and the connection hint
+      - name: showScopeNotice
+        type: boolean
+        tag: optional
+        description: Shows a notice that the settings apply to the organization unit only
+      - name: readOnly
+        type: boolean
+        tag: optional
+        description: Shows the variables without letting them be changed
+      example: |-
+        import { FlowVariablesForm } from '@thunderid/react'
+
+        function FlowSettings({ flowId, ouId }) {
+          return <FlowVariablesForm flowId={flowId} ouId={ouId} onSaved={() => alert('Saved')} />
+        }
 
   - type: quickstart
     id: quickstart

@@ -146,6 +146,26 @@ An `AuthorizationDetailType` has the same fields, plus `id`, `version`, and `isR
 
 To read the types a client may request without an access token, use [`getSupportedAuthorizationDetailsTypes()`](../thunderid-javascript-client#getsupportedauthorizationdetailstypesconfig).
 
+## Flows and Connections
+
+These functions read the flows and connections an organization unit works with. Pass `ouId` to scope a request to one organization unit, which is what a delegated admin needs.
+
+| Function | Request | Returns |
+|----------|---------|---------|
+| `getFlows({flowType, limit, offset, ouId})` | `GET /flows?filter=&flowType=&limit=&offset=` | `ManagedFlowListResponse` |
+| `getFlow({flowId, ouId})` | `GET /flows/{flowId}?ouId=` | `ManagedFlowDefinition` |
+| `getConnections({category, type, limit, offset, ouId})` | `GET /connections?filter=&category=&limit=&offset=` | `ConnectionListResponse`, or `ConnectionSummary[]` when `type` is set |
+| `getFlowVariables({flowId, ouId})` | | `FlowVariables` |
+| `updateFlowVariables({flowId, ouId, variables})` | | `FlowVariables` |
+| `getFlowOverlayRules({flowId, ouId})` | | The resolved overlay: what the unit may do with each variable |
+
+`ouId` changes each function as follows:
+
+- `getFlows` and `getConnections` list the flows or connections the unit owns, followed by the ones shared with it, instead of every one the caller can see. The unit is sent as the filter `ouId eq "<id>"`. Each flow in the list carries `isOwnedByOU`, which is `false` for a flow shared with the unit. `getConnections` applies `ouId` only to the listing across every type.
+- `getFlow` returns the flow as the unit sees it. A flow shared with the unit comes back as its `variables` only. Leave `ouId` out for the whole definition when the caller can read the owning unit's flow. A caller confined to a unit the flow was shared with gets the shared view, without `nodes`, even without `ouId`.
+
+`updateFlowVariables` replaces the values the unit holds, so a variable left out of `variables` returns to its default. The server validates every value before it writes any. See [Flow Variables](../flow-variables) for helpers that read the definitions and validate values.
+
 ## Management API on a Separate Host
 
 When the management API runs on a different host from the authorization server, pass the collection URL as `url`. To keep the URL in configuration instead, set `endpoints.applications`, `endpoints.users`, `endpoints.agents`, or `endpoints.authorizationDetailTypes` and read it with `resolveResourceEndpoint`, as the React hooks do. See [Configuration](../configuration#discovery-and-endpoint-parameters).
@@ -167,6 +187,8 @@ await deleteUser({
 | `ApplicationQueryKeys` | `APPLICATIONS` (`'applications'`), `APPLICATION` (`'application'`) |
 | `UserQueryKeys` | `USERS` (`'users'`), `USER` (`'user'`) |
 | `AgentQueryKeys` | `AGENTS` (`'agents'`), `AGENT` (`'agent'`) |
+
+Flow resources have their own keys, described in [Flow Variables](../flow-variables#cache-keys).
 
 ## Error Handling
 
