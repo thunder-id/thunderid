@@ -560,6 +560,19 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_Success() {
 	suite.Nil(err)
 }
 
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_UnassignableKind() {
+	agent := personalAgent("agent-1", testOwnerOU)
+	suite.ownedRole("role1")
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).
+		Return([]providers.Entity{agent}, nil)
+
+	err := suite.service.AddAssignments(context.Background(), "role1", "",
+		[]RoleAssignment{{ID: "agent-1", Type: AssigneeTypeAgent}})
+
+	suite.Equal(&ErrorPersonalAgentNotAssignable, err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // ownedRole stubs a role owned by testOwnerOU.
 func (suite *RoleAssignmentServiceTestSuite) ownedRole(id string) *mock.Call {
 	return suite.mockStore.On("GetRole", mock.Anything, id).Return(RoleWithPermissions{ID: id, OUID: testOwnerOU}, nil)
@@ -1536,6 +1549,12 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_CarriesTheMa
 
 	suite.Require().Nil(err)
 	suite.Equal([]string{"", testPolicyID}, []string{list.Assignments[0].PolicyID, list.Assignments[1].PolicyID})
+}
+
+// personalAgent is a personal agent entity owned by the given organization unit.
+func personalAgent(id, ouID string) providers.Entity {
+	return providers.Entity{ID: id, Category: providers.EntityCategoryAgent, OUID: ouID,
+		SystemAttributes: json.RawMessage(`{"kind":"personal-assistant"}`)}
 }
 
 func TestResolveAppDisplay_AppUsesSystemAttributesName(t *testing.T) {

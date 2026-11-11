@@ -499,6 +499,25 @@ func (suite *RoleServiceTestSuite) TestCreateRole_Success() {
 		"rs1", []string{"perm1", "perm2"})
 }
 
+func (suite *RoleServiceTestSuite) TestCreateRole_UnassignableKind() {
+	agent := personalAgent("agent-1", "ou1")
+	request := RoleCreationDetail{
+		Name:        "Test Role",
+		OUID:        "ou1",
+		Assignments: []RoleAssignment{{ID: "agent-1", Type: AssigneeTypeAgent}},
+	}
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+		Return(oupkg.OrganizationUnit{ID: "ou1", Handle: "default"}, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).
+		Return([]providers.Entity{agent}, nil)
+
+	result, err := suite.service.CreateRole(context.Background(), request)
+
+	suite.Nil(result)
+	suite.Equal(&ErrorPersonalAgentNotAssignable, err)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateRole", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *RoleServiceTestSuite) TestCreateRole_ValidationErrors() {
 	testCases := []struct {
 		name    string
