@@ -160,7 +160,9 @@ func (ts *ControlPlaneTestSuite) sharedListUser(userType, ouID string) string {
 
 func (ts *ControlPlaneTestSuite) sharedListApplication(ouID string) string {
 	ts.T().Helper()
-	id, err := testutils.CreateApplication(testutils.Application{Name: unique("Shared List App"), OUID: ouID})
+	id, err := testutils.CreateApplication(testutils.Application{
+		Name: unique("Shared List App"), OUID: ouID, ProjectID: defaultProjectID,
+	})
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteApplication(id)) })
 	return id
@@ -178,10 +180,11 @@ func (ts *ControlPlaneTestSuite) sharedListFlow(ouID string) string {
 	ts.T().Helper()
 	handle := unique("shared-list-flow")
 	id, err := testutils.CreateFlow(testutils.Flow{
-		Name:     handle,
-		FlowType: "AUTHENTICATION",
-		Handle:   handle,
-		OUID:     ouID,
+		Name:      handle,
+		FlowType:  "AUTHENTICATION",
+		Handle:    handle,
+		OUID:      ouID,
+		ProjectID: defaultProjectID,
 		Nodes: []map[string]interface{}{
 			{"id": "start", "type": "START", "onSuccess": "auth_assert"},
 			{"id": "auth_assert", "type": "TASK_EXECUTION",

@@ -11,7 +11,7 @@ import {Alert, Box, Button, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateFlow from '../api/useCreateFlow';
 import useGetFlowsMeta from '../api/useGetFlowsMeta';
 import useUpdateFlow from '../api/useUpdateFlow';
@@ -36,7 +36,18 @@ const FlowCreateStep = {
 
 type FlowCreateStep = (typeof FlowCreateStep)[keyof typeof FlowCreateStep];
 
-export default function FlowCreatePage(): JSX.Element {
+/**
+ * Props for the {@link FlowCreatePage} component.
+ */
+export interface FlowCreatePageProps {
+  /**
+   * Whether a flow is created in a project only. When set, the page returns to the list outside a selected
+   * project, since a flow created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function FlowCreatePage({createInProjectsOnly = false}: FlowCreatePageProps): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const flowRoutes = useFlowRoutes();
@@ -268,6 +279,10 @@ export default function FlowCreatePage(): JSX.Element {
     }
     return null;
   };
+
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={flowRoutes.flows.list()} replace />;
+  }
 
   if (currentStep === FlowCreateStep.ORGANIZATION_UNIT) {
     return (

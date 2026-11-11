@@ -20,7 +20,9 @@ func (ts *ControlPlaneTestSuite) TestFlowAndServerConfigChangesAreAudited() {
 	ts.Require().NoError(reader.Reset())
 
 	handle := unique("cp-audit-flow")
-	flowID, err := testutils.CreateIsolatedAuthFlow(handle)
+	flow := testutils.IsolatedAuthFlow(handle)
+	flow.ProjectID = defaultProjectID
+	flowID, err := testutils.CreateFlow(flow)
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteFlow(flowID) })
 	status, raw := ts.call(http.MethodPost, "/flows/"+flowID+"/restore", map[string]any{"version": 1}, nil)

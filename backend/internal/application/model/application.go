@@ -17,7 +17,7 @@ type ApplicationDTO struct {
 	ID          string          `json:"id,omitempty" jsonschema:"Application ID. Auto-generated unique identifier."`
 	OUID        string          `json:"ouId,omitempty" jsonschema:"Organization unit ID. The OU this application belongs to. Defaults to the system OU."`
 	OUHandle    string          `json:"ouHandle,omitempty" jsonschema:"Organization unit handle. Resolved to an ID by the service layer."`
-	ProjectID   string          `json:"projectId,omitempty" jsonschema:"Project ID. Creating an application without one where projects are served is deprecated. Places the application in the project. Its organization unit must belong to the project."`
+	ProjectID   string          `json:"projectId,omitempty" jsonschema:"Project ID, required where projects are served. Places the application in the project. Its organization unit must belong to the project."`
 	Name        string          `json:"name" jsonschema:"Application name."`
 	Description string          `json:"description,omitempty" jsonschema:"Optional description of the application's purpose or functionality."`
 	Type        ApplicationType `json:"type,omitempty" jsonschema:"Application type. Canonical platform/client class: browser, fullstack, mobile, m2m, mcp, or custom. Required at creation and immutable."`

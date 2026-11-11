@@ -4420,23 +4420,18 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_DefaultOU() {
 func (suite *ServiceTestSuite) TestCheckProjectGiven() {
 	for name, tc := range map[string]struct {
 		projectID       string
-		servesProjects  bool
 		projectRequired bool
 		expected        *tidcommon.ServiceError
 	}{
-		"a project":                  {projectID: testProjectID, servesProjects: true, projectRequired: true},
-		"projects not served":        {},
-		"a project not yet required": {servesProjects: true},
-		"a project required":         {servesProjects: true, projectRequired: true, expected: &ErrorProjectRequired},
+		"a project":           {projectID: testProjectID, projectRequired: true},
+		"no project required": {},
+		"a missing project":   {projectRequired: true, expected: &ErrorProjectRequired},
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
-			if tc.servesProjects {
-				service.projectValidator = newProjectOUValidatorMock(suite.T())
-			}
 			service.projectRequired = tc.projectRequired
 
-			assert.Equal(suite.T(), tc.expected, service.checkProjectGiven(context.Background(), tc.projectID))
+			assert.Equal(suite.T(), tc.expected, service.checkProjectGiven(tc.projectID))
 		})
 	}
 }

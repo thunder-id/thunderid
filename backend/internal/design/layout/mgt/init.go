@@ -11,6 +11,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
@@ -28,7 +30,7 @@ func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface, projectCheck
 
 	// A deployment that serves projects keeps every layout in one, whether it is loaded from a file or
 	// created through the API.
-	requireProject := projectChecker != nil
+	requireProject := projectChecker != nil && projectscope.ProjectRequired(security.ResourceTypeDesign)
 
 	// Step 1: Initialize store based on configuration
 	layoutMgtStore, err := initializeStore(requireProject)

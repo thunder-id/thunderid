@@ -20,12 +20,13 @@ func (ts *ControlPlaneTestSuite) TestApplicationChangesAreAudited() {
 	name := unique("cp-audit-app")
 	clientSecret := unique("CpAuditSecret")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID: ts.ouID, Name: name, ClientID: unique("cp-audit-client"), ClientSecret: clientSecret,
+		ProjectID: defaultProjectID, Name: name, ClientID: unique("cp-audit-client"),
+		ClientSecret: clientSecret,
 	})
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
 	status, raw := ts.call(http.MethodPut, "/applications/"+appID, map[string]any{
-		"ouId": ts.ouID, "name": name, "description": "Updated on the Control Plane",
+		"name": name, "description": "Updated on the Control Plane",
 	}, nil)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 	ts.Require().NoError(testutils.DeleteApplication(appID))

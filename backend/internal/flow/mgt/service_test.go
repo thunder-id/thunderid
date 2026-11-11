@@ -5063,32 +5063,9 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_ProjectSystemOUFailure() {
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
-// A flow without a project is still created where projects are served, until a project is required.
-func (s *FlowMgtServiceTestSuite) TestCreateFlow_WithoutProject_AllowedWhileNotRequired() {
-	svc := s.serviceWithProjects(newProjectOUValidatorMock(s.T()))
-	s.False(svc.projectRequired)
-	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
-	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
-		providers.FlowTypeAuthentication).Return(false, nil)
-	s.mockStore.EXPECT().CreateFlow(mock.Anything, mock.Anything, mock.MatchedBy(func(def *FlowDefinition) bool {
-		return def.OUID == testOUID && def.ProjectID == ""
-	})).Return(&providers.CompleteFlowDefinition{OUID: "ou-1"}, nil)
-
-	result, err := svc.CreateFlow(context.Background(), &FlowDefinition{
-		OUID:     "ou-1",
-		Handle:   "test-handle",
-		Name:     "Test Flow",
-		FlowType: providers.FlowTypeAuthentication,
-		Nodes:    validFlowNodes(),
-	})
-
-	s.Nil(err)
-	s.NotNil(result)
-}
-
 func (s *FlowMgtServiceTestSuite) TestCreateFlow_WithoutProject_RefusedWhenRequired() {
 	svc := s.serviceWithProjects(newProjectOUValidatorMock(s.T()))
-	svc.projectRequired = true
+	s.True(svc.projectRequired)
 	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
 
 	result, err := svc.CreateFlow(context.Background(), &FlowDefinition{
