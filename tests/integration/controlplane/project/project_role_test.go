@@ -147,6 +147,21 @@ func (ts *ProjectAPITestSuite) TestExportedRoleKeepsItsProject() {
 	ts.Equal(created.ID, imported.ProjectID)
 }
 
+// A project that still has a role is not deleted until the role is gone.
+func (ts *ProjectAPITestSuite) TestDeleteProjectWithRoleIsRefused() {
+	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Busy"}`, ts.handle("role-busy")))
+	role := ts.createRole(ts.roleBody("busy", `"projectId":%q`, created.ID))
+
+	status, body := ts.do(http.MethodDelete, "/projects/"+created.ID, "")
+	ts.Equal(http.StatusConflict, status, body)
+	ts.Equal("PRJ-1013", codeOf(ts.T(), body))
+
+	status, body = ts.do(http.MethodDelete, "/roles/"+role.ID, "")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	status, body = ts.do(http.MethodDelete, "/projects/"+created.ID, "")
+	ts.Equal(http.StatusNoContent, status, body)
+}
+
 // roleBody builds a role request with a unique name and no permissions, with the given placement fields
 // spliced in.
 func (ts *ProjectAPITestSuite) roleBody(name, placement string, args ...interface{}) string {

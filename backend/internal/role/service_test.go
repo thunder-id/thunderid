@@ -4167,3 +4167,32 @@ func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RequiresTheDelete
 		})
 	}
 }
+
+func (suite *RoleServiceTestSuite) TestProjectHasRoles() {
+	for name, tc := range map[string]struct {
+		count    int
+		err      error
+		expected bool
+		svcErr   bool
+	}{
+		"roles":                    {count: 2, expected: true},
+		"no roles":                 {count: 0, expected: false},
+		"more than can be counted": {err: errResultLimitExceededInCompositeMode, expected: true},
+		"store failure":            {err: errors.New("db fail"), svcErr: true},
+	} {
+		suite.Run(name, func() {
+			suite.mockStore.On("GetRoleListCountByProject", mock.Anything, testProjectID, "").
+				Return(tc.count, tc.err).Once()
+
+			has, svcErr := suite.service.ProjectHasRoles(context.Background(), testProjectID)
+
+			if tc.svcErr {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.expected, has)
+		})
+	}
+}
