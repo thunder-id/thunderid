@@ -26,11 +26,13 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/group"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -47,6 +49,7 @@ type authAssertExecutor struct {
 	entityProvider      entityprovider.EntityProviderInterface
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
+	groupService        group.GroupServiceInterface
 	entityTypeService   entitytype.EntityTypeServiceInterface
 	resourceService     providers.ResourceServerProvider
 	accessGuard         *accessGuard
@@ -65,6 +68,7 @@ func newAuthAssertExecutor(
 	entityProvider entityprovider.EntityProviderInterface,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	accessGuard *accessGuard,
@@ -88,6 +92,7 @@ func newAuthAssertExecutor(
 		entityProvider:      entityProvider,
 		attributeCacheSvc:   attributeCacheSvc,
 		roleService:         roleService,
+		groupService:        groupService,
 		entityTypeService:   entityTypeService,
 		resourceService:     resourceService,
 		accessGuard:         accessGuard,
@@ -303,7 +308,9 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 		return nil
 	}
 
-	if len(resolvedAttributes) == 0 {
+	// Cache the session-only grants with the attributes, so a refresh can re-check scopes against them.
+	sessionGrants := a.getSessionGrants(ctx)
+	if len(resolvedAttributes) == 0 && sessionGrants == nil {
 		return nil
 	}
 
@@ -324,6 +331,7 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 		TTLSeconds:      ttlSeconds,
 		SubjectID:       entityRef.EntityID,
 		SubjectCategory: entityRef.EntityCategory,
+		SessionGrants:   sessionGrants,
 	}
 	result, creationErr := a.attributeCacheSvc.CreateAttributeCache(ctx.Context, attributeCache)
 	if creationErr != nil {
@@ -632,6 +640,7 @@ func (a *authAssertExecutor) resolveUserAttributes(
 	standardClaims := oauth2const.GetStandardClaims()
 
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
+	sessionOnlyAttributes := attributesSessionOnly(ctx)
 	for _, attr := range requestedAttributes {
 		// Skip attributes that are handled separately
 		if attr == oauth2const.UserAttributeGroups ||
@@ -654,6 +663,14 @@ func (a *authAssertExecutor) resolveUserAttributes(
 		if val, exists := ctx.RuntimeData[attr]; exists && val != "" {
 			attributes[attr] = val
 			continue
+		}
+		// A connection that keeps attributes to the session never updates the stored profile, so the
+		// provider's claim wins over the stored value. The claim keeps its type, as the stored value would.
+		if sessionOnlyAttributes && extIdentity != nil {
+			if val, exists := extIdentity.Claims[attr]; exists && val != nil && val != "" {
+				attributes[attr] = val
+				continue
+			}
 		}
 		// Check for the attribute in attributes fetched from user/authentication provider
 		if fetchedAttributes != nil {
@@ -740,13 +757,18 @@ func (a *authAssertExecutor) appendComputedAttributes(
 		if err != nil {
 			return err
 		}
+		mappedGroups, mappedRoleIDs, err := a.getSessionOnlyMappedGroupsAndRoles(ctx, allGroups)
+		if err != nil {
+			return err
+		}
+		allGroups = append(allGroups, mappedGroups...)
 
 		if groupsRequested {
 			a.appendGroupsToClaims(allGroups, attributes)
 		}
 
 		if rolesRequested {
-			if err := a.appendRolesToClaims(ctx, allGroups, attributes, userID); err != nil {
+			if err := a.appendRolesToClaims(ctx, allGroups, mappedRoleIDs, attributes, userID); err != nil {
 				return err
 			}
 		}
@@ -876,6 +898,53 @@ func (a *authAssertExecutor) fetchAllUserGroups(
 	return groups, nil
 }
 
+// getSessionGrants returns the authorization the federated login granted without storing it, or nil
+// when there is none.
+func (a *authAssertExecutor) getSessionGrants(ctx *providers.NodeContext) *attributecache.SessionGrants {
+	// Cache the mapped groups without their ancestors, so a refresh resolves the ancestors they have then.
+	sessionGroupIDs, sessionRoleIDs := getSessionGroupAndRoleIDs(ctx.RuntimeData)
+	var groupIDs []string
+	if len(sessionGroupIDs) > 0 {
+		groupIDs = sysutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
+	}
+	grants := &attributecache.SessionGrants{
+		GroupIDs:    groupIDs,
+		RoleIDs:     sessionRoleIDs,
+		Permissions: extractMappedPermissions(ctx, a.logger),
+	}
+	if len(grants.GroupIDs) == 0 && len(grants.RoleIDs) == 0 && len(grants.Permissions) == 0 {
+		return nil
+	}
+	return grants
+}
+
+// getSessionOnlyMappedGroupsAndRoles returns the session-only mapped groups not in storedGroups, and
+// the session-only mapped role IDs.
+func (a *authAssertExecutor) getSessionOnlyMappedGroupsAndRoles(
+	ctx *providers.NodeContext, storedGroups []providers.EntityGroup,
+) ([]providers.EntityGroup, []string, error) {
+	mappedGroupIDs, mappedRoleIDs := getSessionGroupAndRoleIDs(ctx.RuntimeData)
+	mappedGroupIDs = slices.DeleteFunc(mappedGroupIDs, func(id string) bool {
+		return slices.ContainsFunc(storedGroups, func(g providers.EntityGroup) bool { return g.ID == id })
+	})
+	if len(mappedGroupIDs) == 0 {
+		return nil, mappedRoleIDs, nil
+	}
+
+	groups, svcErr := a.groupService.GetGroupsByIDs(ctx.Context, mappedGroupIDs)
+	if svcErr != nil {
+		return nil, nil, fmt.Errorf("failed to fetch mapped groups %v: %s",
+			mappedGroupIDs, svcErr.ErrorDescription.DefaultValue)
+	}
+	mappedGroups := make([]providers.EntityGroup, 0, len(groups))
+	for _, id := range mappedGroupIDs {
+		if g, ok := groups[id]; ok {
+			mappedGroups = append(mappedGroups, providers.EntityGroup{ID: g.ID, Name: g.Name, OUID: g.OUID})
+		}
+	}
+	return mappedGroups, mappedRoleIDs, nil
+}
+
 // appendGroupsToClaims appends pre-fetched user groups to the JWT claims.
 func (a *authAssertExecutor) appendGroupsToClaims(
 	groups []providers.EntityGroup, jwtClaims map[string]interface{}) {
@@ -889,9 +958,10 @@ func (a *authAssertExecutor) appendGroupsToClaims(
 	}
 }
 
-// appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution.
-func (a *authAssertExecutor) appendRolesToClaims(
-	ctx *providers.NodeContext, groups []providers.EntityGroup, jwtClaims map[string]interface{}, userID string) error {
+// appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution,
+// along with the roles of mappedRoleIDs. Mapped roles that no longer exist are skipped.
+func (a *authAssertExecutor) appendRolesToClaims(ctx *providers.NodeContext, groups []providers.EntityGroup,
+	mappedRoleIDs []string, jwtClaims map[string]interface{}, userID string) error {
 	logger := a.logger.With(log.MaskedString(log.LoggerKeyUserID, userID))
 
 	groupIDs := make([]string, 0, len(groups))
@@ -905,6 +975,18 @@ func (a *authAssertExecutor) appendRolesToClaims(
 			log.MaskedString(log.LoggerKeyUserID, userID),
 			log.Any("error", svcErr))
 		return errors.New("something went wrong while fetching user roles: " + svcErr.ErrorDescription.DefaultValue)
+	}
+
+	if len(mappedRoleIDs) > 0 {
+		mappedRoles, svcErr := a.roleService.GetRolesByIDs(ctx.Context, mappedRoleIDs)
+		if svcErr != nil {
+			return fmt.Errorf("failed to fetch mapped roles: %s", svcErr.ErrorDescription.DefaultValue)
+		}
+		for _, id := range mappedRoleIDs {
+			if mappedRole, ok := mappedRoles[id]; ok && !slices.Contains(roles, mappedRole.Name) {
+				roles = append(roles, mappedRole.Name)
+			}
+		}
 	}
 
 	if len(roles) > 0 {

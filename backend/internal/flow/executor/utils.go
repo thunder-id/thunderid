@@ -17,10 +17,12 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -336,13 +338,15 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
+// unions their targets, and stores the result as runtime data for later executors. The mapped groups,
+// with their ancestors, and roles that apply to the session only are stored too. Logs and continues
 // without the direct targets when they can't be resolved, rather than failing the federated login over
 // what is best-effort enrichment of its runtime state.
 func resolveAndSetMappedAuthorizationTargets(
 	ctx context.Context, execResp *providers.ExecutorResponse,
-	idpService providers.IDPProvider, idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{},
-	logger *log.Logger,
+	idpService providers.IDPProvider, entityProvider entityprovider.EntityProviderInterface,
+	groupService group.GroupServiceInterface, roleService role.RoleServiceInterface,
+	idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{}, logger *log.Logger,
 ) {
 	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
 	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
@@ -353,16 +357,65 @@ func resolveAndSetMappedAuthorizationTargets(
 		targets = append(targets, directTargets...)
 	}
 	setMappedAuthorizationTargets(execResp, targets)
+
+	// A declarative-only store can't hold the mapped groups or roles, so they apply to the session
+	// whatever the sync mode.
+	sessionOnly := syncConfiguration(idpDTO).GroupsAndRolesMode() == providers.SyncModeSessionOnly
+	roleIDs, groupIDs, _ := idp.SplitAuthorizationTargets(targets)
+	// Always written, even when empty, so a value from an earlier federated step doesn't carry over.
+	sessionGroupIDs, sessionRoleIDs := []string{}, []string{}
+	if len(groupIDs) > 0 && (sessionOnly || groupService.IsDeclarativeOnly()) {
+		sessionGroupIDs = expandMappedGroupAncestors(ctx, entityProvider, logger, groupIDs)
+	}
+	if len(roleIDs) > 0 && (sessionOnly || roleService.IsDeclarativeOnly()) {
+		sessionRoleIDs = roleIDs
+	}
+	execResp.RuntimeData[common.RuntimeKeySessionGroupIDs] = systemutils.StringifyStringArray(sessionGroupIDs, " ")
+	execResp.RuntimeData[common.RuntimeKeySessionRoleIDs] = systemutils.StringifyStringArray(sessionRoleIDs, " ")
 }
 
 // setSyncModes records the connection's sync modes as runtime data for later executors.
 func setSyncModes(execResp *providers.ExecutorResponse, idpDTO *providers.IDPDTO) {
-	var sync *providers.SyncConfiguration
-	if idpDTO.AttributeConfiguration != nil {
-		sync = idpDTO.AttributeConfiguration.Sync
-	}
+	sync := syncConfiguration(idpDTO)
 	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(sync.AttributesMode())
 	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(sync.GroupsAndRolesMode())
+}
+
+// syncConfiguration returns the connection's sync configuration, or nil when it has none.
+func syncConfiguration(idpDTO *providers.IDPDTO) *providers.SyncConfiguration {
+	if idpDTO.AttributeConfiguration == nil {
+		return nil
+	}
+	return idpDTO.AttributeConfiguration.Sync
+}
+
+// getSessionGroupAndRoleIDs returns the mapped groups, with their ancestors, and the mapped roles that
+// resolveAndSetMappedAuthorizationTargets recorded as applying to the session only.
+func getSessionGroupAndRoleIDs(runtimeData map[string]string) (groupIDs, roleIDs []string) {
+	return systemutils.ParseStringArray(runtimeData[common.RuntimeKeySessionGroupIDs], " "),
+		systemutils.ParseStringArray(runtimeData[common.RuntimeKeySessionRoleIDs], " ")
+}
+
+// expandMappedGroupAncestors adds each mapped group's ancestor groups. Best-effort, like the rest of
+// authorization mapping at login.
+func expandMappedGroupAncestors(
+	ctx context.Context, entityProvider entityprovider.EntityProviderInterface, logger *log.Logger,
+	mappedGroupIDs []string,
+) []string {
+	if entityProvider == nil {
+		return mappedGroupIDs
+	}
+	expanded := mappedGroupIDs
+	for _, groupID := range mappedGroupIDs {
+		ancestors, err := entityProvider.GetTransitiveGroupAncestors(ctx, groupID)
+		if err != nil {
+			logger.Warn(ctx, "Failed to resolve ancestors of a mapped group, continuing without them",
+				log.String("groupID", groupID), log.Error(err))
+			continue
+		}
+		expanded = systemutils.MergeUniqueStrings(expanded, ancestors)
+	}
+	return expanded
 }
 
 // setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)

@@ -404,6 +404,13 @@ const (
 	// RuntimeKeyGroupsAndRolesSyncMode holds the federated connection's effective groups and roles sync
 	// mode, read by provisioning to decide whether mapped groups and roles are stored on the new account.
 	RuntimeKeyGroupsAndRolesSyncMode = "groups_and_roles_sync_mode"
+	// RuntimeKeySessionGroupIDs holds the mapped groups, with their ancestors, that a federated login
+	// grants for the session only, because the connection keeps them to the session or the group
+	// store can't hold memberships.
+	RuntimeKeySessionGroupIDs = "session_group_ids"
+	// RuntimeKeySessionRoleIDs holds the mapped roles that a federated login grants for the session
+	// only, because the connection keeps them to the session or the role store can't hold assignments.
+	RuntimeKeySessionRoleIDs = "session_role_ids"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"

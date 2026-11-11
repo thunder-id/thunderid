@@ -659,7 +659,7 @@ Each resource type sets its own store mode in `<type>.store`, for example `group
 |------|----------|
 | `mutable` | Resources live in the database and are managed through the Console or API. |
 | `declarative` | Resources come only from declarative files and are read-only. Nothing is written to the database, including group and role memberships. |
-| `composite` | Declarative resources are read-only, and database resources are managed through the Console or API. |
+| `composite` | Declarative resources can't be changed or removed, and database resources are managed through the Console or API. Group and role memberships are stored in the database for both, so they stay writable. |
 
 If `group.store` or `role.store` isn't set, that type behaves as `declarative` when `declarative_resources.enabled` is `true`, and as `mutable` otherwise.
 

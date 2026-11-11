@@ -336,7 +336,7 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 	}
 	// A federated sign-in whose connection keeps attributes to the session can drop every claim, and
 	// still creates the user so the federated link is saved.
-	keepsFederatedToSession := category == entitytype.TypeCategoryUser && p.attributesSessionOnly(ctx) &&
+	keepsFederatedToSession := category == entitytype.TypeCategoryUser && attributesSessionOnly(ctx) &&
 		federatedIdentityFrom(ctx) != nil
 	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 &&
 		!hasRecordValues(ctx, category) && !keepsFederatedToSession {
@@ -885,14 +885,14 @@ func isEffectivelyRequired(attr entitytype.AttributeInfo, nodeInputs []providers
 }
 
 // attributesSessionOnly reports whether the federated connection keeps attributes to the session.
-func (p *provisioningExecutor) attributesSessionOnly(ctx *providers.NodeContext) bool {
+func attributesSessionOnly(ctx *providers.NodeContext) bool {
 	return ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] == string(providers.SyncModeSessionOnly)
 }
 
 // storesClaim reports whether a provider claim for attr is stored on the entity. A connection that
 // keeps attributes to the session stores only the claims for attributes the flow requires.
 func (p *provisioningExecutor) storesClaim(ctx *providers.NodeContext, attr entitytype.AttributeInfo) bool {
-	return !p.attributesSessionOnly(ctx) || isEffectivelyRequired(attr, ctx.NodeInputs)
+	return !attributesSessionOnly(ctx) || isEffectivelyRequired(attr, ctx.NodeInputs)
 }
 
 // isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs, the

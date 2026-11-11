@@ -85,6 +85,9 @@ type GroupServiceInterface interface {
 	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
 	ValidateRemoveGroupMembers(ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError
 	AddMemberToExistingGroups(ctx context.Context, member Member, groupIDs []string) *tidcommon.ServiceError
+	// IsDeclarativeOnly reports whether groups are kept only in declarative files, which hold no
+	// writable memberships.
+	IsDeclarativeOnly() bool
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -1941,6 +1944,12 @@ func (gs *groupService) AddMemberToExistingGroups(
 		return nil
 	}
 	return gs.AddMembersToGroups(ctx, []Member{member}, available)
+}
+
+// IsDeclarativeOnly reports whether groups are kept only in declarative files, which hold no writable
+// memberships.
+func (gs *groupService) IsDeclarativeOnly() bool {
+	return isGroupDeclarativeModeEnabled()
 }
 
 // convertGroupDAOToGroup constructs a Group from a GroupDAO.

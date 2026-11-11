@@ -6,14 +6,17 @@ package executor
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -31,6 +34,7 @@ type authorizationExecutor struct {
 	entityProvider  entityprovider.EntityProviderInterface
 	authnProvider   providers.AuthnProviderManager
 	resourceService providers.ResourceServerProvider
+	roleAssignment  role.RoleAssignmentServiceInterface
 	logger          *log.Logger
 }
 
@@ -43,6 +47,7 @@ func newAuthorizationExecutor(
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	resourceService providers.ResourceServerProvider,
+	roleAssignment role.RoleAssignmentServiceInterface,
 ) *authorizationExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authzLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))
@@ -56,6 +61,7 @@ func newAuthorizationExecutor(
 		entityProvider:  entityProvider,
 		authnProvider:   authnProvider,
 		resourceService: resourceService,
+		roleAssignment:  roleAssignment,
 		logger:          logger,
 	}
 }
@@ -133,13 +139,31 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		return nil, errors.Join(errors.New("failed to extract group IDs"), err)
 	}
 
-	// Fold in any roles, groups, and permissions the federated login mapped from IDP claims (via the
-	// authorization mapping, rule-based or direct).
-	mappedRoleIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-	mappedGroupIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
+	// Fold in the federated login's mapped permissions, and its mapped roles and groups that apply to
+	// the session only. The others are stored on the account.
+	sessionGroupIDs, mappedRoleIDs := getSessionGroupAndRoleIDs(ctx.RuntimeData)
+	groupIDs = utils.MergeUniqueStrings(groupIDs, sessionGroupIDs)
 	mappedPermissions := extractMappedPermissions(ctx, a.logger)
-	mappedGroupIDs = a.expandMappedGroupAncestors(ctx, mappedGroupIDs)
-	groupIDs = utils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
+
+	// A decided organization unit counts only the assignments made in it, so a session-only role counts
+	// only where it could be assigned. The filtered roles are kept for the session.
+	ouID := ctx.RuntimeData[ouIDKey]
+	if ouID != "" && len(mappedRoleIDs) > 0 && a.roleAssignment != nil {
+		assignable, svcErr := a.roleAssignment.FilterRolesAssignableInOU(ctx.Context, ouID, mappedRoleIDs)
+		if svcErr != nil {
+			if svcErr.Type == tidcommon.ServerErrorType {
+				return nil, fmt.Errorf("failed to filter the session roles to the organization unit: %s",
+					svcErr.Error.DefaultValue)
+			}
+			logger.Debug(ctx.Context, "Failed to filter the session roles to the organization unit",
+				log.String("error", svcErr.Error.DefaultValue))
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrAuthorizationFailed
+			return execResp, nil
+		}
+		mappedRoleIDs = assignable
+		execResp.RuntimeData[common.RuntimeKeySessionRoleIDs] = utils.StringifyStringArray(mappedRoleIDs, " ")
+	}
 
 	logger.Debug(ctx.Context, "Calling authorization service",
 		log.MaskedString(log.LoggerKeyUserID, userID),
@@ -168,7 +192,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	}
 	evaluationsRequest := a.buildAccessEvaluationsRequest(
 		userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID,
-		ctx.RuntimeData[ouIDKey], evaluationContext)
+		ouID, evaluationContext)
 	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context, evaluationsRequest)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
@@ -335,25 +359,4 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *providers.NodeContext, user
 
 	// No groups found
 	return []string{}, nil
-}
-
-// expandMappedGroupAncestors adds each mapped group's ancestor groups. Best-effort, like the rest of
-// authorization mapping at login.
-func (a *authorizationExecutor) expandMappedGroupAncestors(
-	ctx *providers.NodeContext, mappedGroupIDs []string,
-) []string {
-	if a.entityProvider == nil || len(mappedGroupIDs) == 0 {
-		return mappedGroupIDs
-	}
-	expanded := mappedGroupIDs
-	for _, groupID := range mappedGroupIDs {
-		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(ctx.Context, groupID)
-		if err != nil {
-			a.logger.Warn(ctx.Context, "Failed to resolve ancestors of a mapped group, continuing without them",
-				log.String("groupID", groupID), log.Error(err))
-			continue
-		}
-		expanded = utils.MergeUniqueStrings(expanded, ancestors)
-	}
-	return expanded
 }

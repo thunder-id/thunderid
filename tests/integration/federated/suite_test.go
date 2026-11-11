@@ -368,6 +368,8 @@ type FederatedMappingSuite struct {
 	githubIDPID     string
 	perTestAppIDs   []string
 	perTestFlowIDs  []string
+	syncClientID    string
+	syncResource    string
 
 	// Authorization mapping fixtures: an application whose auth flow runs an AuthorizationExecutor
 	// after the federated login, two resource servers (to prove a mapped permission stays scoped to
