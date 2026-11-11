@@ -21,6 +21,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -373,7 +374,9 @@ func validateAuthorizationCode(tokenRequest *model.TokenRequest,
 	// resources entirely or supply a subset of those previously authorized.
 	if len(code.Resources) > 0 && len(tokenRequest.Resources) > 0 {
 		for _, r := range tokenRequest.Resources {
-			if !slices.Contains(code.Resources, r) {
+			if !slices.ContainsFunc(code.Resources, func(c string) bool {
+				return sysutils.SameResourceIdentifier(c, r)
+			}) {
 				return &model.ErrorResponse{
 					Error:            constants.ErrorInvalidTarget,
 					ErrorDescription: "Resource parameter mismatch",

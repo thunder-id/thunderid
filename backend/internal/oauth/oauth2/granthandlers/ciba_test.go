@@ -634,6 +634,17 @@ func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_MatchingPollingResourc
 	suite.Nil(suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp))
 }
 
+// A polling resource with the same normal form as the stored binding ("/" after an origin) matches it.
+func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_EquivalentPollingResource() {
+	record := suite.pendingRecord()
+	record.Resources = []string{testCIBAResourceURL}
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	req := &model.TokenRequest{GrantType: string(providers.GrantTypeCIBA), ClientID: "client-1",
+		AuthReqID: "auth-req-1", Resources: []string{testCIBAResourceURL + "/"}}
+
+	suite.Nil(suite.handler.ValidateGrant(context.Background(), req, suite.oauthApp))
+}
+
 func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_MismatchedPollingResource() {
 	record := suite.pendingRecord()
 	record.Resources = []string{testCIBAResourceURL}

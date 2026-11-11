@@ -541,6 +541,42 @@ func (s *CompositeResourceStoreTestSuite) TestCheckResourceServerNameExists_NotF
 	s.dbStoreMock.AssertExpectations(s.T())
 }
 
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByEquivalentIdentifier_FromDB() {
+	s.dbStoreMock.On("GetResourceServerByEquivalentIdentifier", s.ctx, "https://api.example.com/").
+		Return(providers.ResourceServer{ID: "rs1", Identifier: "https://api.example.com"}, nil)
+
+	rs, err := s.compositeStore.GetResourceServerByEquivalentIdentifier(s.ctx, "https://api.example.com/")
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "rs1", rs.ID)
+	assert.False(s.T(), rs.IsReadOnly)
+	s.fileStoreMock.AssertNotCalled(s.T(), "GetResourceServerByEquivalentIdentifier")
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByEquivalentIdentifier_FromFile() {
+	s.dbStoreMock.On("GetResourceServerByEquivalentIdentifier", s.ctx, "https://api.example.com/").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	s.fileStoreMock.On("GetResourceServerByEquivalentIdentifier", s.ctx, "https://api.example.com/").
+		Return(providers.ResourceServer{ID: "rs-file", Identifier: "https://api.example.com"}, nil)
+
+	rs, err := s.compositeStore.GetResourceServerByEquivalentIdentifier(s.ctx, "https://api.example.com/")
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "rs-file", rs.ID)
+	assert.True(s.T(), rs.IsReadOnly)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerByEquivalentIdentifier_NotFound() {
+	s.dbStoreMock.On("GetResourceServerByEquivalentIdentifier", s.ctx, "https://api.example.com/").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	s.fileStoreMock.On("GetResourceServerByEquivalentIdentifier", s.ctx, "https://api.example.com/").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	_, err := s.compositeStore.GetResourceServerByEquivalentIdentifier(s.ctx, "https://api.example.com/")
+
+	assert.ErrorIs(s.T(), err, errResourceServerNotFound)
+}
+
 func (s *CompositeResourceStoreTestSuite) TestCheckResourceServerIdentifierExists_ExistsInFile() {
 	s.fileStoreMock.On("CheckResourceServerIdentifierExists", s.ctx, "test-id").Return(true, nil)
 

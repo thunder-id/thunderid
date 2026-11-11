@@ -5310,22 +5310,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_EquivalentIdenti
 	suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (suite *ResourceServiceTestSuite) TestNormalizeResourceIdentifier() {
-	for identifier, expected := range map[string]string{
-		"HTTPS://API.Example.com":            "https://api.example.com/",
-		"https://API.example.com:8443":       "https://api.example.com:8443/",
-		"https://API.example.com?q=A#F":      "https://api.example.com?q=A#F",
-		"https://User:Pass@API.example.com/": "https://User:Pass@API.example.com/",
-		"https://api.example.com/{a} b":      "https://api.example.com/{a} b",
-		"https://api.example.com/café":       "https://api.example.com/café",
-		"https://api.example.com/caf%C3%A9":  "https://api.example.com/caf%C3%A9",
-		"urn:Example:API":                    "urn:Example:API",
-		"Orders-API":                         "Orders-API",
-	} {
-		suite.Equal(expected, normalizeResourceIdentifier(identifier), identifier)
-	}
-}
-
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_InvalidMCPIdentifier() {
 	rs := providers.ResourceServer{
 		Name:       "my-rs",
@@ -5577,12 +5561,54 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IDConflict() {
 func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_NotFound() {
 	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "ident-1").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockStore.On("GetResourceServerByEquivalentIdentifier", mock.Anything, "ident-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
 
 	result, err := suite.service.GetResourceServerByIdentifier(context.Background(), "ident-1")
 
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorResourceServerNotFound.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_ExactMatchFirst() {
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com/").
+		Return(providers.ResourceServer{ID: "rs-exact", Identifier: "https://api.example.com/"}, nil)
+
+	result, err := suite.service.GetResourceServerByIdentifier(context.Background(), "https://api.example.com/")
+
+	suite.Nil(err)
+	suite.Equal("rs-exact", result.ID)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerByEquivalentIdentifier", mock.Anything,
+		mock.Anything)
+}
+
+// TestGetResourceServerByIdentifier_EquivalentIdentifier covers the resource indicator MCP clients send for a
+// server registered at an origin: "https://api.example.com/" finds "https://api.example.com".
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_EquivalentIdentifier() {
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com/").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockStore.On("GetResourceServerByEquivalentIdentifier", mock.Anything, "https://api.example.com/").
+		Return(providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
+
+	result, err := suite.service.GetResourceServerByIdentifier(context.Background(), "https://api.example.com/")
+
+	suite.Nil(err)
+	suite.Equal("rs-1", result.ID)
+	suite.Equal("https://api.example.com", result.Identifier)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_EquivalentLookupError() {
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "ident-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockStore.On("GetResourceServerByEquivalentIdentifier", mock.Anything, "ident-1").
+		Return(providers.ResourceServer{}, errors.New("database error"))
+
+	result, err := suite.service.GetResourceServerByIdentifier(context.Background(), "ident-1")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_StoreError() {

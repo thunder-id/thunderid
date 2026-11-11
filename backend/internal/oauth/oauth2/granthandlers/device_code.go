@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -88,7 +89,8 @@ func enforceDevicePollingResource(pollingResources, storedResources []string) *m
 	if len(pollingResources) == 0 {
 		return nil
 	}
-	if len(pollingResources) > 1 || len(storedResources) == 0 || pollingResources[0] != storedResources[0] {
+	if len(pollingResources) > 1 || len(storedResources) == 0 ||
+		!sysutils.SameResourceIdentifier(pollingResources[0], storedResources[0]) {
 		return &model.ErrorResponse{Error: constants.ErrorInvalidTarget,
 			ErrorDescription: "The resource parameter does not match the authorized resource"}
 	}

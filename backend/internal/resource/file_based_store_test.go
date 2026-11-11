@@ -834,6 +834,50 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	}
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerByEquivalentIdentifier() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-uri", &providers.ResourceServer{
+		ID:         "rs-uri",
+		Name:       "URI Server",
+		Identifier: "https://api.example.com",
+		OUID:       "ou1",
+		Delimiter:  ":",
+	}))
+
+	for identifier, found := range map[string]bool{
+		"https://api.example.com":    true,
+		"https://api.example.com/":   true,
+		"https://API.example.com/":   true,
+		"https://api.example.com/v1": false,
+		"http://api.example.com/":    false,
+	} {
+		rs, err := s.store.GetResourceServerByEquivalentIdentifier(s.ctx, identifier)
+		if found {
+			s.NoError(err, identifier)
+			s.Equal("rs-uri", rs.ID, identifier)
+		} else {
+			s.ErrorIs(err, errResourceServerNotFound, identifier)
+		}
+	}
+}
+
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerByEquivalentIdentifier_SeveralEquivalent() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	for id, identifier := range map[string]string{"rs-slash": "https://api.example.com/",
+		"rs-bare": "https://api.example.com"} {
+		s.Require().NoError(fileStore.Create(id, &providers.ResourceServer{
+			ID: id, Name: id, Identifier: identifier, OUID: "ou1", Delimiter: ":"}))
+	}
+
+	for range 10 {
+		rs, err := s.store.GetResourceServerByEquivalentIdentifier(s.ctx, "https://API.example.com")
+		s.Require().NoError(err)
+		s.Equal("rs-bare", rs.ID)
+	}
+}
+
 // TestServerActionsFromALoadedFile verifies that the actions a declarative file declares on the
 // resource server itself are served at the resource server level, filtered by kind, counted as
 // dependencies and accepted as permissions.

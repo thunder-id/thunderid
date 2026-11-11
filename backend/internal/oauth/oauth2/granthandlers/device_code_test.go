@@ -91,6 +91,10 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestEnforceDevicePollingResourceAc
 	suite.Nil(enforceDevicePollingResource(nil, nil))
 	suite.Nil(enforceDevicePollingResource(
 		[]string{"https://api.example.com"}, []string{"https://api.example.com"}))
+	suite.Nil(enforceDevicePollingResource(
+		[]string{"https://api.example.com/"}, []string{"https://api.example.com"}))
+	suite.NotNil(enforceDevicePollingResource(
+		[]string{"https://api.example.com/v2"}, []string{"https://api.example.com"}))
 }
 
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_PendingStates() {

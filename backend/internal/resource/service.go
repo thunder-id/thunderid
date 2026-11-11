@@ -538,7 +538,9 @@ func (rs *resourceService) getResourceServer(
 	return rs.withManaged(ctx, &resourceServer)
 }
 
-// GetResourceServerByIdentifier retrieves a resource server by its identifier.
+// GetResourceServerByIdentifier retrieves a resource server by its identifier. An identifier with the same
+// RFC 3986 normal form also matches, so a resource indicator of "https://api.example.com/" finds the server
+// registered as "https://api.example.com"; a server with the identifier exactly as given comes first.
 func (rs *resourceService) GetResourceServerByIdentifier(
 	ctx context.Context, identifier string,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
@@ -547,6 +549,9 @@ func (rs *resourceService) GetResourceServerByIdentifier(
 	}
 
 	resourceServer, err := rs.resourceStore.GetResourceServerByIdentifier(ctx, identifier)
+	if errors.Is(err, errResourceServerNotFound) {
+		resourceServer, err = rs.resourceStore.GetResourceServerByEquivalentIdentifier(ctx, identifier)
+	}
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
 			rs.logger.Debug(ctx, "Resource server not found for identifier",
@@ -894,8 +899,8 @@ func (rs *resourceService) updateResourceServer(
 		var identifierExists bool
 		var err error
 		// An equivalent spelling of the current identifier only conflicts with a server that has it exactly.
-		if normalizeResourceIdentifier(resourceServer.Identifier) ==
-			normalizeResourceIdentifier(existingResServer.Identifier) {
+		if utils.NormalizeResourceIdentifier(resourceServer.Identifier) ==
+			utils.NormalizeResourceIdentifier(existingResServer.Identifier) {
 			_, err = rs.resourceStore.GetResourceServerByIdentifier(ctx, resourceServer.Identifier)
 			identifierExists = err == nil
 			if errors.Is(err, errResourceServerNotFound) {
@@ -2207,24 +2212,6 @@ func validateHandle(handle string, delimiter string) *tidcommon.ServiceError {
 		}
 	}
 	return nil
-}
-
-// normalizeResourceIdentifier returns the RFC 3986 normal form used to compare resource server identifiers
-// for equivalence. A URL with a host and no user info has its scheme and host lowercased, and an http or https
-// URL that ends at the host gets "/". Every other character, and any other value, is kept as given.
-func normalizeResourceIdentifier(identifier string) string {
-	parsed, err := url.Parse(identifier)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
-		return identifier
-	}
-
-	authority, rest := identifier[len(parsed.Scheme)+len("://"):], ""
-	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
-		authority, rest = authority[:i], authority[i:]
-	} else if parsed.Scheme == "http" || parsed.Scheme == "https" {
-		rest = "/"
-	}
-	return parsed.Scheme + "://" + strings.ToLower(authority) + rest
 }
 
 // hasInvalidMCPIdentifier reports whether an MCP resource server identifier is not an http or https

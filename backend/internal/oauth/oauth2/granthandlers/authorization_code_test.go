@@ -1170,6 +1170,41 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ResourcePar
 	assert.Equal(suite.T(), []string{testResourceURL}, capturedAudiences)
 }
 
+// An MCP client sends the resource as new URL(resource).href, adding "/" to an origin the authorization
+// request bound as the registered identifier; the two name the same resource (RFC 3986 §6.2.3).
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ResourceParameterEquivalentURI() {
+	// Set up auth code with resource parameter
+	authCodeWithResource := suite.testAuthzCode
+	authCodeWithResource.Resources = []string{"https://mcp.example.com"}
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCodeWithResource, nil)
+
+	var capturedAudiences []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			capturedAudiences = ctx.Audiences
+			return true
+		})).Return(&model.TokenDTO{
+		Token:     "mock-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"read", "write"},
+		ClientID:  testClientID,
+	}, nil)
+
+	// Create token request with matching resource
+	tokenReqWithResource := *suite.testTokenReq
+	tokenReqWithResource.Resources = []string{"https://mcp.example.com/"}
+
+	result, err := suite.handler.HandleGrant(context.Background(), &tokenReqWithResource, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Len(suite.T(), capturedAudiences, 1)
+}
+
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_NoResourceParameter() {
 	// Auth code without resource parameter, token request also sends no resource.
 	// The token binds to the deployment's configured default resource server.

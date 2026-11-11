@@ -281,3 +281,23 @@ func (s *DefaultResourceServerTestSuite) TestExplicitResourceOverridesConfigured
 	s.Require().NoError(err)
 	s.Equal(defaultRSTestIdentifier, claims.Aud)
 }
+
+// TestEquivalentResourceBindsRegisteredIdentifier sends the resource the way MCP clients do for a server at
+// an origin, as new URL(resource).href with a trailing "/". It names the same resource as the registered
+// identifier (RFC 3986 §6.2.3), so the token binds to that resource server and carries its identifier.
+func (s *DefaultResourceServerTestSuite) TestEquivalentResourceBindsRegisteredIdentifier() {
+	for _, resource := range []string{defaultRSTestIdentifier + "/", strings.ToUpper(defaultRSTestIdentifier)} {
+		status, body := s.requestClientCredentials("", resource)
+		s.Require().Equal(http.StatusOK, status, "%s: %v", resource, body)
+
+		token, ok := body["access_token"].(string)
+		s.Require().True(ok, "response should contain an access token")
+		claims, err := testutils.DecodeJWT(token)
+		s.Require().NoError(err)
+		s.Equal(defaultRSTestIdentifier, claims.Aud, resource)
+	}
+
+	status, body := s.requestClientCredentials("", defaultRSTestIdentifier+"/v2")
+	s.Equal(http.StatusBadRequest, status)
+	s.Equal("invalid_target", body["error"])
+}

@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -31,6 +33,7 @@ type resourceStoreInterface interface {
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
 	CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error)
+	GetResourceServerByEquivalentIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error)
 	GetResourceServerByIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error)
 	CheckResourceServerHasDependencies(ctx context.Context, resServerID string) (bool, error)
 	IsResourceServerDeclarative(id string) bool
@@ -356,7 +359,7 @@ func (s *resourceStore) CheckResourceServerNameExists(ctx context.Context, name 
 func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error) {
 	var exists bool
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		normalized := normalizeResourceIdentifier(identifier)
+		normalized := utils.NormalizeResourceIdentifier(identifier)
 		lowered := strings.ToLower(normalized)
 		results, err := dbClient.QueryContext(ctx, queryCheckResourceServerIdentifierExists,
 			identifier, lowered, strings.TrimSuffix(lowered, "/"), s.scope(ctx))
@@ -369,7 +372,7 @@ func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context,
 			if !ok {
 				return fmt.Errorf("identifier field is missing or invalid")
 			}
-			if normalizeResourceIdentifier(existing) == normalized {
+			if utils.NormalizeResourceIdentifier(existing) == normalized {
 				exists = true
 				return nil
 			}
@@ -399,6 +402,57 @@ func (s *resourceStore) GetResourceServerByIdentifier(
 		return err
 	})
 	return rs, err
+}
+
+// GetResourceServerByEquivalentIdentifier retrieves the resource server whose identifier has the same
+// RFC 3986 normal form as the given one, such as "https://api.example.com" for "https://api.example.com/".
+func (s *resourceStore) GetResourceServerByEquivalentIdentifier(
+	ctx context.Context,
+	identifier string,
+) (providers.ResourceServer, error) {
+	var rs providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		normalized := utils.NormalizeResourceIdentifier(identifier)
+		lowered := strings.ToLower(normalized)
+		results, err := dbClient.QueryContext(ctx, queryGetResourceServerByEquivalentIdentifier,
+			identifier, lowered, strings.TrimSuffix(lowered, "/"), s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server by equivalent identifier: %w", err)
+		}
+
+		var candidates []providers.ResourceServer
+		for _, row := range results {
+			existing, ok := row["identifier"].(string)
+			if !ok {
+				return fmt.Errorf("identifier field is missing or invalid")
+			}
+			if utils.NormalizeResourceIdentifier(existing) == normalized {
+				candidate, err := buildResourceServerFromResultRow(row)
+				if err != nil {
+					return err
+				}
+				candidates = append(candidates, candidate)
+			}
+		}
+		if len(candidates) == 0 {
+			return errResourceServerNotFound
+		}
+		rs = firstEquivalentResourceServer(candidates)
+		return nil
+	})
+	return rs, err
+}
+
+// firstEquivalentResourceServer picks one of several resource servers whose identifiers are equivalent, which
+// data stored before equivalent identifiers were refused can hold: the lowest identifier in byte order, then the
+// lowest ID. The choice decides the permissions a token gets, so it must not depend on store or query order.
+func firstEquivalentResourceServer(candidates []providers.ResourceServer) providers.ResourceServer {
+	return slices.MinFunc(candidates, func(a, b providers.ResourceServer) int {
+		if c := strings.Compare(a.Identifier, b.Identifier); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
 }
 
 // CheckResourceServerHasDependencies checks if resource server has dependencies.

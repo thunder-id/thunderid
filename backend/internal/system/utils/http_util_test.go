@@ -1503,3 +1503,39 @@ func (suite *HTTPUtilTestSuite) TestExtendWriteDeadline() {
 	_, err = get(slow(0))
 	suite.Error(err, "a route that keeps the server's timeout should lose its connection")
 }
+
+func (suite *HTTPUtilTestSuite) TestNormalizeResourceIdentifier() {
+	for identifier, expected := range map[string]string{
+		"HTTPS://API.Example.com":            "https://api.example.com/",
+		"https://API.example.com:8443":       "https://api.example.com:8443/",
+		"https://API.example.com?q=A#F":      "https://api.example.com?q=A#F",
+		"https://User:Pass@API.example.com/": "https://User:Pass@API.example.com/",
+		"https://api.example.com/{a} b":      "https://api.example.com/{a} b",
+		"https://api.example.com/café":       "https://api.example.com/café",
+		"https://api.example.com/caf%C3%A9":  "https://api.example.com/caf%C3%A9",
+		"urn:Example:API":                    "urn:Example:API",
+		"Orders-API":                         "Orders-API",
+	} {
+		suite.Equal(expected, NormalizeResourceIdentifier(identifier), identifier)
+	}
+}
+
+func (suite *HTTPUtilTestSuite) TestSameResourceIdentifier() {
+	for _, tc := range []struct {
+		a, b string
+		same bool
+	}{
+		{"https://api.example.com", "https://api.example.com", true},
+		{"https://api.example.com", "https://api.example.com/", true},
+		{"https://API.example.com/", "https://api.example.com", true},
+		{"https://api.example.com:8443", "https://api.example.com:8443/", true},
+		{"https://api.example.com/mcp", "https://api.example.com/mcp/", false},
+		{"https://api.example.com/Orders", "https://api.example.com/orders", false},
+		{"https://api.example.com", "http://api.example.com", false},
+		{"Orders-API", "orders-api", false},
+		{"urn:example:api", "urn:example:api", true},
+	} {
+		suite.Equal(tc.same, SameResourceIdentifier(tc.a, tc.b), "%s vs %s", tc.a, tc.b)
+		suite.Equal(tc.same, SameResourceIdentifier(tc.b, tc.a), "%s vs %s", tc.b, tc.a)
+	}
+}

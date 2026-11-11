@@ -907,6 +907,139 @@ func (suite *ResourceStoreTestSuite) TestCheckResourceServerIdentifierExists() {
 	}
 }
 
+func (suite *ResourceStoreTestSuite) TestGetResourceServerByEquivalentIdentifier() {
+	row := func(id, identifier any) map[string]interface{} {
+		return map[string]interface{}{"id": id, "ou_id": "ou1", "name": id,
+			"identifier": identifier, "type": "CUSTOM", "properties": []byte(`{"delimiter":":"}`)}
+	}
+	testCases := []struct {
+		name         string
+		identifier   string
+		withSlash    string
+		withoutSlash string
+		results      []map[string]interface{}
+		queryErr     error
+		expectedID   string
+		notFound     bool
+		shouldErr    bool
+	}{
+		{
+			name:         "OriginWithSlashFindsOriginWithout",
+			identifier:   "https://api.example.com/",
+			withSlash:    "https://api.example.com/",
+			withoutSlash: "https://api.example.com",
+			results:      []map[string]interface{}{row("rs1", "https://api.example.com")},
+			expectedID:   "rs1",
+		},
+		{
+			name:         "HostCase",
+			identifier:   "https://API.example.com",
+			withSlash:    "https://api.example.com/",
+			withoutSlash: "https://api.example.com",
+			results:      []map[string]interface{}{row("rs1", "https://api.example.com/")},
+			expectedID:   "rs1",
+		},
+		{
+			name:         "PathCaseIsNotEquivalent",
+			identifier:   "https://api.example.com/Orders",
+			withSlash:    "https://api.example.com/orders",
+			withoutSlash: "https://api.example.com/orders",
+			results:      []map[string]interface{}{row("rs1", "https://api.example.com/orders")},
+			notFound:     true,
+		},
+		{
+			name:         "SkipsCandidatesThatAreNotEquivalent",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			results:      []map[string]interface{}{row("rs1", "Orders-API"), row("rs2", "orders-api")},
+			expectedID:   "rs2",
+		},
+		{
+			name:         "SeveralEquivalentPicksLowestIdentifier",
+			identifier:   "https://API.example.com",
+			withSlash:    "https://api.example.com/",
+			withoutSlash: "https://api.example.com",
+			results: []map[string]interface{}{row("rs2", "https://api.example.com/"),
+				row("rs1", "https://api.example.com")},
+			expectedID: "rs1",
+		},
+		{
+			name:         "SeveralEquivalentInOtherOrder",
+			identifier:   "https://API.example.com",
+			withSlash:    "https://api.example.com/",
+			withoutSlash: "https://api.example.com",
+			results: []map[string]interface{}{row("rs1", "https://api.example.com"),
+				row("rs2", "https://api.example.com/")},
+			expectedID: "rs1",
+		},
+		{
+			name:         "NoMatch",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			results:      []map[string]interface{}{},
+			notFound:     true,
+		},
+		{
+			name:         "QueryError",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			queryErr:     errors.New("query error"),
+			shouldErr:    true,
+		},
+		{
+			name:         "InvalidIdentifierField",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			results:      []map[string]interface{}{{"identifier": 123}},
+			shouldErr:    true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{dbProvider: suite.mockDBProvider}
+			suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+			suite.mockDBClient.On("QueryContext", context.Background(), queryGetResourceServerByEquivalentIdentifier,
+				tc.identifier, tc.withSlash, tc.withoutSlash, "test-deployment").Return(tc.results, tc.queryErr)
+
+			rs, err := suite.store.GetResourceServerByEquivalentIdentifier(context.Background(), tc.identifier)
+
+			switch {
+			case tc.notFound:
+				suite.ErrorIs(err, errResourceServerNotFound)
+			case tc.shouldErr:
+				suite.Error(err)
+				suite.NotErrorIs(err, errResourceServerNotFound)
+			default:
+				suite.NoError(err)
+				suite.Equal(tc.expectedID, rs.ID)
+			}
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestFirstEquivalentResourceServer() {
+	pick := func(servers ...providers.ResourceServer) string {
+		return firstEquivalentResourceServer(servers).ID
+	}
+	slash := providers.ResourceServer{ID: "rs-b", Identifier: "https://api.example.com/"}
+	bare := providers.ResourceServer{ID: "rs-c", Identifier: "https://api.example.com"}
+	upper := providers.ResourceServer{ID: "rs-a", Identifier: "https://API.example.com"}
+
+	suite.Equal("rs-a", pick(slash, bare, upper))
+	suite.Equal("rs-a", pick(upper, slash, bare))
+	suite.Equal("rs-c", pick(slash, bare))
+	suite.Equal("rs-c", pick(bare, slash))
+	suite.Equal("rs-1", pick(providers.ResourceServer{ID: "rs-2", Identifier: "orders-api"},
+		providers.ResourceServer{ID: "rs-1", Identifier: "orders-api"}))
+}
+
 // nolint:dupl
 func (suite *ResourceStoreTestSuite) TestCheckResourceServerHasDependencies() {
 	testCases := []struct {

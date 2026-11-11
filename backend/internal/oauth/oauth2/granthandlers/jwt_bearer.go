@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -136,7 +137,9 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	if len(tokenRequest.Resources) > 0 {
 		if len(assertionClaims.Resources) > 0 {
 			for _, r := range tokenRequest.Resources {
-				if !slices.Contains(assertionClaims.Resources, r) {
+				if !slices.ContainsFunc(assertionClaims.Resources, func(c string) bool {
+					return sysutils.SameResourceIdentifier(c, r)
+				}) {
 					return nil, &model.ErrorResponse{
 						Error: constants.ErrorInvalidTarget,
 						ErrorDescription: "The resource parameter must be a subset of the " +

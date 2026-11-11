@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -186,9 +187,10 @@ func (f *fileBasedResourceStore) CheckResourceServerNameExists(ctx context.Conte
 
 func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
-	_, err := f.GenericFileBasedStore.GetByField(normalizeResourceIdentifier(identifier), func(d interface{}) string {
-		return normalizeResourceIdentifier(d.(*providers.ResourceServer).Identifier)
-	})
+	_, err := f.GenericFileBasedStore.GetByField(utils.NormalizeResourceIdentifier(identifier),
+		func(d interface{}) string {
+			return utils.NormalizeResourceIdentifier(d.(*providers.ResourceServer).Identifier)
+		})
 	if err != nil {
 		return false, nil
 	}
@@ -210,6 +212,27 @@ func (f *fileBasedResourceStore) GetResourceServerByIdentifier(
 	}
 
 	return *rs, nil
+}
+
+func (f *fileBasedResourceStore) GetResourceServerByEquivalentIdentifier(
+	ctx context.Context, identifier string) (providers.ResourceServer, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return providers.ResourceServer{}, err
+	}
+
+	normalized := utils.NormalizeResourceIdentifier(identifier)
+	var candidates []providers.ResourceServer
+	for _, item := range list {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok &&
+			utils.NormalizeResourceIdentifier(rs.Identifier) == normalized {
+			candidates = append(candidates, *rs)
+		}
+	}
+	if len(candidates) == 0 {
+		return providers.ResourceServer{}, errResourceServerNotFound
+	}
+	return firstEquivalentResourceServer(candidates), nil
 }
 
 func (f *fileBasedResourceStore) CheckResourceServerHasDependencies(

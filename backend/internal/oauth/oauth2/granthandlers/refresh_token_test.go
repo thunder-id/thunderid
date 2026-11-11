@@ -1725,6 +1725,46 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_MatchingResource
 	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
 }
 
+// A request resource with the same normal form as the bound audience ("/" after an origin) matches it.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_EquivalentResource_ReusesBoundAudience() {
+	// Refresh token is bound to a single audience (rs01); request resource=[rs01] matches → issued aud=[rs01].
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:         testRefreshTokenClientID,
+			Sub:              testRefreshTokenUserID,
+			Audiences:        []string{testRS01URI},
+			Scopes:           []string{"read"},
+			GrantType:        "authorization_code",
+			AttributeCacheID: "",
+			Iat:              int64(suite.validClaims["iat"].(float64)),
+		}, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testRS01URI
+		})).Return(&model.TokenDTO{
+		Token:     "new.access.token",
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"read"},
+	}, nil)
+
+	tokenReq := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+		Scope:        "read",
+		Resources:    []string{testRS01URI + "/"},
+	}
+
+	response, err := suite.handler.HandleGrant(context.Background(), tokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
+}
+
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DifferentResource_InvalidTarget() {
 	// Refresh token is bound to rs01; request resource=[rs02] does not match → invalid_target.
 	suite.mockTokenValidator.

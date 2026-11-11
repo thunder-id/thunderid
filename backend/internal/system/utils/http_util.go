@@ -706,3 +706,28 @@ func ExtendWriteDeadline(w http.ResponseWriter, d time.Duration) error {
 	}
 	return http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
 }
+
+// NormalizeResourceIdentifier returns the RFC 3986 normal form used to compare resource server identifiers
+// for equivalence. A URL with a host and no user info has its scheme and host lowercased, and an http or https
+// URL that ends at the host gets "/". Every other character, and any other value, is kept as given.
+func NormalizeResourceIdentifier(identifier string) string {
+	parsed, err := url.Parse(identifier)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return identifier
+	}
+
+	authority, rest := identifier[len(parsed.Scheme)+len("://"):], ""
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority, rest = authority[:i], authority[i:]
+	} else if parsed.Scheme == "http" || parsed.Scheme == "https" {
+		rest = "/"
+	}
+	return parsed.Scheme + "://" + strings.ToLower(authority) + rest
+}
+
+// SameResourceIdentifier reports whether two resource identifiers (RFC 8707 resource indicators or resource
+// server identifiers) name the same resource: they are equal, or have the same RFC 3986 normal form, so
+// "https://api.example.com" and "https://api.example.com/" match.
+func SameResourceIdentifier(a, b string) bool {
+	return a == b || NormalizeResourceIdentifier(a) == NormalizeResourceIdentifier(b)
+}

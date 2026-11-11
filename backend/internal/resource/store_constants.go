@@ -78,6 +78,15 @@ var (
 			WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// queryGetResourceServerByEquivalentIdentifier retrieves the resource servers whose identifier equals an
+	// identifier or matches its lowercased normal form with or without a trailing "/".
+	queryGetResourceServerByEquivalentIdentifier = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-48",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE (IDENTIFIER = $1 OR LOWER(IDENTIFIER) IN ($2, $3)) AND DEPLOYMENT_ID = $4`,
+	}
+
 	// queryCheckResourceServerHasDependencies checks if resource server has resources or actions.
 	queryCheckResourceServerHasDependencies = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-09",

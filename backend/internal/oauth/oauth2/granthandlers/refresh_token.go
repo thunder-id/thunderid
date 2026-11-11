@@ -28,6 +28,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // refreshTokenGrantHandler handles the refresh token grant type.
@@ -221,7 +222,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			ErrorDescription: "Only a single resource parameter is supported",
 		}
 	}
-	if len(tokenRequest.Resources) == 1 && tokenRequest.Resources[0] != audience {
+	if len(tokenRequest.Resources) == 1 && !sysutils.SameResourceIdentifier(tokenRequest.Resources[0], audience) {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidTarget,
 			ErrorDescription: "Requested resource does not match the refresh token audience",

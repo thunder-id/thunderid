@@ -568,6 +568,47 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_RequestResourceNarr
 	assert.NotNil(suite.T(), result)
 }
 
+// A request resource with the same normal form as one of the assertion's resources is not a widening.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_RequestResourceEquivalentToAssertionResource_Accepted() {
+	now := time.Now().Unix()
+	const testRS02URI = "https://rs02.example.com"
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+		Resources: []string{testRS01URI + "/"},
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub:       testUserID,
+			Iss:       testCustomIssuer,
+			Scopes:    []string{"read", "write"},
+			Resources: []string{testRS01URI, testRS02URI},
+		}, nil)
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI+"/").
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}).
+		Return([]string{}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testRS01URI
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 3600,
+		Scopes:    []string{"read", "write"},
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
 // RFC 8707: a request resource parameter not present in the assertion's resources is rejected as
 // invalid_target — the request can narrow the assertion's resources but not widen them.
 func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_RequestResourceNotInAssertionResource_InvalidTarget() {

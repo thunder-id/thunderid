@@ -1711,6 +1711,72 @@ func (_c *resourceStoreInterfaceMock_GetResourceServer_Call) RunAndReturn(run fu
 	return _c
 }
 
+// GetResourceServerByEquivalentIdentifier provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerByEquivalentIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, identifier)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerByEquivalentIdentifier")
+	}
+
+	var r0 providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, identifier)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, identifier)
+	} else {
+		r0 = ret.Get(0).(providers.ResourceServer)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, identifier)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerByEquivalentIdentifier'
+type resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerByEquivalentIdentifier is a helper method to define mock.On call
+//   - ctx context.Context
+//   - identifier string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerByEquivalentIdentifier(ctx any, identifier any) *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call{Call: _e.mock.On("GetResourceServerByEquivalentIdentifier", ctx, identifier)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call) Run(run func(ctx context.Context, identifier string)) *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call) Return(resourceServer providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call {
+	_c.Call.Return(resourceServer, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call) RunAndReturn(run func(ctx context.Context, identifier string) (providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerByEquivalentIdentifier_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceServerByIdentifier provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResourceServerByIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error) {
 	ret := _mock.Called(ctx, identifier)

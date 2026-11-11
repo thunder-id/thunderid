@@ -279,6 +279,30 @@ func (c *compositeResourceStore) CheckResourceServerNameExists(ctx context.Conte
 	)
 }
 
+// GetResourceServerByEquivalentIdentifier retrieves the resource server with an equivalent identifier from
+// either store.
+func (c *compositeResourceStore) GetResourceServerByEquivalentIdentifier(
+	ctx context.Context, identifier string) (providers.ResourceServer, error) {
+	server, err := declarativeresource.CompositeGetHelper(
+		func() (providers.ResourceServer, error) {
+			s, err := c.dbStore.GetResourceServerByEquivalentIdentifier(ctx, identifier)
+			if err == nil {
+				s.IsReadOnly = false
+			}
+			return s, err
+		},
+		func() (providers.ResourceServer, error) {
+			s, err := c.fileStore.GetResourceServerByEquivalentIdentifier(ctx, identifier)
+			if err == nil {
+				s.IsReadOnly = true
+			}
+			return s, err
+		},
+		errResourceServerNotFound,
+	)
+	return server, err
+}
+
 // CheckResourceServerIdentifierExists checks whether a resource server identifier exists in either store.
 func (c *compositeResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
