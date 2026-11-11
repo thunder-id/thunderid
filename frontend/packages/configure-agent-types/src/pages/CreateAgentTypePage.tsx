@@ -116,12 +116,12 @@ export default function CreateAgentTypePage(): JSX.Element {
       ouTakenError = takenByAgentType.isReadOnly
         ? t(
             'agentTypes:createWizard.onlyOrganizationUnitTakenReadOnly',
-            'The only organization unit already has the agent type {{name}}, which is read-only. Create another organization unit first.',
+            'There is currently one organization unit, and it already has the agent type {{name}}, which is read-only. Create another organization unit for a new agent type.',
             {name: takenName},
           )
         : t(
             'agentTypes:createWizard.onlyOrganizationUnitTaken',
-            'The only organization unit already has the agent type {{name}}. Create another organization unit first, or edit {{name}} instead.',
+            'There is currently one organization unit, and it already has the agent type {{name}}. Create another organization unit for a new agent type, or edit {{name}} instead.',
             {name: takenName},
           );
     }
