@@ -47,6 +47,11 @@ sections:
         tag: required
         description: The Application ID from your {{ProductName}} application settings. Identifies which sign-in flow
           to execute.
+      - name: organizationUnitId
+        type: String?
+        tag: optional
+        description: Bounds the sign-in to this organization unit. The SDK sends it as `ouId` on the request that starts
+          the flow.
       - name: onComplete
         type: (() -> Void)?
         tag: optional
@@ -268,6 +273,73 @@ sections:
                 }
             }
         }
+    - group: Components
+      kind: component
+      name: OrganizationUnitSwitcher
+      description: The `OrganizationUnitSwitcher` component shows the current organization unit in a field that opens
+        a menu of the units the signed-in user can access (`GET /users/me/ous`). Picking another unit switches the session
+        to it with `ThunderIDClient.switchOrganizationUnit(_:options:)` and refreshes the signed-in user. If the switch
+        fails, the session stays as it was, unless a backend reports that its session has ended, and the component shows a translated message. `BaseOrganizationUnitSwitcher`
+        renders the same field and menu from units and callbacks you pass in. `OrganizationUnitSwitcher` requires
+        `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: scope
+        type: AccessibleOrganizationUnitScope?
+        tag: optional
+        description: Narrows the list relative to the current unit. `.siblings` lists the accessible units that share the parent of the current unit. Omit it to list every unit the user can access.
+      - name: limit
+        type: Int
+        tag: optional
+        description: The page size. Defaults to `20`.
+      - name: switchOptions
+        type: SwitchOrganizationUnitOptions
+        tag: optional
+        description: Passed to `switchOrganizationUnit(_:options:)`. Its `authorize` handler is how redirect mode switches,
+          and what a backend switch falls back to when the backend needs the user. Defaults to `.init()`, which has no
+          handler.
+      - name: onSelect
+        type: ((AccessibleOrganizationUnit) -> Void)?
+        tag: optional
+        description: Takes over the choice. The component calls it with the picked unit and does not switch itself.
+      - name: onSwitched
+        type: ((User) -> Void)?
+        tag: optional
+        description: Called with the user once the session belongs to the picked unit.
+      - name: onSignInRequired
+        type: ((AccessibleOrganizationUnit, EmbeddedFlowResponse) -> Void)?
+        tag: optional
+        description: 'App-native mode: called with the picked unit and the flow step when the sign-in bounded to that unit
+          needs the user. Continue the step with `ThunderIDClient.signIn(payload:request:sessionId:)`, or show `SignIn`
+          with the unit''s ID as `organizationUnitId`, which starts that sign-in again.'
+      - name: content
+        type: (OrganizationUnitSwitcherState) -> Content
+        tag: optional
+        description: Renders custom UI in place of the default field and menu, from the units, the current unit, the
+          loading, switching, and error state, the paging, and `onSwitch`.
+      example: |-
+        import SwiftUI
+        import ThunderID
+        import ThunderIDSwiftUI
+
+        struct Header: View {
+            @State private var signInUnit: AccessibleOrganizationUnit?
+
+            var body: some View {
+                SignedIn {
+                    OrganizationUnitSwitcher(
+                        scope: .siblings,
+                        switchOptions: SwitchOrganizationUnitOptions(authorize: { url in
+                            try await FederatedAuthSession().authenticate(url: url, callbackURLScheme: "myapp")
+                        }),
+                        onSignInRequired: { unit, _ in signInUnit = unit }
+                    )
+                }
+                .sheet(item: $signInUnit) { unit in
+                    SignIn(applicationId: "<application-id>", organizationUnitId: unit.id)
+                }
+            }
+        }
     - group: Functions
       kind: function
       name: Configuration
@@ -344,6 +416,27 @@ sections:
         authentication lifecycle: initialization, sign-in (both app-native and redirect-based), session, token management,
         and user profile operations. When you use the `ThunderIDSwiftUI` package, a `ThunderIDClient` instance is created
         and managed automatically. You can access it via `ThunderIDState.client` from any view.'
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: 'getAccessibleOrganizationUnits(scope:limit:offset:)'
+        type: AccessibleOrganizationUnitList
+        description: Lists the organization units the signed-in user can access, from `GET /users/me/ous`. `.siblings`
+          narrows the list to the accessible units that share the parent of the current unit; `limit` and `offset` page it.
+      - name: 'getCurrentOrganizationUnit()'
+        type: CurrentOrganizationUnit?
+        description: The organization unit the session was issued for, from its `ouId`, `ouHandle`, and `ouName` claims,
+          or `nil` when it names none. The SDK reads the claims without verifying a signature, so use the result for
+          display only.
+      - name: 'switchOrganizationUnit(_:options:)'
+        type: OrganizationUnitSwitchResult
+        description: 'Signs in again, bounded to another organization unit, reusing the SSO session where it can. On a
+          backend, it calls the backend''s `ouSwitch` endpoint (`POST {ouSwitch}?ouId=<id>`, `/api/auth/switch` by default)
+          and opens the unit-bounded sign-in through `options.authorize` only when the backend needs the user. Otherwise
+          it exchanges a device secret from a `device_sso` sign-in at `{baseUrl}/ou/{ouId}/oauth2/token`, with no browser.
+          When there is none, or the exchange fails, it opens the unit''s authorization URL through `options.authorize`,
+          or starts the app-native `AUTHENTICATION` flow with `ouId`, which returns `.signInRequired` when it needs the
+          user. A failed switch keeps the session, unless a backend answers `login_required` or `401` because it no longer
+          holds one. An unknown unit and a unit the application cannot be used from both fail with `.organizationUnitUnavailable`.'
       example: |-
         import ThunderID
 

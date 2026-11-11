@@ -70,6 +70,15 @@ Silent sign-in loads the authorization endpoint in a hidden iframe, so it can on
 | `allowedExternalUrls` | `string[]` | - | URL prefixes that the SDK may attach access tokens to when making HTTP requests |
 | `authParams` | `Record<string, string>` | - | Additional query parameters to append to every authorize request |
 
+### Backend Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `endpoints.backend` | `BackendEndpoints` | - | Hands sign-in to your application's backend, which runs the OAuth flow and keeps the tokens. The browser holds only an `HttpOnly` cookie. In this mode `baseUrl` is the backend and defaults to the application's origin. Each endpoint defaults to a path under `/api/auth`, resolved against `baseUrl` |
+| `endpoints.backend.ouSwitch` | `string` | `/api/auth/switch` | Switches the backend's session to another organization unit for [`switchOrganizationUnit()`](../thunderid-browser-client#switchorganizationunitorganizationunitid-options), without leaving the page |
+
+`switchOrganizationUnit()` sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, so the backend can read the unit from either. Switch the session the backend holds to that organization unit and answer `200`, or refuse with an OAuth `error` in a JSON body, such as `{"error": "interaction_required"}`. A refusal that says the user has to sign in sends the browser to the `signIn` endpoint with `ouId`, unless the call sets `redirect: false`. That endpoint must bound the sign-in to the unit. Answer `401` with `{"error": "session_expired"}` when the session needs a refresh, and the SDK refreshes it once and retries. The SDK treats any other `401` as `login_required`.
+
 ## Storage Backends
 
 The SDK supports three storage backends for persisting session data. Choose one based on your security and UX requirements.

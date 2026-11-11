@@ -40,7 +40,7 @@ Register a callback for an authentication lifecycle event.
 
 | Hook | Callback Signature | Description |
 |------|-------------------|-------------|
-| `Hooks.SignIn` | `(user: User) => void` | Fires when a user signs in |
+| `Hooks.SignIn` | `(user: User) => void` | Fires when a user signs in, including after a switch to another organization unit |
 | `Hooks.SignOut` | `() => void` | Fires when a user signs out |
 | `Hooks.SignOutFailed` | `(error: SignOutError) => void` | Fires when a sign-out attempt fails |
 | `Hooks.Initialize` | `(success: boolean) => void` | Fires when the SDK completes initialization |

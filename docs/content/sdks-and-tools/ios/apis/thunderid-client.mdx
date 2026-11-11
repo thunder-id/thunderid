@@ -250,6 +250,113 @@ Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId`
 func updateUserProfile(payload: [String: Any], userId: String? = nil) async throws -> User
 ```
 
+## Organization Units
+
+These methods list the organization units the signed-in user can access, read the unit the session belongs to, and move the session to another unit. For how organization units, switching, and the single sign-on (SSO) session fit together, see [Switch Organizations](../../../../use-cases/b2b/journeys/switch-organizations). The [`OrganizationUnitSwitcher`](../components/organization-unit-switcher) component calls these methods for you.
+
+### `getAccessibleOrganizationUnits(scope:limit:offset:)`
+
+Lists the organization units the signed-in user can access, from `GET /users/me/ous`, with the user's own access token.
+
+```swift
+func getAccessibleOrganizationUnits(
+    scope: AccessibleOrganizationUnitScope? = nil,
+    limit: Int? = nil,
+    offset: Int? = nil
+) async throws -> AccessibleOrganizationUnitList
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `scope` | `AccessibleOrganizationUnitScope?` | ❌ | Narrows the list relative to the current unit. `.siblings` keeps the accessible units that share the parent of the current unit. Omit it to list every unit the user can access. |
+| `limit` | `Int?` | ❌ | The page size. |
+| `offset` | `Int?` | ❌ | The number of units to skip before the page starts. |
+
+**Returns:** An `AccessibleOrganizationUnitList`:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `current` | `String` | The ID of the unit the list is relative to: the unit the session was issued for, or the user's own unit when the session names none. |
+| `organizationUnits` | `[AccessibleOrganizationUnit]` | The units on this page. Each has an `id`, a `handle`, a `name`, and an optional `logoUrl`. |
+| `totalResults` | `Int` | The total number of units across all pages. |
+| `startIndex` | `Int` | The position of the first unit on this page, starting at `1`. |
+| `count` | `Int` | The number of units on this page. |
+
+### `getCurrentOrganizationUnit()`
+
+Returns the organization unit the signed-in session was issued for, read from the `ouId`, `ouHandle`, and `ouName` claims. The SDK reads the ID token first, then the access token, which holds the assertion after an app-native sign-in. When sign-in runs on your backend (`endpoints.backend`), it reads the claims from the user in the backend's session.
+
+```swift
+func getCurrentOrganizationUnit() async throws -> CurrentOrganizationUnit?
+```
+
+**Returns:** A `CurrentOrganizationUnit` with an `id` and an optional `handle` and `name`, or `nil` when the session carries no `ouId` claim.
+
+:::warning
+The SDK reads these claims without verifying a signature. Use the result for display only, and never base an authorization decision on it.
+:::
+
+### `switchOrganizationUnit(_:options:)`
+
+Signs in again, bounded to another organization unit, and replaces the session with the new one. Where the user can sign in to that unit, <ProductName /> reuses its SSO session, so the user normally enters no credentials.
+
+```swift
+func switchOrganizationUnit(
+    _ ouId: String,
+    options: SwitchOrganizationUnitOptions = .init()
+) async throws -> OrganizationUnitSwitchResult
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `ouId` | `String` | ✅ | The ID of the organization unit to switch to, such as `AccessibleOrganizationUnit.id`. Pass the ID, not the handle. |
+| `options` | `SwitchOrganizationUnitOptions` | ❌ | How the switch signs in: an `authorize` handler for a browser sign-in, and the application for an app-native sign-in. |
+
+`SwitchOrganizationUnitOptions` has the following fields:
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `authorize` | `((URL) async throws -> URL)?` | `nil` | Opens an authorization URL, typically in an `ASWebAuthenticationSession`, and returns the callback URL it comes back to. Redirect mode uses it when the switch cannot run without a browser. Sign-in on a backend uses it when the backend needs the user. |
+| `applicationId` | `String?` | `nil` | App-native mode: the application whose `AUTHENTICATION` flow starts. Defaults to `ThunderIDConfig.applicationId`. |
+
+**Returns:** An `OrganizationUnitSwitchResult`:
+
+| Case | Description |
+| :--- | :--- |
+| `.switched(User)` | The session now belongs to the unit. The SDK replaced the tokens and read the user again. |
+| `.signInRequired(EmbeddedFlowResponse)` | App-native mode only. The sign-in bounded to the unit needs the user. Continue the returned step with [`signIn(payload:request:sessionId:)`](#signinpayloadrequestsessionid). The session switches when the flow completes, and the previous session stays until then. |
+
+The SDK switches in the first of these ways that applies:
+
+1. **Sign-in on a backend.** When `endpoints.backend` is set, the SDK sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, then reads the session again. No browser opens. `ouSwitch` is `endpoints.backend.ouSwitch`, and defaults to `/api/auth/switch`. When the backend answers with `interaction_required`, `login_required`, `consent_required`, `account_selection_required`, or a `401`, the SDK opens the unit-bounded sign-in through `authorize` instead, if you pass one. A `session_expired` answer refreshes the session once and retries.
+2. **Device secret.** When an earlier sign-in requested the `device_sso` scope, the SDK holds a device secret. With a `clientId` set, it exchanges the secret at `{baseUrl}/ou/{ouId}/oauth2/token`, with no browser. The SDK drops a secret the server refuses with `invalid_request` or `invalid_grant`. If the exchange fails for any reason other than an unavailable unit, the SDK moves on to the next way.
+3. **Redirect.** With a `clientId` set and an `authorize` handler, the SDK opens the unit's authorization URL, `{baseUrl}/ou/{ouId}/oauth2/authorize`, through `authorize`. It then redeems the code at the unit's token endpoint.
+4. **App-native.** Otherwise, the SDK starts the `AUTHENTICATION` flow with `ouId` and sends the SSO session handles it kept from earlier flow responses (`sessionData`). When the flow completes without the user, the result is `.switched`. When the flow needs the user, the result is `.signInRequired`.
+
+After a successful switch, the SDK keeps the device secret and the SSO session handles, so a later switch can use them again. A failed switch leaves the previous session as it was, except on a backend that answers `login_required` or `401`. That answer means the backend no longer holds a session, so the SDK treats the user as signed out.
+
+**Throws:**
+
+- `.organizationUnitUnavailable` when the unit does not exist or the application cannot be used from it. <ProductName /> answers both with `unauthorized_client`, so the SDK cannot tell them apart.
+- `.invalidInput` when `ouId` is empty.
+- `.invalidConfiguration` when no way to switch applies: no backend, no device secret, no `authorize` handler, and no `applicationId`. When a device secret exchange was tried and failed, the switch fails with that exchange's error instead.
+- `.authenticationFailed` when the backend refuses the switch and the SDK cannot sign in through `authorize`, or when the app-native flow fails.
+
+```swift
+do {
+    switch try await client.switchOrganizationUnit(unit.id) {
+    case .switched(let user):
+        print("Switched to \(unit.name) as \(user.displayName ?? "")")
+    case .signInRequired(let step):
+        // App-native mode: render the step and continue it with signIn(payload:request:sessionId:).
+        print("Sign in again to switch to \(unit.name): \(step.flowStatus)")
+    }
+} catch {
+    // The previous session is unchanged, unless a backend reported that its session ended.
+    print("Could not switch: \(error)")
+}
+```
+
 ## Error Handling
 
 All throwing methods raise an `IAMError` on failure. Catch it to handle errors:
@@ -280,6 +387,7 @@ do {
 | `.mfaFailed` | `MFA_FAILED` | Multi-factor authentication failed |
 | `.invalidGrant` | `INVALID_GRANT` | The authorization code or token is invalid |
 | `.consentRequired` | `CONSENT_REQUIRED` | User consent is required |
+| `.organizationUnitUnavailable` | `ORGANIZATION_UNIT_UNAVAILABLE` | The organization unit does not exist, or the application cannot be used from it |
 | `.userAlreadyExists` | `USER_ALREADY_EXISTS` | Registration failed because the user already exists |
 | `.invalidInput` | `INVALID_INPUT` | Input validation failed |
 | `.invitationCodeInvalid` | `INVITATION_CODE_INVALID` | The invitation code is not valid |

@@ -52,9 +52,10 @@ sections:
       - name: user
         type: User \
         description: The authenticated user object, or `null` if not signed in
-      - name: organization
-        type: Organization \
-        description: The current active organization
+      - name: currentOrganizationUnit
+        type: 'CurrentOrganizationUnit | null'
+        description: The organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName`
+          claims for display only, or `null`
       - name: signIn
         type: (...args) => Promise<User \
         description: Initiates the sign-in flow
@@ -73,6 +74,13 @@ sections:
       - name: http
         type: '{ request, requestAll }'
         description: Authenticated HTTP client (see Accessing Protected APIs)
+      - name: getCurrentOrganizationUnit
+        type: '() => Promise<CurrentOrganizationUnit | null>'
+        description: Reads the current organization unit from the session's claims
+      - name: switchOrganizationUnit
+        type: '(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<User | undefined>'
+        description: Signs in again bounded to another organization unit. A failed switch keeps the previous session,
+          unless a backend reports that its session has ended, and rejects with a code from `OrganizationUnitSwitchErrorCodes`
       example: |-
         <script setup>
         import { useThunderID } from '@thunderid/vue'
@@ -165,6 +173,53 @@ sections:
           <Loading>
             <div>Checking authentication...</div>
           </Loading>
+        </template>
+    - group: Components
+      kind: component
+      name: <OrganizationUnitSwitcher />
+      description: The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field
+        that opens a menu of the units the signed-in user can access (`GET /users/me/ous`). Picking a unit calls `switchOrganizationUnit`,
+        which signs in again bounded to that unit, and emits `switch` with the unit. A failed switch keeps the session,
+        unless a backend reports that its session has ended, and shows a translated message under the field. The default scoped slot replaces the built-in UI,
+        and `BaseOrganizationUnitSwitcher` is the presentational picker it renders.
+      rowsLabel: Props
+      rows:
+      - name: scope
+        type: AccessibleOrganizationUnitScope
+        tag: optional
+        description: '`''siblings''` lists the accessible units that share the parent of the current unit. Omit it to list every
+          accessible unit.'
+      - name: limit
+        type: number
+        tag: optional
+        description: The page size. Defaults to `10`.
+      - name: onSelect
+        type: '(unit: AccessibleOrganizationUnit) => void'
+        tag: optional
+        description: 'Takes over a pick: called with the unit instead of switching. Also available as `@select`.'
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the small label above the current unit. Pass an empty string to omit it.
+      - name: className
+        type: string
+        tag: optional
+        description: Extra CSS class added to the root element.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preferences, for example `i18n.bundles` overrides.
+      example: |-
+        <script setup>
+        import { OrganizationUnitSwitcher, SignedIn } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <header>
+            <SignedIn>
+              <OrganizationUnitSwitcher scope="siblings" />
+            </SignedIn>
+          </header>
         </template>
     - group: Components
       kind: component
