@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
@@ -150,9 +152,12 @@ func (s *i18nStore) UpsertTranslationsByLanguage(ctx context.Context, language s
 		return fmt.Errorf("failed to delete translations: %w", err)
 	}
 
-	for _, trans := range translations {
-		_, err = tx.Exec(queryInsertTranslation, trans.Key, trans.Language, trans.Namespace,
-			trans.Value, s.scope(ctx))
+	// Insert in multi-row batches: one statement per row costs a database round trip each, which on a
+	// remote database dominates the time a language with hundreds of keys takes to replace.
+	scope := s.scope(ctx)
+	for start := 0; start < len(translations); start += insertBatchSize {
+		end := min(start+insertBatchSize, len(translations))
+		_, err = tx.Exec(buildInsertTranslationsQuery(end-start), insertTranslationArgs(translations[start:end], scope)...)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				err = errors.Join(err, fmt.Errorf("failed to rollback transaction: %w", rollbackErr))
@@ -166,6 +171,33 @@ func (s *i18nStore) UpsertTranslationsByLanguage(ctx context.Context, language s
 	}
 
 	return nil
+}
+
+// insertBatchSize is the most rows one multi-row insert carries: five parameters a row stays well
+// under the parameter limit of every supported database.
+const insertBatchSize = 100
+
+// buildInsertTranslationsQuery returns an insert of rows translations in one statement.
+func buildInsertTranslationsQuery(rows int) dbmodel.DBQuery {
+	var b strings.Builder
+	b.WriteString(`INSERT INTO "TRANSLATION" (MESSAGE_KEY, LANGUAGE_CODE, NAMESPACE, VALUE, DEPLOYMENT_ID) VALUES `)
+	for i := 0; i < rows; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		n := i*5 + 1
+		fmt.Fprintf(&b, "($%d, $%d, $%d, $%d, $%d)", n, n+1, n+2, n+3, n+4)
+	}
+	return dbmodel.DBQuery{ID: fmt.Sprintf("I18N-05-BATCH-%d", rows), Query: b.String()}
+}
+
+// insertTranslationArgs flattens translations into the arguments buildInsertTranslationsQuery expects.
+func insertTranslationArgs(translations []Translation, scope string) []any {
+	args := make([]any, 0, len(translations)*5)
+	for _, t := range translations {
+		args = append(args, t.Key, t.Language, t.Namespace, t.Value, scope)
+	}
+	return args
 }
 
 // UpsertTranslation creates or updates a translation.
