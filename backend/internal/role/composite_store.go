@@ -93,6 +93,52 @@ func (c *compositeRoleStore) GetRoleList(ctx context.Context, limit, offset int)
 	return roles, nil
 }
 
+// GetRoleListCountOutsideProjects retrieves the total count of unique roles that belong to no project
+// across both stores.
+func (c *compositeRoleStore) GetRoleListCountOutsideProjects(ctx context.Context) (int, error) {
+	roles, err := c.listOutsideProjects(ctx, serverconst.MaxCompositeStoreRecords+1, 0)
+	if err != nil {
+		return 0, err
+	}
+	return len(roles), nil
+}
+
+// GetRoleListOutsideProjects retrieves the roles that belong to no project from both stores and
+// merges them.
+func (c *compositeRoleStore) GetRoleListOutsideProjects(ctx context.Context, limit, offset int) ([]Role, error) {
+	return c.listOutsideProjects(ctx, limit, offset)
+}
+
+// listOutsideProjects merges a page of the roles that belong to no project from both stores, refusing a
+// listing past the composite record limit.
+func (c *compositeRoleStore) listOutsideProjects(ctx context.Context, limit, offset int) ([]Role, error) {
+	roles, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return capCompositeCount(c.dbStore.GetRoleListCountOutsideProjects(ctx)) },
+		func() (int, error) { return capCompositeCount(c.fileStore.GetRoleListCountOutsideProjects(ctx)) },
+		func(count int) ([]Role, error) { return c.dbStore.GetRoleListOutsideProjects(ctx, count, 0) },
+		func(count int) ([]Role, error) { return c.fileStore.GetRoleListOutsideProjects(ctx, count, 0) },
+		mergeRoles,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return roles, nil
+}
+
+// capCompositeCount caps a store's count at the composite record limit.
+func capCompositeCount(count int, err error) (int, error) {
+	if err != nil {
+		return 0, err
+	}
+	return min(count, serverconst.MaxCompositeStoreRecords), nil
+}
+
 // GetRoleListCountByOUID retrieves the total count of unique roles belonging to the given
 // organization unit across both stores.
 func (c *compositeRoleStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {

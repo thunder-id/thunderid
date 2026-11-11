@@ -9,7 +9,7 @@ import type {ResourceServerListResponse} from '../models/resource-server';
 
 /**
  * The resource servers, a page at a time. With a `projectId`, only that project's resource servers are
- * listed; without one, every resource server is.
+ * listed; without one, the control plane leaves out the resource servers of a project unless `includeAll` is set.
  */
 export default function useGetResourceServers(params?: {
   limit?: number;
@@ -17,14 +17,16 @@ export default function useGetResourceServers(params?: {
   projectId?: string;
   /** Lists only the resource servers this organization unit owns. */
   ouId?: string;
+  /** Without a project, also lists the resource servers of a project, which the control plane otherwise leaves out. */
+  includeAll?: boolean;
   enabled?: boolean;
 }): UseQueryResult<ResourceServerListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0, projectId, ouId, enabled = true} = params ?? {};
+  const {limit = 30, offset = 0, projectId, ouId, includeAll, enabled = true} = params ?? {};
 
   return useQuery<ResourceServerListResponse>({
-    queryKey: [ResourceServerQueryKeys.RESOURCE_SERVERS, {limit, offset, projectId, ouId}],
+    queryKey: [ResourceServerQueryKeys.RESOURCE_SERVERS, {limit, offset, projectId, ouId, includeAll}],
     placeholderData: keepPreviousData,
     enabled,
     queryFn: async (): Promise<ResourceServerListResponse> => {
@@ -38,6 +40,9 @@ export default function useGetResourceServers(params?: {
       }
       if (ouId) {
         queryParams.append('filter', `ouId eq "${ouId}"`);
+      }
+      if (includeAll) {
+        queryParams.append('includeAll', 'true');
       }
 
       const response: {data: ResourceServerListResponse} = await http.request({

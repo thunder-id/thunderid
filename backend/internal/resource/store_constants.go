@@ -148,6 +148,28 @@ var (
 	}
 )
 
+// Resource server organization-level queries
+var (
+	// queryGetResourceServerListOutsideProjects retrieves a list of the resource servers that belong to no
+	// project with pagination.
+	queryGetResourceServerListOutsideProjects = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-48",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID IS NULL AND DEPLOYMENT_ID = $3
+			ORDER BY CREATED_AT DESC
+			LIMIT $1 OFFSET $2`,
+	}
+
+	// queryGetResourceServerListCountOutsideProjects retrieves the total count of the resource servers that
+	// belong to no project.
+	queryGetResourceServerListCountOutsideProjects = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-49",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID IS NULL AND DEPLOYMENT_ID = $1`,
+	}
+)
+
 // providers.Resource Queries
 var (
 	// queryCreateResource creates a new resource.

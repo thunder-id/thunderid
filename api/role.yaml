@@ -40,6 +40,7 @@ paths:
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/roleFilterQueryParam'
         - $ref: '#/components/parameters/roleProjectIdQueryParam'
+        - $ref: '#/components/parameters/roleIncludeAllQueryParam'
       responses:
         "200":
           description: List of roles
@@ -1666,6 +1667,17 @@ components:
       schema:
         type: string
       example: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
+    roleIncludeAllQueryParam:
+      in: query
+      name: includeAll
+      required: false
+      description: |
+        Without `projectId`, a Control Plane lists only the roles that belong to no project. Set to
+        `true` to list the roles of every project as well. A Data Plane always lists every one, so it
+        ignores this parameter.
+      schema:
+        type: boolean
+        default: false
     roleProjectIdQueryParam:
       in: query
       name: projectId

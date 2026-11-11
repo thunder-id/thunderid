@@ -160,6 +160,122 @@ func (suite *RoleServiceTestSuite) TestGetRoleList_UnfilteredRolesAreOwned() {
 	suite.True(result.Roles[0].IsOwnedByOU)
 }
 
+func (suite *RoleServiceTestSuite) TestGetOrganizationRoleList_ExcludesProjectRoles() {
+	suite.newProjectAwareService()
+	suite.mockStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(11, nil)
+	suite.mockStore.On("GetRoleListOutsideProjects", mock.Anything, 10, 0).
+		Return([]Role{{ID: "role1", OUID: "ou1"}}, nil)
+	suite.mockOUService.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{"ou1"}).
+		Return(map[string]string{"ou1": "default"}, nil)
+
+	result, err := suite.service.GetOrganizationRoleList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(err)
+	suite.Equal(11, result.TotalResults)
+	suite.Require().Len(result.Roles, 1)
+	suite.True(result.Roles[0].IsOwnedByOU)
+	suite.Require().NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.NotContains(link.Href, includeAllQueryParam)
+	}
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListCount", mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleList", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestGetOrganizationRoleList_IncludeAllListsEveryRole() {
+	suite.newProjectAwareService()
+	suite.mockStore.On("GetRoleListCount", mock.Anything).Return(11, nil)
+	suite.mockStore.On("GetRoleList", mock.Anything, 10, 0).
+		Return([]Role{{ID: "role1", OUID: "ou1", ProjectID: testProjectID}}, nil)
+	suite.mockOUService.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{"ou1"}).
+		Return(map[string]string{"ou1": "default"}, nil)
+
+	result, err := suite.service.GetOrganizationRoleList(context.Background(), 10, 0, nil, true)
+
+	suite.Require().Nil(err)
+	suite.Equal(11, result.TotalResults)
+	suite.Require().Len(result.Roles, 1)
+	suite.Equal(testProjectID, result.Roles[0].ProjectID)
+	suite.Require().NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&includeAll=true")
+	}
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListCountOutsideProjects", mock.Anything)
+}
+
+// A deployment that serves no projects lists every role.
+func (suite *RoleServiceTestSuite) TestGetOrganizationRoleList_WithoutProjectsListsEveryRole() {
+	suite.mockStore.On("GetRoleListCount", mock.Anything).Return(1, nil)
+	suite.mockStore.On("GetRoleList", mock.Anything, 10, 0).
+		Return([]Role{{ID: "role1", OUID: "ou1", ProjectID: testProjectID}}, nil)
+	suite.mockOUService.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{"ou1"}).
+		Return(map[string]string{"ou1": "default"}, nil)
+
+	result, err := suite.service.GetOrganizationRoleList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(err)
+	suite.Require().Len(result.Roles, 1)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListCountOutsideProjects", mock.Anything)
+}
+
+// An organization unit filter still lists what that unit owns and what is shared with it.
+func (suite *RoleServiceTestSuite) TestGetOrganizationRoleList_InOUIsUnchanged() {
+	suite.newProjectAwareService()
+	suite.mockStore.On("GetRoleListCountByOUID", mock.Anything, "ou-child").Return(1, nil)
+	suite.mockStore.On("GetRoleListByOUID", mock.Anything, "ou-child", 1, 0).
+		Return([]Role{{ID: "own", OUID: "ou-child", ProjectID: testProjectID}}, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "ou-child").
+		Return(nil, nil)
+	suite.mockOUService.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{"ou-child"}).
+		Return(map[string]string{"ou-child": "child"}, nil)
+
+	result, err := suite.service.GetOrganizationRoleList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": "ou-child"}, false)
+
+	suite.Require().Nil(err)
+	suite.Require().Len(result.Roles, 1)
+	suite.Equal(testProjectID, result.Roles[0].ProjectID)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListCountOutsideProjects", mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestGetOrganizationRoleList_StoreErrors() {
+	cases := []struct {
+		name     string
+		setup    func()
+		wantCode string
+	}{
+		{"count fails", func() {
+			suite.mockStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(0, errors.New("db"))
+		}, tidcommon.InternalServerError.Code},
+		{"count over composite limit", func() {
+			suite.mockStore.On("GetRoleListCountOutsideProjects", mock.Anything).
+				Return(0, errResultLimitExceededInCompositeMode)
+		}, ResultLimitExceededInCompositeMode.Code},
+		{"list fails", func() {
+			suite.mockStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockStore.On("GetRoleListOutsideProjects", mock.Anything, 10, 0).Return(nil, errors.New("db"))
+		}, tidcommon.InternalServerError.Code},
+		{"list over composite limit", func() {
+			suite.mockStore.On("GetRoleListCountOutsideProjects", mock.Anything).Return(1, nil)
+			suite.mockStore.On("GetRoleListOutsideProjects", mock.Anything, 10, 0).
+				Return(nil, errResultLimitExceededInCompositeMode)
+		}, ResultLimitExceededInCompositeMode.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.newProjectAwareService()
+			tc.setup()
+
+			result, err := suite.service.GetOrganizationRoleList(context.Background(), 10, 0, nil, false)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.wantCode, err.Code)
+		})
+	}
+}
+
 // An organization unit filter lists the roles it owns, then the ones shared with it, each shared
 // role read under the filtered unit and closed to edits there.
 func (suite *RoleServiceTestSuite) TestGetRoleList_InOU_OwnedThenShared() {

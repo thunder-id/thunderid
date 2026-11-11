@@ -37,6 +37,7 @@ paths:
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/groupFilterQueryParam'
         - $ref: '#/components/parameters/groupProjectIdQueryParam'
+        - $ref: '#/components/parameters/groupIncludeAllQueryParam'
         - $ref: '#/components/parameters/includeGroupQueryParam'
       responses:
         "200":
@@ -1175,6 +1176,17 @@ components:
         type: integer
         minimum: 0
         default: 0
+    groupIncludeAllQueryParam:
+      in: query
+      name: includeAll
+      required: false
+      description: |
+        Without `projectId`, a Control Plane lists only the groups that belong to no project. Set to
+        `true` to list the groups of every project as well. A Data Plane always lists every one, so it
+        ignores this parameter.
+      schema:
+        type: boolean
+        default: false
     groupProjectIdQueryParam:
       in: query
       name: projectId

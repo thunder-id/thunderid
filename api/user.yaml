@@ -46,6 +46,7 @@ paths:
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/userFilterParam'
         - $ref: '#/components/parameters/userProjectIdQueryParam'
+        - $ref: '#/components/parameters/userIncludeAllQueryParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -3316,6 +3317,17 @@ components:
           - display
       description: |
         Optional parameter to include additional display information in the response. The exact fields included depend on the endpoint. See each endpoint's response schema for details on which fields are enriched.
+    userIncludeAllQueryParam:
+      in: query
+      name: includeAll
+      required: false
+      description: |
+        Without `projectId`, a Control Plane lists only the users that belong to no project. Set to
+        `true` to list the users of every project as well. A Data Plane always lists every one, so it
+        ignores this parameter.
+      schema:
+        type: boolean
+        default: false
     userProjectIdQueryParam:
       in: query
       name: projectId

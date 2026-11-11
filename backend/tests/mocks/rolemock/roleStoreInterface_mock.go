@@ -2100,6 +2100,140 @@ func (_c *roleStoreInterfaceMock_GetRoleListCountByProject_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetRoleListCountOutsideProjects provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) GetRoleListCountOutsideProjects(ctx context.Context) (int, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRoleListCountOutsideProjects")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRoleListCountOutsideProjects'
+type roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetRoleListCountOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleListCountOutsideProjects(ctx any) *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call {
+	return &roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call{Call: _e.mock.On("GetRoleListCountOutsideProjects", ctx)}
+}
+
+func (_c *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call) Run(run func(ctx context.Context)) *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call) Return(n int, err error) *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *roleStoreInterfaceMock_GetRoleListCountOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRoleListOutsideProjects provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) GetRoleListOutsideProjects(ctx context.Context, limit int, offset int) ([]role.Role, error) {
+	ret := _mock.Called(ctx, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRoleListOutsideProjects")
+	}
+
+	var r0 []role.Role
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]role.Role, error)); ok {
+		return returnFunc(ctx, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []role.Role); ok {
+		r0 = returnFunc(ctx, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]role.Role)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
+		r1 = returnFunc(ctx, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_GetRoleListOutsideProjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRoleListOutsideProjects'
+type roleStoreInterfaceMock_GetRoleListOutsideProjects_Call struct {
+	*mock.Call
+}
+
+// GetRoleListOutsideProjects is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleListOutsideProjects(ctx any, limit any, offset any) *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call {
+	return &roleStoreInterfaceMock_GetRoleListOutsideProjects_Call{Call: _e.mock.On("GetRoleListOutsideProjects", ctx, limit, offset)}
+}
+
+func (_c *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call) Run(run func(ctx context.Context, limit int, offset int)) *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call) Return(roles []role.Role, err error) *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call {
+	_c.Call.Return(roles, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]role.Role, error)) *roleStoreInterfaceMock_GetRoleListOutsideProjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRolesByIDs provides a mock function for the type roleStoreInterfaceMock
 func (_mock *roleStoreInterfaceMock) GetRolesByIDs(ctx context.Context, ids []string) ([]role.Role, error) {
 	ret := _mock.Called(ctx, ids)

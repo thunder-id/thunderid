@@ -521,6 +521,32 @@ func (s *FileBasedStoreTestSuite) TestProjectListing() {
 	s.False(found)
 }
 
+func (s *FileBasedStoreTestSuite) TestListingOutsideProjects() {
+	inProject := makeTestEntity("o1", "user", "ou1")
+	inProject.ProjectID = testProjectID
+	outside := makeTestEntity("o2", "user", "ou1")
+	outside.Attributes = json.RawMessage(`{"email":"a@b.com"}`)
+	outsideOtherOU := makeTestEntity("o3", "user", "ou2")
+	otherCategory := makeTestEntity("o4", "app", "ou1")
+	for _, e := range []providers.Entity{inProject, outside, outsideOtherOU, otherCategory} {
+		s.seedEntity(e)
+	}
+
+	count, err := s.store.GetEntityListCountOutsideProjects(s.ctx, "user", nil)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	list, err := s.store.GetEntityListOutsideProjects(s.ctx, "user", 1, 0, nil)
+	s.NoError(err)
+	s.Len(list, 1)
+
+	list, err = s.store.GetEntityListOutsideProjects(s.ctx, "user", 10, 0,
+		map[string]interface{}{"email": "a@b.com"})
+	s.NoError(err)
+	s.Require().Len(list, 1)
+	s.Equal("o2", list[0].ID)
+}
+
 func (s *FileBasedStoreTestSuite) TestGetEntityListByType() {
 	ofType := func(e providers.Entity, entityType string) providers.Entity {
 		e.Type = entityType

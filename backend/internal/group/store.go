@@ -23,6 +23,8 @@ var buildBulkGroupExistsQueryFunc = buildBulkGroupExistsQuery
 type groupStoreInterface interface {
 	GetGroupListCount(ctx context.Context) (int, error)
 	GetGroupList(ctx context.Context, limit, offset int) ([]GroupBasicDAO, error)
+	GetGroupListCountOutsideProjects(ctx context.Context) (int, error)
+	GetGroupListOutsideProjects(ctx context.Context, limit, offset int) ([]GroupBasicDAO, error)
 	GetGroupListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error)
 	GetGroupListByOUIDs(ctx context.Context, ouIDs []string, limit, offset int) ([]GroupBasicDAO, error)
 	GetGroupListCountByProject(ctx context.Context, projectID string, ouIDs []string) (int, error)
@@ -163,6 +165,57 @@ func (s *groupStore) GetGroupList(ctx context.Context, limit, offset int) ([]Gro
 		}
 
 		groups = append(groups, groupBasic)
+	}
+
+	return groups, nil
+}
+
+// GetGroupListCountOutsideProjects retrieves the total count of groups that belong to no project.
+func (s *groupStore) GetGroupListCountOutsideProjects(ctx context.Context) (int, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupListCountOutsideProjects, s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute group list count outside projects query: %w", err)
+	}
+
+	var totalCount int
+	if len(countResults) > 0 {
+		if total, ok := countResults[0]["total"].(int64); ok {
+			totalCount = int(total)
+		}
+	}
+
+	return totalCount, nil
+}
+
+// GetGroupListOutsideProjects retrieves the groups that belong to no project with pagination.
+func (s *groupStore) GetGroupListOutsideProjects(ctx context.Context, limit, offset int) ([]GroupBasicDAO, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupListOutsideProjects, limit, offset, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute group list outside projects query: %w", err)
+	}
+
+	groups := make([]GroupBasicDAO, 0, len(results))
+	for _, row := range results {
+		group, err := buildGroupFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build group from result row: %w", err)
+		}
+		groups = append(groups, GroupBasicDAO{
+			ID:          group.ID,
+			Name:        group.Name,
+			Description: group.Description,
+			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
+		})
 	}
 
 	return groups, nil

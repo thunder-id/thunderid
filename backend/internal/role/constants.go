@@ -19,6 +19,9 @@ const systemFlowRoleDeletePre = "system-role-delete-pre"
 // projectIDQueryParam is the query parameter that lists the roles of one project.
 const projectIDQueryParam = "projectId"
 
+// includeAllQueryParam is the query parameter that lists every role, the roles of projects included.
+const includeAllQueryParam = "includeAll"
+
 // The role assignment removal pre flow handle and its assignee and organization unit inputs.
 const (
 	systemFlowRoleAssignmentRemovalPre = "system-role-assignment-removal-pre"

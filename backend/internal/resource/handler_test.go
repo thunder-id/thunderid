@@ -51,8 +51,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Success() {
 	links := []utils.Link{
 		{Href: "/resource-servers?limit=30&offset=0", Rel: "self"},
 	}
-	suite.mockService.On("GetResourceServerList", mock.Anything,
-		30, 0).Return(&ResourceServerList{
+	suite.mockService.On("GetOrganizationResourceServerList", mock.Anything,
+		30, 0, false).Return(&ResourceServerList{
 		TotalResults:    2,
 		StartIndex:      1,
 		Count:           2,
@@ -73,6 +73,34 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Success() {
 	suite.Equal(2, len(resp.ResourceServers))
 }
 
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_IncludeAll() {
+	testCases := []struct {
+		name       string
+		query      string
+		includeAll bool
+	}{
+		{name: "True", query: "?includeAll=true", includeAll: true},
+		{name: "False", query: "?includeAll=false", includeAll: false},
+		{name: "NotBoolean", query: "?includeAll=yes", includeAll: false},
+		{name: "Missing", query: "", includeAll: false},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockService.On("GetOrganizationResourceServerList", mock.Anything, 30, 0, tc.includeAll).
+				Return(&ResourceServerList{ResourceServers: []providers.ResourceServer{}}, nil).Once()
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleResourceServerListRequest(w,
+				httptest.NewRequest("GET", "/resource-servers"+tc.query, nil))
+
+			suite.Equal(http.StatusOK, w.Code)
+			suite.mockService.AssertExpectations(suite.T())
+		})
+	}
+}
+
 func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_InvalidLimit() {
 	req := httptest.NewRequest("GET", "/resource-servers?limit=invalid", nil)
 	w := httptest.NewRecorder()
@@ -83,8 +111,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_InvalidLimit(
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Error() {
-	suite.mockService.On("GetResourceServerList", mock.Anything,
-		30, 0).Return(nil, &tidcommon.InternalServerError)
+	suite.mockService.On("GetOrganizationResourceServerList", mock.Anything,
+		30, 0, false).Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers", nil)
 	w := httptest.NewRecorder()
@@ -1430,7 +1458,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_ByProject() {
 	suite.NoError(json.Unmarshal(w.Body.Bytes(), &resp))
 	suite.Require().Len(resp.ResourceServers, 1)
 	suite.Equal(testProjectID, resp.ResourceServers[0].ProjectID)
-	suite.mockService.AssertNotCalled(suite.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockService.AssertNotCalled(suite.T(), "GetOrganizationResourceServerList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_WithProject() {
@@ -1520,8 +1549,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_OUFilter() {
 			httptest.NewRequest("GET", "/resource-servers?limit=30"+ouFilter, nil))
 
 		suite.Equal(http.StatusOK, w.Code)
-		suite.mockService.AssertNotCalled(suite.T(), "GetResourceServerList", mock.Anything, mock.Anything,
-			mock.Anything)
+		suite.mockService.AssertNotCalled(suite.T(), "GetOrganizationResourceServerList", mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 

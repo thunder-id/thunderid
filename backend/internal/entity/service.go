@@ -92,6 +92,10 @@ type EntityServiceInterface interface {
 		projectID string, ouIDs []string) (int, error)
 	GetEntityListByProject(ctx context.Context, category providers.EntityCategory,
 		projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error)
+	GetEntityListCountOutsideProjects(ctx context.Context, category providers.EntityCategory,
+		filters map[string]interface{}) (int, error)
+	GetEntityListOutsideProjects(ctx context.Context, category providers.EntityCategory,
+		limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
 	ProjectHasEntities(ctx context.Context, projectID string) (bool, error)
 	// GetEntityPageInOU lists the entities of a category an organization unit owns, in the store's list
 	// order, then the ones shared into it.
@@ -915,6 +919,27 @@ func (s *entityService) GetEntityListCountByProject(ctx context.Context, categor
 func (s *entityService) GetEntityListByProject(ctx context.Context, category providers.EntityCategory,
 	projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error) {
 	entities, err := s.store.GetEntityListByProject(ctx, string(category), projectID, ouIDs, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateRuntime(ctx, entities); err != nil {
+		return nil, err
+	}
+	return entities, nil
+}
+
+// GetEntityListCountOutsideProjects retrieves the number of entities of a category that belong to no
+// project.
+func (s *entityService) GetEntityListCountOutsideProjects(ctx context.Context, category providers.EntityCategory,
+	filters map[string]interface{}) (int, error) {
+	return s.store.GetEntityListCountOutsideProjects(ctx, string(category), filters)
+}
+
+// GetEntityListOutsideProjects retrieves a page of the entities of a category that belong to no
+// project.
+func (s *entityService) GetEntityListOutsideProjects(ctx context.Context, category providers.EntityCategory,
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	entities, err := s.store.GetEntityListOutsideProjects(ctx, string(category), limit, offset, filters)
 	if err != nil {
 		return nil, err
 	}

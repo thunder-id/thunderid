@@ -410,3 +410,73 @@ func (suite *CompositeGroupStoreTestSuite) TestGetGroupListByProject_Errors() {
 	_, err = suite.store.GetGroupListByProject(context.Background(), "project-2", nil, 10, 0)
 	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupListOutsideProjects_MergesBothStores() {
+	dbGroups := []GroupBasicDAO{{ID: "grp1"}, {ID: "grp2"}}
+	fileGroups := []GroupBasicDAO{{ID: "grp2"}, {ID: "grp3"}}
+
+	suite.mockDBStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(2, nil)
+	suite.mockFileStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(2, nil)
+	suite.mockDBStore.On("GetGroupListOutsideProjects", mock.Anything, 2, 0).Return(dbGroups, nil)
+	suite.mockFileStore.On("GetGroupListOutsideProjects", mock.Anything, 2, 0).Return(fileGroups, nil)
+
+	count, err := suite.store.GetGroupListCountOutsideProjects(context.Background())
+
+	suite.NoError(err)
+	suite.Equal(3, count)
+
+	groups, err := suite.store.GetGroupListOutsideProjects(context.Background(), 2, 1)
+
+	suite.NoError(err)
+	suite.Len(groups, 2)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetGroupList", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetGroupList", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupListOutsideProjects_Errors() {
+	suite.Run("count error", func() {
+		suite.SetupTest()
+		suite.mockDBStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(0, errors.New("db error"))
+
+		_, err := suite.store.GetGroupListCountOutsideProjects(context.Background())
+
+		suite.Error(err)
+	})
+	suite.Run("list error", func() {
+		suite.SetupTest()
+		suite.mockDBStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(1, nil)
+		suite.mockFileStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(0, nil)
+		suite.mockDBStore.On("GetGroupListOutsideProjects", mock.Anything, 1, 0).
+			Return(nil, errors.New("db error"))
+
+		groups, err := suite.store.GetGroupListOutsideProjects(context.Background(), 10, 0)
+
+		suite.Error(err)
+		suite.Nil(groups)
+	})
+	suite.Run("limit exceeded", func() {
+		suite.SetupTest()
+		suite.mockDBStore.On("GetGroupListCountOutsideProjects", mock.Anything).
+			Return(serverconst.MaxCompositeStoreRecords, nil)
+		suite.mockFileStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(1, nil)
+
+		_, err := suite.store.GetGroupListCountOutsideProjects(context.Background())
+
+		suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+	})
+	suite.Run("a store count over the limit is capped", func() {
+		suite.SetupTest()
+		suite.mockDBStore.On("GetGroupListCountOutsideProjects", mock.Anything).
+			Return(serverconst.MaxCompositeStoreRecords+5, nil)
+		suite.mockFileStore.On("GetGroupListCountOutsideProjects", mock.Anything).Return(0, nil)
+		suite.mockDBStore.On("GetGroupListOutsideProjects", mock.Anything, 10, 0).
+			Return([]GroupBasicDAO{{ID: "g1"}}, nil)
+		suite.mockFileStore.On("GetGroupListOutsideProjects", mock.Anything, mock.Anything, 0).
+			Return([]GroupBasicDAO{}, nil).Maybe()
+
+		groups, err := suite.store.GetGroupListOutsideProjects(context.Background(), 10, 0)
+
+		suite.NoError(err)
+		suite.Len(groups, 1)
+	})
+}

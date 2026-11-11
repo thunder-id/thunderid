@@ -96,11 +96,11 @@ If the change would grant more than you hold, the API returns `403 Forbidden` wi
 
 On the control plane, a group can belong to a project. A group without a `projectId` belongs to the organization, so the groups that exist today stay organization-level.
 
-When a project is selected in the Console, **Groups** lists only that project's groups, and **Create group** creates the group in the project. When the project has organization units, it asks which one the group belongs to, with the system organization unit as the default. With no project selected, **Groups** lists every group.
+When a project is selected in the Console, **Groups** lists only that project's groups, and **Create group** creates the group in the project. When the project has organization units, it asks which one the group belongs to, with the system organization unit as the default. With no project selected, **Groups** lists only the groups outside projects.
 
 - **Create or update**: set `projectId` in the request body of `POST /groups` or `PUT /groups/{id}`. On create, a group in a project without `ouId` is placed in the system organization unit. An update must name the group's organization unit in `ouId`. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit fails the request with `GRP-1022`, and a project that does not exist fails it with `GRP-1021`.
 - **Update without `projectId`**: the group keeps its current project. A different `projectId` moves the group to that project.
-- **List**: `GET /groups?projectId=<project-id>` returns the groups of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
+- **List**: `GET /groups?projectId=<project-id>` returns the groups of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list. Without `projectId`, `GET /groups` leaves out the groups of projects. Add `includeAll=true` to list every group. A `filter=ouId eq "<ou-id>"` still lists every group that organization unit holds, including the ones in projects.
 - **Delete the project**: a project that still has groups, runtime or declared, cannot be deleted. `DELETE /projects/{id}` fails with `PRJ-1013` until its groups are deleted or moved to another project.
 
 Group names are unique per organization unit. A project's groups in the system organization unit share it with every other project, so such a group cannot take the name of another project's group or of an organization-level group there.

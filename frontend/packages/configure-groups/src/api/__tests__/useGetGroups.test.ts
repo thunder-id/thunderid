@@ -212,6 +212,32 @@ describe('useGetGroups', () => {
     });
   });
 
+  it('should not show the organization groups while fetching every group', async () => {
+    mockHttpRequest.mockImplementation((request: {url: string}) => {
+      if (request.url.includes('includeAll=true')) {
+        return new Promise(() => undefined);
+      }
+
+      return Promise.resolve({data: mockGroupsData});
+    });
+
+    const {result, rerender} = renderHook(
+      ({includeAll}: {includeAll: boolean}) => useGetGroups({limit: 10, offset: 0, includeAll}),
+      {
+        initialProps: {includeAll: false},
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(mockGroupsData);
+    });
+
+    rerender({includeAll: true});
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(true);
+  });
+
   it('should list only the groups of the given project', async () => {
     mockHttpRequest.mockResolvedValue({data: mockGroupsData});
 
@@ -232,6 +258,28 @@ describe('useGetGroups', () => {
       expect(mockHttpRequest).toHaveBeenCalled();
     });
     expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('projectId');
+  });
+
+  it('should ask for the groups of a project as well with includeAll', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockGroupsData});
+
+    renderHook(() => useGetGroups({includeAll: true}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).toContain('includeAll=true');
+  });
+
+  it('should not send includeAll by default', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockGroupsData});
+
+    renderHook(() => useGetGroups());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('includeAll');
   });
 
   it("should not show one project's groups as another's", async () => {

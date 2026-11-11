@@ -613,3 +613,34 @@ func (suite *GroupFileBasedStoreTestSuite) TestGetGroupCarriesTheProject() {
 	suite.NoError(err)
 	suite.Equal("project-1", group.ProjectID)
 }
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupListOutsideProjects() {
+	suite.seedGroup(groupDeclarativeResource{ID: "grp1", Name: "Admins", OUID: "ou1"})
+	suite.seedGroup(groupDeclarativeResource{ID: "grp2", Name: "Engineers", OUID: "ou1", ProjectID: "proj1"})
+	suite.seedGroup(groupDeclarativeResource{ID: "grp3", Name: "Viewers", OUID: "ou2"})
+
+	count, err := suite.store.GetGroupListCountOutsideProjects(context.Background())
+
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	groups, err := suite.store.GetGroupListOutsideProjects(context.Background(), 10, 0)
+
+	suite.NoError(err)
+	suite.Len(groups, 2)
+	for _, g := range groups {
+		suite.NotEqual("grp2", g.ID)
+		suite.Empty(g.ProjectID)
+		suite.True(g.IsReadOnly)
+	}
+
+	paged, err := suite.store.GetGroupListOutsideProjects(context.Background(), 1, 1)
+
+	suite.NoError(err)
+	suite.Len(paged, 1)
+
+	beyond, err := suite.store.GetGroupListOutsideProjects(context.Background(), 10, 5)
+
+	suite.NoError(err)
+	suite.Empty(beyond)
+}

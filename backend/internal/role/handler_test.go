@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/sharing"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -54,7 +55,8 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_Success() {
 		Links: []utils.Link{},
 	}
 
-	suite.mockService.On("GetRoleList", mock.Anything, 10, 0, mock.Anything).Return(expectedResponse, nil)
+	suite.mockService.On("GetOrganizationRoleList", mock.Anything, 10, 0, mock.Anything, false).
+		Return(expectedResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles?limit=10&offset=0", nil)
 	w := httptest.NewRecorder()
@@ -70,9 +72,33 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_Success() {
 	suite.Equal(2, len(response.Roles))
 }
 
+func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_IncludeAll() {
+	cases := []struct {
+		query      string
+		includeAll bool
+	}{
+		{"/roles?includeAll=true", true},
+		{"/roles?includeAll=false", false},
+		{"/roles?includeAll=yes", false},
+		{"/roles", false},
+	}
+	for _, tc := range cases {
+		suite.SetupTest()
+		suite.mockService.On("GetOrganizationRoleList", mock.Anything, serverconst.DefaultPageSize, 0,
+			mock.Anything, tc.includeAll).Return(&RoleList{Roles: []Role{}, Links: []utils.Link{}}, nil).Once()
+
+		w := httptest.NewRecorder()
+		suite.handler.HandleRoleListRequest(w, httptest.NewRequest(http.MethodGet, tc.query, nil))
+
+		suite.Equal(http.StatusOK, w.Code, tc.query)
+		suite.mockService.AssertExpectations(suite.T())
+	}
+}
+
 // An organization unit filter reaches the service, and each role says whether that unit owns it.
 func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_OUFilter() {
-	suite.mockService.On("GetRoleList", mock.Anything, 10, 0, map[string]interface{}{"ouId": "ou-child"}).
+	suite.mockService.On("GetOrganizationRoleList", mock.Anything, 10, 0, map[string]interface{}{"ouId": "ou-child"},
+		false).
 		Return(&RoleList{TotalResults: 1, StartIndex: 1, Count: 1, Roles: []Role{
 			{ID: "role1", OUID: "ou-child", IsReadOnly: true, IsOwnedByOU: false},
 		}, Links: []utils.Link{}}, nil)
@@ -96,8 +122,8 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_MalformedFilter() {
 		suite.Equal(http.StatusBadRequest, w.Code, query)
 		suite.Contains(w.Body.String(), ErrorInvalidFilter.Code)
 	}
-	suite.mockService.AssertNotCalled(suite.T(), "GetRoleList",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	suite.mockService.AssertNotCalled(suite.T(), "GetOrganizationRoleList",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 // The ouId query parameter reads the role as that organization unit sees it.
@@ -202,7 +228,8 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_DefaultPagination()
 		Links:        []utils.Link{},
 	}
 
-	suite.mockService.On("GetRoleList", mock.Anything, 30, 0, mock.Anything).Return(expectedResponse, nil)
+	suite.mockService.On("GetOrganizationRoleList", mock.Anything, 30, 0, mock.Anything, false).
+		Return(expectedResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles", nil)
 	w := httptest.NewRecorder()
@@ -213,7 +240,8 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_DefaultPagination()
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_ServiceError() {
-	suite.mockService.On("GetRoleList", mock.Anything, 10, 0, mock.Anything).Return(nil, &ErrorInvalidLimit)
+	suite.mockService.On("GetOrganizationRoleList", mock.Anything, 10, 0, mock.Anything, false).
+		Return(nil, &ErrorInvalidLimit)
 
 	req := httptest.NewRequest(http.MethodGet, "/roles?limit=10&offset=0", nil)
 	w := httptest.NewRecorder()
@@ -1227,8 +1255,8 @@ func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_ByProject() {
 	suite.NoError(json.NewDecoder(w.Body).Decode(&response))
 	suite.Require().Len(response.Roles, 1)
 	suite.Equal("project-1", response.Roles[0].ProjectID)
-	suite.mockService.AssertNotCalled(suite.T(), "GetRoleList", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything)
+	suite.mockService.AssertNotCalled(suite.T(), "GetOrganizationRoleList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_WithProject() {

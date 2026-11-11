@@ -17,11 +17,13 @@ vi.mock('@thunderid/configure-users', () => ({
 }));
 
 describe('AdministratorsListPage', () => {
-  it('lists the users as the administrators of this console, and says project users are listed too', () => {
+  it('lists the users as the administrators of this console, and says project users are listed in their project', () => {
     render(<AdministratorsListPage />);
 
     expect(screen.getByRole('heading', {name: 'Administrators'})).toBeInTheDocument();
-    expect(screen.getByTestId('administrators-notice')).toHaveTextContent(/users of each project/);
+    expect(screen.getByTestId('administrators-notice')).toHaveTextContent(
+      /users of a project are listed in that project/,
+    );
   });
 
   it("lists the project's users, not the administrators, inside a project", () => {

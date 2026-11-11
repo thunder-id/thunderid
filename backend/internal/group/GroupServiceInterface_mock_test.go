@@ -1122,6 +1122,100 @@ func (_c *GroupServiceInterfaceMock_GetGroupsByPath_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetOrganizationGroupList provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) GetOrganizationGroupList(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool, includeAll bool) (*GroupListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, limit, offset, filters, includeDisplay, includeAll)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationGroupList")
+	}
+
+	var r0 *GroupListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, bool, bool) (*GroupListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, limit, offset, filters, includeDisplay, includeAll)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, map[string]interface{}, bool, bool) *GroupListResponse); ok {
+		r0 = returnFunc(ctx, limit, offset, filters, includeDisplay, includeAll)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*GroupListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, map[string]interface{}, bool, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, limit, offset, filters, includeDisplay, includeAll)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// GroupServiceInterfaceMock_GetOrganizationGroupList_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationGroupList'
+type GroupServiceInterfaceMock_GetOrganizationGroupList_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationGroupList is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+//   - includeDisplay bool
+//   - includeAll bool
+func (_e *GroupServiceInterfaceMock_Expecter) GetOrganizationGroupList(ctx any, limit any, offset any, filters any, includeDisplay any, includeAll any) *GroupServiceInterfaceMock_GetOrganizationGroupList_Call {
+	return &GroupServiceInterfaceMock_GetOrganizationGroupList_Call{Call: _e.mock.On("GetOrganizationGroupList", ctx, limit, offset, filters, includeDisplay, includeAll)}
+}
+
+func (_c *GroupServiceInterfaceMock_GetOrganizationGroupList_Call) Run(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool, includeAll bool)) *GroupServiceInterfaceMock_GetOrganizationGroupList_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 map[string]interface{}
+		if args[3] != nil {
+			arg3 = args[3].(map[string]interface{})
+		}
+		var arg4 bool
+		if args[4] != nil {
+			arg4 = args[4].(bool)
+		}
+		var arg5 bool
+		if args[5] != nil {
+			arg5 = args[5].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_GetOrganizationGroupList_Call) Return(groupListResponse *GroupListResponse, serviceError *common.ServiceError) *GroupServiceInterfaceMock_GetOrganizationGroupList_Call {
+	_c.Call.Return(groupListResponse, serviceError)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_GetOrganizationGroupList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool, includeAll bool) (*GroupListResponse, *common.ServiceError)) *GroupServiceInterfaceMock_GetOrganizationGroupList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type GroupServiceInterfaceMock
 func (_mock *GroupServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)

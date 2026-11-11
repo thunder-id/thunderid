@@ -10,7 +10,7 @@ import type {GroupListParams} from '../models/requests';
 
 /**
  * Custom React hook to fetch a paginated list of groups. With a `projectId`, only that project's groups are
- * listed; without one, every group is.
+ * listed; without one, the control plane leaves out the groups of a project unless `includeAll` is set.
  *
  * @param params - Optional pagination parameters and project
  * @returns TanStack Query result object containing groups list data
@@ -18,15 +18,19 @@ import type {GroupListParams} from '../models/requests';
 export default function useGetGroups(params?: GroupListParams): UseQueryResult<GroupListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0, filter, projectId} = params ?? {};
+  const {limit = 30, offset = 0, filter, projectId, includeAll} = params ?? {};
 
   return useQuery<GroupListResponse>({
-    queryKey: [GroupQueryKeys.GROUPS, {limit, offset, filter, projectId}],
-    // Keep the previous page on screen while paging, but never show one filter's or project's groups as
-    // another's.
+    queryKey: [GroupQueryKeys.GROUPS, {limit, offset, filter, projectId, includeAll}],
+    // Keep the previous page on screen while paging, but never show one filter's, project's or listing's
+    // groups as another's.
     placeholderData: (previousData, previousQuery) => {
-      const previous = previousQuery?.queryKey[1] as {filter?: string; projectId?: string} | undefined;
-      return previous?.filter === filter && previous?.projectId === projectId ? previousData : undefined;
+      const previous = previousQuery?.queryKey[1] as
+        | {filter?: string; projectId?: string; includeAll?: boolean}
+        | undefined;
+      return previous?.filter === filter && previous?.projectId === projectId && previous?.includeAll === includeAll
+        ? previousData
+        : undefined;
     },
     queryFn: async (): Promise<GroupListResponse> => {
       const serverUrl: string = getServerUrl();
@@ -40,6 +44,9 @@ export default function useGetGroups(params?: GroupListParams): UseQueryResult<G
       }
       if (projectId) {
         queryParams.append('projectId', projectId);
+      }
+      if (includeAll) {
+        queryParams.append('includeAll', 'true');
       }
 
       const response: {

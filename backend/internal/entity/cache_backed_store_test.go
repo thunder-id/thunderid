@@ -274,6 +274,22 @@ func (s *CacheBackedEntityStoreTestSuite) TestProjectReads_Delegate() {
 	s.True(found)
 }
 
+func (s *CacheBackedEntityStoreTestSuite) TestOutsideProjectsReads_Delegate() {
+	ctx := context.Background()
+	filters := map[string]interface{}{"email": "a@b.com"}
+	s.mockStore.On("GetEntityListCountOutsideProjects", mock.Anything, "user", filters).
+		Return(2, nil).Once()
+	s.mockStore.On("GetEntityListOutsideProjects", mock.Anything, "user", 10, 0, filters).
+		Return([]providers.Entity{{ID: "u1"}}, nil).Once()
+
+	count, err := s.cachedStore.GetEntityListCountOutsideProjects(ctx, "user", filters)
+	s.NoError(err)
+	s.Equal(2, count)
+	list, err := s.cachedStore.GetEntityListOutsideProjects(ctx, "user", 10, 0, filters)
+	s.NoError(err)
+	s.Len(list, 1)
+}
+
 func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_InvalidatesEntityCache() {
 	entity := s.makeEntity(testEntityID, "old-client")
 	s.entityByIDData[entity.ID] = &entity

@@ -277,7 +277,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups?limit=3&offset=2",
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, 3, 2, map[string]interface{}(nil), false).
+					On("GetOrganizationGroupList", mock.Anything, 3, 2, map[string]interface{}(nil), false, false).
 					Return(&GroupListResponse{
 						TotalResults: 5,
 						StartIndex:   3,
@@ -307,7 +307,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups?limit=3&offset=0&include=display",
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, 3, 0, map[string]interface{}(nil), true).
+					On("GetOrganizationGroupList", mock.Anything, 3, 0, map[string]interface{}(nil), true, false).
 					Return(&GroupListResponse{
 						TotalResults: 1,
 						Count:        1,
@@ -338,7 +338,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 				suite.Require().Equal(ErrorInvalidLimit.Error, body.Message)
 			},
 			assertSvc: func(svc *GroupServiceInterfaceMock) {
-				svc.AssertNotCalled(suite.T(), "GetGroupList", mock.Anything, mock.Anything, mock.Anything)
+				svc.AssertNotCalled(suite.T(), "GetOrganizationGroupList", mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything)
 			},
 		},
 		{
@@ -347,8 +348,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			useFlaky:    true,
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
-						map[string]interface{}(nil), false).
+					On("GetOrganizationGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
+						map[string]interface{}(nil), false, false).
 					Return(&GroupListResponse{}, nil).
 					Once()
 			},
@@ -366,7 +367,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 				suite.Require().Equal(testEncodingErrorBody, recorder.Body.String())
 			},
 			assertSvc: func(svc *GroupServiceInterfaceMock) {
-				svc.AssertNotCalled(suite.T(), "GetGroupList", mock.Anything, mock.Anything, mock.Anything)
+				svc.AssertNotCalled(suite.T(), "GetOrganizationGroupList", mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything)
 			},
 		},
 		{
@@ -374,8 +376,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups",
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
-						map[string]interface{}(nil), false).
+					On("GetOrganizationGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
+						map[string]interface{}(nil), false, false).
 					Return((*GroupListResponse)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
@@ -391,8 +393,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups?filter=" + url.QueryEscape(`ouId eq "`+testOUID+`"`),
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
-						map[string]interface{}{"ouId": testOUID}, false).
+					On("GetOrganizationGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
+						map[string]interface{}{"ouId": testOUID}, false, false).
 					Return(&GroupListResponse{Groups: []GroupBasic{}}, nil).
 					Once()
 			},
@@ -1753,6 +1755,25 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_ValidationError_NameTooLong
 
 	// Confirms validation intercepted the flow and short-circuited the mock service call
 	serviceMock.AssertNotCalled(suite.T(), "CreateGroup", mock.Anything, mock.Anything)
+}
+
+func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest_IncludeAll() {
+	for query, want := range map[string]bool{
+		"includeAll=true": true, "includeAll=false": false, "includeAll=yes": false,
+	} {
+		suite.Run(query, func() {
+			serviceMock := NewGroupServiceInterfaceMock(suite.T())
+			serviceMock.On("GetOrganizationGroupList", mock.Anything, 10, 0, map[string]interface{}(nil), false, want).
+				Return(&GroupListResponse{Groups: []GroupBasic{}}, (*tidcommon.ServiceError)(nil)).Once()
+			handler := newGroupHandler(serviceMock)
+			req := httptest.NewRequest(http.MethodGet, "/groups?limit=10&"+query, nil)
+			recorder := httptest.NewRecorder()
+
+			handler.HandleGroupListRequest(recorder, req)
+
+			suite.Require().Equal(http.StatusOK, recorder.Code)
+		})
+	}
 }
 
 func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest_ByProject() {

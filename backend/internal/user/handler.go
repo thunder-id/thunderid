@@ -70,7 +70,8 @@ func (uh *userHandler) HandleUserListRequest(w http.ResponseWriter, r *http.Requ
 		userListResponse, svcErr = uh.userService.GetUserListByProject(ctx,
 			sysutils.SanitizeString(query.Get(queryParamProjectID)), limit, offset, filters, includeDisplay)
 	} else {
-		userListResponse, svcErr = uh.userService.GetUserList(ctx, limit, offset, filters, includeDisplay)
+		userListResponse, svcErr = uh.userService.GetOrganizationUserList(ctx, limit, offset, filters,
+			includeDisplay, query.Get(queryParamIncludeAll) == "true")
 	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)

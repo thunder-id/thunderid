@@ -91,6 +91,59 @@ func (c *compositeGroupStore) GetGroupList(ctx context.Context, limit, offset in
 	return groups, nil
 }
 
+// GetGroupListCountOutsideProjects returns the total count of unique groups that belong to no project
+// across both stores.
+func (c *compositeGroupStore) GetGroupListCountOutsideProjects(ctx context.Context) (int, error) {
+	groups, err := c.mergeGroupsOutsideProjects(ctx, serverconst.MaxCompositeStoreRecords+1, 0)
+	if err != nil {
+		return 0, err
+	}
+	return len(groups), nil
+}
+
+// GetGroupListOutsideProjects returns a paginated merged list of the groups that belong to no project from
+// both stores.
+func (c *compositeGroupStore) GetGroupListOutsideProjects(
+	ctx context.Context, limit, offset int,
+) ([]GroupBasicDAO, error) {
+	return c.mergeGroupsOutsideProjects(ctx, limit, offset)
+}
+
+// mergeGroupsOutsideProjects merges a page of the groups that belong to no project from both stores.
+func (c *compositeGroupStore) mergeGroupsOutsideProjects(
+	ctx context.Context, limit, offset int,
+) ([]GroupBasicDAO, error) {
+	groups, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return capCompositeCount(c.dbStore.GetGroupListCountOutsideProjects(ctx)) },
+		func() (int, error) { return capCompositeCount(c.fileStore.GetGroupListCountOutsideProjects(ctx)) },
+		func(count int) ([]GroupBasicDAO, error) {
+			return c.dbStore.GetGroupListOutsideProjects(ctx, count, 0)
+		},
+		func(count int) ([]GroupBasicDAO, error) {
+			return c.fileStore.GetGroupListOutsideProjects(ctx, count, 0)
+		},
+		mergeGroupBasicDAOs,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return groups, nil
+}
+
+// capCompositeCount caps a store's count at the composite record limit.
+func capCompositeCount(count int, err error) (int, error) {
+	if err != nil {
+		return 0, err
+	}
+	return min(count, serverconst.MaxCompositeStoreRecords), nil
+}
+
 // GetGroupListCountByOUIDs returns the count of unique groups belonging to any of the given OUs.
 func (c *compositeGroupStore) GetGroupListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
 	capCount := func(fn func(context.Context, []string) (int, error)) func() (int, error) {

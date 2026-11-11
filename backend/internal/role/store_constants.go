@@ -38,6 +38,19 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "ROLE" WHERE DEPLOYMENT_ID = $1`,
 	}
 
+	// queryGetRoleListOutsideProjects retrieves a list of the roles that belong to no project, with pagination.
+	queryGetRoleListOutsideProjects = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-49",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "ROLE" ` +
+			`WHERE PROJECT_ID IS NULL AND DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+	}
+
+	// queryGetRoleListCountOutsideProjects retrieves the total count of the roles that belong to no project.
+	queryGetRoleListCountOutsideProjects = dbmodel.DBQuery{
+		ID:    "RLQ-ROLE_MGT-50",
+		Query: `SELECT COUNT(*) as total FROM "ROLE" WHERE PROJECT_ID IS NULL AND DEPLOYMENT_ID = $1`,
+	}
+
 	// queryUpdateRole updates a role.
 	queryUpdateRole = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-05",

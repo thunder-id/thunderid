@@ -232,6 +232,17 @@ func (s *cacheBackedEntityStore) GetEntityListByProject(ctx context.Context,
 	return s.store.GetEntityListByProject(ctx, category, projectID, ouIDs, limit, offset)
 }
 
+func (s *cacheBackedEntityStore) GetEntityListCountOutsideProjects(ctx context.Context,
+	category string, filters map[string]interface{}) (int, error) {
+	return s.store.GetEntityListCountOutsideProjects(ctx, category, filters)
+}
+
+func (s *cacheBackedEntityStore) GetEntityListOutsideProjects(ctx context.Context,
+	category string, limit, offset int,
+	filters map[string]interface{}) ([]providers.Entity, error) {
+	return s.store.GetEntityListOutsideProjects(ctx, category, limit, offset, filters)
+}
+
 func (s *cacheBackedEntityStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
 	return s.store.ProjectHasEntities(ctx, projectID)
 }

@@ -59,7 +59,8 @@ func (rh *roleHandler) HandleRoleListRequest(w http.ResponseWriter, r *http.Requ
 		roleList, svcErr = rh.roleService.GetRoleListByProject(
 			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset, filters)
 	} else {
-		roleList, svcErr = rh.roleService.GetRoleList(ctx, limit, offset, filters)
+		roleList, svcErr = rh.roleService.GetOrganizationRoleList(
+			ctx, limit, offset, filters, query.Get(includeAllQueryParam) == "true")
 	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)

@@ -1396,6 +1396,107 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListCountByProjec
 	s.ErrorIs(err, storeErr)
 }
 
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListOutsideProjects_MergesAndPaginates() {
+	dbServers := []providers.ResourceServer{{ID: testRS1ID, Name: "Server 1"}, {ID: "rs2"}}
+	fileServers := []providers.ResourceServer{{ID: testRS1ID, Name: "Server 1 File"}, {ID: "rs3"}}
+	s.dbStoreMock.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(len(dbServers), nil)
+	s.fileStoreMock.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(len(fileServers), nil)
+	s.dbStoreMock.On("GetResourceServerListOutsideProjects", s.ctx, len(dbServers), 0).Return(dbServers, nil)
+	s.fileStoreMock.On("GetResourceServerListOutsideProjects", s.ctx, len(fileServers), 0).
+		Return(fileServers, nil)
+
+	result, err := s.compositeStore.GetResourceServerListOutsideProjects(s.ctx, 2, 1)
+	s.NoError(err)
+	s.Require().Len(result, 2)
+	s.Equal("rs2", result[0].ID)
+	s.Equal("rs3", result[1].ID)
+	s.True(result[1].IsReadOnly)
+
+	result, err = s.compositeStore.GetResourceServerListOutsideProjects(s.ctx, 2, 5)
+	s.NoError(err)
+	s.Empty(result)
+
+	count, err := s.compositeStore.GetResourceServerListCountOutsideProjects(s.ctx)
+	s.NoError(err)
+	s.Equal(3, count)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListOutsideProjects_EmptyStores() {
+	s.dbStoreMock.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(0, nil)
+	s.fileStoreMock.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(0, nil)
+
+	result, err := s.compositeStore.GetResourceServerListOutsideProjects(s.ctx, 10, 0)
+	s.NoError(err)
+	s.Empty(result)
+
+	count, err := s.compositeStore.GetResourceServerListCountOutsideProjects(s.ctx)
+	s.NoError(err)
+	s.Zero(count)
+	s.dbStoreMock.AssertNotCalled(s.T(), "GetResourceServerListOutsideProjects", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListOutsideProjects_LimitExceeded() {
+	dbServers := make([]providers.ResourceServer, serverconst.MaxCompositeStoreRecords)
+	for i := range dbServers {
+		dbServers[i] = providers.ResourceServer{ID: fmt.Sprintf("rs-db-%d", i)}
+	}
+	s.dbStoreMock.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(len(dbServers), nil)
+	s.fileStoreMock.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(1, nil)
+	s.dbStoreMock.On("GetResourceServerListOutsideProjects", s.ctx, len(dbServers), 0).Return(dbServers, nil)
+	s.fileStoreMock.On("GetResourceServerListOutsideProjects", s.ctx, 1, 0).
+		Return([]providers.ResourceServer{{ID: "rs-file"}}, nil)
+
+	_, err := s.compositeStore.GetResourceServerListOutsideProjects(s.ctx, 10, 0)
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+
+	_, err = s.compositeStore.GetResourceServerListCountOutsideProjects(s.ctx)
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListOutsideProjects_StoreErrors() {
+	storeErr := errors.New("store error")
+	testCases := []struct {
+		name  string
+		setup func(db, file *resourceStoreInterfaceMock)
+	}{
+		{name: "DBCount", setup: func(db, _ *resourceStoreInterfaceMock) {
+			db.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(0, storeErr)
+		}},
+		{name: "FileCount", setup: func(db, file *resourceStoreInterfaceMock) {
+			db.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(1, nil)
+			file.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(0, storeErr)
+		}},
+		{name: "DBList", setup: func(db, file *resourceStoreInterfaceMock) {
+			db.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(1, nil)
+			file.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(1, nil)
+			db.On("GetResourceServerListOutsideProjects", s.ctx, 1, 0).Return(nil, storeErr)
+		}},
+		{name: "FileList", setup: func(db, file *resourceStoreInterfaceMock) {
+			db.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(1, nil)
+			file.On("GetResourceServerListCountOutsideProjects", s.ctx).Return(1, nil)
+			db.On("GetResourceServerListOutsideProjects", s.ctx, 1, 0).
+				Return([]providers.ResourceServer{{ID: "rs1"}}, nil)
+			file.On("GetResourceServerListOutsideProjects", s.ctx, 1, 0).Return(nil, storeErr)
+		}},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			db := newResourceStoreInterfaceMock(s.T())
+			file := newResourceStoreInterfaceMock(s.T())
+			tc.setup(db, file)
+			store := newCompositeResourceStore(file, db)
+
+			_, err := store.GetResourceServerListOutsideProjects(s.ctx, 10, 0)
+			s.ErrorIs(err, storeErr)
+
+			_, err = store.GetResourceServerListCountOutsideProjects(s.ctx)
+			s.ErrorIs(err, storeErr)
+		})
+	}
+}
+
 func (s *CompositeResourceStoreTestSuite) TestGetDeclaredPermissionsMergesBothStores() {
 	roots := []string{"reports"}
 	s.dbStoreMock.On("GetDeclaredPermissions", s.ctx, "api", roots, ":").

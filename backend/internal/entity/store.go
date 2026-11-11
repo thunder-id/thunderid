@@ -61,6 +61,10 @@ type entityStoreInterface interface {
 	GetEntityListCountByProject(ctx context.Context, category, projectID string, ouIDs []string) (int, error)
 	GetEntityListByProject(ctx context.Context, category, projectID string, ouIDs []string,
 		limit, offset int) ([]providers.Entity, error)
+	GetEntityListCountOutsideProjects(ctx context.Context, category string,
+		filters map[string]interface{}) (int, error)
+	GetEntityListOutsideProjects(ctx context.Context, category string,
+		limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
 	ProjectHasEntities(ctx context.Context, projectID string) (bool, error)
 	GetEntityListCountBySystemAttributes(ctx context.Context, category string,
 		sysQuery SystemAttributeQuery) (int, error)
@@ -739,6 +743,42 @@ func (es *entityDBStore) GetEntityListByProject(ctx context.Context, category, p
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 	query, args, err := buildEntityListQueryByProject(category, projectID, ouIDs, limit, offset, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+	return buildEntitiesFromResults(results)
+}
+
+// GetEntityListCountOutsideProjects retrieves the number of entities of a category that belong to no
+// project.
+func (es *entityDBStore) GetEntityListCountOutsideProjects(ctx context.Context, category string,
+	filters map[string]interface{}) (int, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+	query, args, err := buildEntityCountQueryOutsideProjects(
+		category, filters, es.indexedAttributes, es.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+	return executeCountQuery(dbClient, ctx, query, args)
+}
+
+// GetEntityListOutsideProjects retrieves a page of the entities of a category that belong to no
+// project.
+func (es *entityDBStore) GetEntityListOutsideProjects(ctx context.Context, category string,
+	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	query, args, err := buildEntityListQueryOutsideProjects(
+		category, filters, es.indexedAttributes, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}

@@ -46,6 +46,10 @@ const (
 // projectIDQueryParam is the query parameter that lists the resource servers of one project.
 const projectIDQueryParam = "projectId"
 
+// includeAllQueryParam is the query parameter that keeps project resource servers in the organization-view
+// listing.
+const includeAllQueryParam = "includeAll"
+
 // IsPermissionDelimiter reports whether r is one of the allowed delimiter characters in a
 // permission string (see serverconst.ValidPermissionDelimiters).
 func IsPermissionDelimiter(r rune) bool {
@@ -61,6 +65,11 @@ type ResourceServiceInterface interface {
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServer(ctx context.Context, id string) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServerList(ctx context.Context, limit, offset int) (*ResourceServerList, *tidcommon.ServiceError)
+	// GetOrganizationResourceServerList is the organization-view listing. On a deployment that serves
+	// projects, it leaves out the resource servers of a project unless includeAll is set.
+	GetOrganizationResourceServerList(
+		ctx context.Context, limit, offset int, includeAll bool,
+	) (*ResourceServerList, *tidcommon.ServiceError)
 	GetResourceServerListByOUID(
 		ctx context.Context, ouID string, limit, offset int,
 	) (*ResourceServerList, *tidcommon.ServiceError)
@@ -564,6 +573,27 @@ func (rs *resourceService) GetResourceServerByIdentifier(
 func (rs *resourceService) GetResourceServerList(
 	ctx context.Context, limit, offset int,
 ) (*ResourceServerList, *tidcommon.ServiceError) {
+	return rs.listResourceServers(ctx, limit, offset, false, "")
+}
+
+// GetOrganizationResourceServerList retrieves the organization-view paginated list of resource servers. On a
+// deployment that serves projects, it leaves out the resource servers of a project unless includeAll is set.
+func (rs *resourceService) GetOrganizationResourceServerList(
+	ctx context.Context, limit, offset int, includeAll bool,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	extraQuery := ""
+	if includeAll {
+		extraQuery = "&" + includeAllQueryParam + "=true"
+	}
+	return rs.listResourceServers(ctx, limit, offset, !includeAll && rs.projectValidator != nil, extraQuery)
+}
+
+// listResourceServers retrieves a paginated list of resource servers, leaving out the resource servers of a
+// project from the organization-wide listing when excludeProjects is set. extraQuery is appended to the
+// pagination links.
+func (rs *resourceService) listResourceServers(
+	ctx context.Context, limit, offset int, excludeProjects bool, extraQuery string,
+) (*ResourceServerList, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
@@ -576,7 +606,13 @@ func (rs *resourceService) GetResourceServerList(
 		return rs.listResourceServersByOUIDs(ctx, ouIDs, limit, offset)
 	}
 
-	totalCount, err := rs.resourceStore.GetResourceServerListCount(ctx)
+	countFn, listFn := rs.resourceStore.GetResourceServerListCount, rs.resourceStore.GetResourceServerList
+	if excludeProjects {
+		countFn = rs.resourceStore.GetResourceServerListCountOutsideProjects
+		listFn = rs.resourceStore.GetResourceServerListOutsideProjects
+	}
+
+	totalCount, err := countFn(ctx)
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ErrResultLimitExceededInCompositeMode
@@ -585,7 +621,7 @@ func (rs *resourceService) GetResourceServerList(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	resourceServers, err := rs.resourceStore.GetResourceServerList(ctx, limit, offset)
+	resourceServers, err := listFn(ctx, limit, offset)
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ErrResultLimitExceededInCompositeMode
@@ -600,7 +636,7 @@ func (rs *resourceService) GetResourceServerList(
 		ResourceServers: resourceServers,
 		StartIndex:      offset + 1,
 		Count:           len(resourceServers),
-		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, ""),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, extraQuery),
 	}
 
 	return response, nil

@@ -3342,6 +3342,45 @@ func (s *ServiceTestSuite) TestGetEntityListByProject_Errors() {
 		s.ErrorIs(err, s.testErr)
 	})
 }
+
+func (s *ServiceTestSuite) TestOutsideProjectsMethods_Delegate() {
+	e := testEntity("outside-entity")
+	filters := map[string]interface{}{"email": "a@b.com"}
+	s.store.On("GetEntityListCountOutsideProjects", mock.Anything, "user", filters).Return(1, nil)
+	s.store.On("GetEntityListOutsideProjects", mock.Anything, "user", 10, 0, filters).
+		Return([]providers.Entity{*e}, nil)
+
+	count, err := s.svc.GetEntityListCountOutsideProjects(s.ctx, providers.EntityCategoryUser, filters)
+	s.NoError(err)
+	s.Equal(1, count)
+	list, err := s.svc.GetEntityListOutsideProjects(s.ctx, providers.EntityCategoryUser, 10, 0, filters)
+	s.NoError(err)
+	s.Len(list, 1)
+}
+
+func (s *ServiceTestSuite) TestGetEntityListOutsideProjects_Errors() {
+	s.Run("store error", func() {
+		s.SetupTest()
+		s.store.On("GetEntityListOutsideProjects", mock.Anything, "user", 10, 0,
+			map[string]interface{}(nil)).Return(nil, s.testErr)
+
+		_, err := s.svc.GetEntityListOutsideProjects(s.ctx, providers.EntityCategoryUser, 10, 0, nil)
+
+		s.ErrorIs(err, s.testErr)
+	})
+	s.Run("runtime read error", func() {
+		s.SetupTest()
+		svc, runtime := s.newServiceWithRuntimeMock()
+		e := testEntity("outside-runtime")
+		s.store.On("GetEntityListOutsideProjects", mock.Anything, "user", 10, 0,
+			map[string]interface{}(nil)).Return([]providers.Entity{*e}, nil)
+		runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr)
+
+		_, err := svc.GetEntityListOutsideProjects(s.ctx, providers.EntityCategoryUser, 10, 0, nil)
+
+		s.ErrorIs(err, s.testErr)
+	})
+}
 func (s *ServiceTestSuite) TestCreateEntityDropsIncomingVerification() {
 	e := testEntity("create-verification")
 	e.SystemAttributes = json.RawMessage(`{"keep":true,"attributeVerification":` +

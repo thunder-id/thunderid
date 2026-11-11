@@ -77,6 +77,20 @@ describe('useGetResourceServers', () => {
     expect(new URL(callArgs.url as string).searchParams.get('filter')).toBe('ouId eq "ou-1"');
   });
 
+  it('should ask for the resource servers of a project as well with includeAll', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: firstPageData});
+
+    const {result} = renderHook(() => useGetResourceServers({includeAll: true}));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(new URL(callArgs.url as string).searchParams.get('includeAll')).toBe('true');
+  });
+
   it('should not fetch while disabled', () => {
     renderHook(() => useGetResourceServers({enabled: false}));
 

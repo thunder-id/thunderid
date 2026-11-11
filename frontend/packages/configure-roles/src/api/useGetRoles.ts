@@ -10,7 +10,7 @@ import type {RoleListResponse} from '../models/role';
 
 /**
  * Custom React hook to fetch a paginated list of roles. With a `projectId`, only that project's roles are
- * listed; without one, every role is.
+ * listed; without one, the control plane leaves out the roles of a project unless `includeAll` is set.
  *
  * @param params - Optional pagination parameters and project
  * @returns TanStack Query result object containing roles list data
@@ -18,10 +18,10 @@ import type {RoleListResponse} from '../models/role';
 export default function useGetRoles(params?: RoleListParams): UseQueryResult<RoleListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0, projectId} = params ?? {};
+  const {limit = 30, offset = 0, projectId, includeAll} = params ?? {};
 
   return useQuery<RoleListResponse>({
-    queryKey: [RoleQueryKeys.ROLES, {limit, offset, projectId}],
+    queryKey: [RoleQueryKeys.ROLES, {limit, offset, projectId, includeAll}],
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<RoleListResponse> => {
       const serverUrl: string = getServerUrl();
@@ -32,6 +32,9 @@ export default function useGetRoles(params?: RoleListParams): UseQueryResult<Rol
       });
       if (projectId) {
         queryParams.append('projectId', projectId);
+      }
+      if (includeAll) {
+        queryParams.append('includeAll', 'true');
       }
 
       const response: {data: RoleListResponse} = await http.request({

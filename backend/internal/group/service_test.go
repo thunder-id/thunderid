@@ -4462,3 +4462,146 @@ func (suite *GroupServiceTestSuite) TestProjectHasGroups() {
 		})
 	}
 }
+
+func (suite *GroupServiceTestSuite) TestGroupService_GetOrganizationGroupList() {
+	orgGroups := []GroupBasicDAO{{ID: "g1", Name: "group-1", OUID: testOUID1}}
+	allGroups := []GroupBasicDAO{
+		{ID: "g1", Name: "group-1", OUID: testOUID1},
+		{ID: "g2", Name: "group-2", OUID: testOUID1, ProjectID: "project-1"},
+	}
+	ouFilter := map[string]interface{}{"ouId": testOUID1}
+
+	testCases := []struct {
+		name          string
+		filters       map[string]interface{}
+		includeAll    bool
+		withValidator bool
+		authzSetup    func(*testing.T) sysauthz.SystemAuthorizationServiceInterface
+		setup         func(*groupStoreInterfaceMock)
+		wantResult    *groupListExpectations
+	}{
+		{
+			name:          "project deployment excludes project groups",
+			withValidator: true,
+			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("GetGroupListCountOutsideProjects", mock.Anything).Return(3, nil).Once()
+				storeMock.On("GetGroupListOutsideProjects", mock.Anything, 1, 0).Return(orgGroups, nil).Once()
+			},
+			wantResult: &groupListExpectations{
+				totalResults: 3, count: 1, startIndex: 1, groupNames: []string{"group-1"},
+				linkRels:  []string{"next", "last"},
+				linkHrefs: []string{"/groups?offset=1&limit=1", "/groups?offset=2&limit=1"},
+			},
+		},
+		{
+			name:          "includeAll lists every group and carries the parameter in links",
+			withValidator: true,
+			includeAll:    true,
+			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("GetGroupListCount", mock.Anything).Return(3, nil).Once()
+				storeMock.On("GetGroupList", mock.Anything, 1, 0).Return(allGroups[:1], nil).Once()
+			},
+			wantResult: &groupListExpectations{
+				totalResults: 3, count: 1, startIndex: 1, groupNames: []string{"group-1"},
+				linkRels: []string{"next", "last"},
+				linkHrefs: []string{"/groups?offset=1&limit=1&includeAll=true",
+					"/groups?offset=2&limit=1&includeAll=true"},
+			},
+		},
+		{
+			name: "deployment without projects lists every group",
+			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("GetGroupListCount", mock.Anything).Return(1, nil).Once()
+				storeMock.On("GetGroupList", mock.Anything, 1, 0).Return(allGroups[1:], nil).Once()
+			},
+			wantResult: &groupListExpectations{
+				totalResults: 1, count: 1, startIndex: 1, groupNames: []string{"group-2"},
+				linkRels: []string{}, linkHrefs: []string{},
+			},
+		},
+		{
+			name:          "organization unit filter lists every group of the unit",
+			filters:       ouFilter,
+			withValidator: true,
+			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("GetGroupListCountByOUIDs", mock.Anything, []string{testOUID1}).Return(2, nil).Once()
+				storeMock.On("GetGroupListByOUIDs", mock.Anything, []string{testOUID1}, 1, 0).
+					Return(allGroups[:1], nil).Once()
+			},
+			wantResult: &groupListExpectations{
+				totalResults: 2, count: 1, startIndex: 1, groupNames: []string{"group-1"},
+				linkRels: []string{"next", "last"},
+				linkHrefs: []string{"/groups?offset=1&limit=1&filter=ouId+eq+%22ou-123%22",
+					"/groups?offset=1&limit=1&filter=ouId+eq+%22ou-123%22"},
+			},
+		},
+		{
+			name:          "caller limited to organization units lists every group of those units",
+			withValidator: true,
+			authzSetup: func(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
+				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListGroups,
+					security.ResourceTypeOU).Return(&sysauthz.AccessibleResources{IDs: []string{testOUID1}},
+					(*tidcommon.ServiceError)(nil))
+				return authzMock
+			},
+			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("GetGroupListCountByOUIDs", mock.Anything, []string{testOUID1}).Return(1, nil).Once()
+				storeMock.On("GetGroupListByOUIDs", mock.Anything, []string{testOUID1}, 1, 0).
+					Return(allGroups[1:], nil).Once()
+			},
+			wantResult: &groupListExpectations{
+				totalResults: 1, count: 1, startIndex: 1, groupNames: []string{"group-2"},
+				linkRels: []string{}, linkHrefs: []string{},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			storeMock := newGroupStoreInterfaceMock(suite.T())
+			tc.setup(storeMock)
+			authzSvc := newAllowAllAuthz(suite.T())
+			if tc.authzSetup != nil {
+				authzSvc = tc.authzSetup(suite.T())
+			}
+			service := &groupService{bus: discardingBus{}, authzService: authzSvc, groupStore: storeMock}
+			if tc.withValidator {
+				service.projectValidator = newProjectOUValidatorMock(suite.T())
+			}
+
+			response, err := service.GetOrganizationGroupList(context.Background(), 1, 0, tc.filters, false,
+				tc.includeAll)
+
+			suite.Require().Nil(err)
+			suite.assertGroupListResponse(response, tc.wantResult)
+		})
+	}
+}
+
+func (suite *GroupServiceTestSuite) TestGroupService_GetOrganizationGroupList_StoreErrors() {
+	suite.Run("count error", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetGroupListCountOutsideProjects", mock.Anything).Return(0, errors.New("count failure")).Once()
+		service := &groupService{bus: discardingBus{}, authzService: newAllowAllAuthz(suite.T()),
+			groupStore: storeMock, projectValidator: newProjectOUValidatorMock(suite.T())}
+
+		response, err := service.GetOrganizationGroupList(context.Background(), 5, 0, nil, false, false)
+
+		suite.Require().Nil(response)
+		suite.Require().Equal(tidcommon.InternalServerError, *err)
+	})
+	suite.Run("list error", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetGroupListCountOutsideProjects", mock.Anything).Return(2, nil).Once()
+		storeMock.On("GetGroupListOutsideProjects", mock.Anything, 5, 0).
+			Return(nil, errors.New("list failure")).Once()
+		service := &groupService{bus: discardingBus{}, authzService: newAllowAllAuthz(suite.T()),
+			groupStore: storeMock, projectValidator: newProjectOUValidatorMock(suite.T())}
+
+		response, err := service.GetOrganizationGroupList(context.Background(), 5, 0, nil, false, false)
+
+		suite.Require().Nil(response)
+		suite.Require().Equal(tidcommon.InternalServerError, *err)
+	})
+}

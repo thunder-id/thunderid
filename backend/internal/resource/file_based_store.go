@@ -106,6 +106,34 @@ func (f *fileBasedResourceStore) GetResourceServerListCount(ctx context.Context)
 	return f.GenericFileBasedStore.Count()
 }
 
+// GetResourceServerListOutsideProjects returns a page of the declarative resource servers that belong to no
+// project.
+func (f *fileBasedResourceStore) GetResourceServerListOutsideProjects(
+	ctx context.Context, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	servers, err := f.resourceServersByProject("", "")
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(servers) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := min(start+max(limit, 0), len(servers))
+	return servers[start:end], nil
+}
+
+// GetResourceServerListCountOutsideProjects returns the number of declarative resource servers that belong
+// to no project.
+func (f *fileBasedResourceStore) GetResourceServerListCountOutsideProjects(ctx context.Context) (int, error) {
+	servers, err := f.resourceServersByProject("", "")
+	if err != nil {
+		return 0, err
+	}
+	return len(servers), nil
+}
+
 // GetResourceServerListByOUID returns a page of the declarative resource servers an organization unit owns.
 func (f *fileBasedResourceStore) GetResourceServerListByOUID(
 	ctx context.Context, ouID string, limit, offset int,

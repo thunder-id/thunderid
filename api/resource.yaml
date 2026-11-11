@@ -43,6 +43,7 @@ paths:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/resourceServerProjectIdQueryParam'
+        - $ref: '#/components/parameters/resourceServerIncludeAllQueryParam'
         - $ref: '#/components/parameters/resourceServerFilterQueryParam'
       responses:
         "200":
@@ -2337,6 +2338,17 @@ components:
         type: integer
         minimum: 0
         default: 0
+    resourceServerIncludeAllQueryParam:
+      in: query
+      name: includeAll
+      required: false
+      description: |
+        Without `projectId`, a Control Plane lists only the resource servers that belong to no project. Set to
+        `true` to list the resource servers of every project as well. A Data Plane always lists every one, so it
+        ignores this parameter.
+      schema:
+        type: boolean
+        default: false
     resourceServerProjectIdQueryParam:
       in: query
       name: projectId

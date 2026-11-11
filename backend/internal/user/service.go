@@ -47,6 +47,10 @@ const loggerComponentName = "UserService"
 type UserServiceInterface interface {
 	GetUserList(ctx context.Context, limit, offset int,
 		filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError)
+	// GetOrganizationUserList retrieves the users the organization view lists. On a deployment that
+	// serves projects it leaves out the users of projects unless includeAll is set.
+	GetOrganizationUserList(ctx context.Context, limit, offset int, filters map[string]interface{},
+		includeDisplay, includeAll bool) (*UserListResponse, *tidcommon.ServiceError)
 	GetUserListByProject(ctx context.Context, projectID string, limit, offset int,
 		filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError)
 	GetUsersByPath(ctx context.Context, handlePath string, limit, offset int,
@@ -164,13 +168,33 @@ func newUserService(
 // lists the users that unit owns, followed by the ones shared into it.
 func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 	filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError) {
+	return us.getUserList(ctx, limit, offset, filters, includeDisplay, false, "")
+}
+
+// GetOrganizationUserList retrieves the users the organization view lists. On a deployment that serves
+// projects it leaves out the users of projects unless includeAll is set. An organization unit filter, or
+// a caller limited to some organization units, lists what those units hold as GetUserList does.
+func (us *userService) GetOrganizationUserList(ctx context.Context, limit, offset int,
+	filters map[string]interface{}, includeDisplay, includeAll bool) (*UserListResponse, *tidcommon.ServiceError) {
+	excludeProjects := !includeAll && us.projectValidator != nil
+	extraQuery := ""
+	if includeAll {
+		extraQuery = "&" + queryParamIncludeAll + "=true"
+	}
+	return us.getUserList(ctx, limit, offset, filters, includeDisplay, excludeProjects, extraQuery)
+}
+
+// getUserList lists users as GetUserList does, leaving out the users of projects from the organization
+// wide lists when excludeProjects is set, and adding extraQuery to the pagination links.
+func (us *userService) getUserList(ctx context.Context, limit, offset int, filters map[string]interface{},
+	includeDisplay, excludeProjects bool, extraQuery string) (*UserListResponse, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
 
-	listQuery := utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay)
+	listQuery := utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay) + extraQuery
 	ouID, filters, err := filter.SplitOUIDFilter(filters)
 	if err != nil {
 		return nil, &ErrorInvalidFilter
@@ -205,7 +229,7 @@ func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 
 	// Unfiltered path: system-level caller — return all users.
 	if accessible.AllAllowed {
-		return us.listAllUsers(ctx, limit, offset, filters, includeDisplay, listQuery, logger)
+		return us.listAllUsers(ctx, limit, offset, filters, includeDisplay, excludeProjects, listQuery, logger)
 	}
 
 	// A caller that may list one organization unit lists what that unit sees: the users it owns, then the ones
@@ -285,17 +309,31 @@ func (us *userService) GetUserListByProject(ctx context.Context, projectID strin
 	return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
 }
 
-// listAllUsers retrieves users without OU filtering.
+// listAllUsers retrieves users without OU filtering, leaving out the users of projects when
+// excludeProjects is set.
 func (us *userService) listAllUsers(
 	ctx context.Context, limit, offset int, filters map[string]interface{},
-	includeDisplay bool, listQuery string, logger *log.Logger,
+	includeDisplay, excludeProjects bool, listQuery string, logger *log.Logger,
 ) (*UserListResponse, *tidcommon.ServiceError) {
-	totalCount, err := us.entityService.GetEntityListCount(ctx, providers.EntityCategoryUser, filters)
+	var totalCount int
+	var err error
+	if excludeProjects {
+		totalCount, err = us.entityService.GetEntityListCountOutsideProjects(
+			ctx, providers.EntityCategoryUser, filters)
+	} else {
+		totalCount, err = us.entityService.GetEntityListCount(ctx, providers.EntityCategoryUser, filters)
+	}
 	if err != nil {
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list count", err)
 	}
 
-	entities, err := us.entityService.GetEntityList(ctx, providers.EntityCategoryUser, limit, offset, filters)
+	var entities []providers.Entity
+	if excludeProjects {
+		entities, err = us.entityService.GetEntityListOutsideProjects(
+			ctx, providers.EntityCategoryUser, limit, offset, filters)
+	} else {
+		entities, err = us.entityService.GetEntityList(ctx, providers.EntityCategoryUser, limit, offset, filters)
+	}
 	if err != nil {
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}

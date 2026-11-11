@@ -10,20 +10,20 @@ import type {UserListResponse} from '../models/users';
 
 /**
  * Custom hook to fetch a list of users. With a `projectId`, only that project's users are listed;
- * without one, every user is.
+ * without one, the control plane leaves out the users of a project unless `includeAll` is set.
  *
  * @param params - Optional query parameters for filtering, pagination and project
  * @returns TanStack Query result object containing user list data, loading state, and error information
  */
 export default function useGetUsers(
-  params?: ApiFilteringParams & {projectId?: string},
+  params?: ApiFilteringParams & {projectId?: string; includeAll?: boolean},
 ): UseQueryResult<UserListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit, offset, filter, projectId} = params ?? {};
+  const {limit, offset, filter, projectId, includeAll} = params ?? {};
 
   return useQuery<UserListResponse>({
-    queryKey: [UserQueryKeys.USERS, {limit, offset, filter, projectId}],
+    queryKey: [UserQueryKeys.USERS, {limit, offset, filter, projectId, includeAll}],
     queryFn: async (): Promise<UserListResponse> => {
       const serverUrl: string = getServerUrl();
       const searchParams: URLSearchParams = new URLSearchParams();
@@ -39,6 +39,9 @@ export default function useGetUsers(
       }
       if (projectId) {
         searchParams.append('projectId', projectId);
+      }
+      if (includeAll) {
+        searchParams.append('includeAll', 'true');
       }
       searchParams.append('include', 'display');
 

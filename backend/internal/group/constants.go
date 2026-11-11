@@ -28,3 +28,6 @@ const maxProjectIDLength = 36
 
 // projectIDQueryParam is the query parameter that lists the groups of one project.
 const projectIDQueryParam = "projectId"
+
+// includeAllQueryParam is the query parameter that lists the groups of projects with the organization groups.
+const includeAllQueryParam = "includeAll"

@@ -222,7 +222,7 @@ On the control plane, a resource server can belong to a project. A resource serv
 
 - **Create or update**: set `projectId` in the request body of `POST /resource-servers` or `PUT /resource-servers/{id}`. On create, a resource server in a project without `ouId` is placed in the system organization unit. An update without `ouId` keeps the resource server's organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit fails the request with `RES-1026`, and a project that does not exist fails it with `RES-1025`.
 - **Update without `projectId` or `ouId`**: the resource server keeps its current project and organization unit. A different `projectId` moves the resource server to that project.
-- **List**: `GET /resource-servers?projectId=<project-id>` returns the resource servers of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
+- **List**: `GET /resource-servers?projectId=<project-id>` returns the resource servers of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list. Without `projectId`, `GET /resource-servers` leaves out the resource servers of projects. Add `includeAll=true` to list every resource server. A `filter=ouId eq "<ou-id>"` still lists every resource server that organization unit holds, including the ones in projects.
 
 A project groups resource servers for management only. At runtime, a resource server is found by its `identifier` whatever project it belongs to, so the `identifier` stays unique across all projects.
 

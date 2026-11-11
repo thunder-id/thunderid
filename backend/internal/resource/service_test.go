@@ -6044,6 +6044,113 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_Narrow
 	}
 }
 
+func (suite *ResourceServiceTestSuite) TestGetOrganizationResourceServerList_ExcludesProjects() {
+	service, _ := suite.newProjectAwareService()
+	resourceServers := []providers.ResourceServer{{ID: "rs-1", OUID: testSystemOUID}}
+	suite.mockStore.On("GetResourceServerListCountOutsideProjects", mock.Anything).Return(3, nil)
+	suite.mockStore.On("GetResourceServerListOutsideProjects", mock.Anything, 1, 1).Return(resourceServers, nil)
+
+	result, err := service.GetOrganizationResourceServerList(context.Background(), 1, 1, false)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(3, result.TotalResults)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.NotContains(link.Href, includeAllQueryParam)
+	}
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCount", mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetOrganizationResourceServerList_IncludeAll() {
+	service, _ := suite.newProjectAwareService()
+	resourceServers := []providers.ResourceServer{
+		{ID: "rs-1", OUID: testSystemOUID},
+		{ID: "rs-2", OUID: testSystemOUID, ProjectID: testProjectID},
+	}
+	suite.mockStore.On("GetResourceServerListCount", mock.Anything).Return(5, nil)
+	suite.mockStore.On("GetResourceServerList", mock.Anything, 2, 2).Return(resourceServers, nil)
+
+	result, err := service.GetOrganizationResourceServerList(context.Background(), 2, 2, true)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(5, result.TotalResults)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&includeAll=true")
+	}
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCountOutsideProjects", mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetOrganizationResourceServerList_NoProjectValidatorListsAll() {
+	resourceServers := []providers.ResourceServer{{ID: "rs-2", ProjectID: testProjectID}}
+	suite.mockStore.On("GetResourceServerListCount", mock.Anything).Return(3, nil)
+	suite.mockStore.On("GetResourceServerList", mock.Anything, 1, 0).Return(resourceServers, nil)
+
+	result, err := suite.service.GetOrganizationResourceServerList(context.Background(), 1, 0, false)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(3, result.TotalResults)
+	suite.Equal(resourceServers, result.ResourceServers)
+	for _, link := range result.Links {
+		suite.NotContains(link.Href, includeAllQueryParam)
+	}
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCountOutsideProjects", mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerList_ProjectAwareListsAll() {
+	service, _ := suite.newProjectAwareService()
+	suite.mockStore.On("GetResourceServerListCount", mock.Anything).Return(1, nil)
+	suite.mockStore.On("GetResourceServerList", mock.Anything, 10, 0).
+		Return([]providers.ResourceServer{{ID: "rs-1", ProjectID: testProjectID}}, nil)
+
+	result, err := service.GetResourceServerList(context.Background(), 10, 0)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(1, result.TotalResults)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCountOutsideProjects", mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetOrganizationResourceServerList_StoreErrors() {
+	testCases := []struct {
+		name     string
+		countErr error
+		listErr  error
+		wantCode string
+	}{
+		{name: "CountError", countErr: errors.New("db error"), wantCode: tidcommon.InternalServerError.Code},
+		{name: "CountLimitExceeded", countErr: errResultLimitExceededInCompositeMode,
+			wantCode: ErrResultLimitExceededInCompositeMode.Code},
+		{name: "ListError", listErr: errors.New("db error"), wantCode: tidcommon.InternalServerError.Code},
+		{name: "ListLimitExceeded", listErr: errResultLimitExceededInCompositeMode,
+			wantCode: ErrResultLimitExceededInCompositeMode.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, _ := suite.newProjectAwareService()
+			suite.mockStore.On("GetResourceServerListCountOutsideProjects", mock.Anything).Return(1, tc.countErr)
+			if tc.countErr == nil {
+				suite.mockStore.On("GetResourceServerListOutsideProjects", mock.Anything, 10, 0).
+					Return(nil, tc.listErr)
+			}
+
+			result, err := service.GetOrganizationResourceServerList(context.Background(), 10, 0, false)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.wantCode, err.Code)
+		})
+	}
+}
+
 func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_EmptyProject() {
 	result, err := suite.service.GetResourceServerListByProject(context.Background(), "", "", 10, 0)
 

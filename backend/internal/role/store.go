@@ -23,6 +23,8 @@ var getDBProvider = provider.GetDBProvider
 type roleStoreInterface interface {
 	GetRoleListCount(ctx context.Context) (int, error)
 	GetRoleList(ctx context.Context, limit, offset int) ([]Role, error)
+	GetRoleListCountOutsideProjects(ctx context.Context) (int, error)
+	GetRoleListOutsideProjects(ctx context.Context, limit, offset int) ([]Role, error)
 	GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
 	GetRoleListCountByProject(ctx context.Context, projectID, ouID string) (int, error)
@@ -142,6 +144,45 @@ func (s *roleStore) GetRoleList(ctx context.Context, limit, offset int) ([]Role,
 	}
 
 	results, err := dbClient.QueryContext(ctx, queryGetRoleList, limit, offset, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute role list query: %w", err)
+	}
+
+	roles := make([]Role, 0)
+	for _, row := range results {
+		role, err := buildRoleBasicInfoFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build role from result row: %w", err)
+		}
+		roles = append(roles, role)
+	}
+
+	return roles, nil
+}
+
+// GetRoleListCountOutsideProjects retrieves the total count of the roles that belong to no project.
+func (s *roleStore) GetRoleListCountOutsideProjects(ctx context.Context) (int, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return 0, err
+	}
+
+	countResults, err := dbClient.QueryContext(ctx, queryGetRoleListCountOutsideProjects, s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+
+	return parseCountResult(countResults)
+}
+
+// GetRoleListOutsideProjects retrieves the roles that belong to no project, with pagination.
+func (s *roleStore) GetRoleListOutsideProjects(ctx context.Context, limit, offset int) ([]Role, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetRoleListOutsideProjects, limit, offset, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute role list query: %w", err)
 	}

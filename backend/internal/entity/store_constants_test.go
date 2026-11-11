@@ -431,3 +431,46 @@ func (s *StoreConstantsTestSuite) TestBuildProjectQueries() {
 		s.Contains(q.PostgresQuery, "AND 1=0")
 	})
 }
+
+func (s *StoreConstantsTestSuite) TestBuildOutsideProjectsQueries() {
+	s.Run("count", func() {
+		q, args, err := buildEntityCountQueryOutsideProjects("user", nil, nil, "dep")
+		s.NoError(err)
+		s.Equal("ASQ-ENTITY_MGT-42", q.ID)
+		s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1 AND PROJECT_ID IS NULL `+
+			`AND DEPLOYMENT_ID = $2`, q.PostgresQuery)
+		s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = ? AND PROJECT_ID IS NULL `+
+			`AND DEPLOYMENT_ID = ?`, q.SQLiteQuery)
+		s.Equal([]interface{}{"user", "dep"}, args)
+	})
+	s.Run("page", func() {
+		q, args, err := buildEntityListQueryOutsideProjects("user", nil, nil, 10, 5, "dep")
+		s.NoError(err)
+		s.Equal("ASQ-ENTITY_MGT-43", q.ID)
+		s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+			`WHERE CATEGORY = $1 AND PROJECT_ID IS NULL AND DEPLOYMENT_ID = $2 `+
+			`ORDER BY ID LIMIT $3 OFFSET $4`, q.PostgresQuery)
+		s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+			`WHERE CATEGORY = ? AND PROJECT_ID IS NULL AND DEPLOYMENT_ID = ? `+
+			`ORDER BY ID LIMIT ? OFFSET ?`, q.SQLiteQuery)
+		s.Equal([]interface{}{"user", "dep", 10, 5}, args)
+	})
+	s.Run("filters", func() {
+		q, args, err := buildEntityListQueryOutsideProjects("user",
+			map[string]interface{}{"email": "a@b.com"}, nil, 10, 0, "dep")
+		s.NoError(err)
+		s.Contains(q.PostgresQuery, "WHERE CATEGORY = $1 AND PROJECT_ID IS NULL AND ")
+		s.Contains(q.PostgresQuery, "$2")
+		s.Contains(q.PostgresQuery, "AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $4 OFFSET $5")
+		s.Contains(q.SQLiteQuery, "WHERE CATEGORY = ? AND PROJECT_ID IS NULL AND ")
+		s.Equal([]interface{}{"user", "a@b.com", "dep", 10, 0}, args)
+	})
+	s.Run("invalid filter key", func() {
+		_, _, err := buildEntityCountQueryOutsideProjects("user",
+			map[string]interface{}{"bad key;": "x"}, nil, "dep")
+		s.Error(err)
+		_, _, err = buildEntityListQueryOutsideProjects("user",
+			map[string]interface{}{"bad key;": "x"}, nil, 10, 0, "dep")
+		s.Error(err)
+	})
+}

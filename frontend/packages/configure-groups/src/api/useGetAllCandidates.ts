@@ -42,6 +42,8 @@ export default function useGetAllCandidates<T>({
           limit: limit.toString(),
           offset: offset.toString(),
           include: 'display',
+          // A member can come from any project, so the picker asks for the resources of a project as well.
+          includeAll: 'true',
         });
         if (filter) {
           queryParams.append('filter', filter);

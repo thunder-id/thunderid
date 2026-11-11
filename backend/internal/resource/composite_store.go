@@ -164,6 +164,70 @@ func (c *compositeResourceStore) GetResourceServerListCount(ctx context.Context)
 	return len(merged), nil
 }
 
+// GetResourceServerListOutsideProjects returns a paginated, deduplicated list of the resource servers that
+// belong to no project from both stores.
+func (c *compositeResourceStore) GetResourceServerListOutsideProjects(
+	ctx context.Context, limit, offset int) ([]providers.ResourceServer, error) {
+	resourceServers, err := c.resourceServersOutsideProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	start := offset
+	if start > len(resourceServers) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := min(start+limit, len(resourceServers))
+	return resourceServers[start:end], nil
+}
+
+// GetResourceServerListCountOutsideProjects returns the deduplicated count of the resource servers that
+// belong to no project across both stores.
+func (c *compositeResourceStore) GetResourceServerListCountOutsideProjects(ctx context.Context) (int, error) {
+	merged, err := c.resourceServersOutsideProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(merged), nil
+}
+
+// resourceServersOutsideProjects returns the deduplicated resource servers that belong to no project across
+// both stores, failing when they exceed the composite store record limit.
+func (c *compositeResourceStore) resourceServersOutsideProjects(
+	ctx context.Context,
+) ([]providers.ResourceServer, error) {
+	dbCount, err := c.dbStore.GetResourceServerListCountOutsideProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	fileCount, err := c.fileStore.GetResourceServerListCountOutsideProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if dbCount == 0 && fileCount == 0 {
+		return []providers.ResourceServer{}, nil
+	}
+
+	// Fetch all from both stores, then deduplicate before applying the cap.
+	dbServers, err := c.dbStore.GetResourceServerListOutsideProjects(ctx, dbCount, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	fileServers, err := c.fileStore.GetResourceServerListOutsideProjects(ctx, fileCount, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := mergeAndDeduplicateResourceServers(dbServers, fileServers)
+	if len(merged) > serverconst.MaxCompositeStoreRecords {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return merged, nil
+}
+
 // GetResourceServerListByOUID returns a paginated, deduplicated list of the resource servers an
 // organization unit owns from both stores.
 func (c *compositeResourceStore) GetResourceServerListByOUID(

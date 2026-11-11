@@ -6919,6 +6919,134 @@ func TestUserService_GetUserListByProject_StoreErrors(t *testing.T) {
 	})
 }
 
+// A deployment that serves projects leaves the users of projects out of the organization view.
+func TestUserService_GetOrganizationUserList_LeavesOutProjectUsers(t *testing.T) {
+	filters := map[string]interface{}{"email": "a@example.com"}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntityListCountOutsideProjects", mock.Anything, providers.EntityCategoryUser,
+		filters).Return(5, nil).Once()
+	storeMock.On("GetEntityListOutsideProjects", mock.Anything, providers.EntityCategoryUser,
+		1, 0, filters).Return([]providers.Entity{{ID: svcTestUserID1, OUID: testOrgID}}, nil).Once()
+	service := newProjectListService(t, true, nil, storeMock)
+	service.projectValidator = newProjectOUValidatorMock(t)
+
+	resp, err := service.GetOrganizationUserList(context.Background(), 1, 0, filters, false, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 5, resp.TotalResults)
+	require.Len(t, resp.Users, 1)
+	require.True(t, *resp.Users[0].IsOwnedByOU)
+	require.NotEmpty(t, resp.Links)
+	for _, link := range resp.Links {
+		require.NotContains(t, link.Href, queryParamIncludeAll)
+	}
+}
+
+// A caller limited to some organization units lists what those units own, the users of projects included.
+func TestUserService_GetOrganizationUserList_ScopedCallerListsItsUnits(t *testing.T) {
+	ouIDs := []string{testOrgID, testOtherOrgID}
+	filters := map[string]interface{}{}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, filters).
+		Return(3, nil).Once()
+	storeMock.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, 10, 0,
+		filters).Return([]providers.Entity{{ID: svcTestUserID1, OUID: testOrgID}}, nil).Once()
+	service := newProjectListService(t, false, ouIDs, storeMock)
+	service.projectValidator = newProjectOUValidatorMock(t)
+
+	resp, err := service.GetOrganizationUserList(context.Background(), 10, 0, filters, false, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 3, resp.TotalResults)
+	require.Len(t, resp.Users, 1)
+}
+
+// includeAll lists every user, and the pagination links carry it.
+func TestUserService_GetOrganizationUserList_IncludeAll(t *testing.T) {
+	filters := map[string]interface{}{}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).Return(5, nil).Once()
+	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, 1, 1, filters).
+		Return([]providers.Entity{{ID: svcTestUserID1, ProjectID: testProjectID}}, nil).Once()
+	service := newProjectListService(t, true, nil, storeMock)
+	service.projectValidator = newProjectOUValidatorMock(t)
+
+	resp, err := service.GetOrganizationUserList(context.Background(), 1, 1, filters, false, true)
+
+	require.Nil(t, err)
+	require.Equal(t, 5, resp.TotalResults)
+	require.Len(t, resp.Users, 1)
+	require.NotEmpty(t, resp.Links)
+	for _, link := range resp.Links {
+		require.Contains(t, link.Href, "&includeAll=true", "link %q has to keep listing every user", link.Rel)
+	}
+}
+
+// A deployment that serves no projects lists every user, with or without includeAll.
+func TestUserService_GetOrganizationUserList_NoProjects(t *testing.T) {
+	for name, includeAll := range map[string]bool{"without includeAll": false, "with includeAll": true} {
+		t.Run(name, func(t *testing.T) {
+			filters := map[string]interface{}{}
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+			storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
+				Return(1, nil).Once()
+			storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, 10, 0, filters).
+				Return([]providers.Entity{{ID: svcTestUserID1}}, nil).Once()
+			service := newProjectListService(t, true, nil, storeMock)
+
+			resp, err := service.GetOrganizationUserList(context.Background(), 10, 0, filters, false, includeAll)
+
+			require.Nil(t, err)
+			require.Equal(t, 1, resp.TotalResults)
+		})
+	}
+}
+
+// An organization unit filter lists what that unit sees, the users of projects included.
+func TestUserService_GetOrganizationUserList_FilteredByOU(t *testing.T) {
+	service := ouFilteredService(t, newAllowAllAuthz(t), &entitypkg.OUEntityPage{
+		Owned:        []providers.Entity{{ID: "owned-1", OUID: testOrgID, ProjectID: testProjectID}},
+		Shared:       []providers.Entity{},
+		TotalResults: 1,
+	})
+	service.projectValidator = newProjectOUValidatorMock(t)
+
+	resp, err := service.GetOrganizationUserList(context.Background(), 2, 0,
+		map[string]interface{}{"ouId": testOrgID}, false, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 1, resp.TotalResults)
+	require.Equal(t, "owned-1", resp.Users[0].ID)
+}
+
+func TestUserService_GetOrganizationUserList_StoreErrors(t *testing.T) {
+	for name, listFails := range map[string]bool{"count": false, "list": true} {
+		t.Run(name, func(t *testing.T) {
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			if listFails {
+				storeMock.On("GetEntityListCountOutsideProjects", mock.Anything, providers.EntityCategoryUser,
+					mock.Anything).Return(1, nil).Once()
+				storeMock.On("GetEntityListOutsideProjects", mock.Anything, providers.EntityCategoryUser,
+					10, 0, mock.Anything).Return(nil, errors.New("db down")).Once()
+			} else {
+				storeMock.On("GetEntityListCountOutsideProjects", mock.Anything, providers.EntityCategoryUser,
+					mock.Anything).Return(0, errors.New("db down")).Once()
+			}
+			service := newProjectListService(t, true, nil, storeMock)
+			service.projectValidator = newProjectOUValidatorMock(t)
+
+			_, err := service.GetOrganizationUserList(context.Background(), 10, 0, nil, false, false)
+
+			require.NotNil(t, err)
+			require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+		})
+	}
+}
+
 // A user in a project that names no organization unit goes to the system organization unit.
 func TestUserService_CreateUser_InProjectWithoutOUGoesToTheSystemOU(t *testing.T) {
 	validator := newProjectOUValidatorMock(t)

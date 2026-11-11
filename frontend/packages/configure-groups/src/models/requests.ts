@@ -44,4 +44,6 @@ export interface GroupListParams {
   filter?: string;
   /** Lists only the groups of this project */
   projectId?: string;
+  /** Without a project, also lists the groups of a project, which the control plane otherwise leaves out */
+  includeAll?: boolean;
 }
