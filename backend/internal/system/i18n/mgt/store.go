@@ -157,7 +157,8 @@ func (s *i18nStore) UpsertTranslationsByLanguage(ctx context.Context, language s
 	scope := s.scope(ctx)
 	for start := 0; start < len(translations); start += insertBatchSize {
 		end := min(start+insertBatchSize, len(translations))
-		_, err = tx.Exec(buildInsertTranslationsQuery(end-start), insertTranslationArgs(translations[start:end], scope)...)
+		batch := translations[start:end]
+		_, err = tx.Exec(buildInsertTranslationsQuery(len(batch)), insertTranslationArgs(batch, scope)...)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				err = errors.Join(err, fmt.Errorf("failed to rollback transaction: %w", rollbackErr))
@@ -177,18 +178,21 @@ func (s *i18nStore) UpsertTranslationsByLanguage(ctx context.Context, language s
 // under the parameter limit of every supported database.
 const insertBatchSize = 100
 
+// insertTranslationsPrefix is the start of a multi-row insert of translations; the rows follow it.
+const insertTranslationsPrefix = `INSERT INTO "TRANSLATION" ` +
+	`(MESSAGE_KEY, LANGUAGE_CODE, NAMESPACE, VALUE, DEPLOYMENT_ID) VALUES `
+
 // buildInsertTranslationsQuery returns an insert of rows translations in one statement.
 func buildInsertTranslationsQuery(rows int) dbmodel.DBQuery {
-	var b strings.Builder
-	b.WriteString(`INSERT INTO "TRANSLATION" (MESSAGE_KEY, LANGUAGE_CODE, NAMESPACE, VALUE, DEPLOYMENT_ID) VALUES `)
-	for i := 0; i < rows; i++ {
-		if i > 0 {
-			b.WriteString(", ")
-		}
+	placeholders := make([]string, rows)
+	for i := range placeholders {
 		n := i*5 + 1
-		fmt.Fprintf(&b, "($%d, $%d, $%d, $%d, $%d)", n, n+1, n+2, n+3, n+4)
+		placeholders[i] = fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", n, n+1, n+2, n+3, n+4)
 	}
-	return dbmodel.DBQuery{ID: fmt.Sprintf("I18N-05-BATCH-%d", rows), Query: b.String()}
+	return dbmodel.DBQuery{
+		ID:    fmt.Sprintf("I18N-05-BATCH-%d", rows),
+		Query: insertTranslationsPrefix + strings.Join(placeholders, ", "),
+	}
 }
 
 // insertTranslationArgs flattens translations into the arguments buildInsertTranslationsQuery expects.
