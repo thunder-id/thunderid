@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {BotCogIcon, getInitials} from '@thunderid/components';
+import {BotCogIcon, CapabilitiesErrorNotice, ForbiddenNotice, getInitials} from '@thunderid/components';
 import {
   gatewaySectionOf,
   useDeployRoutes,
@@ -10,12 +10,10 @@ import {
   type PipelineStage,
 } from '@thunderid/configure-gateways';
 import {ProjectSwitcher, useProjectSelection} from '@thunderid/configure-projects';
-import {CapabilitiesProvider, ProjectScopeProvider, useConfig} from '@thunderid/contexts';
-import {useCapabilities} from '@thunderid/hooks';
+import {ProjectScopeProvider, useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
-  Alert,
   AppShell,
   alpha,
   Box,
@@ -94,10 +92,8 @@ interface NavRoute {
   text: string;
   icon: JSX.Element;
   path?: string;
-  /** The catalog resource the page shows; the entry is hidden from admins who can't view it. */
-  resource?: string;
-  /** Shown only to admins who can manage the APIs only the root `system` permission reaches. */
-  rootOnly?: boolean;
+  /** The catalog resources the page shows; the entry is hidden from admins who can't view each of them. */
+  resource?: string | string[];
   children?: NavRoute[];
   /** What a dot beside the entry says on hover, such as how many of its changes are not deployed yet. */
   badge?: string;
@@ -143,9 +139,9 @@ function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
-  const {canManageRoot, isLoading} = useCapabilities();
+  const {can, isLoading} = useCapabilitiesContext();
 
-  if (!isLoading && !canManageRoot) {
+  if (!isLoading && !can('import', 'create') && !can('export', 'create')) {
     return null;
   }
 
@@ -395,7 +391,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'gateway-values',
-              rootOnly: true,
+              resource: ['gatewayvariable', 'gatewaysecret'],
               text: t('navigation:pages.variablesAndSecrets', 'Variables & secrets'),
               icon: <KeyRound />,
               path: section('values'),
@@ -548,6 +544,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         routes: [
           {
             id: 'projects',
+            resource: 'project',
             text: t('navigation:pages.projects', 'Projects'),
             description: t('navigation:pages.projectsHint', 'Manage applications, agents, flows etc.'),
             icon: <LayoutGrid />,
@@ -651,12 +648,11 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     deployRoutes,
   ]);
 
-  const capabilities = useCapabilities();
-  const {can, canManageRoot, isLoading: isLoadingCapabilities} = capabilities;
+  const {can, isLoading: isLoadingCapabilities, error: capabilitiesError} = useCapabilitiesContext();
   const isVisible = useCallback(
     (route: NavRoute): boolean =>
-      isLoadingCapabilities || (route.rootOnly ? canManageRoot : !route.resource || can(route.resource)),
-    [can, canManageRoot, isLoadingCapabilities],
+      isLoadingCapabilities || [route.resource ?? []].flat().every((resource: string) => can(resource)),
+    [can, isLoadingCapabilities],
   );
 
   // The navigation the admin may see: entries for pages they can't view, and groups left empty, are hidden.
@@ -915,31 +911,27 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
 
       <AppShell.Main>
         <SignInOnUnauthorized />
-        {isPageForbidden ? (
-          <Box sx={{p: 3}}>
-            <Alert severity="warning">
-              {t('navigation:forbidden.description', 'You do not have permission to view this page.')}
-            </Alert>
-          </Box>
+        {capabilitiesError ? (
+          <CapabilitiesErrorNotice />
+        ) : isPageForbidden ? (
+          <ForbiddenNotice />
         ) : (
-          <CapabilitiesProvider capabilities={capabilities}>
-            {/* The banner over every page, scrolling away with it: the two scroll together, the page at its full height. */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                flex: 1,
-                minWidth: 0,
-                minHeight: 0,
-                overflowY: 'auto',
-                '& > :last-child': {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
-              }}
-            >
-              {/* An environment's own pages tell what it lacks themselves. */}
-              {!gatewayId && <PendingDeployBanner />}
-              <Outlet />
-            </Box>
-          </CapabilitiesProvider>
+          /* The banner over every page, scrolling away with it: the two scroll together, the page at its full height. */
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              overflowY: 'auto',
+              '& > :last-child': {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
+            }}
+          >
+            {/* An environment's own pages tell what it lacks themselves. */}
+            {!gatewayId && <PendingDeployBanner />}
+            <Outlet />
+          </Box>
         )}
       </AppShell.Main>
 

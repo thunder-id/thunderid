@@ -64,7 +64,6 @@ const {default: useGetVerifiableCredentials} = await import('../../api/useGetVer
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

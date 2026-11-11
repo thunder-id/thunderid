@@ -29,12 +29,17 @@ func newCapabilityService(authzService sysauthz.SystemAuthorizationServiceInterf
 // GetCapabilities returns the management actions the caller may perform, and where.
 func (s *capabilityService) GetCapabilities(ctx context.Context) (*capabilitiesResponse, *tidcommon.ServiceError) {
 	allowed := make(map[security.Action]bool)
-	resources := make(map[security.ResourceType]map[string]bool, len(requiredActions))
+	unbound := security.LacksOrganizationUnit(ctx)
+	resources := make(map[security.ResourceType]map[string]bool, len(requiredActions)+len(requiredRoutes))
 	for resource, catalogActions := range requiredActions {
 		resources[resource] = make(map[string]bool, len(catalogActions))
 		for name, actions := range catalogActions {
 			if name != viewAction {
 				actions = slices.Concat(catalogActions[viewAction], actions)
+			}
+			if unbound {
+				resources[resource][name] = false
+				continue
 			}
 			can, svcErr := s.allowsAll(ctx, actions, allowed)
 			if svcErr != nil {
@@ -43,12 +48,20 @@ func (s *capabilityService) GetCapabilities(ctx context.Context) (*capabilitiesR
 			resources[resource][name] = can
 		}
 	}
+	for resource, catalogRoutes := range requiredRoutes {
+		resources[resource] = make(map[string]bool, len(catalogRoutes))
+		for name, routes := range catalogRoutes {
+			if name != viewAction {
+				routes = slices.Concat(catalogRoutes[viewAction], routes)
+			}
+			resources[resource][name] = !unbound && allowsAllRoutes(ctx, routes)
+		}
+	}
 
 	boundary := s.authzService.GetBoundary(ctx)
 	return &capabilitiesResponse{
 		Scope:     capabilityScope{Type: boundary.Type, OUID: boundary.OUID},
 		Resources: resources,
-		Root:      rootCapabilities{Manage: security.HasSystemPermission(security.GetPermissions(ctx))},
 	}, nil
 }
 
@@ -71,4 +84,21 @@ func (s *capabilityService) allowsAll(ctx context.Context, actions []security.Ac
 		}
 	}
 	return true, nil
+}
+
+// allowsAllRoutes reports whether the caller may call every one of routes, as the server's request
+// authorization decides it. A route the API permission map doesn't list needs the root system permission,
+// as an unlisted request does.
+func allowsAllRoutes(ctx context.Context, routes []string) bool {
+	permissions := security.GetPermissions(ctx)
+	for _, route := range routes {
+		required, ok := security.ResolveAPIPermission(route)
+		if !ok {
+			required = security.GetSystemRootPermission()
+		}
+		if !security.HasSufficientSystemPermission(permissions, required) {
+			return false
+		}
+	}
+	return true
 }

@@ -860,10 +860,11 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /notification-templates/**", p.NotificationTemplateUpdate},
 		{"DELETE /notification-templates/**", p.NotificationTemplateDelete},
 
-		// Import APIs.
+		// Import and export APIs.
 		{"POST /import", p.Root},
 		{"POST /import/delete", p.Root},
 		{"POST /import/managed", p.Root},
+		{"POST /export", p.Root},
 	}
 
 	mcpToolPermissions = map[string]string{
@@ -975,6 +976,12 @@ func activatePermissions(p *SystemPermissions) {
 			"update_project":    p.ProjectUpdate,
 		})
 	}
+
+	compiled, err := compileAPIPermissions(apiPermissionEntries)
+	if err != nil {
+		panic(err)
+	}
+	compiledAPIPermissionEntries = compiled
 }
 
 // GetSystemPermissions returns the active system permissions.
@@ -1016,6 +1023,25 @@ type apiPermissionEntry struct {
 //
 // Rebuilt by activatePermissions at startup.
 var apiPermissionEntries []apiPermissionEntry
+
+// compiledAPIPermissionEntries holds apiPermissionEntries in their regex form, for ResolveAPIPermission.
+// Rebuilt by activatePermissions at startup.
+var compiledAPIPermissionEntries []compiledAPIPermission
+
+// ResolveAPIPermission returns the permission a request to route requires, where route is a
+// "METHOD /path" pattern whose wildcards stand for any segment. It resolves the pattern as a request to
+// a concrete path is resolved, first match wins, so a broader rule listed earlier answers for it as it
+// would for the request. It reports false when no rule matches, where a request needs the root
+// permission.
+func ResolveAPIPermission(route string) (string, bool) {
+	request := strings.ReplaceAll(route, "*", "_")
+	for _, entry := range compiledAPIPermissionEntries {
+		if entry.re.MatchString(request) {
+			return entry.permission, true
+		}
+	}
+	return "", false
+}
 
 // ---- MCP tool → Permission map ----
 

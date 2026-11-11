@@ -616,6 +616,7 @@ const translations = {
     'pages.gateways': 'Deployment',
     'breadcrumb.console': 'Console',
     'forbidden.description': 'You do not have permission to view this page.',
+    'capabilities.loadFailed': 'Could not load what your account may do.',
   },
 
   // ============================================================================
@@ -7134,6 +7135,8 @@ const translations = {
     'applyPanel.submitCount_other': 'Deploy {{count}} changes to {{gateway}}',
     'applyPanel.title': 'Deploy {{label}}',
     'applyPanel.to': 'to',
+    'applyPanel.valuesNeedAccess':
+      "Your account may not set this gateway's variables and secrets, so this deploy waits for an admin who can.",
     'autoApply.failed': 'Auto-sync could not be changed.',
     'autoApply.inherited': 'Follows the organization default',
     'autoApply.label': 'Default for projects: auto-sync configuration to {{target}}',

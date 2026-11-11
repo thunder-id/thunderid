@@ -61,3 +61,19 @@ func (s *ActionsTestSuite) TestRequiredActionsMatchTheCatalog() {
 		}
 	}
 }
+
+// TestRequiredRoutesAreListed keeps the route table in step with the API permission map, so each route
+// resolves to the permission the server requires for it, and no route resource shadows a catalog one.
+func (s *ActionsTestSuite) TestRequiredRoutesAreListed() {
+	for resource, names := range requiredRoutes {
+		s.NotContains(requiredActions, resource)
+		s.NotEmpty(names, resource)
+		for name, routes := range names {
+			s.NotEmpty(routes, "%s:%s", resource, name)
+			for _, route := range routes {
+				_, ok := security.ResolveAPIPermission(route)
+				s.True(ok, "%s:%s needs %q, which the API permission map doesn't list", resource, name, route)
+			}
+		}
+	}
+}

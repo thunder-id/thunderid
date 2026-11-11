@@ -36,7 +36,6 @@ function makeData(overrides?: Partial<CorsConfigResponse>): CorsConfigResponse {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

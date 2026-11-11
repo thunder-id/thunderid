@@ -14,7 +14,6 @@ vi.mock('../../components/VerifiableCredentialsList', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

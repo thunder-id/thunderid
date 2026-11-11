@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -72,6 +72,71 @@ function projectCheck(sent: unknown[], extra: unknown[] = []): void {
 }
 
 describe('ApplyPanel', () => {
+  it("says why the missing values are locked to an admin who may not set the gateway's values", async () => {
+    http = fakeHttp({
+      'POST /gateways/gw-dev/apply': () => ({
+        gatewayId: 'gw-dev',
+        dryRun: true,
+        diff: {
+          toVersion: version.version,
+          changes: [
+            {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'added'},
+          ],
+        },
+        missing: {variables: ['APP_ORDERS_CLIENT_ID']},
+      }),
+    });
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource) => resource !== 'gatewayvariable' && resource !== 'gatewaysecret',
+          isLoading: false,
+        }}
+      >
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </CapabilitiesProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    expect(await within(panel).findByLabelText(/APP_ORDERS_CLIENT_ID/)).toBeDisabled();
+    expect(
+      within(panel).getByText(/Your account may not set this gateway's variables and secrets/),
+    ).toBeInTheDocument();
+  });
+
+  it("doesn't say the deploy waits when only a refused resource's values are locked", async () => {
+    projectCheck([]);
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource) => resource !== 'gatewayvariable' && resource !== 'gatewaysecret',
+          isLoading: false,
+        }}
+      >
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          only={['application/app-1']}
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </CapabilitiesProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    expect(await within(panel).findByRole('button', {name: /^Deploy/})).toBeEnabled();
+    expect(within(panel).queryByText(/this deploy waits for an admin/)).not.toBeInTheDocument();
+  });
+
   it("retries what a project's gateway refused with what it needs, scoped to the project", async () => {
     const sent: unknown[] = [];
     projectCheck(sent);

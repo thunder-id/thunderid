@@ -176,7 +176,6 @@ const {useIsMutating} = await import('@tanstack/react-query');
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

@@ -11,7 +11,7 @@ import {
   type RenderHookOptions,
   type RenderResult,
 } from '@testing-library/react';
-import {ConfigProvider, ToastProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ConfigProvider, ToastProvider} from '@thunderid/contexts';
 import {LoggerProvider, LogLevel} from '@thunderid/logger';
 import {OxygenUIThemeProvider} from '@wso2/oxygen-ui';
 import {useMemo, type ReactElement, type ReactNode} from 'react';
@@ -45,6 +45,8 @@ export interface ThunderTestConfig {
    */
   httpOnly?: boolean;
 }
+
+const allowAll = {can: () => true, isLoading: false};
 
 interface ProvidersProps {
   children: ReactNode;
@@ -120,7 +122,10 @@ function Providers({children, queryClient = undefined, config = undefined}: Prov
             }}
           >
             <ToastProvider>
-              <OxygenUIThemeProvider>{children}</OxygenUIThemeProvider>
+              {/* Every action is offered, so a page's tests exercise it whole; a test nests its own provider to restrict it. */}
+              <CapabilitiesProvider capabilities={allowAll}>
+                <OxygenUIThemeProvider>{children}</OxygenUIThemeProvider>
+              </CapabilitiesProvider>
             </ToastProvider>
           </LoggerProvider>
         </ConfigProvider>

@@ -33,7 +33,6 @@ vi.mock('../../components/AgentTypesList', () => ({
 // Allows everything except changing agent types, so a check against the wrong resource shows the button.
 const agentTypesViewOnly = {
   can: (resource: string, action = 'view') => resource !== 'agenttype' || action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

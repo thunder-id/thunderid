@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoader} from '@thunderid/components';
+import {CapabilityGuard, PageLoader} from '@thunderid/components';
 import {AgentTypeCreateProvider} from '@thunderid/configure-agent-types';
 import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
@@ -18,6 +18,12 @@ import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
+
+// The Import / Export landing offers both, so either one opens it.
+const IMPORT_OR_EXPORT = [
+  {resource: 'import', action: 'create'},
+  {resource: 'export', action: 'create'},
+];
 
 const AgentTypesListPage = lazy(() =>
   import('@thunderid/configure-agent-types').then((m) => ({default: m.AgentTypesListPage})),
@@ -452,7 +458,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ImportExportPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard anyOf={IMPORT_OR_EXPORT}>
+                      <ImportExportPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.export.page()}
@@ -462,7 +475,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ExportPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="export" action="create">
+                      <ExportPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.importConfiguration.upload()}
@@ -472,9 +492,30 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ImportConfigurationUploadPage />} />
-                <Route path="validate" element={<ImportConfigurationValidatePage />} />
-                <Route path="summary" element={<ImportConfigurationSummaryPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="import" action="create">
+                      <ImportConfigurationUploadPage />
+                    </CapabilityGuard>
+                  }
+                />
+                <Route
+                  path="validate"
+                  element={
+                    <CapabilityGuard resource="import" action="create">
+                      <ImportConfigurationValidatePage />
+                    </CapabilityGuard>
+                  }
+                />
+                <Route
+                  path="summary"
+                  element={
+                    <CapabilityGuard resource="import" action="create">
+                      <ImportConfigurationSummaryPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.design.list()}

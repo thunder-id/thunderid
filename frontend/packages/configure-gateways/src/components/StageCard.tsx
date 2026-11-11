@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, ButtonBase, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {AppWindow, ArrowRight, RefreshCw, SlidersHorizontal, Undo2, Wrench} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
@@ -83,6 +84,8 @@ export default function StageCard({
   testId = undefined,
 }: StageCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {can} = useCapabilitiesContext();
+  const canConfigure = can('gatewayvariable') && can('gatewaysecret');
   const owed = changedCount(changed);
   const owedNames = [...(changed?.variables ?? []), ...(changed?.secrets ?? [])].join(', ');
   const header = (
@@ -130,9 +133,11 @@ export default function StageCard({
           {t('stage.open', 'Open gateway')}
         </Button>
       )}
-      <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
-        {t('stage.configure', 'Configure')}
-      </Button>
+      {canConfigure && (
+        <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
+          {t('stage.configure', 'Configure')}
+        </Button>
+      )}
       {onRedeploy && version && changedCheckFailed && (
         <Tooltip
           title={t(
