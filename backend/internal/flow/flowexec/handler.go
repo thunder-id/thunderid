@@ -5,6 +5,7 @@ package flowexec
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"time"
 
@@ -147,6 +148,11 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 		ChallengeToken:  flowStep.ChallengeToken,
 		SessionData:     flowStep.SessionData,
 		ClearedSessions: flowStep.ClearedSessions,
+	}
+	if !flowStep.ExpiresAt.IsZero() {
+		if expiresIn := int64(math.Ceil(time.Until(flowStep.ExpiresAt).Seconds())); expiresIn > 0 {
+			flowResp.ExpiresIn = expiresIn
+		}
 	}
 
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, flowResp)

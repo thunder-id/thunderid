@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -353,6 +354,28 @@ func (s *ModelTestSuite) TestContextRoundTrip() {
 			s.Equal(len(tc.runtime), len(resultCtx.RuntimeData))
 		})
 	}
+}
+
+func (s *ModelTestSuite) TestContextRoundTrip_KeepsExpiry() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id").Maybe()
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication).Maybe()
+	expiresAt := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+
+	dbModel := &FlowContextDB{}
+	s.Require().NoError(dbModel.FromEngineContext(EngineContext{
+		ExecutionID: "test-flow-id",
+		AuthenticatedUser: authncm.AuthenticatedUser{
+			Attributes: map[string]interface{}{},
+		},
+		Graph:     mockGraph,
+		expiresAt: expiresAt,
+	}))
+	s.True(expiresAt.Equal(dbModel.ExpiryTime))
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+	s.Require().NoError(err)
+	s.True(expiresAt.Equal(resultCtx.expiresAt))
 }
 
 func (s *ModelTestSuite) TestFromEngineContext_PreservesOtherFields() {

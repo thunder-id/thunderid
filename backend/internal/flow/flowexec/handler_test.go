@@ -331,6 +331,49 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_ReturnsSessionData() {
 	s.Equal(cleared, resp.ClearedSessions)
 }
 
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_ReturnsExpiresIn() {
+	testCases := []struct {
+		name      string
+		expiresAt time.Time
+		expected  int64
+	}{
+		{name: "paused execution", expiresAt: time.Now().Add(10 * time.Minute), expected: 600},
+		{name: "no expiry", expiresAt: time.Time{}},
+		{name: "already expired", expiresAt: time.Now().Add(-time.Second)},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			mockSvc := NewFlowExecServiceInterfaceMock(s.T())
+			mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything).
+				Return(&FlowStep{
+					ExecutionID: "exec-1",
+					Status:      providers.FlowStatusIncomplete,
+					ExpiresAt:   tc.expiresAt,
+				}, (*tidcommon.ServiceError)(nil))
+
+			h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{}), 0)
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute",
+				bytes.NewBufferString(testFlowExecRequestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleFlowExecutionRequest(w, req)
+
+			s.Equal(http.StatusOK, w.Code)
+			if tc.expected == 0 {
+				s.NotContains(w.Body.String(), "expiresIn")
+				return
+			}
+			var resp FlowResponse
+			s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+			s.InDelta(tc.expected, resp.ExpiresIn, 1)
+		})
+	}
+}
+
 // TestHandleFlowExecutionRequest_PassesRequestSessionData verifies the session data a caller sends in the
 // request body reaches the flow service sanitized.
 func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PassesRequestSessionData() {

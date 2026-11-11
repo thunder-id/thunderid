@@ -80,6 +80,9 @@ interface MockSignInRenderProps {
   isLoading: boolean;
   components: MockFlowComponent[];
   error: {message?: string} | null;
+  isFlowExpired?: boolean;
+  isFlowRestarted?: boolean;
+  flowExpiryRedirect?: null;
   isInitialized: boolean;
   meta?: Record<string, unknown>;
   additionalData?: Record<string, unknown>;
@@ -109,14 +112,24 @@ const createMockSignUpRenderProps = (overrides: Partial<MockSignUpRenderProps> =
 let mockSignInRenderProps: MockSignInRenderProps = createMockSignInRenderProps();
 
 let mockSignUpRenderProps: MockSignUpRenderProps = createMockSignUpRenderProps();
+let mockMeta: {application?: {name?: string; url?: string}} | null = null;
+let capturedAfterFlowExpiredUrl: string | undefined;
 
 vi.mock('@thunderid/react', async () => {
   const actual = await vi.importActual('@thunderid/react');
   return {
     ...actual,
-    SignIn: ({children}: {children: (props: typeof mockSignInRenderProps) => React.ReactNode}) => (
-      <div data-testid="thunderid-signin">{children(mockSignInRenderProps)}</div>
-    ),
+    useThunderID: () => ({meta: mockMeta}),
+    SignIn: ({
+      children,
+      afterFlowExpiredUrl = undefined,
+    }: {
+      children: (props: typeof mockSignInRenderProps) => React.ReactNode;
+      afterFlowExpiredUrl?: string;
+    }) => {
+      capturedAfterFlowExpiredUrl = afterFlowExpiredUrl;
+      return <div data-testid="thunderid-signin">{children(mockSignInRenderProps)}</div>;
+    },
     SignUp: ({children}: {children: (props: typeof mockSignUpRenderProps) => React.ReactNode}) => (
       <div data-testid="thunderid-signup">{children(mockSignUpRenderProps)}</div>
     ),
@@ -147,11 +160,46 @@ describe('SignInBox', () => {
     mockSearchParams = new URLSearchParams();
     mockSignInRenderProps = createMockSignInRenderProps();
     mockSignUpRenderProps = createMockSignUpRenderProps();
+    mockMeta = null;
+    capturedAfterFlowExpiredUrl = undefined;
+  });
+
+  it('sends the user back to the application once the flow expires', () => {
+    mockMeta = {application: {name: 'Acme Portal', url: 'https://acme.example.com'}};
+    render(<SignInBox />);
+
+    expect(capturedAfterFlowExpiredUrl).toBe('https://acme.example.com');
   });
 
   it('renders without crashing', () => {
     const {container} = render(<SignInBox />);
     expect(container).toBeInTheDocument();
+  });
+
+  it('tells the user when the flow was started again', () => {
+    mockSignInRenderProps = createMockSignInRenderProps({
+      isFlowRestarted: true,
+      components: [{id: 'username', type: 'TEXT_INPUT', ref: 'username', label: 'Username'}],
+    });
+    render(<SignInBox />);
+
+    expect(screen.getByText('Your session expired, so we started again.')).toBeInTheDocument();
+  });
+
+  it('shows the expired state in place of the flow once it expires', () => {
+    mockSignInRenderProps = createMockSignInRenderProps({
+      isFlowExpired: true,
+      flowExpiryRedirect: null,
+      error: {message: 'Your session has expired.'},
+      components: [{id: 'username', type: 'TEXT_INPUT', ref: 'username', label: 'Username'}],
+      meta: {application: {name: 'Acme Portal'}},
+    });
+    render(<SignInBox />);
+
+    expect(screen.getByTestId('flow-expired')).toBeInTheDocument();
+    expect(screen.getByText('Please go back to Acme Portal and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Your session has expired.')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
   });
 
   it('shows loading spinner when isLoading is true', () => {

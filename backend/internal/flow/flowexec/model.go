@@ -109,6 +109,9 @@ type EngineContext struct {
 	// client rules of the application's OAuth client, and is empty otherwise.
 	// Transient: re-derived on each context load, never persisted.
 	RequiredSubjectID string
+	// expiresAt is when the stored context expires. Set when the context is first stored and persisted
+	// with it, since an update keeps the stored expiry. Zero for a context stored without one.
+	expiresAt time.Time
 }
 
 // flowAuthority is the authority a flow that acts for its caller runs with: the caller who started it, as their
@@ -291,6 +294,9 @@ type FlowStep struct {
 	// response body returns them to a caller that holds its handles itself.
 	SessionData     []IssuedSessionData
 	ClearedSessions []string
+	// ExpiresAt is when the paused execution expires. Zero when the step did not pause the flow, or the
+	// stored context carries no expiry.
+	ExpiresAt time.Time
 }
 
 // FlowData holds the data returned by a flow execution step
@@ -318,6 +324,9 @@ type FlowResponse struct {
 	SessionData []IssuedSessionData `json:"sessionData,omitempty"`
 	// ClearedSessions lists the flow identifiers whose SSO session this step ended, for the caller to drop.
 	ClearedSessions []string `json:"clearedSessions,omitempty"`
+	// ExpiresIn is how many seconds the paused execution stays valid. Relative, so a client measures it on its
+	// own clock.
+	ExpiresIn int64 `json:"expiresIn,omitempty"`
 }
 
 // SessionData is one SSO session handle a caller holds, keyed by the identifier of the flow it belongs
@@ -621,6 +630,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		CurrentPromptNodeID:   promptNodeID,
 		boundSubject:          content.BoundSubject,
 		authority:             content.Authority,
+		expiresAt:             f.ExpiryTime,
 	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
 
@@ -811,6 +821,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 
 	f.ExecutionID = ctx.ExecutionID
 	f.Context = string(contextJSON)
+	f.ExpiryTime = ctx.expiresAt
 	return nil
 }
 
