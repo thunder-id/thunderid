@@ -57,6 +57,8 @@ Members have a `type` field that identifies their kind. The following member typ
 | `agent` | An agent principal. |
 | `group` | A nested group. |
 
+A personal agent acts only on behalf of its owner, so it cannot be added to a group. Such a request fails with `GRP-1025`, and the Console does not list personal agents.
+
 When a group is nested inside another group, role assignments resolve transitively: members of the inner group inherit the roles assigned to the outer group.
 
 :::note

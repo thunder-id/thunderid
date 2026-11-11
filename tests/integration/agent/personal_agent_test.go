@@ -268,6 +268,54 @@ func (ts *PersonalAgentTestSuite) TestAdminCannotChangeTheOwner() {
 	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), read.Owner)
 }
 
+// A personal agent is never assigned a role or added to a group, whichever request asks for it. Taking it
+// off a role or group it does not hold still succeeds.
+func (ts *PersonalAgentTestSuite) TestRolesAndGroupsRefuseThePersonalAgent() {
+	ouID := ts.seededPersonType().OUID
+	assignment := testutils.Assignment{ID: ts.agentID, Type: "agent"}
+	member := testutils.Member{Id: ts.agentID, Type: "agent"}
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "pa_suite_group", OUID: ouID})
+	ts.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteGroup(groupID); err != nil {
+			ts.T().Logf("failed to delete group %s: %v", groupID, err)
+		}
+	}()
+
+	for name, tc := range map[string]struct {
+		path string
+		body interface{}
+		code string
+	}{
+		"AssignRole": {path: "/roles/" + ts.roleID + "/assignments/add", code: "ROL-1046",
+			body: map[string]interface{}{"assignments": []testutils.Assignment{assignment}}},
+		"CreateRoleWithAgent": {path: "/roles", code: "ROL-1046", body: testutils.Role{Name: "pa_suite_agent_role", OUID: ouID,
+			Assignments: []testutils.Assignment{assignment}}},
+		"AddToGroup": {path: "/groups/" + groupID + "/members/add", code: "GRP-1025",
+			body: map[string]interface{}{"members": []testutils.Member{member}}},
+		"CreateGroupWithAgent": {path: "/groups", code: "GRP-1025", body: testutils.Group{Name: "pa_suite_agent_group", OUID: ouID,
+			Members: []testutils.Member{member}}},
+	} {
+		ts.Run(name, func() {
+			resp, err := doPost(testServerURL+tc.path, tc.body)
+			ts.Require().NoError(err)
+			defer resp.Body.Close()
+			body := readBody(resp)
+			ts.Equal(http.StatusBadRequest, resp.StatusCode, body)
+			ts.Contains(body, tc.code)
+		})
+	}
+
+	ts.Run("RemovalSucceeds", func() {
+		ts.Require().NoError(testutils.RemoveRoleAssignments(ts.roleID, []testutils.Assignment{assignment}))
+		resp, err := doPost(testServerURL+"/groups/"+groupID+"/members/remove",
+			map[string]interface{}{"members": []testutils.Member{member}})
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		ts.Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+	})
+}
+
 // An owner lists and reads their personal agents with their own token, reading the same agent object an
 // administrator reads. Another user, the agent's own delegated token, and a request without a token get nothing.
 // The owner also reads an ordinary agent they own, which the list holds only when it is not narrowed to a kind.
