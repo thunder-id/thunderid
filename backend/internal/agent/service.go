@@ -232,15 +232,6 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		if svcErr := s.checkPersonalAgentOwner(ctx, owner); svcErr != nil {
 			return nil, svcErr
 		}
-		// A suspended owner's personal agents are suspended with them, so none is created for one.
-		hold, svcErr := s.governance.AccessHold(ctx, owner.ID)
-		if svcErr != nil {
-			s.logger.Error(ctx, "Failed to check the owner's suspension", log.String("errorCode", svcErr.Code))
-			return nil, &tidcommon.InternalServerError
-		}
-		if hold == providers.AccessRefusalReasonSuspended {
-			return nil, &ErrorOwnerSuspended
-		}
 	} else if owner == nil {
 		var svcErr *tidcommon.ServiceError
 		if owner, svcErr = s.callerAsOwner(ctx); svcErr != nil {
@@ -1172,6 +1163,11 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	currentSysAttrs := readSystemAttributes(existing.SystemAttributes)
 	currentOwner, currentClientID := currentSysAttrs.Owner, currentSysAttrs.ClientID
 
+	owner, svcErr := s.resolveUpdateOwner(ctx, req.Owner, currentOwner, currentSysAttrs.Kind)
+	if svcErr != nil {
+		return fail(svcErr)
+	}
+
 	normalizeLoginConsent(req.LoginConsent)
 
 	grantedConfigs, svcErr := resolveGrantTypes(req.InboundAuthConfig, req.Delegated, currentSysAttrs.Kind)
@@ -1193,11 +1189,6 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 
 	clientID, clientSecret, svcErr := s.resolveOAuthCredentials(
 		ctx, req.InboundAuthConfig, currentClientID, existingOAuthMethod)
-	if svcErr != nil {
-		return fail(svcErr)
-	}
-
-	owner, svcErr := s.resolveUpdateOwner(ctx, req.Owner, currentOwner, currentSysAttrs.Kind)
 	if svcErr != nil {
 		return fail(svcErr)
 	}
@@ -2213,9 +2204,8 @@ func (s *agentService) resolveUpdateOUID(
 	return ouID, projectID, nil
 }
 
-// resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
-// existing one — and checks that a local owner exists when the owner is changing. A personal agent's new
-// owner must be a local user.
+// resolveUpdateOwner picks the effective owner for an update, either the requested owner or the existing one,
+// and checks that a local owner exists when the owner is changing. A personal agent's owner never changes.
 func (s *agentService) resolveUpdateOwner(
 	ctx context.Context, requestedOwner, currentOwner *providers.AgentOwner, kind providers.AgentKind,
 ) (*providers.AgentOwner, *tidcommon.ServiceError) {
@@ -2230,11 +2220,9 @@ func (s *agentService) resolveUpdateOwner(
 		return owner, nil
 	}
 	if kind == providers.AgentKindPersonalAssistant {
-		svcErr = s.checkPersonalAgentOwner(ctx, owner)
-	} else {
-		svcErr = s.checkOwner(ctx, owner)
+		return nil, &ErrorPersonalAgentOwnerImmutable
 	}
-	if svcErr != nil {
+	if svcErr := s.checkOwner(ctx, owner); svcErr != nil {
 		return nil, svcErr
 	}
 	return owner, nil
@@ -2307,19 +2295,25 @@ func (s *agentService) callerAsOwner(ctx context.Context) (*providers.AgentOwner
 	return &providers.AgentOwner{ID: subject, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}, nil
 }
 
-// checkPersonalAgentOwner checks that a personal agent's owner is a local user, the only owner who can sign in
-// for it.
+// checkPersonalAgentOwner checks that a personal agent's owner is a user, the only owner who can sign in for it,
+// and is not suspended. A suspended owner's personal agents are suspended with them, so none is created for one.
+// The owner must already be validated as present and local, as validatePlacedAgent does.
 func (s *agentService) checkPersonalAgentOwner(
 	ctx context.Context, owner *providers.AgentOwner) *tidcommon.ServiceError {
-	if owner == nil || !owner.Local() {
-		return &ErrorInvalidOwner
-	}
 	ownerEntity, svcErr := s.validateOwnerExists(ctx, owner.ID)
 	if svcErr != nil {
 		return svcErr
 	}
 	if ownerEntity.Category != providers.EntityCategoryUser {
 		return &ErrorOwnerNotFound
+	}
+	hold, svcErr := s.governance.AccessHold(ctx, owner.ID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check the owner's suspension", log.String("errorCode", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	if hold == providers.AccessRefusalReasonSuspended {
+		return &ErrorOwnerSuspended
 	}
 	return nil
 }

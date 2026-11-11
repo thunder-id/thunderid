@@ -1317,6 +1317,8 @@ const translations = {
     'edit.general.labels.ownerId': 'Owner ID',
     'edit.general.sections.owner.title': 'Owner',
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
+    'edit.general.sections.owner.personalDescription':
+      'The user this personal agent acts for. It keeps the owner it was registered for.',
     'edit.general.owner.empty': 'No owner assigned',
     'edit.general.labels.externalOwner': 'External owner ({{idType}})',
     'owner.label': 'Owner',

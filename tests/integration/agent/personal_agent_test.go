@@ -240,6 +240,34 @@ func (ts *PersonalAgentTestSuite) TestAdminReadsKindOwnerAndDetails() {
 	ts.Equal(paSuiteAgentName, attributes["name"])
 }
 
+// An administrator cannot change a personal agent's owner. An update that names another owner is refused and
+// changes nothing, and one that sends the current owner back is accepted.
+func (ts *PersonalAgentTestSuite) TestAdminCannotChangeTheOwner() {
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	update := func(owner string) (int, string) {
+		request := ts.personalAgentRequest(owner, "authorization_code")
+		request["attributes"] = map[string]interface{}{"name": agent.name}
+		resp, err := putAgentRaw(agent.id, request)
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		return resp.StatusCode, readBody(resp)
+	}
+
+	status, body := update(ts.otherID)
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Contains(body, "AGT-1064")
+	read, err := testutils.GetAgent(agent.id)
+	ts.Require().NoError(err)
+	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), read.Owner)
+
+	status, body = update(ts.ownerID)
+	ts.Equal(http.StatusOK, status, body)
+	read, err = testutils.GetAgent(agent.id)
+	ts.Require().NoError(err)
+	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), read.Owner)
+}
+
 // An owner lists and reads their personal agents with their own token, reading the same agent object an
 // administrator reads. Another user, the agent's own delegated token, and a request without a token get nothing.
 // The owner also reads an ordinary agent they own, which the list holds only when it is not narrowed to a kind.

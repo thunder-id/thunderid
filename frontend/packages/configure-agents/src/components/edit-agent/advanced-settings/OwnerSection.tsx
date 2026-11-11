@@ -6,7 +6,7 @@ import {useGetUsers} from '@thunderid/configure-users';
 import {MenuItem, Select, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import type {Agent} from '../../../models/agent';
+import {PERSONAL_AGENT_KIND, type Agent} from '../../../models/agent';
 import AgentOwnerField from '../../AgentOwnerField';
 
 interface OwnerSectionProps {
@@ -28,6 +28,9 @@ const formatUserLabel = (user: {id: string; display?: string; attributes?: Recor
   return username ?? email ?? user.id;
 };
 
+/**
+ * Shows and edits the agent's owner. A read-only agent's owner, and a personal agent's, cannot be changed.
+ */
 export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerSectionProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -41,17 +44,27 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
   const owner = editedAgent.owner ?? agent.owner;
   // An owner managed in another identity system is not one of these users, so the picker shows none.
   const internalOwnerId = owner?.isLocal === false ? '' : (owner?.id ?? '');
+  // A personal agent keeps the owner it was registered for.
+  const isPersonal = agent.kind === PERSONAL_AGENT_KIND;
+  const isOwnerLocked = agent.isReadOnly === true || isPersonal;
 
   return (
     <SettingsCard
       title={t('agents:edit.general.sections.owner.title', 'Owner')}
-      description={t('agents:edit.general.sections.owner.description', 'The user accountable for this agent.')}
+      description={
+        isPersonal
+          ? t(
+              'agents:edit.general.sections.owner.personalDescription',
+              'The user this personal agent acts for. It keeps the owner it was registered for.',
+            )
+          : t('agents:edit.general.sections.owner.description', 'The user accountable for this agent.')
+      }
     >
       <AgentOwnerField
         id="agent-owner"
         size="small"
         initialOwner={agent.owner}
-        disabled={agent.isReadOnly}
+        disabled={isOwnerLocked}
         // Choosing Internal again leaves the saved owner in place until a user is picked.
         onExternalChange={(external) => onFieldChange('owner', external)}
         internalPicker={
@@ -62,7 +75,7 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
             fullWidth
             value={internalOwnerId}
             displayEmpty
-            disabled={usersLoading || agent.isReadOnly}
+            disabled={usersLoading || isOwnerLocked}
             onChange={(e) =>
               onFieldChange(
                 'owner',

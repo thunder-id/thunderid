@@ -151,6 +151,8 @@ var defaultMessages = map[string]string{
 	"error.agentservice.owner_not_found_description": "The specified owner does not match any known user, application, or agent",
 	"error.agentservice.owner_suspended": "Owner suspended",
 	"error.agentservice.owner_suspended_description": "A personal agent cannot be created for a user whose account is suspended",
+	"error.agentservice.personal_agent_owner_immutable": "Owner cannot be changed",
+	"error.agentservice.personal_agent_owner_immutable_description": "A personal agent keeps the owner it was registered for",
 	"error.agentservice.personal_agent_secret_not_regenerable": "Secret cannot be regenerated",
 	"error.agentservice.personal_agent_secret_not_regenerable_description": "A personal agent's client secret cannot be regenerated",
 	"error.agentservice.pkce_requires_authorization_code_description": "PKCE can only be enabled when the authorization_code grant type is selected",
