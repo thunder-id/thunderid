@@ -238,6 +238,7 @@ const (
 	propertyKeyDynamicInputsIncludeOptionalCredentials = "includeOptionalCredentials"
 	propertyKeyMaxDynamicInputsPerPrompt               = "maxPerPrompt"
 	propertyKeyInviteBaseURL                           = "inviteBaseURL"
+	propertyKeyApprovedActions                         = "approvedActions"
 	propertyKeyPresentationDefinitionID                = "presentation_definition_id"
 	propertyKeyCallbackType                            = "callbackType"
 	propertyKeyLoginHintAttribute                      = "loginHintAttribute"

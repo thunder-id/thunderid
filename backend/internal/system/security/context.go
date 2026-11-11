@@ -30,6 +30,8 @@ type SecurityContext struct {
 	revocationAudiences []string
 	selfIssued          bool
 	recorded            bool
+	approved            []ApprovedAction
+	created             *createdEntities
 	establishedAt       time.Time
 	permissions         []string
 	attributes          map[string]interface{}

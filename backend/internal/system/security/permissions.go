@@ -1071,10 +1071,17 @@ func HasAnySystemPermission(permissions []string) bool {
 // caller without the root system permission acts only in that unit, so a token naming no unit reaches nothing. The
 // root system permission reaches the whole deployment and needs no unit.
 func LacksOrganizationUnit(ctx context.Context) bool {
+	return IsConfinedToOrganizationUnit(ctx) && GetOUID(ctx) == ""
+}
+
+// IsConfinedToOrganizationUnit reports whether the caller acts only in the organization unit its token names. That
+// holds where the organization root permission is bounded to that unit, as on the data plane, for a caller without
+// the root system permission.
+func IsConfinedToOrganizationUnit(ctx context.Context) bool {
 	if sysPerms == nil || sysPerms.Org == "" {
 		return false
 	}
-	return GetOUID(ctx) == "" && !HasSystemPermission(GetPermissions(ctx))
+	return !HasSystemPermission(GetPermissions(ctx))
 }
 
 // HasSufficientSystemPermission reports whether permissions satisfy a permission of the System resource

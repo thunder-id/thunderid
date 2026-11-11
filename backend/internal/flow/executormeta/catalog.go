@@ -116,6 +116,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedModes: []string{"generate", "verify"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "inviteBaseURL"},
+			{Property: "approvedActions"},
 		},
 	},
 	ExecutorNameMagicLink: {

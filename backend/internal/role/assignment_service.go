@@ -379,7 +379,8 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 	if ouID == "" {
 		ouID = role.OUID
 	}
-	if svcErr := checkRoleAccess(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID); svcErr != nil {
+	if svcErr := checkRoleAccessOn(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID,
+		id); svcErr != nil {
 		return nil, svcErr
 	}
 	if ouID != role.OUID {
@@ -702,9 +703,11 @@ func (as *roleAssignmentService) prepareAssignments(
 		ouID = role.OUID
 	}
 	// An assignment belongs to the organization unit it is made in, so that is the one the caller must
-	// be allowed to act for.
-	if checkCaller {
-		if svcErr := checkRoleAccess(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID); svcErr != nil {
+	// be allowed to act for. A caller limited to its approved writes is always checked, since the grant
+	// check does not hold its approval to the unit.
+	if checkCaller || security.IsLimitedToApprovedActions(ctx) {
+		if svcErr := checkRoleAccessOn(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID,
+			id); svcErr != nil {
 			return nil, svcErr
 		}
 	}

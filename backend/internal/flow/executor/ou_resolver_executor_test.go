@@ -1272,6 +1272,46 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Unbounded_StrategiesIgnore
 	}
 }
 
+// Onboarding by a caller confined to their token's unit keeps the unit the flow pinned, whatever the strategy or
+// the pick; a root system holder still chooses.
+func (suite *OUResolverExecutorTestSuite) TestExecute_UserOnboarding_ConfinedCallerKeepsThePinnedOU() {
+	security.InitDataPlanePermissions("")
+	defer security.InitControlPlanePermissions("")
+	callerWith := func(permission string) context.Context {
+		return security.WithSecurityContextTest(context.Background(),
+			security.NewSecurityContextForTest("admin-1", "admin-ou", "token", []string{permission}, nil))
+	}
+	tests := []struct {
+		name       string
+		permission string
+		strategy   string
+		wantStatus providers.ExecutorStatus
+	}{
+		{"Confined prompt", "org:user:create", ouResolveFromPrompt, providers.ExecComplete},
+		{"Confined promptAll", "org:user:create", ouResolveFromPromptAll, providers.ExecComplete},
+		{"System promptAll", "system", ouResolveFromPromptAll, providers.ExecUserInputRequired},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-123",
+				Context:        callerWith(tc.permission),
+				FlowType:       providers.FlowTypeUserOnboarding,
+				NodeProperties: map[string]interface{}{common.NodePropertyOUResolveFrom: tc.strategy},
+				RuntimeData:    map[string]string{ouIDKey: "admin-ou", defaultOUIDKey: testParentOUID},
+				UserInputs:     map[string]string{},
+			}
+
+			result, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tc.wantStatus, result.Status)
+			assert.Empty(suite.T(), result.RuntimeData[ouIDKey])
+		})
+	}
+}
+
 func TestOUResolverExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OUResolverExecutorTestSuite))
 }

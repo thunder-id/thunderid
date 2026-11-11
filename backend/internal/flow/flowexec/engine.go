@@ -946,6 +946,22 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 		flowStep.SSOClearFlowID = ssoFlowID(ctx)
 	}
 
+	if raw := nodeResp.EngineData[common.EngineDataKeyApprovedActions]; raw != "" &&
+		nodeResp.Status == common.NodeStatusComplete {
+		var approved []security.ApprovedAction
+		if err := json.Unmarshal([]byte(raw), &approved); err != nil {
+			logger.Error(ctx.Context, "Failed to decode the approved actions", log.Error(err))
+			return nil, false, &tidcommon.InternalServerError
+		}
+		if !ctx.approve(approved) {
+			logger.Debug(ctx.Context, "Ignoring actions approved by a step the flow's caller did not send")
+		}
+	}
+	// A step limited to its approved writes may update what it created under them, so later steps keep that.
+	if ctx.authority != nil && security.IsLimitedToApprovedActions(ctx.Context) {
+		ctx.authority.Created = security.CreatedEntities(ctx.Context)
+	}
+
 	if isSignInBoundaryRefusal(nodeResp.Error) {
 		dropRefusedSignIn(ctx, flowStep)
 	}

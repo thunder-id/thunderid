@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -204,4 +205,21 @@ func TestACapturedCredentialIsNamedAsTheExportNamesIt(t *testing.T) {
 		assert.Equal(t, "{{."+name+"}}", exported.Credentials["password"])
 		assert.Equal(t, "s3cret", value)
 	}
+}
+
+// A user created by a caller limited to its approved writes is recorded, so later steps of the flow may update it.
+func TestCreateUser_RecordsTheUserForACallerLimitedToApprovedWrites(t *testing.T) {
+	entities := entitymock.NewEntityServiceInterfaceMock(t)
+	entities.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&providers.Entity{Attributes: json.RawMessage(`{"username":"alice"}`)}, nil)
+	service := newCapturingUserService(t, &recordingCapturer{}, entities)
+	ctx := security.WithApprovedActions(context.Background(), "admin-1", testOrgID, nil, nil, nil)
+
+	created, svcErr := service.CreateUser(ctx, &providers.User{
+		Type: testUserType, OUID: testOrgID, Attributes: json.RawMessage(`{"username":"alice"}`),
+	})
+	require.Nil(t, svcErr)
+
+	assert.Equal(t, []security.CreatedEntity{{ResourceType: security.ResourceTypeUser, ID: created.ID}},
+		security.CreatedEntities(ctx))
 }

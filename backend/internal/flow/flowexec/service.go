@@ -357,8 +357,9 @@ func (s *flowExecService) startAuthority(ctx context.Context, flowType providers
 
 // continuationAuthority returns the context a continued flow runs with. A flow that records its authority runs
 // as the caller when the caller who started it sends the step with their token. A step sent without a token runs
-// with the recorded authority, as that caller with the permissions they still hold, except in an administration
-// flow, whose every step that caller sends. An invitation flow runs each step with the request's own context.
+// with the recorded authority, as that caller with the permissions they still hold, writing only what steps they
+// sent approved, except in an administration flow, whose every step that caller sends. An invitation flow runs each
+// step with the request's own context.
 func (s *flowExecService) continuationAuthority(ctx context.Context, engineCtx *EngineContext,
 	logger *log.Logger) (context.Context, *tidcommon.ServiceError) {
 	flowType := engineCtx.rootFlowType()
@@ -386,6 +387,10 @@ func (s *flowExecService) continuationAuthority(ctx context.Context, engineCtx *
 	if flowType == providers.FlowTypeAdministration || s.permissionProvider == nil {
 		return nil, &ErrorFlowAuthenticationRequired
 	}
+	// A flow started before approvals were recorded has none to limit the step to.
+	if authority.Approved == nil {
+		return nil, &ErrorFlowRestartRequired
+	}
 	current, err := s.permissionProvider.GetEntityPermissions(ctx, authority.Subject)
 	if err != nil {
 		logger.Error(ctx, "Failed to resolve the permissions of the caller who started the flow",
@@ -406,7 +411,8 @@ func (s *flowExecService) continuationAuthority(ctx context.Context, engineCtx *
 			return nil, &ErrorAdministrationPermissionRequired
 		}
 	}
-	return security.WithRecordedCaller(ctx, authority.Subject, authority.OUID, held), nil
+	return security.WithApprovedActions(ctx, authority.Subject, authority.OUID, held, authority.Approved,
+		authority.Created), nil
 }
 
 // validateFlowSharedWithCaller requires the organization unit of the caller's token to own the flow or have it
@@ -590,6 +596,14 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		// The flow acts for the caller's own unit and remembers who started it; an input cannot change either.
 		engineCtx.RuntimeData[common.RuntimeKeyOUID] = security.GetOUID(ctx)
 		engineCtx.RuntimeData[common.RuntimeKeyInviter] = security.GetSubject(ctx)
+	}
+	// A caller confined to their token's unit can create users only there, so onboarding places the user in it and
+	// keeps it there when a step fails.
+	if flowType == providers.FlowTypeUserOnboarding && security.IsConfinedToOrganizationUnit(ctx) {
+		if ouID := security.GetOUID(ctx); ouID != "" {
+			engineCtx.RuntimeData[common.RuntimeKeyOUID] = ouID
+			engineCtx.RuntimeData[common.RuntimeKeyOUFixed] = "true"
+		}
 	}
 	return engineCtx, nil
 }
@@ -817,7 +831,7 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	engineCtx.SSOFlowVersion = flow.ActiveVersion
 	if recordsAuthority(flow.FlowType) {
 		engineCtx.authority = &flowAuthority{Subject: security.GetSubject(ctx), OUID: security.GetOUID(ctx),
-			Permissions: security.GetPermissions(ctx)}
+			Permissions: security.GetPermissions(ctx), Approved: []security.ApprovedAction{}}
 	}
 	graph, svcErr := s.graphBuilder.GetGraph(ctx, flow)
 	if svcErr != nil {

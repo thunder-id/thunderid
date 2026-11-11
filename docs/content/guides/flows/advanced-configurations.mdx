@@ -1606,7 +1606,7 @@ Determines the user type and default OU for the flow. When it resolves a type, i
 |---|---|
 | Registration | Resolves from the application's allowed user types, checking self-registration eligibility. Auto-selects if only one eligible type; prompts with a SELECT input if multiple are available. |
 | Authentication | Validates that the application has at least one allowed user type, but does not select one. A downstream Provisioning executor uses the application's allowed user types. |
-| User Onboarding | Lists all user types in the system, optionally filtered by node properties or by a prior resolved OU. |
+| User Onboarding | Lists all user types in the system, optionally filtered by node properties or by a prior resolved OU. For an admin confined to their token's organization unit, only the types owned by that unit or one of its ancestors are offered. |
 
 **Executor properties:**
 
@@ -1651,6 +1651,8 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 **When to use:** User or agent onboarding and sign-in flows where the target OU depends on the caller, a selection, or the organization hierarchy.
 
 **In sign-in flows:** A sign-in lands in one OU where both the user and the application are found. See [Sign Users In to Organization Units](../organization-units/sign-in-to-organization-units.mdx). When the sign-in's OU is already decided, because the request named one or the application is not shared, this executor keeps it with every strategy and completes without prompting.
+
+**In user onboarding flows:** On the Data Plane, an admin whose token carries organization permissions and not the root `system` permission can create users only in the organization unit the token is issued for. The flow places the user in that unit from the start, so this executor keeps it with every strategy and completes without prompting. An admin who holds the root `system` permission, and every admin on the Control Plane, picks the unit as configured.
 
 **Prerequisites:** Depends on the resolution strategy (see table below).
 
@@ -2177,12 +2179,26 @@ The link is returned in the flow response only in a User Onboarding flow. **Prep
 
 **Input Configuration:** None. The recipient email or phone is resolved from prior user inputs or user store. A **Send Email** or **Send SMS** executor must follow this one to deliver the invite link.
 
+**Properties:**
+- `approvedActions` (optional): the writes the invitee's steps may make in a user onboarding or administrator-initiated flow. Those steps run without a token, as the admin who started the flow, and can write only what a step the admin sent with their own token approved. Reads are not limited. Each entry has:
+  - `action`: the action, for example `user:create` or `role:update`.
+  - `ouId`: the organization unit the action acts in, or a list of candidates of which the first that resolves is taken.
+  - `resourceIds` (optional): the only resources the action may act on, space-separated. An entry whose resources resolve to none approves nothing. Adding a member to a role or group needs `role:update` or `group:update` approved on that role or group.
+
+  Values resolve from the flow's runtime data only. A `{{ctx(key)}}` placeholder never reads a user input, and a unit that resolves to none fails the flow. The admin still needs the permission for each action when the invitee's step runs. A user or agent the invitee's steps create under an approved `user:create` or `agent:create` can then be updated by later steps of the flow without another entry, for example to record a verified attribute.
+
 **Example:**
 
 ```json
 {
   "id": "invite_generate",
   "type": "TASK_EXECUTION",
+  "properties": {
+    "approvedActions": [
+      { "action": "user:create", "ouId": ["{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"] },
+      { "action": "role:update", "ouId": ["{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"], "resourceIds": "<role-id>" }
+    ]
+  },
   "executor": {
     "name": "InviteExecutor",
     "mode": "generate"
@@ -2194,6 +2210,7 @@ The link is returned in the flow response only in a User Onboarding flow. **Prep
 
 **Failure conditions:**
 - Token generation service error
+- An `approvedActions` entry with no action, or whose unit resolves to none
 
 </details>
 
@@ -2472,6 +2489,7 @@ Always paired with **Record Verification**: a flow that has one without the othe
 5. Pins the attribute, its value and channel, and the user when one exists, and discards any code or link issued before.
 6. Writes the attribute's type, `email` or `mobile`, to runtime data as `recipientType`.
 7. Makes the pinned value the recipient of **Send Email** or **Send SMS**, and returns the channel and the masked contact in the `channel` and `maskedDestination` additional data, such as `email` and `a•••@example.com`, or `sms` and `•••67`.
+8. In an Administrator-initiated flow, approves updating the pinned user, so **Record Verification** can record the attribute in the user's step, which carries no token. The approval holds only when the administrator sends this step with their token.
 
 For an existing user, on the start and on each resend, the node publishes the `ATTRIBUTE_VERIFICATION_REQUESTED` event once steps 2 to 4 pass. In an Administrator-initiated flow, the event is published once step 3 passes, even when step 4 then refuses the user. A pin for a user not created yet publishes no event until it is recorded.
 

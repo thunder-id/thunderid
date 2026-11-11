@@ -14596,7 +14596,7 @@
           "id": "permission_validator",
           "type": "TASK_EXECUTION",
           "properties": {
-            "requiredScopes": ["system", "org"]
+            "requiredScopes": ["system:user:create", "org:user:create"]
           },
           "executor": {
             "name": "PermissionValidator"
@@ -15024,6 +15024,9 @@
         {
           "id": "invite_generate_email",
           "type": "TASK_EXECUTION",
+          "properties": {
+            "approvedActions": [{ "action": "user:create", "ouId": ["{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"] }]
+          },
           "executor": {
             "name": "InviteExecutor",
             "mode": "generate"
@@ -15121,6 +15124,9 @@
         {
           "id": "invite_generate_manual",
           "type": "TASK_EXECUTION",
+          "properties": {
+            "approvedActions": [{ "action": "user:create", "ouId": ["{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"] }]
+          },
           "executor": {
             "name": "InviteExecutor",
             "mode": "generate"
@@ -15305,7 +15311,7 @@
           "id": "permission_validator",
           "type": "TASK_EXECUTION",
           "properties": {
-            "requiredScopes": ["system", "org"]
+            "requiredScopes": ["system:user:create", "org:user:create"]
           },
           "executor": {
             "name": "PermissionValidator"

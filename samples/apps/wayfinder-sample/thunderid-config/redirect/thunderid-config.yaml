@@ -564,7 +564,7 @@ nodes:
   - id: permission_validator
     type: TASK_EXECUTION
     properties:
-      requiredScopes: ["system", "org"]
+      requiredScopes: ["system:user:create", "org:user:create"]
     executor:
       name: PermissionValidator
     onSuccess: user_type_resolver
@@ -687,6 +687,17 @@ nodes:
     onIncomplete: prompt_email_support
   - id: invite_generate_support
     type: TASK_EXECUTION
+    properties:
+      approvedActions:
+        - action: user:create
+          ouId:
+            - "{{ctx(ouId)}}"
+            - "{{ctx(defaultOUID)}}"
+        - action: role:update
+          ouId:
+            - "{{ctx(ouId)}}"
+            - "{{ctx(defaultOUID)}}"
+          resourceIds: wayfinder-support-role
     executor:
       name: InviteExecutor
       mode: generate
@@ -803,6 +814,17 @@ nodes:
     onIncomplete: prompt_email_destinations
   - id: invite_generate_destinations
     type: TASK_EXECUTION
+    properties:
+      approvedActions:
+        - action: user:create
+          ouId:
+            - "{{ctx(ouId)}}"
+            - "{{ctx(defaultOUID)}}"
+        - action: role:update
+          ouId:
+            - "{{ctx(ouId)}}"
+            - "{{ctx(defaultOUID)}}"
+          resourceIds: wayfinder-destinations-admin-role
     executor:
       name: InviteExecutor
       mode: generate
