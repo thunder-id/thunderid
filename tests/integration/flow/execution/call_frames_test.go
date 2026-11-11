@@ -314,3 +314,20 @@ func (ts *CallFramesTestSuite) TestCall_CalleeFailureForwardsToOnFailure() {
 	ts.True(common.HasInput(step.Data.Inputs, "recovered_marker"),
 		"The caller must resume at the call node's failure target")
 }
+
+// A flow that runs with the server's authority cannot call a flow that acts for its caller, so saving
+// such a flow is refused rather than left to fail for everyone who reaches the call node.
+func (ts *CallFramesTestSuite) TestCall_SaveRefusesCalleeThatActsForCaller() {
+	administrationFlowID, err := testutils.GetFlowIDByHandle("default-user-suspend-flow", "ADMINISTRATION")
+	ts.Require().NoError(err, "Failed to resolve the default administration flow")
+
+	_, err = testutils.CreateFlow(testutils.Flow{
+		Name:     "Call Frames Administration Caller",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_call_frames_administration_caller",
+		Nodes:    callerNodes(administrationFlowID, ""),
+	})
+	ts.Require().Error(err, "Saving the flow should be refused")
+	ts.Contains(err.Error(), "FLM-1021")
+	ts.Contains(err.Error(), "ADMINISTRATION")
+}

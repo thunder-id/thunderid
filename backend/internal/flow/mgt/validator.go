@@ -133,10 +133,8 @@ func (v *flowValidator) validateFlow(ctx context.Context, flowDef *FlowDefinitio
 	if err := v.validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
 		return err
 	}
-	if flowDef.FlowType == providers.FlowTypeDeviceGrant {
-		if svcErr := v.validateDeviceGrantCallTargetTypes(ctx, flowDef.Nodes); svcErr != nil {
-			return svcErr
-		}
+	if svcErr := v.validateCallTargets(ctx, flowDef.FlowType, flowDef.Nodes); svcErr != nil {
+		return svcErr
 	}
 
 	if err := v.validateNodes(flowDef.Nodes, nodeIndex, flowDef.FlowType); err != nil {
@@ -389,6 +387,43 @@ func (v *flowValidator) validateModeFlowTypes(
 				"flowType":     string(flowType),
 			},
 		})
+	}
+	return nil
+}
+
+// validateCallTargets checks the flows the CALL nodes of a flow of flowType target. A Device Grant flow may call
+// only Authentication flows. Any other flow that runs with the server's authority may not call a flow that acts
+// for its caller, which the engine refuses at runtime too. A target that does not exist yet is not checked.
+func (v *flowValidator) validateCallTargets(
+	ctx context.Context, flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if flowType == providers.FlowTypeDeviceGrant {
+		return v.validateDeviceGrantCallTargetTypes(ctx, nodes)
+	}
+	if v.flowStore == nil || common.ActsForCaller(flowType) {
+		return nil
+	}
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeCall) || node.Flow == nil || node.Flow.Ref == "" {
+			continue
+		}
+		target, err := v.flowStore.GetFlowByID(ctx, node.Flow.Ref)
+		if err != nil {
+			if errors.Is(err, errFlowNotFound) {
+				continue
+			}
+			v.logger.Error(ctx, "Failed to resolve call target flow",
+				log.String("flowID", node.Flow.Ref), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if target != nil && common.ActsForCaller(target.FlowType) {
+			return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.call_target_acts_for_caller_description",
+				DefaultValue: "CALL node '{{param(nodeID)}}' targets a {{param(targetType)}} flow, which a flow " +
+					"that runs with the server's authority cannot call",
+				Params: map[string]string{"nodeID": node.ID, "targetType": string(target.FlowType)},
+			})
+		}
 	}
 	return nil
 }

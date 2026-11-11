@@ -929,6 +929,7 @@ var defaultMessages = map[string]string{
 	"error.flowmgtservice.call_node_has_prompts_description": "CALL node '{{param(nodeID)}}' must not have prompts",
 	"error.flowmgtservice.call_node_missing_flow_ref_description": "CALL node '{{param(nodeID)}}' must have a flow reference with a non-empty ref",
 	"error.flowmgtservice.call_node_missing_on_success_description": "CALL node '{{param(nodeID)}}' must have onSuccess",
+	"error.flowmgtservice.call_target_acts_for_caller_description": "CALL node '{{param(nodeID)}}' targets a {{param(targetType)}} flow, which a flow that runs with the server's authority cannot call",
 	"error.flowmgtservice.call_target_flow_not_found": "Call target flow not found",
 	"error.flowmgtservice.call_target_flow_not_found_description": "A CALL node references a flow that does not exist",
 	"error.flowmgtservice.cannot_update_flow_type": "Invalid update request",
