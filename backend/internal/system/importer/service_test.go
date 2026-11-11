@@ -3326,6 +3326,17 @@ func TestOrderDocumentsByDependencies(t *testing.T) {
 	assert.Equal(t, resourceTypeAgent, ordered[5].ResourceType)
 }
 
+func TestOrderDocumentsByDependencies_ImportsAProjectBeforeItsAuthorizationDetailTypes(t *testing.T) {
+	ordered := orderDocumentsByDependencies([]parsedDocument{
+		{ResourceType: resourceTypeAuthorizationDetailType, Sequence: 0},
+		{ResourceType: resourceTypeProject, Sequence: 1},
+	})
+
+	require.Len(t, ordered, 2)
+	assert.Equal(t, resourceTypeProject, ordered[0].ResourceType)
+	assert.Equal(t, resourceTypeAuthorizationDetailType, ordered[1].ResourceType)
+}
+
 func TestImportResources_FileTargetReturnsError(t *testing.T) {
 	tempHome := t.TempDir()
 
@@ -6249,6 +6260,49 @@ func TestImportAuthorizationDetailType_DryRunCreateIgnoresTheStoredType(t *testi
 	assert.Equal(t, authzdetailmgt.ErrorTypeIDConflict.Code, resp.Results[0].Code)
 	require.Len(t, adtSvc.validated, 1)
 	assert.Empty(t, adtSvc.validated[0].ID)
+}
+
+// A dry run takes a project the same import creates as there, as the real import finds it; a project it does not
+// create is refused as before.
+func TestImportAuthorizationDetailType_DryRunTakesAPlannedProject(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	project := "resource_type: project\nid: project-1\nhandle: shop\ndisplayName: Shop\n---\n"
+	for name, tc := range map[string]struct {
+		content string
+		status  string
+	}{
+		"planned":     {project + authorizationDetailTypeDocument + "projectId: project-1\n", statusSuccess},
+		"not planned": {authorizationDetailTypeDocument + "projectId: project-1\n", statusFailed},
+	} {
+		adtSvc := &fakeAuthorizationDetailTypeService{validateErr: &authzdetailmgt.ErrorInvalidProject}
+		svc := newImportServiceWithProjects(nil, &fakeProjectService{})
+		svc.(*importService).authorizationDetailTypeService = adtSvc
+
+		resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: tc.content, DryRun: true})
+
+		require.Nil(t, err, name)
+		last := resp.Results[len(resp.Results)-1]
+		assert.Equal(t, resourceTypeAuthorizationDetailType, last.ResourceType, name)
+		assert.Equal(t, tc.status, last.Status, name)
+		assert.Empty(t, adtSvc.created, name)
+	}
+}
+
+// A dry run refuses any other validation failure of a type in a planned project.
+func TestImportAuthorizationDetailType_DryRunRefusesOtherFailuresInAPlannedProject(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	adtSvc := &fakeAuthorizationDetailTypeService{validateErr: &authzdetailmgt.ErrorProjectRequired}
+	svc := newImportServiceWithProjects(nil, &fakeProjectService{})
+	svc.(*importService).authorizationDetailTypeService = adtSvc
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{DryRun: true,
+		Content: "resource_type: project\nid: project-1\nhandle: shop\ndisplayName: Shop\n---\n" +
+			authorizationDetailTypeDocument + "projectId: project-1\n"})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, statusFailed, resp.Results[1].Status)
+	assert.Equal(t, authzdetailmgt.ErrorProjectRequired.Code, resp.Results[1].Code)
 }
 
 // An id wider than the store's ID column is refused before anything is written.

@@ -128,6 +128,50 @@ func (s *ServiceTestSuite) TestUpdateType_FailsWhenTheProjectCannotBeChecked() {
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+// Validation, as an import's dry run makes it, checks the project as the write would: a new type needs a project
+// that exists, and a stored type is checked only when it moves to another project.
+func (s *ServiceTestSuite) TestValidateType_ChecksTheProject() {
+	projects := s.servesProjects()
+
+	svcErr := s.service.ValidateAuthorizationDetailType(s.ctx, apiType(flightType()))
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorProjectRequired.Code, svcErr.Code)
+
+	projects.EXPECT().ProjectExists(mock.Anything, "missing").Return(false, nil).Once()
+	svcErr = s.service.ValidateAuthorizationDetailType(s.ctx, inProject(flightType(), "missing"))
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidProject.Code, svcErr.Code)
+
+	stored := flightType()
+	stored.ProjectID = testProjectID
+	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(stored, nil).Once()
+	s.Nil(s.service.ValidateAuthorizationDetailType(s.ctx, flightType()), "an update without a project keeps it")
+
+	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(stored, nil).Once()
+	projects.EXPECT().ProjectExists(mock.Anything, testOtherProjectID).Return(false, nil).Once()
+	moved := flightType()
+	moved.ProjectID = testOtherProjectID
+	svcErr = s.service.ValidateAuthorizationDetailType(s.ctx, moved)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidProject.Code, svcErr.Code)
+}
+
+// Validation checks the project last, after the processor credential, so a dry-run import that takes a project
+// the same import creates as there has checked everything else.
+func (s *ServiceTestSuite) TestValidateType_ChecksTheProjectLast() {
+	withTestCrypto(s.T())
+	s.servesProjects()
+	masked, maskErr := sentAuthenticationProperties(bearer("******"))
+	s.Require().Nil(maskErr)
+	t := inProject(paymentType(), "missing")
+	t.Processor = &providers.AuthorizationDetailProcessor{Endpoint: testProcessorURL, AuthenticationProperties: masked}
+
+	svcErr := s.service.ValidateAuthorizationDetailType(s.ctx, t)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidProcessorAuthentication.Code, svcErr.Code)
+}
+
 // A project's types are listed a page at a time, and an empty project ID lists none rather than every type.
 func (s *ServiceTestSuite) TestListTypesByProject() {
 	s.typeStore.EXPECT().CountTypesByProject(mock.Anything, testProjectID).Return(1, nil).Once()

@@ -409,6 +409,16 @@ func TestOrderDeletionsByDependencies_RemovesATemplateBetweenItsFlowAndItsOrgani
 	}, got)
 }
 
+func TestOrderDeletionsByDependencies_RemovesAnAuthorizationDetailTypeBeforeItsProject(t *testing.T) {
+	ordered := orderDeletionsByDependencies([]ResourceDeletion{
+		{ResourceType: resourceTypeProject, ID: "project"},
+		{ResourceType: resourceTypeAuthorizationDetailType, ID: "type"},
+	})
+
+	assert.Equal(t, resourceTypeAuthorizationDetailType, ordered[0].ResourceType)
+	assert.Equal(t, resourceTypeProject, ordered[1].ResourceType)
+}
+
 func TestOrderDeletionsByDependencies_TakesMembersOffFirst(t *testing.T) {
 	ordered := orderDeletionsByDependencies([]ResourceDeletion{
 		{ResourceType: resourceTypeUser, ID: "user"},
