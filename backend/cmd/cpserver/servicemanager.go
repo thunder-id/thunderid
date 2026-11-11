@@ -212,6 +212,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, valueCapture,
 		projectService, auditBus, ouAuthzService, resource.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
+	projectService.AddResourceCheck(resourceService.ProjectHasResourceServers)
 	exporters = append(exporters, resourceExporter)
 
 	// Initialize authorization details type management.
@@ -282,6 +283,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService, auditBus, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
+	projectService.AddResourceCheck(roleService.ProjectHasRoles)
 	// The control plane runs no flows, so the role and group tools write removals directly.
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, false)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, false)

@@ -1514,6 +1514,74 @@ func (_c *RoleServiceInterfaceMock_ListSharingPolicies_Call) RunAndReturn(run fu
 	return _c
 }
 
+// ProjectHasRoles provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) ProjectHasRoles(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasRoles")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_ProjectHasRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasRoles'
+type RoleServiceInterfaceMock_ProjectHasRoles_Call struct {
+	*mock.Call
+}
+
+// ProjectHasRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *RoleServiceInterfaceMock_Expecter) ProjectHasRoles(ctx any, projectID any) *RoleServiceInterfaceMock_ProjectHasRoles_Call {
+	return &RoleServiceInterfaceMock_ProjectHasRoles_Call{Call: _e.mock.On("ProjectHasRoles", ctx, projectID)}
+}
+
+func (_c *RoleServiceInterfaceMock_ProjectHasRoles_Call) Run(run func(ctx context.Context, projectID string)) *RoleServiceInterfaceMock_ProjectHasRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ProjectHasRoles_Call) Return(b bool, serviceError *common.ServiceError) *RoleServiceInterfaceMock_ProjectHasRoles_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ProjectHasRoles_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *RoleServiceInterfaceMock_ProjectHasRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ResolveRoleOUHandle provides a mock function for the type RoleServiceInterfaceMock
 func (_mock *RoleServiceInterfaceMock) ResolveRoleOUHandle(ctx context.Context, role1 *role.RoleWithPermissionsAndAssignments) *common.ServiceError {
 	ret := _mock.Called(ctx, role1)

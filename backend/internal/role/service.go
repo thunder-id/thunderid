@@ -45,6 +45,8 @@ type RoleServiceInterface interface {
 		*RoleList, *tidcommon.ServiceError)
 	GetRoleListByProject(ctx context.Context, projectID string, limit, offset int,
 		filters map[string]interface{}) (*RoleList, *tidcommon.ServiceError)
+	// ProjectHasRoles reports whether any role, runtime or declared, belongs to the project.
+	ProjectHasRoles(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateRole(ctx context.Context, role RoleCreationDetail) (
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
@@ -296,6 +298,21 @@ func (rs *roleService) GetRoleListByProject(
 		Count:        len(roles),
 		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, extraQuery),
 	}, nil
+}
+
+// ProjectHasRoles reports whether any role, runtime or declared, belongs to the project. A project with more
+// roles than the composite store can count has roles.
+func (rs *roleService) ProjectHasRoles(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError) {
+	count, err := rs.roleStore.GetRoleListCountByProject(ctx, projectID, "")
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return true, nil
+	}
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to count the roles of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
 }
 
 // resolveRoleOUHandles fills in the handle of each listed role's organization unit. A failure to read the
