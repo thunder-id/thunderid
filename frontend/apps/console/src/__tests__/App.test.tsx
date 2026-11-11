@@ -27,6 +27,15 @@ vi.mock('@thunderid/configure-translations/pages/TranslationsListPage', () => ({
 
 vi.mock('../lib/monaco-setup', () => ({}));
 
+let mockCan: (resource: string, action?: string) => boolean = () => true;
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (r: string, a?: string) => mockCan(r, a),
+    isLoading: false,
+  }),
+}));
+
 vi.mock('@thunderid/configure-onboarding/pages/HomePage', () => ({default: () => <div data-testid="home-page" />}));
 
 vi.mock('@thunderid/configure-agent-types/contexts/AgentTypeCreate/AgentTypeCreateProvider', () => ({
@@ -247,6 +256,25 @@ vi.mock('../layouts/FullScreenLayout', async () => {
 describe('App', () => {
   afterEach(() => {
     window.history.pushState({}, '', '/');
+    mockCan = () => true;
+  });
+
+  it('shows a notice instead of import / export to admins who may do neither', async () => {
+    mockCan = (resource) => resource !== 'import' && resource !== 'export';
+    window.history.pushState({}, '', '/import-export');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('You do not have permission to view this page.')).toBeInTheDocument();
+    });
+  });
+
+  it('opens export to an admin who may export but not import', async () => {
+    mockCan = (resource) => resource !== 'import';
+    window.history.pushState({}, '', '/export');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('export-page')).toBeInTheDocument();
+    });
   });
 
   it('renders without crashing', () => {

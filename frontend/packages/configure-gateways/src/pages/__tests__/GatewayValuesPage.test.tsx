@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {HiddenResourcesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -235,6 +235,19 @@ describe('GatewayValuesPage', () => {
     await waitFor(() => expect(http.calls.some((call: Call) => call.method === 'DELETE')).toBe(true));
     await userEvent.click(screen.getByText('Deploy'));
     expect(navigate).toHaveBeenCalledWith('/deploy');
+  });
+
+  it('offers no way to set or remove a value to an admin who may only view them', async () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (_resource, action = 'view') => action === 'view', isLoading: false}}>
+        <GatewayValuesPage />
+      </CapabilitiesProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', {name: 'Not used by the version this gateway runs'}));
+    expect(await screen.findByText('LEFTOVER')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Remove LEFTOVER'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Set LEFTOVER'})).not.toBeInTheDocument();
   });
 
   it('says when what the running version refers to could not be read, rather than showing nothing missing', async () => {

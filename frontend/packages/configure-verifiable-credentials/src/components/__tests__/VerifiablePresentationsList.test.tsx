@@ -64,7 +64,6 @@ const {default: useGetVerifiablePresentations} = await import('../../api/useGetV
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

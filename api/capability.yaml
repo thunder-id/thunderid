@@ -36,8 +36,12 @@ paths:
         token allows each action declared on it. An action is allowed only when the token also
         allows what the Console needs to offer it: for example, creating an application also
         needs flows and connections to be readable and a sign-in flow to be creatable. Every action
-        other than `view` also needs what the resource's `view` needs. Any authenticated caller can
-        call it. The answer
+        other than `view` also needs what the resource's `view` needs. The APIs no catalog action
+        covers are reported the same way, each answered by the permission the server requires for its
+        routes: `import`, `export`, `variable`, `secret`, `gatewayvariable` and `gatewaysecret`. On the
+        data plane, a token that names no organization unit and lacks the root `system` permission may
+        perform no action, as the management APIs refuse it. Any authenticated caller can call it. The
+        answer
         depends only on the token and the server, so a client can keep it until the token changes.
       responses:
         "200":
@@ -59,8 +63,8 @@ paths:
                   serverconfig:
                     view: false
                     update: false
-                root:
-                  manage: false
+                  export:
+                    create: false
         "401":
           description: The caller is not authenticated.
         "500":
@@ -94,22 +98,21 @@ components:
       required:
         - scope
         - resources
-        - root
       properties:
         scope:
           $ref: '#/components/schemas/CapabilityScope'
         resources:
           type: object
           description: >-
-            Each catalog resource (for example `app`, `user` or `serverconfig`), mapped to each
-            action declared on it (`view`, `create`, `update` or `delete`) and whether the caller
-            may perform it.
+            Each catalog resource (for example `app`, `user`, `serverconfig` or `export`), mapped to
+            each action declared on it (`view`, `create`, `update` or `delete`) and whether the
+            caller may perform it. Of the resources answered from their routes, `import` reports
+            `create` and `delete`, `export` reports `create`, and `variable`, `secret`,
+            `gatewayvariable` and `gatewaysecret` report `view`, `create`, `update` and `delete`.
           additionalProperties:
             type: object
             additionalProperties:
               type: boolean
-        root:
-          $ref: '#/components/schemas/RootCapabilities'
 
     CapabilityScope:
       type: object
@@ -128,16 +131,6 @@ components:
           description: >-
             The organization unit the actions apply to, from the token's `ouId` claim. Present when
             `type` is `ou` and the token carries that claim.
-
-    RootCapabilities:
-      type: object
-      description: Access to the APIs only the root `system` permission reaches, such as import, export, variables and secrets.
-      required:
-        - manage
-      properties:
-        manage:
-          type: boolean
-          description: Whether the caller holds the root `system` permission.
 
     Error:
       type: object

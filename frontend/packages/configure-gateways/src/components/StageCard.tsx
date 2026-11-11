@@ -11,6 +11,7 @@ import DeployCard from './DeployCard';
 import Timestamp from './Timestamp';
 import VersionName from './VersionName';
 import {changedCount} from '../api/useChangedValues';
+import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {Actor, ChangedValues, MasterEntry} from '../models/deploy';
 import {versionLabel} from '../utils/format';
 
@@ -83,6 +84,7 @@ export default function StageCard({
   testId = undefined,
 }: StageCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {canViewValues: canConfigure} = useGatewayValueAccess();
   const owed = changedCount(changed);
   const owedNames = [...(changed?.variables ?? []), ...(changed?.secrets ?? [])].join(', ');
   const header = (
@@ -130,9 +132,11 @@ export default function StageCard({
           {t('stage.open', 'Open gateway')}
         </Button>
       )}
-      <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
-        {t('stage.configure', 'Configure')}
-      </Button>
+      {canConfigure && (
+        <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
+          {t('stage.configure', 'Configure')}
+        </Button>
+      )}
       {onRedeploy && version && changedCheckFailed && (
         <Tooltip
           title={t(

@@ -81,8 +81,13 @@ vi.mock('@thunderid/configure-gateways/pages/GatewayValuesPage', () => ({
   default: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
 }));
 
+const mockCan: (resource: string) => boolean = () => true;
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (resource: string) => mockCan(resource),
+    isLoading: false,
+  }),
   AdministrationProvider: ({
     administration,
     children,

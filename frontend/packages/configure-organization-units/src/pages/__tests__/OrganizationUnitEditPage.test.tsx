@@ -218,7 +218,6 @@ vi.mock('@thunderid/components', async (importOriginal) => {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

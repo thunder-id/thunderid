@@ -39,6 +39,7 @@ import {useVersion} from '../api/useVersions';
 import useProjectScope from '../contexts/ProjectScope';
 import useChangeName from '../hooks/useChangeName';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
+import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
@@ -100,6 +101,7 @@ export default function ApplyPanel({
   const nameOfChange = useChangeName();
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
+  const {canSetValues} = useGatewayValueAccess();
   const [target, setTarget] = useState<string>(gatewayId ?? gateways[0]?.id ?? '');
   const gateway = gateways.find((entry: Gateway) => entry.id === target);
   const drawer = variant === 'drawer';
@@ -466,7 +468,7 @@ export default function ApplyPanel({
         fields={fields}
         values={values}
         onChange={(field, value) => setValues((previous) => ({...previous, [fieldKey(field)]: value}))}
-        disabled={isWriting}
+        disabled={isWriting || !canSetValues}
         target={drawer ? envName : undefined}
       />
     ) : null;
@@ -521,8 +523,16 @@ export default function ApplyPanel({
           checked={check.isSuccess}
           valueOf={fixValueOf}
           onChange={(field, value) => setFixValues((previous) => ({...previous, [fieldKey(field)]: value}))}
-          disabled={isWriting}
+          disabled={isWriting || !canSetValues}
         />
+      )}
+      {!canSetValues && fields.length > 0 && (
+        <Alert severity="info">
+          {t(
+            'applyPanel.valuesNeedAccess',
+            "Your account may not set this gateway's variables and secrets, so this deploy waits for an admin who can.",
+          )}
+        </Alert>
       )}
       {check.isSuccess &&
         (drawer || scoped ? (

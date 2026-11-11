@@ -10,17 +10,22 @@ import {
 } from '@tanstack/react-query';
 import useDeploySource from './source';
 import DeployQueryKeys from '../constants/query-keys';
+import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {StoredValue, ValueKind} from '../models/deploy';
 
 const collectionOf = (kind: ValueKind): string => (kind === 'secret' ? 'secrets' : 'variables');
 
-/** Every variable or every secret a gateway holds. A secret's value is never read back. */
+/**
+ * Every variable or every secret a gateway holds. A secret's value is never read back. Not read for an
+ * admin who may not view them, whose request the server would refuse.
+ */
 export function useStoredValues(gatewayId: string, kind: ValueKind, enabled = true): UseQueryResult<StoredValue[]> {
   const source = useDeploySource();
+  const {canValue} = useGatewayValueAccess();
   const collection = collectionOf(kind);
   return useQuery<StoredValue[]>({
     queryKey: [DeployQueryKeys.VALUES, gatewayId, collection],
-    enabled: enabled && Boolean(gatewayId),
+    enabled: enabled && Boolean(gatewayId) && canValue(kind),
     retry: false,
     queryFn: (): Promise<StoredValue[]> => source.values(gatewayId, kind),
   });
