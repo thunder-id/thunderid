@@ -597,6 +597,11 @@ func TestGetResourceDependenciesReportsEntityTypesInOU(t *testing.T) {
 			serverconst.MaxCompositeStoreRecords, 0).
 		Return([]EntityTypeListItem{{ID: "at-1", DisplayName: "Default"}}, nil).
 		Once()
+	storeMock.
+		On("GetEntityTypeListByOUIDs", context.Background(), TypeCategoryOU, []string{"ou-1"},
+			serverconst.MaxCompositeStoreRecords, 0).
+		Return([]EntityTypeListItem{{ID: "ot-1", DisplayName: "Partner"}}, nil).
+		Once()
 
 	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
@@ -616,6 +621,12 @@ func TestGetResourceDependenciesReportsEntityTypesInOU(t *testing.T) {
 			DisplayName:      "Default",
 			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
 		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeOUType,
+			ID:               "ot-1",
+			DisplayName:      "Partner",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
 	}, deps)
 }
 
@@ -625,7 +636,7 @@ func TestGetResourceDependenciesReturnsEmptyWhenOUHasNoEntityTypes(t *testing.T)
 		On("GetEntityTypeListByOUIDs", context.Background(), mock.Anything, []string{"ou-1"},
 			serverconst.MaxCompositeStoreRecords, 0).
 		Return([]EntityTypeListItem{}, nil).
-		Twice()
+		Times(3)
 
 	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
