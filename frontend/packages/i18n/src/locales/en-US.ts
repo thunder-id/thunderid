@@ -1098,9 +1098,9 @@ const translations = {
     'createWizard.steps.general': 'General',
     'createWizard.steps.properties': 'Properties',
     'createWizard.onlyOrganizationUnitTaken':
-      'The only organization unit already has the agent type {{name}}. Create another organization unit first, or edit {{name}} instead.',
+      'There is currently one organization unit, and it already has the agent type {{name}}. Create another organization unit for a new agent type, or edit {{name}} instead.',
     'createWizard.onlyOrganizationUnitTakenReadOnly':
-      'The only organization unit already has the agent type {{name}}, which is read-only. Create another organization unit first.',
+      'There is currently one organization unit, and it already has the agent type {{name}}, which is read-only. Create another organization unit for a new agent type.',
     'createWizard.openTakenAgentType': 'Open agent type',
     'createWizard.organizationUnitTaken':
       'This organization unit already has the agent type {{name}}. Choose another organization unit, or edit {{name}} instead.',

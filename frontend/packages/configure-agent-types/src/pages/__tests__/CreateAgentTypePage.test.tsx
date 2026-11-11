@@ -489,7 +489,7 @@ describe('CreateAgentTypePage', () => {
 
       expect(
         screen.getByText(
-          'The only organization unit already has the agent type Default. Create another organization unit first, or edit Default instead.',
+          'There is currently one organization unit, and it already has the agent type Default. Create another organization unit for a new agent type, or edit Default instead.',
         ),
       ).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Continue'})).toBeDisabled();
