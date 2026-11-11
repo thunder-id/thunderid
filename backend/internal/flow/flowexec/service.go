@@ -551,15 +551,27 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		return nil, svcErr
 	}
 
-	// A self flow is named by its handle, runs for no application and acts on the caller.
+	// A self flow is named by its handle, runs for no application and binds the caller. An
+	// administrator-initiated flow is named the same way and binds the user the administrator names.
 	var boundSubject string
-	if flowType == providers.FlowTypeSelf {
+	switch flowType {
+	case providers.FlowTypeSelf:
 		resolvedFlow, boundSubject, svcErr = s.resolveSelfFlow(ctx, handle)
 		if svcErr != nil {
 			return nil, svcErr
 		}
 
 		flowID, appID = resolvedFlow.ID, ""
+	case providers.FlowTypeAdminInitiated:
+		resolvedFlow, svcErr = s.resolveFlowByHandle(ctx, handle, flowType)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if svcErr := s.validateFlowSharedWithCaller(ctx, resolvedFlow.ID); svcErr != nil {
+			return nil, svcErr
+		}
+
+		flowID, appID, boundSubject = resolvedFlow.ID, "", inputs[adminInitiatedSubjectInput]
 	}
 
 	if svcErr := s.checkDirectFlowInitiationAllowed(
@@ -591,21 +603,32 @@ func (s *flowExecService) resolveSelfFlow(ctx context.Context, handle string) (
 		return nil, "", svcErr
 	}
 
-	if handle == "" {
-		return nil, "", &ErrorFlowHandleRequired
-	}
-
-	flow, svcErr := s.flowProvider.GetFlowByHandle(security.WithRuntimeContext(ctx), handle, providers.FlowTypeSelf)
+	flow, svcErr := s.resolveFlowByHandle(ctx, handle, providers.FlowTypeSelf)
 	if svcErr != nil {
-		// A provider's client error means no self flow has the handle.
-		if svcErr.Type == tidcommon.ClientErrorType {
-			return nil, "", &ErrorFlowHandleNotFound
-		}
-
 		return nil, "", svcErr
 	}
 
 	return flow, security.GetSubject(ctx), nil
+}
+
+// resolveFlowByHandle returns the flow of the type that the handle names. The caller is checked before.
+func (s *flowExecService) resolveFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	if handle == "" {
+		return nil, &ErrorFlowHandleRequired
+	}
+
+	flow, svcErr := s.flowProvider.GetFlowByHandle(security.WithRuntimeContext(ctx), handle, flowType)
+	if svcErr != nil {
+		// A provider's client error means no flow of the type has the handle.
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return nil, &ErrorFlowHandleNotFound
+		}
+
+		return nil, svcErr
+	}
+
+	return flow, nil
 }
 
 // checkDirectFlowInitiationAllowed governs which applications may initiate an authentication or
@@ -852,7 +875,7 @@ func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineCont
 	}
 
 	if ouID != "" {
-		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyOUID: ouID})
+		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyOUID: ouID, common.RuntimeKeyOUFixed: "true"})
 	}
 	return nil
 }
@@ -1018,6 +1041,7 @@ func (s *flowExecService) setApplicationToContext(engineCtx *EngineContext,
 	// Skip application loading for app-independent flows
 	if engineCtx.FlowType == providers.FlowTypeUserOnboarding ||
 		engineCtx.FlowType == providers.FlowTypeSelf ||
+		engineCtx.FlowType == providers.FlowTypeAdminInitiated ||
 		engineCtx.FlowType == providers.FlowTypeAdministration ||
 		engineCtx.FlowType == providers.FlowTypeInvitation ||
 		engineCtx.FlowType == providers.FlowTypeSystem {
@@ -1230,8 +1254,8 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 func validateFlowType(flowTypeStr string) (providers.FlowType, *tidcommon.ServiceError) {
 	switch providers.FlowType(flowTypeStr) {
 	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding,
-		providers.FlowTypeSelf, providers.FlowTypeRecovery, providers.FlowTypeSignOut,
-		providers.FlowTypeAdministration, providers.FlowTypeDeviceGrant:
+		providers.FlowTypeSelf, providers.FlowTypeAdminInitiated, providers.FlowTypeRecovery,
+		providers.FlowTypeSignOut, providers.FlowTypeAdministration, providers.FlowTypeDeviceGrant:
 		return providers.FlowType(flowTypeStr), nil
 	default:
 		return "", &ErrorInvalidFlowType
@@ -1239,7 +1263,8 @@ func validateFlowType(flowTypeStr string) (providers.FlowType, *tidcommon.Servic
 }
 
 // validateInitiatedFlowType validates the type of a flow initiated for an application. A self flow
-// acts on the caller of the execute path, so no application initiates one.
+// acts on the caller of the execute path, and an administrator-initiated flow is started only by an
+// administrator on that path, so no application initiates either.
 func (s *flowExecService) validateInitiatedFlowType(flowTypeStr string) (
 	providers.FlowType, *tidcommon.ServiceError) {
 	flowType, err := validateFlowType(flowTypeStr)
@@ -1247,7 +1272,7 @@ func (s *flowExecService) validateInitiatedFlowType(flowTypeStr string) (
 		return "", err
 	}
 
-	if flowType == providers.FlowTypeSelf {
+	if flowType == providers.FlowTypeSelf || flowType == providers.FlowTypeAdminInitiated {
 		return "", &ErrorInvalidFlowType
 	}
 
@@ -1607,6 +1632,8 @@ func (s *flowExecService) getFlowExpirySeconds(ctx context.Context, flowType pro
 		return firstPositiveExpiry(cfg.UserOnboardingFlow.ExpirySeconds, defaultUserOnboardingFlowExpiry)
 	case providers.FlowTypeSelf:
 		return firstPositiveExpiry(cfg.SelfFlow.ExpirySeconds, defaultSelfFlowExpiry)
+	case providers.FlowTypeAdminInitiated:
+		return firstPositiveExpiry(cfg.AdminInitiatedFlow.ExpirySeconds, defaultAdminInitiatedFlowExpiry)
 	case providers.FlowTypeRecovery:
 		return firstPositiveExpiry(cfg.RecoveryFlow.ExpirySeconds, defaultRecoveryFlowExpiry)
 	case providers.FlowTypeSignOut:

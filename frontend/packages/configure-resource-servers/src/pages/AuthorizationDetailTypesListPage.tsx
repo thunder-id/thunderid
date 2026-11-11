@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle, Stack} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -12,12 +12,27 @@ import {useNavigate} from 'react-router';
 import AuthorizationDetailTypesList from '../components/authorization-detail-types/AuthorizationDetailTypesList';
 import useAuthorizationDetailTypeRoutes from '../hooks/useAuthorizationDetailTypeRoutes';
 
-export default function AuthorizationDetailTypesListPage(): JSX.Element {
+/**
+ * Props for the {@link AuthorizationDetailTypesListPage} component.
+ */
+export interface AuthorizationDetailTypesListPageProps {
+  /**
+   * Whether an intent is created in a project only. When set, an intent can be created inside a selected project
+   * and not outside one.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function AuthorizationDetailTypesListPage({
+  createInProjectsOnly = false,
+}: AuthorizationDetailTypesListPageProps): JSX.Element {
   const navigate = useNavigate();
   const routes = useAuthorizationDetailTypeRoutes();
   const {t} = useTranslation();
   const {can} = useCapabilitiesContext();
   const logger = useLogger('AuthorizationDetailTypesListPage');
+  const {projectId} = useProjectScope();
+  const canCreate = can('authzdetail', 'create') && (!createInProjectsOnly || Boolean(projectId));
 
   return (
     <PageContent>
@@ -33,7 +48,7 @@ export default function AuthorizationDetailTypesListPage(): JSX.Element {
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Stack direction="row" spacing={2}>
-            {can('authzdetail', 'create') && (
+            {canCreate && (
               <Button
                 variant="contained"
                 startIcon={<Plus size={18} />}

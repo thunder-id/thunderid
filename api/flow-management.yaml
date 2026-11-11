@@ -14,6 +14,7 @@ info:
     - **AUTHENTICATION**: User login flows
     - **REGISTRATION**: User registration/signup flows
     - **SELF**: Flows a signed-in user runs on their own account
+    - **ADMIN_INITIATED**: Flows an administrator starts for a user, which the user finishes from a link
     
     ## Node Types
     - **START**: Initial node indicating the starting point of the flow. Must be present in all flows.
@@ -90,6 +91,7 @@ paths:
               - REGISTRATION
               - USER_ONBOARDING
               - SELF
+              - ADMIN_INITIATED
               - RECOVERY
               - SIGNOUT
               - ADMINISTRATION
@@ -1627,6 +1629,7 @@ components:
             - REGISTRATION
             - USER_ONBOARDING
             - SELF
+            - ADMIN_INITIATED
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
@@ -1704,6 +1707,7 @@ components:
             - REGISTRATION
             - USER_ONBOARDING
             - SELF
+            - ADMIN_INITIATED
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
@@ -1975,6 +1979,7 @@ components:
             - REGISTRATION
             - USER_ONBOARDING
             - SELF
+            - ADMIN_INITIATED
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
@@ -2066,6 +2071,7 @@ components:
             - REGISTRATION
             - USER_ONBOARDING
             - SELF
+            - ADMIN_INITIATED
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
@@ -2184,7 +2190,7 @@ components:
           example: node_003
         onFailure:
           type: string
-          description: Next node ID on failed execution (TASK_EXECUTION nodes)
+          description: Next node ID on failed execution (TASK_EXECUTION, CALL and VARIABLES nodes)
           example: node_007
         onIncomplete:
           type: string

@@ -7,7 +7,7 @@ description: The React SDK components and hooks for B2B applications, with the A
 
 # B2B SDK Components
 
-The `@thunderid/react` components and hooks that build a B2B application: the organization context, organization-bounded sign-in, team management, invitations, organization administration, and enterprise SSO. Each table lists the <ProductName /> API a component calls and the permission that call needs. The Next.js SDK, `@thunderid/nextjs`, exports the organization context, the switcher, and the team management, organization administration, and enterprise SSO components for client components. `InviteUser`, `AcceptInvite`, `createConnection`, `getAccessibleOrganizationUnits`, and `OrganizationUnitSwitchErrorCodes` are in `@thunderid/react` only.
+The `@thunderid/react` components and hooks that build a B2B application: the organization context, organization-bounded sign-in, team management, invitations, organization administration, and enterprise SSO. Each table lists the <ProductName /> API a component calls and the permission that call needs. The Next.js SDK, `@thunderid/nextjs`, exports the organization context, the switcher, and the team management, organization administration, and enterprise SSO components for client components. `@thunderid/nextjs` does not export `InviteUser`, `AcceptInvite`, `createConnection`, `getAccessibleOrganizationUnits`, or `OrganizationUnitSwitchErrorCodes`. In Next.js, list the organizations on the server with `(await thunderid()).getAccessibleOrganizationUnits()`.
 
 ## Install the SDK
 
@@ -38,7 +38,7 @@ An organization is an organization unit (OU) beneath the platform organization. 
 | Component or hook | What it does | Calls | Needs |
 |---|---|---|---|
 | `useThunderID()` → `currentOrganizationUnit` | The `id`, `handle`, and `name` of the organization the session was issued for, read from the ID token's `ouId`, `ouHandle`, and `ouName` claims. For display only. | Nothing | The application's token configuration includes the organization claims |
-| `useThunderID()` → `switchOrganizationUnit(id, options)` | Signs in again bounded to another organization and replaces the session. Fails with a code from `OrganizationUnitSwitchErrorCodes`. | `/ou/{ouId}/oauth2/token` or `/ou/{ouId}/oauth2/authorize` | The application is shared with the organization |
+| `useThunderID()` → `switchOrganizationUnit(id, options)` | Signs in again bounded to another organization and replaces the session. Fails with a code from `OrganizationUnitSwitchErrorCodes`. | `/ou/{ouId}/oauth2/token` or `/ou/{ouId}/oauth2/authorize`. In embedded mode, `/flow/execute`. With a backend, its `ouSwitch` route. | The application is shared with the organization |
 | `OrganizationUnitSwitcher` | Lists the person's organizations and switches on a pick. Props: `scope`, `onSwitch`, `onSelect`, `onError`, `switchOptions`. | `GET /users/me/ous` | The person's own access token |
 | `getAccessibleOrganizationUnits` | One page of the person's organizations, with `current`, for a custom switcher. Options: `limit`, `offset`, `scope`. | `GET /users/me/ous` | The person's own access token |
 

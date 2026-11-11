@@ -208,6 +208,72 @@ const id = client.getInstanceId() // 0 by default
 
 **Returns:** `number`
 
+### Organization Units
+
+The core defines how a client reads and changes the organization unit a session belongs to. For how a switch works across <ProductName /> and the SDKs, see [Switch Organizations](../../../../use-cases/b2b/journeys/switch-organizations).
+
+#### `getCurrentOrganizationUnit(userId?)`
+
+Read the organization unit the session was issued for from the `ouId`, `ouHandle`, and `ouName` claims of its ID token. The claims are not verified, so use the result for display only, never for an authorization decision.
+
+```ts
+const unit = await client.getCurrentOrganizationUnit()
+console.log(unit?.id, unit?.name)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `userId` | `string` | Optional session ID for multi-user scenarios |
+
+**Returns:** `Promise<CurrentOrganizationUnit | null>`, an object with `id` and, when the claims carry them, `handle` and `name`. `null` when the session is signed out or its ID token has no `ouId` claim.
+
+#### `switchOrganizationUnit(organizationUnitId, options?)`
+
+Sign in again, bounded to the organization unit `organizationUnitId`. On success a platform client replaces its tokens. On failure the previous session stays as it was, unless a backend reports that its session has ended, and the error carries a code from [`OrganizationUnitSwitchErrorCodes`](../errors#organizationunitswitcherrorcodes).
+
+Each platform client implements the switch: see [`ThunderIDBrowserClient`](../../../browser/apis/thunderid-browser-client#switchorganizationunitorganizationunitid-options) and [`ThunderIDNodeClient`](../../../node/apis/clients/thunderid-node-client#switchorganizationunitorganizationunitid-options). The base class has no way to reach the user, so calling it on `ThunderIDJavaScriptClient` rejects with `ThunderIDRuntimeError` code `JS-AUTH_CORE-SWOU-NS01`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `organizationUnitId` | `string` | ID of the organization unit to switch to |
+| `options.redirect` | `boolean` | Browser clients only. When <ProductName /> needs the user, fall back to a full-page redirect, or in backend mode to the backend's sign-in endpoint with `ouId`. Defaults to `true`. Set it to `false` to fail with `InteractionRequired` instead |
+| `options[param]` | `unknown` | Any other key is an extra authorization request parameter for a redirect-mode sign-in. Backend and app-native switches ignore it |
+
+**Returns:** `Promise<User | TokenResponse | undefined>`
+
+#### `getAccessibleOrganizationUnits(config)`
+
+Exported function that lists the organization units the signed-in user can access, from `GET {baseUrl}/users/me/ous`: the one the user lives in and every one the user is shared into. The request must carry the user's access token, so pass it in `headers` or pass a `fetcher` that attaches it. The function takes the same [request configuration](../management#request-configuration) as the management functions.
+
+```ts
+import { getAccessibleOrganizationUnits } from '@thunderid/javascript'
+
+const { current, organizationUnits } = await getAccessibleOrganizationUnits({
+  baseUrl: 'https://localhost:8090',
+  headers: { Authorization: `Bearer ${await client.getAccessToken()}` },
+  scope: 'siblings',
+})
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config.scope` | `'siblings'` | Keep only the accessible units that share the parent of the current unit. Omit it to list every accessible unit |
+| `config.limit` | `number` | Maximum number of units to return |
+| `config.offset` | `number` | Zero-based offset of the first unit to return |
+| `config.url` | `string` | Absolute URL of the endpoint. Takes precedence over `baseUrl` |
+
+**Returns:** `Promise<AccessibleOrganizationUnitList>`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `current` | `string` | ID of the unit the list is relative to: the one the access token was issued for, or the user's own when the token names none. Returned whatever the scope or page |
+| `organizationUnits` | `AccessibleOrganizationUnit[]` | The units in this page, each with `id`, `handle`, `name`, and an optional `logoUrl` |
+| `totalResults` | `number` | Number of units the listing matches |
+| `startIndex` | `number` | One-based index of the first unit in this page |
+| `count` | `number` | Number of units in this page |
+
+The function throws [`ThunderIDAPIError`](../errors#thunderidapierror) with the same codes as the [management functions](../management#error-handling), prefixed with `getAccessibleOrganizationUnits`.
+
 ### Platform-Specific Methods to Override
 
 Subclasses must implement these methods. Calling them on `ThunderIDJavaScriptClient` directly throws `Error: Method not implemented.`
@@ -490,8 +556,10 @@ These methods are available to subclasses building platform adapters:
 | Method | Description |
 |--------|-------------|
 | `loadOpenIDProviderConfiguration(forceInit?)` | Fetch and cache the OIDC discovery document |
-| `getSignInUrl(requestConfig?, userId?)` | Build the OAuth 2.0 authorization URL with PKCE. `requestConfig.authorizationDetails` overrides the configured authorization details for this request |
+| `getSignInUrl(requestConfig?, userId?)` | Build the OAuth 2.0 authorization URL with PKCE. `requestConfig.authorizationDetails` overrides the configured authorization details for this request. `requestConfig.organizationUnitId` bounds the sign-in to that organization unit: the URL points at `/ou/{ouId}/oauth2/authorize`, and `requestAccessToken()` redeems the code at `/ou/{ouId}/oauth2/token` |
 | `requestAccessToken(code, sessionState, state, userId?, tokenRequestConfig?)` | Exchange an authorization code for tokens |
+| `isOrganizationUnitBoundRequest(state, userId?)` | Whether the authorization request that `state` belongs to was bounded to an organization unit, so its callback replaces a session that is still signed in |
+| `switchOrganizationUnitWithDeviceSecret(organizationUnitId, sessionId?)` | Exchange the session's device secret at the unit's token endpoint, `/ou/{ouId}/oauth2/token`, with no redirect. On success the unit's tokens replace the session's. Returns the new tokens or the server's OAuth error, or `undefined` when the session holds no device secret |
 | `getSignOutUrl(userId?)` | Build the OIDC end-session URL |
 | `refreshAccessToken(userId?)` | Use the refresh token to get a new access token |
 | `revokeAccessToken(userId?)` | Revoke the current access token |

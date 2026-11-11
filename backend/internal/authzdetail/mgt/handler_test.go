@@ -64,6 +64,45 @@ func (s *HandlerTestSuite) TestPost() {
 	s.Equal("type-1", resp.ID)
 }
 
+// A type is created in the project the request names, which the response carries back.
+func (s *HandlerTestSuite) TestPost_InAProject() {
+	s.service.EXPECT().CreateAuthorizationDetailType(mock.Anything,
+		mock.MatchedBy(func(t providers.AuthorizationDetailType) bool { return t.ProjectID == testProjectID })).
+		Return(&providers.AuthorizationDetailType{ID: "type-1", Type: testFlightType, Version: 1,
+			ProjectID: testProjectID}, nil).
+		Once()
+
+	w := httptest.NewRecorder()
+	body := strings.TrimSuffix(typeRequestBody, "}") + `,"projectId":"` + testProjectID + `"}`
+	s.handler.HandleTypePostRequest(w, request(http.MethodPost, body, ""))
+	s.Equal(http.StatusCreated, w.Code)
+
+	var resp AuthorizationDetailTypeResponse
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Equal(testProjectID, resp.ProjectID)
+}
+
+// The projectId query parameter lists a project's types, and the paging links keep it.
+func (s *HandlerTestSuite) TestList_ByProject() {
+	s.service.EXPECT().ListAuthorizationDetailTypesByProject(mock.Anything, testProjectID, 1, 0).
+		Return(&AuthorizationDetailTypePage{TotalResults: 2, Types: []providers.AuthorizationDetailType{flightType()}},
+			nil).
+		Once()
+	w := httptest.NewRecorder()
+	req := request(http.MethodGet, "", "")
+	req.URL.RawQuery = "limit=1&projectId=project-1"
+	s.handler.HandleTypeListRequest(w, req)
+	s.Equal(http.StatusOK, w.Code)
+
+	var resp AuthorizationDetailTypeListResponse
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Equal(2, resp.TotalResults)
+	s.Require().NotEmpty(resp.Links)
+	for _, link := range resp.Links {
+		s.Contains(link.Href, "projectId=project-1", link.Rel)
+	}
+}
+
 func (s *HandlerTestSuite) TestPost_InvalidBody() {
 	w := httptest.NewRecorder()
 	s.handler.HandleTypePostRequest(w, request(http.MethodPost, `{`, ""))

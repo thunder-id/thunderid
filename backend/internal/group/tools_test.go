@@ -155,7 +155,7 @@ func (s *GroupToolsTestSuite) TestListGroups() {
 	})
 
 	s.Run("a group member, narrowed by name and unit", func() {
-		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}).Return(map[string][]*Group{
+		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}, mock.Anything).Return(map[string][]*Group{
 			"Support": {{ID: "g1"}, {ID: "g4"}, {ID: "g5"}}}, (*tidcommon.ServiceError)(nil)).Once()
 		s.groups.On("GetTransitiveAncestorGroups", mock.Anything, "team-a").
 			Return([]string{"g1", "g4"}, (*tidcommon.ServiceError)(nil)).Once()
@@ -232,7 +232,7 @@ func (s *GroupToolsTestSuite) TestCreateGroup() {
 	s.Run("the name is taken in a project's system organization unit", func() {
 		s.groups.On("CreateGroup", mock.Anything, mock.Anything).Return((*Group)(nil), &ErrorGroupNameConflict).Once()
 		s.ous.On("GetSystemOUID", mock.Anything).Return("ou-system", (*tidcommon.ServiceError)(nil)).Once()
-		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Shoppers"}).Return(map[string][]*Group{
+		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Shoppers"}, mock.Anything).Return(map[string][]*Group{
 			"Shoppers": {{ID: "g8", OUID: "ou-system"}}}, (*tidcommon.ServiceError)(nil)).Once()
 		text := s.errorText(s.call("create_group", map[string]any{"name": "Shoppers", "projectId": "project-1"}))
 		s.Contains(text, `a group named "Shoppers" already exists in this organization unit (g8)`)
@@ -240,7 +240,7 @@ func (s *GroupToolsTestSuite) TestCreateGroup() {
 
 	s.Run("the name is taken in the unit", func() {
 		s.groups.On("CreateGroup", mock.Anything, mock.Anything).Return((*Group)(nil), &ErrorGroupNameConflict).Once()
-		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}).Return(map[string][]*Group{
+		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}, mock.Anything).Return(map[string][]*Group{
 			"Support": {{ID: "other", OUID: "ou-9"}, {ID: "g7", OUID: "ou-1"}}}, (*tidcommon.ServiceError)(nil)).Once()
 		text := s.errorText(s.call("create_group", map[string]any{"name": "Support", "ouId": "ou-1"}))
 		s.Contains(text, `a group named "Support" already exists in this organization unit (g7)`)
@@ -361,7 +361,7 @@ func (s *GroupToolsTestSuite) TestRemovalNoticeFollowsThePlane() {
 // A name or member search returns every match, since the services it reads don't page, and refuses
 // limit and offset.
 func (s *GroupToolsTestSuite) TestListGroups_SearchReturnsEveryMatch() {
-	s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}).Return(map[string][]*Group{
+	s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}, mock.Anything).Return(map[string][]*Group{
 		"Support": {{ID: "g1"}, {ID: "g2"}, {ID: "g3"}},
 	}, (*tidcommon.ServiceError)(nil)).Once()
 	for _, id := range []string{"g1", "g2", "g3"} {

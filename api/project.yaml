@@ -259,14 +259,15 @@ paths:
       summary: Delete a project
       description: |
         Deletes a project. The deletion is refused while an application, agent, flow, layout, theme,
-        notification template, presentation definition, credential configuration, group or organization
-        unit is still in the project.
+        notification template, presentation definition, credential configuration, authorization details
+        type, group or organization unit is still in the project.
       responses:
         "204":
           description: Project deleted, or no project exists with the given ID.
         "409":
           description: The project still has applications, agents, flows, layouts, themes, notification
-            templates, presentation definitions, credential configurations, groups or organization units.
+            templates, presentation definitions, credential configurations, authorization details types, groups
+            or organization units.
           content:
             application/json:
               schema:
@@ -278,7 +279,7 @@ paths:
                   defaultValue: "Project is not empty"
                 description:
                   key: "error.projectservice.project_not_empty_description"
-                  defaultValue: "Delete or move the project's applications, agents, flows, layouts, themes, notification templates, presentation definitions, credential configurations, groups and organization units before deleting the project"
+                  defaultValue: "Delete or move the project's applications, agents, flows, layouts, themes, notification templates, presentation definitions, credential configurations, authorization details types, groups and organization units before deleting the project"
         "500":
           $ref: '#/components/responses/InternalServerError'
 

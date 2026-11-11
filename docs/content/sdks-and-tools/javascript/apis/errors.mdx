@@ -168,6 +168,29 @@ try {
 }
 ```
 
+## `OrganizationUnitSwitchErrorCodes`
+
+The codes a platform client's `switchOrganizationUnit()` fails with. The error is a `ThunderIDAPIError`. The previous session stays as it was, except in backend mode when the backend reports that its session has ended (`login_required`, or a `401` left after one refresh); the browser client then signs the user out. See [`ThunderIDBrowserClient`](../../browser/apis/thunderid-browser-client.mdx#switchorganizationunitorganizationunitid-options) for the causes in each browser mode, and [Switch Organizations](../../../use-cases/b2b/journeys/switch-organizations.mdx) for the concept.
+
+```ts
+import { OrganizationUnitSwitchErrorCodes, ThunderIDAPIError } from '@thunderid/javascript'
+
+try {
+  await client.switchOrganizationUnit(organizationUnitId, { redirect: false })
+} catch (err) {
+  if (err instanceof ThunderIDAPIError && err.code === OrganizationUnitSwitchErrorCodes.InteractionRequired) {
+    // The user has to sign in again.
+  }
+}
+```
+
+| Constant | Code | Cause |
+|----------|------|-------|
+| `InvalidOrganizationUnit` | `switchOrganizationUnit-ValidationError-001` | No organization unit ID was given. The Node SDK also uses it when the session or the `authURLCallback` is missing |
+| `UnauthorizedClient` | `switchOrganizationUnit-UnauthorizedClient-001` | The organization unit does not exist, or the application cannot be used from it. <ProductName /> answers both with `unauthorized_client`, so the two cannot be told apart |
+| `InteractionRequired` | `switchOrganizationUnit-InteractionRequired-001` | <ProductName /> needs the user to sign in again, and the switch was not allowed to interact |
+| `Failed` | `switchOrganizationUnit-ResponseError-001` | The bounded sign-in failed for another reason. The message carries the OAuth `error` |
+
 ## Catching All SDK Errors
 
 ```ts

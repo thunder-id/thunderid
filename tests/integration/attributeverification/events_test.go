@@ -102,6 +102,37 @@ func (ts *EventsTestSuite) TestTheSelfFlowPublishesTheUserAsInitiator() {
 	ts.requireNoSecretsPublished(user.email, code)
 }
 
+// The administrator-initiated flow publishes the preparation with the user and the administrator as
+// the initiator, and the recording, made when the user confirms from the link, with the user as the
+// initiator. Neither carries the address or the link's token.
+func (ts *EventsTestSuite) TestTheAdminInitiatedFlowPublishesTheAdministratorAsInitiator() {
+	handle := copyAdminFlow(ts.T(), "admin-events-"+ts.fixture.suffix, ts.fixture.senderID)
+	user := ts.fixture.newUser(ts.T(), "events_admin")
+	ts.Require().NoError(ts.reader.Reset())
+
+	started := execute(ts.T(), adminToken(ts.T()), adminFlowStart(handle,
+		map[string]string{"subject": user.id, "attribute": emailAttribute}))
+	ts.Require().Equal(flowStatusIncomplete, started.Step.FlowStatus, "precondition: the link is sent: %s",
+		started.Body)
+	link := ts.fixture.awaitEmailTo(ts.T(), user.email).ExtractRecoveryLink()
+	inviteToken := testutils.ExtractQueryParam(link, "inviteToken")
+	ts.Require().NotEmpty(inviteToken, "precondition: the email carries the link")
+	requested := ts.awaitEvent(eventVerificationRequested, user.id)
+	ts.Equal("success", requested.Status)
+	ts.Equal(emailAttribute, requested.Str(eventKeyAttribute), "the attribute must be published")
+	ts.Equal(ts.adminSub, requested.Str(eventKeyActorSub), "the administrator must be act_sub")
+
+	confirm := openLink(ts.T(), link, inviteToken)
+	done, err := common.CompleteFlow(confirm.ExecutionID, nil, actionConfirm, confirm.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal(flowStatusComplete, done.FlowStatus, "precondition: confirming verifies the email")
+	verified := ts.awaitEvent(eventVerificationVerified, user.id)
+	ts.Equal("success", verified.Status)
+	ts.Equal(user.id, verified.Str(eventKeyActorSub), "the user must be act_sub")
+
+	ts.requireNoSecretsPublished(user.email, inviteToken)
+}
+
 // A code for an email changed since the code was sent is refused at recording, and the refusal is
 // published with the user and the attribute, and without either address or the code.
 func (ts *EventsTestSuite) TestARefusedRecordingIsPublished() {

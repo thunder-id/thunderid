@@ -84,6 +84,17 @@ sections:
       - name: error
         type: Error \
         description: The last error encountered during authentication, if any
+      - name: currentOrganizationUnit
+        type: 'CurrentOrganizationUnit | null'
+        description: The organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName`
+          claims for display only, or `null`
+      - name: getCurrentOrganizationUnit
+        type: '() => Promise<CurrentOrganizationUnit | null>'
+        description: Reads the current organization unit from the session's claims
+      - name: switchOrganizationUnit
+        type: '(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<User | undefined>'
+        description: Signs in again bounded to another organization unit. A failed switch keeps the previous session,
+          unless a backend reports that its session has ended, and rejects with a code from `OrganizationUnitSwitchErrorCodes`
       example: |-
         import { useThunderID } from '@thunderid/react'
 
@@ -296,6 +307,72 @@ sections:
         }
 
         export default App
+    - group: Components
+      kind: component
+      name: <OrganizationUnitSwitcher />
+      description: The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field
+        that opens a menu of the units the signed-in user can access (`GET /users/me/ous`). Picking a unit calls `switchOrganizationUnit`,
+        which signs in again bounded to that unit. A failed switch keeps the session, unless a backend reports that its session
+        has ended, and shows a translated message under the field. `BaseOrganizationUnitSwitcher` is the presentational picker it renders.
+      rowsLabel: Props
+      rows:
+      - name: scope
+        type: AccessibleOrganizationUnitScope
+        tag: optional
+        description: '`''siblings''` lists the accessible units that share the parent of the current unit. Omit it to list every
+          accessible unit.'
+      - name: limit
+        type: number
+        tag: optional
+        description: The page size. Defaults to `10`.
+      - name: onSwitch
+        type: '(unit: AccessibleOrganizationUnit, user: User) => void'
+        tag: optional
+        description: Called with the unit and the refreshed user after a switch that completes in place. A switch that
+          leaves the page completes on the callback instead.
+      - name: onSelect
+        type: '(unit: AccessibleOrganizationUnit) => void'
+        tag: optional
+        description: 'Takes over a pick: called with the unit instead of switching.'
+      - name: onError
+        type: '(error: unknown) => void'
+        tag: optional
+        description: Called with the SDK error when a switch or a load fails. The component shows its message either
+          way.
+      - name: switchOptions
+        type: SwitchOrganizationUnitOptions
+        tag: optional
+        description: 'Options passed to `switchOrganizationUnit`, such as `{ redirect: false }`.'
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the small label above the current unit. Pass an empty string to omit it.
+      - name: className
+        type: string
+        tag: optional
+        description: Additional CSS class names.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preference overrides, including i18n.
+      - name: children
+        type: '(props: OrganizationUnitSwitcherRenderProps) => ReactNode'
+        tag: optional
+        description: Render function that replaces the built-in UI.
+      example: |-
+        import { OrganizationUnitSwitcher, SignedIn } from '@thunderid/react'
+
+        function Header() {
+          return (
+            <header>
+              <SignedIn>
+                <OrganizationUnitSwitcher scope="siblings" />
+              </SignedIn>
+            </header>
+          )
+        }
+
+        export default Header
     - group: Components
       kind: component
       name: <SignInButton />
@@ -1394,6 +1471,10 @@ guides:
       - cells: [POST /signout, Ends the session and returns the end-session URL]
       - cells: [POST /token, Returns an access token for APIs the app calls directly. Leave it out if the app sends every
             call through the proxy]
+      - cells: [POST /switch, 'Switches the session to another organization unit. The SDK sends the unit as ?ouId=<id>
+            and as the JSON body {"ouId": "<id>"}, then reads /session again. To refuse, answer with an OAuth error in a
+            JSON body. On 401, or an error that means the user has to sign in, such as interaction_required, the browser
+            goes to /signin with ouId. Set its path with endpoints.backend.ouSwitch']
       - cells: ['ALL /proxy/*', Forwards API calls with the access token]
 
     - type: steps

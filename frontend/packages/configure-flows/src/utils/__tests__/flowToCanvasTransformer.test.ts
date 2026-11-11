@@ -834,6 +834,34 @@ describe('flowToCanvasTransformer', () => {
       });
     });
 
+    describe('VARIABLES node onFailure', () => {
+      const flowData = createBaseFlowData([
+        {id: 'start', type: 'START', onSuccess: 'vars'},
+        {
+          id: 'vars',
+          type: 'VARIABLES',
+          onSuccess: 'end',
+          onFailure: 'oops',
+          inputs: [{identifier: 'social', type: 'CONNECTION_SELECT', category: 'IDENTITY_PROVIDER'}],
+        },
+        {id: 'oops', type: 'PROMPT', prompts: [{action: {ref: 'back', nextNode: 'start'}}]},
+        {id: 'end', type: 'END'},
+      ]);
+
+      it('should draw the failure path from the failure handle', () => {
+        const {edges} = transformFlowToCanvas(flowData);
+
+        expect(edges.find((edge) => edge.source === 'vars' && edge.sourceHandle === 'failure')?.target).toBe('oops');
+      });
+
+      it('should write the failure path back as onFailure', () => {
+        const canvas = transformFlowToCanvas(flowData);
+        const saved = transformReactFlow({nodes: canvas.nodes, edges: canvas.edges}).nodes.find((n) => n.id === 'vars');
+
+        expect(saved).toMatchObject({onSuccess: 'end', onFailure: 'oops'});
+      });
+    });
+
     describe('CALL node transformation', () => {
       it('should transform CALL node with flow ref, resourceType and category', () => {
         const flowData = createBaseFlowData([

@@ -176,6 +176,14 @@ func (f *flowFactory) CloneNode(source NodeInterface) (NodeInterface, error) {
 		}
 	}
 
+	// Copy onSuccess and onFailure if the node is a variables node
+	if variablesSource, ok := source.(VariablesNodeInterface); ok {
+		if variablesCopy, ok := nodeCopy.(VariablesNodeInterface); ok {
+			variablesCopy.SetOnSuccess(variablesSource.GetOnSuccess())
+			variablesCopy.SetOnFailure(variablesSource.GetOnFailure())
+		}
+	}
+
 	// Copy referencedFlow, onSuccess, and onFailure if the node is a call node
 	if callSource, ok := source.(CallNodeInterface); ok {
 		if callCopy, ok := nodeCopy.(CallNodeInterface); ok {

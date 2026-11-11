@@ -291,7 +291,7 @@ func (t *groupTools) listGroups(ctx context.Context, _ *mcp.CallToolRequest, inp
 func (t *groupTools) searchGroupIDs(ctx context.Context, input listGroupsMCPInput) ([]string, error) {
 	var byName, byMember []string
 	if input.Name != "" {
-		found, svcErr := t.groupService.GetGroupsByNames(ctx, []string{input.Name})
+		found, svcErr := t.groupService.GetGroupsByNames(ctx, []string{input.Name}, "")
 		if svcErr != nil {
 			return nil, errors.New(svcErr.ErrorDescription.String())
 		}
@@ -400,7 +400,7 @@ func (t *groupTools) createGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 // groupNamed returns the ID of the group with the given name in the organization unit, or "" when there
 // is none or it can't be read.
 func (t *groupTools) groupNamed(ctx context.Context, ouID, name string) string {
-	found, svcErr := t.groupService.GetGroupsByNames(ctx, []string{name})
+	found, svcErr := t.groupService.GetGroupsByNames(ctx, []string{name}, ouID)
 	if svcErr != nil {
 		return ""
 	}

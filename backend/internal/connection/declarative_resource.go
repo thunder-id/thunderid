@@ -741,6 +741,14 @@ func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInte
 			if svcErr := idpService.ResolveIdentityProviderOU(declarativeOwnerContext(), d); svcErr != nil {
 				return ownerError(d.ID, d.OUHandle, svcErr)
 			}
+			if err := requireOwner(d.ID, d.OUID); err != nil {
+				return err
+			}
+			svcErr := idpService.ValidateAuthorizationRuleMappingTargets(declarativeOwnerContext(), d)
+			if svcErr != nil {
+				return fmt.Errorf("connection resource %q has an invalid authorization mapping: %s",
+					d.ID, svcErr.ErrorDescription.String())
+			}
 			// Declarative resources load at startup with no authenticated subject, so the
 			// entity-type reads the seeding performs would otherwise be authorized against nothing
 			// and return nothing. Elevate here, where the absence of a subject is a fact about the

@@ -128,6 +128,11 @@ export interface Change {
   /** On a project's deploy check, the other projects on the target that use this resource. */
   usedBy?: string[];
   /**
+   * On a project's deploy check, a shared change the deploy carries unless it is left out: one no
+   * application names but the project's applications rely on, such as the allowed origins or a translation.
+   */
+  carried?: boolean;
+  /**
    * Where the changes come from holds this change back, so it does not run it: a promotion carries only
    * what its source runs, so the change cannot be applied.
    */

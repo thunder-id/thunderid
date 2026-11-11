@@ -40,6 +40,8 @@ export interface PermissionCatalogProps {
   selected: ResourcePermissions[];
   onChange: (selected: ResourcePermissions[]) => void;
   readOnly?: boolean;
+  /** Lists only the resource servers this organization unit owns. */
+  ouId?: string;
 }
 
 /* ---------- Row ---------- */
@@ -447,11 +449,17 @@ function ServerSection({server, selected, readOnly, onChange}: ServerSectionProp
 
 function UnknownServerGroups({
   entries,
+  unitScoped,
+  listComplete,
   readOnly,
   selected,
   onChange,
 }: {
   entries: ResourcePermissions[];
+  /** The list is limited to one organization unit, so a server missing from it may exist but be unavailable to it. */
+  unitScoped: boolean;
+  /** Every server was listed, so a server missing from it is really absent. A partial page says nothing. */
+  listComplete: boolean;
   readOnly: boolean;
   selected: ResourcePermissions[];
   onChange: (selected: ResourcePermissions[]) => void;
@@ -463,11 +471,17 @@ function UnknownServerGroups({
         <Box key={entry.resourceServerId} sx={{borderBottom: '1px solid', borderColor: 'divider', py: 0.5}}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{pl: 1}}>
             <Typography variant="subtitle2">{entry.resourceServerId}</Typography>
-            <Chip
-              size="small"
-              color="warning"
-              label={t('resourceServers:permissionCatalog.serverNotFound', 'Resource server not found')}
-            />
+            {(listComplete || !unitScoped) && (
+              <Chip
+                size="small"
+                color="warning"
+                label={
+                  unitScoped
+                    ? t('resourceServers:permissionCatalog.serverUnavailable', 'Unavailable')
+                    : t('resourceServers:permissionCatalog.serverNotFound', 'Resource server not found')
+                }
+              />
+            )}
           </Stack>
           {entry.permissions.map((permission) => (
             <CatalogRow
@@ -489,10 +503,15 @@ function UnknownServerGroups({
 
 /* ---------- Catalog ---------- */
 
-export default function PermissionCatalog({selected, onChange, readOnly = false}: PermissionCatalogProps): JSX.Element {
+export default function PermissionCatalog({
+  selected,
+  onChange,
+  readOnly = false,
+  ouId = undefined,
+}: PermissionCatalogProps): JSX.Element {
   const {t} = useTranslation();
 
-  const {data: serversData, isLoading: loadingServers, error: serversError} = useGetResourceServers({limit: 100});
+  const {data: serversData, isLoading: loadingServers, error: serversError} = useGetResourceServers({limit: 100, ouId});
   const servers = serversData?.resourceServers ?? [];
 
   if (serversError) {
@@ -529,7 +548,14 @@ export default function PermissionCatalog({selected, onChange, readOnly = false}
       {servers.map((server) => (
         <ServerSection key={server.id} server={server} selected={selected} readOnly={readOnly} onChange={onChange} />
       ))}
-      <UnknownServerGroups entries={unknownEntries} readOnly={readOnly} selected={selected} onChange={onChange} />
+      <UnknownServerGroups
+        entries={unknownEntries}
+        unitScoped={Boolean(ouId)}
+        listComplete={(serversData?.totalResults ?? 0) <= servers.length}
+        readOnly={readOnly}
+        selected={selected}
+        onChange={onChange}
+      />
     </Paper>
   );
 }

@@ -58,6 +58,7 @@ import {resolveConnectionProperty} from '../utils/resolveConnectionPlaceholders'
 import {
   COMMON_GRAPH_VALIDATION_RULES,
   GRAPH_VALIDATION_RULES,
+  REGISTRATION_GRAPH_VALIDATION_RULES,
   SIGN_OUT_GRAPH_VALIDATION_RULES,
 } from '../validation/validation-rules';
 
@@ -267,11 +268,16 @@ function FlowBuilder() {
     initialFlowData?.flowType ??
     FlowType.AUTHENTICATION;
 
-  // SSO pairing is AUTHENTICATION-only and the confirm-action rule SIGNOUT-only.
-  // Every flow type still gets the common rules.
+  // SSO pairing is AUTHENTICATION-only, the role assignment rule REGISTRATION-only and the confirm-action rule
+  // SIGNOUT-only. Every flow type still gets the common rules.
   useEffect(() => {
     if (flowType === FlowType.AUTHENTICATION) {
       setGraphValidationRules(GRAPH_VALIDATION_RULES);
+      return;
+    }
+
+    if (flowType === FlowType.REGISTRATION) {
+      setGraphValidationRules(REGISTRATION_GRAPH_VALIDATION_RULES);
       return;
     }
 

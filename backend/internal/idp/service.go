@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -47,6 +48,7 @@ type IDPServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	ApplySchemaAwareDefaults(ctx context.Context, idp *providers.IDPDTO)
 	ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
+	ValidateAuthorizationRuleMappingTargets(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
 	GetDirectAuthorizationTargets(
 		ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
 	) ([]providers.AuthorizationTarget, *tidcommon.ServiceError)
@@ -143,6 +145,9 @@ func (is *idpService) createIdentityProvider(
 		return nil, svcErr
 	}
 	if svcErr := is.ResolveIdentityProviderOU(ctx, idp); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := is.ValidateAuthorizationRuleMappingTargets(ctx, idp); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -345,6 +350,11 @@ func (is *idpService) updateIdentityProvider(
 			return errors.New("organization unit of an identity provider cannot be resolved")
 		}
 		idp.OUID = ouID
+
+		if targetErr := is.ValidateAuthorizationRuleMappingTargets(txCtx, idp); targetErr != nil {
+			svcErr = targetErr
+			return errors.New("authorization rule mapping names an unavailable target")
+		}
 
 		// If the name is being updated, check whether another IdP with the same name exists
 		if existingIDP.Name != idp.Name {
@@ -745,9 +755,6 @@ func (is *idpService) validateAttributeConfiguration(
 	if svcErr := validateAuthorizationRuleMappings(ruleMappings); svcErr != nil {
 		return svcErr
 	}
-	if svcErr := is.validateAuthorizationRuleMappingTargetsExist(ctx, ruleMappings); svcErr != nil {
-		return svcErr
-	}
 	if svcErr := is.validateAuthorizationDirectMappings(ctx, directMappings); svcErr != nil {
 		return svcErr
 	}
@@ -860,8 +867,9 @@ func (is *idpService) validateUserTypeResolution(
 
 // GetDirectAuthorizationTargets resolves the IDP's AuthorizationMapping.Direct entries for claims.
 // Each claim value is looked up by exact name (role, group) or validated permission string
-// (permission) against live data, with no organization unit restriction. A value that resolves to
-// more than one role or group, or to none, is skipped rather than granted.
+// (permission) against live data. A name matches only the roles the IDP's organization unit owns or
+// has shared with it, and the groups it owns. A value that resolves to more than one role or group,
+// or to none, is skipped rather than granted.
 func (is *idpService) GetDirectAuthorizationTargets(
 	ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
 ) ([]providers.AuthorizationTarget, *tidcommon.ServiceError) {
@@ -886,7 +894,7 @@ func (is *idpService) GetDirectAuthorizationTargets(
 
 		switch mapping.TargetType {
 		case providers.AuthorizationTargetRole:
-			found, svcErr := is.roleService.GetRolesByNames(ctx, tokens)
+			found, svcErr := is.roleService.GetRolesByNames(ctx, tokens, idp.OUID)
 			if svcErr != nil {
 				return nil, svcErr
 			}
@@ -898,7 +906,7 @@ func (is *idpService) GetDirectAuthorizationTargets(
 				}
 			}
 		case providers.AuthorizationTargetGroup:
-			found, svcErr := is.groupService.GetGroupsByNames(ctx, tokens)
+			found, svcErr := is.groupService.GetGroupsByNames(ctx, tokens, idp.OUID)
 			if svcErr != nil {
 				return nil, svcErr
 			}
@@ -910,6 +918,13 @@ func (is *idpService) GetDirectAuthorizationTargets(
 				}
 			}
 		case providers.AuthorizationTargetPermission:
+			owned, svcErr := is.resourceServerOwnedByOU(ctx, mapping.ResourceServerID, idp.OUID)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+			if !owned {
+				continue
+			}
 			invalid, svcErr := is.resourceService.ValidatePermissions(ctx, mapping.ResourceServerID, tokens)
 			if svcErr != nil {
 				return nil, svcErr
@@ -929,12 +944,37 @@ func (is *idpService) GetDirectAuthorizationTargets(
 	return dedupeAuthorizationTargets(targets), nil
 }
 
-// validateAuthorizationRuleMappingTargetsExist verifies every named role, group, and permission exists.
-// Structural shape is validated separately, by validateAuthorizationRuleMappings.
-func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
+// ValidateAuthorizationRuleMappingTargets verifies every named role, group, and permission exists, and
+// that the IDP's organization unit can grant each of them: a role it owns or has shared with it, a group
+// it owns, and a permission of a resource server it owns. A direct mapping's resource server must be one
+// the unit owns as well. Structural shape is validated separately, by validateAuthorizationRuleMappings.
+func (is *idpService) ValidateAuthorizationRuleMappingTargets(
 	ctx context.Context,
-	mappings []providers.AuthorizationRuleMapping,
+	idp *providers.IDPDTO,
 ) *tidcommon.ServiceError {
+	if idp.AttributeConfiguration == nil || idp.AttributeConfiguration.AuthorizationMapping == nil {
+		return nil
+	}
+	mappings := idp.AttributeConfiguration.AuthorizationMapping.Rules
+
+	for _, direct := range idp.AttributeConfiguration.AuthorizationMapping.Direct {
+		if direct.TargetType != providers.AuthorizationTargetPermission {
+			continue
+		}
+		owned, svcErr := is.resourceServerOwnedByOU(ctx, direct.ResourceServerID, idp.OUID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if !owned {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.authorization_direct_mapping_resource_server_not_in_ou_description",
+				DefaultValue: "authorization direct mapping for claim '{{param(claim)}}' names a resource " +
+					"server outside the identity provider's organization unit: '{{param(resourceServerId)}}'",
+				Params: map[string]string{"claim": direct.Claim, "resourceServerId": direct.ResourceServerID},
+			})
+		}
+	}
+
 	roleIDs := make(map[string]bool)
 	groupIDs := make(map[string]bool)
 	permissionsByResourceServer := make(map[string][]string)
@@ -955,9 +995,17 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	}
 
 	for roleID := range roleIDs {
-		if _, svcErr := is.roleService.GetRoleWithPermissions(security.WithRuntimeContext(ctx), roleID); svcErr != nil {
+		if _, svcErr := is.roleService.GetRoleInOU(security.WithRuntimeContext(ctx), roleID, idp.OUID); svcErr != nil {
 			if svcErr.Type == tidcommon.ServerErrorType {
 				return svcErr
+			}
+			if svcErr.Code == role.ErrorRoleNotSharedToOU.Code {
+				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+					Key: "error.idpservice.authorization_rule_mapping_role_not_in_ou_description",
+					DefaultValue: "authorization rule mapping names a role the identity provider's organization " +
+						"unit neither owns nor has shared with it: '{{param(roleId)}}'",
+					Params: map[string]string{"roleId": roleID},
+				})
 			}
 			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.authorization_rule_mapping_role_not_found_description",
@@ -978,7 +1026,8 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 			return svcErr
 		}
 		for _, id := range ids {
-			if _, ok := found[id]; !ok {
+			grp, ok := found[id]
+			if !ok {
 				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 					Key: "error.idpservice.authorization_rule_mapping_group_not_found_description",
 					DefaultValue: "authorization rule mapping names a group that does not exist: " +
@@ -986,10 +1035,31 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 					Params: map[string]string{"groupId": id},
 				})
 			}
+			// Groups are never shared, so only a group the organization unit owns can be granted.
+			if grp.OUID != idp.OUID {
+				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+					Key: "error.idpservice.authorization_rule_mapping_group_not_in_ou_description",
+					DefaultValue: "authorization rule mapping names a group outside the identity provider's " +
+						"organization unit: '{{param(groupId)}}'",
+					Params: map[string]string{"groupId": id},
+				})
+			}
 		}
 	}
 
 	for resourceServerID, permissions := range permissionsByResourceServer {
+		owned, svcErr := is.resourceServerOwnedByOU(ctx, resourceServerID, idp.OUID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if !owned {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.authorization_rule_mapping_permission_not_in_ou_description",
+				DefaultValue: "authorization rule mapping names a permission on a resource server outside the " +
+					"identity provider's organization unit: '{{param(resourceServerId)}}'",
+				Params: map[string]string{"resourceServerId": resourceServerID},
+			})
+		}
 		invalid, svcErr := is.resourceService.ValidatePermissions(ctx, resourceServerID, permissions)
 		if svcErr != nil {
 			return svcErr
@@ -1007,8 +1077,24 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	return nil
 }
 
+// resourceServerOwnedByOU reports whether the organization unit owns the resource server. Resource servers
+// are never shared, so only the permissions of a resource server the unit owns can be granted. A resource
+// server that does not exist is reported as owned, so the permission lookup reports it as missing.
+func (is *idpService) resourceServerOwnedByOU(
+	ctx context.Context, resourceServerID, ouID string,
+) (bool, *tidcommon.ServiceError) {
+	server, svcErr := is.resourceService.GetResourceServer(security.WithRuntimeContext(ctx), resourceServerID)
+	if svcErr != nil {
+		if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
+			return true, nil
+		}
+		return false, svcErr
+	}
+	return server.OUID == ouID, nil
+}
+
 // validateAuthorizationRuleMappings validates structural shape, independently of whether the named
-// roles, groups, or permissions actually exist (see validateAuthorizationRuleMappingTargetsExist).
+// roles, groups, or permissions actually exist (see ValidateAuthorizationRuleMappingTargets).
 func validateAuthorizationRuleMappings(mappings []providers.AuthorizationRuleMapping) *tidcommon.ServiceError {
 	for _, mapping := range mappings {
 		if strings.TrimSpace(mapping.Claim) == "" {
@@ -1169,7 +1255,7 @@ func (is *idpService) validateAuthorizationDirectMappings(
 					Params: map[string]string{"claim": mapping.Claim},
 				})
 			}
-			// Only the resource server's existence is checked, whichever organization unit owns it.
+			// Only existence is checked here; the owner is not known yet, so ownership is checked afterwards.
 			if _, svcErr := is.resourceService.GetResourceServer(
 				security.WithRuntimeContext(ctx), mapping.ResourceServerID); svcErr != nil {
 				if svcErr.Type == tidcommon.ServerErrorType {

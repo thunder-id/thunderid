@@ -848,6 +848,42 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_R
 	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
+// An undelivered link reaches the onboarding administrator's screen, never an administrator-initiated flow's
+// administrator, who could finish the flow in the user's place.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_UndeliveredLink() {
+	link := "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc"
+	for flowType, want := range map[providers.FlowType]string{
+		providers.FlowTypeUserOnboarding: link,
+		providers.FlowTypeAdminInitiated: "",
+	} {
+		suite.Run(string(flowType), func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-execution-id",
+				FlowType:     flowType,
+				ExecutorMode: ExecutorModeSend,
+				NodeInputs:   []providers.Input{{Identifier: "email", Type: providers.InputTypeEmail, Required: true}},
+				UserInputs:   map[string]string{"email": "user@example.com"},
+				RuntimeData:  map[string]string{common.RuntimeKeyInviteLink: link},
+				NodeProperties: map[string]interface{}{
+					"emailTemplate": emailUserInviteProperty,
+				},
+			}
+			suite.mockTemplateRenderer.On("Resolve", ctx.Context, notificationtemplate.ChannelTypeEmail,
+				emailUserInviteHandle, mock.Anything).
+				Return(&notificationtemplate.ResolvedContent{Subject: "s", Body: "b"}, nil)
+			suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.Anything).
+				Return(&notification.ErrorSenderNotFound)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(want, resp.AdditionalData[common.DataInviteLink])
+		})
+	}
+}
+
 // A configured senderId is passed through to the sender service verbatim.
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ConfiguredSenderID() {
 	ctx := &providers.NodeContext{

@@ -183,9 +183,12 @@ function renderCatalog(props: {
   selected: ResourcePermissions[];
   onChange?: ReturnType<typeof vi.fn>;
   readOnly?: boolean;
+  ouId?: string;
 }) {
   const onChange = props.onChange ?? vi.fn();
-  renderWithProviders(<PermissionCatalog selected={props.selected} onChange={onChange} readOnly={props.readOnly} />);
+  renderWithProviders(
+    <PermissionCatalog selected={props.selected} onChange={onChange} readOnly={props.readOnly} ouId={props.ouId} />,
+  );
   return onChange;
 }
 
@@ -326,6 +329,33 @@ describe('PermissionCatalog', () => {
       // The whole rs-1 entry should be dropped
       expect(onChange).toHaveBeenCalledWith([]);
     });
+  });
+
+  it('lists only the resource servers of the given organization unit', async () => {
+    renderCatalog({selected: [], ouId: 'ou-1'});
+
+    await screen.findAllByRole('checkbox');
+    expect(useGetResourceServersModule.default).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}));
+  });
+
+  it('marks a selected server missing from a unit-scoped list as unavailable rather than not found', async () => {
+    const selected: ResourcePermissions[] = [{resourceServerId: 'rs-other-unit', permissions: ['x:read']}];
+    renderCatalog({selected, ouId: 'ou-1'});
+
+    expect(await screen.findByText('Unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Resource server not found')).not.toBeInTheDocument();
+  });
+
+  it('keeps the id of a selected server visible without a label when a unit-scoped list is only a partial page', async () => {
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({totalResults: 150, startIndex: 1, count: 2, resourceServers: servers}),
+    );
+    const selected: ResourcePermissions[] = [{resourceServerId: 'rs-later-page', permissions: ['x:read']}];
+    renderCatalog({selected, ouId: 'ou-1'});
+
+    expect(await screen.findByText('rs-later-page')).toBeInTheDocument();
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resource server not found')).not.toBeInTheDocument();
   });
 
   it('renders unknown-server entries as a warning group with uncheckable rows', async () => {

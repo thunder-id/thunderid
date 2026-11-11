@@ -164,8 +164,8 @@ func (s *ProjectScopeTestSuite) TestAnUnknownProjectIsRefused() {
 	s.Equal(&tidcommon.InternalServerError, svcErr)
 }
 
-// Without a selection, an apply scoped to a project sends the project's own changes and what they need
-// that the gateway lacks, and nothing shared or of another project.
+// Without a selection, an apply scoped to a project sends the project's own changes, what they need
+// that the gateway lacks, and the translations, and nothing else shared or of another project.
 func (s *ProjectScopeTestSuite) TestAnApplyScopedToAProjectSendsItsDefaults() {
 	s.captureDocs(docs(flow("flow-1"))...)
 
@@ -179,10 +179,12 @@ func (s *ProjectScopeTestSuite) TestAnApplyScopedToAProjectSendsItsDefaults() {
 	for _, id := range []string{"app-bill", "ou-bill", "flow-2", "usr-1"} {
 		s.NotContains(sent, "id: "+id+"\n", "%s was sent with the shop", id)
 	}
-	s.NotContains(sent, "en-US", "a shared resource nobody selected was sent")
+	s.Contains(sent, "en-US", "a translation was not carried")
 	s.True(changeNamed(&result.Diff, "flow/flow-1").Required)
 	s.True(changeNamed(&result.Diff, "flow/flow-1").Selected)
-	s.False(changeNamed(&result.Diff, "translation/en-US").Selected)
+	s.True(changeNamed(&result.Diff, "translation/en-US").Selected)
+	s.True(changeNamed(&result.Diff, "translation/en-US").Carried)
+	s.False(changeNamed(&result.Diff, "flow/flow-2").Carried)
 }
 
 // A selection may add shared changes, but not another project's, and may not leave out what the
@@ -207,6 +209,63 @@ func (s *ProjectScopeTestSuite) TestAProjectSelectionIsChecked() {
 		Selection: &[]string{own[0], own[1], own[2], "flow/flow-1", "translation/en-US"}})
 	s.Require().Nil(svcErr)
 	s.Contains(s.f.client.last().Content, "en-US")
+}
+
+// No application names the allowed origins or a translation, yet a project's applications rely on them,
+// so a project's deploy carries their additions and updates unless they are left out. A removal is not
+// carried, and the other shared changes still go only when selected.
+func (s *ProjectScopeTestSuite) TestAProjectDeployCarriesTheAllowedOriginsAndTranslations() {
+	cors := func(origin string) string {
+		return "resource_type: server_config\nname: cors\nallowedOrigins:\n  - " + origin
+	}
+	s.captureDocs(append(docs(flow("flow-1")), cors("https://old.test"),
+		"resource_type: translation\nlanguage: fr-FR\ntext: salut")...)
+	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	s.Require().Nil(svcErr)
+	s.captureDocs(append(docs(flow("flow-1")), cors("https://spa.test"),
+		"resource_type: translation\nlanguage: de-DE\ntext: hallo")...)
+
+	diff, svcErr := s.f.svc.Diff(context.Background(), "gw-1", "", "shop")
+	s.Require().Nil(svcErr)
+	s.Equal(sectionShared, changeNamed(diff, "server_config/cors").Section)
+	s.True(changeNamed(diff, "server_config/cors").Carried)
+	s.True(changeNamed(diff, "translation/de-DE").Carried)
+	s.False(changeNamed(diff, "translation/fr-FR").Carried, "a removal was carried")
+
+	result, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	s.True(changeNamed(&result.Diff, "server_config/cors").Selected)
+	s.True(changeNamed(&result.Diff, "translation/de-DE").Selected)
+	s.False(changeNamed(&result.Diff, "translation/fr-FR").Selected)
+	s.Contains(s.f.client.last().Content, "https://spa.test")
+
+	own := []string{"application/app-shop", "organization_unit/ou-team", "organization_unit/ou-shop", "flow/flow-1"}
+	result, svcErr = s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "shop", Selection: &own,
+		DryRun: true})
+	s.Require().Nil(svcErr)
+	s.False(changeNamed(&result.Diff, "server_config/cors").Selected, "the allowed origins could not be left out")
+}
+
+// A template that belongs to no project, but that the project's flow names by its handle, is needed by the
+// project, so a deploy carries it while the gateway lacks it. One no flow of the project names stays shared.
+func (s *ProjectScopeTestSuite) TestAProjectDeployCarriesTheTemplatesItsFlowsName() {
+	welcome := "resource_type: notification_template\nid: nt-1\nchannel: email\nhandle: welcome\ndisplayName: W"
+	unused := "resource_type: notification_template\nid: nt-2\nchannel: email\nhandle: unused\ndisplayName: U"
+	shopFlow := "resource_type: flow\nid: flow-1\nname: flow-1\nnodes:\n  - id: send\n    properties:\n" +
+		"      emailTemplate: welcome\n"
+	s.captureDocs(append(docs(shopFlow), welcome, unused)...)
+
+	diff, svcErr := s.f.svc.Diff(context.Background(), "gw-1", "", "shop")
+	s.Require().Nil(svcErr)
+	s.Equal(sectionNeeded, changeNamed(diff, "notification_template/nt-1").Section)
+	s.True(changeNamed(diff, "notification_template/nt-1").Required)
+	s.Equal(sectionShared, changeNamed(diff, "notification_template/nt-2").Section)
+
+	_, svcErr = s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	sent := s.f.client.last().Content
+	s.Contains(sent, "id: nt-1")
+	s.NotContains(sent, "id: nt-2")
 }
 
 // A dependency the gateway holds in another form is needed but not required, and names the other
@@ -244,15 +303,16 @@ func (s *ProjectScopeTestSuite) TestAPromotionScopedToAProjectSendsWhatTheSource
 	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	s.Require().Nil(svcErr)
 
+	own := []string{"application/app-shop", "organization_unit/ou-team", "organization_unit/ou-shop", "flow/flow-1"}
 	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
-		TargetGatewayID: scopeTarget, Project: "shop"})
+		TargetGatewayID: scopeTarget, Project: "shop", Selection: &own})
 
 	s.Require().Nil(svcErr)
 	sent := s.f.client.last().Content
 	s.Contains(sent, "id: app-shop")
 	s.Contains(sent, "id: flow-1")
 	s.NotContains(sent, "id: app-bill")
-	s.NotContains(sent, "en-US")
+	s.NotContains(sent, "en-US", "a translation left out was sent")
 
 	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
 		TargetGatewayID: scopeTarget, Project: "shop", Selection: &[]string{"translation/en-US"}})
@@ -320,12 +380,13 @@ func TestRefusalsAgreeWithTheirCount(t *testing.T) {
 	assert.Contains(t, missing.ErrorDescription.DefaultValue, "flow/f, which the gateway does not hold. Select it")
 }
 
-// What another project owns is that project's, even when the project's resources name it, and what it
-// names in turn is not followed: it is never placed as needed, and so never sent with this project.
-func TestReachStopsAtAnotherProjectsResources(t *testing.T) {
+// What another project owns and the gateway holds is that project's, even when the project's resources name
+// it, and what it names in turn is not followed: it is never placed as needed, and so never sent with this
+// project.
+func TestReachStopsAtAnotherProjectsResourcesTheGatewayHolds(t *testing.T) {
 	diff := &Diff{Changes: []Change{
 		{Key: "application/shop", Change: ChangeAdded, Needs: []string{"application/bill"}},
-		{Key: "application/bill", Change: ChangeAdded, Needs: []string{"flow/bill-only"}},
+		{Key: "application/bill", Change: ChangeUpdated, Needs: []string{"flow/bill-only"}},
 		{Key: "flow/bill-only", Change: ChangeAdded},
 	}}
 	owners := map[string]string{"application/shop": "shop", "application/bill": "billing"}
@@ -336,6 +397,25 @@ func TestReachStopsAtAnotherProjectsResources(t *testing.T) {
 		"flow/bill-only": sectionShared}, sectionsOf(diff))
 	assert.Equal(t, []string{"application/shop"}, scope.defaults)
 	assert.False(t, changeNamed(diff, "flow/bill-only").Required)
+}
+
+// Another project's resource the project's resources need and the gateway does not hold is needed, with what
+// it needs in turn, so the project deploys before that project has: both are required and sent by default.
+func TestAnotherProjectsResourceTheGatewayLacksIsBroughtAlong(t *testing.T) {
+	diff := &Diff{Changes: []Change{
+		{Key: "application/shop", Change: ChangeAdded, Needs: []string{"flow/login"}},
+		{Key: "flow/login", Change: ChangeAdded, Needs: []string{"flow/bill-only"}},
+		{Key: "flow/bill-only", Change: ChangeAdded},
+	}}
+	owners := map[string]string{"application/shop": "shop", "flow/login": "default", "flow/bill-only": "default"}
+
+	scope := scopeToProject("shop", owners, diff)
+
+	assert.Equal(t, map[string]string{"application/shop": sectionProject, "flow/login": sectionNeeded,
+		"flow/bill-only": sectionNeeded}, sectionsOf(diff))
+	assert.True(t, changeNamed(diff, "flow/login").Required)
+	assert.ElementsMatch(t, []string{"application/shop", "flow/login", "flow/bill-only"}, scope.defaults)
+	assert.Nil(t, scope.check(scope.defaults))
 }
 
 // A needed change the gateway holds back stays required but is not sent by default: only selecting it
@@ -351,4 +431,24 @@ func TestAHeldBackRequiredChangeIsNotADefault(t *testing.T) {
 	assert.True(t, changeNamed(diff, "flow/f").Required)
 	assert.Equal(t, []string{"application/shop"}, scope.defaults)
 	assert.NotNil(t, scope.check(scope.defaults), "a default apply left out a held-back required change silently")
+}
+
+// A project deploys to a gateway the default project has not been deployed to: the organization's unit and
+// the project's application name the sign-in flow the default project holds, which the deploy brings along.
+func (s *ProjectScopeTestSuite) TestAProjectDeploysWithoutTheDefaultProjectBeforeIt() {
+	s.projects.projects["default"] = "Default"
+	s.captureDocs(
+		"resource_type: organization_unit\nid: ou-default\nname: default\nauthFlowId: flow-login",
+		"resource_type: flow\nid: flow-login\nname: login\nprojectId: default",
+		projectApp("app-bill", "billing", "ou-default", "flow-login"),
+	)
+
+	result, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "billing"})
+
+	s.Require().Nil(svcErr, "%v", svcErr)
+	sent := s.f.client.last().Content
+	s.Contains(sent, "id: app-bill")
+	s.Contains(sent, "id: ou-default")
+	s.Contains(sent, "id: flow-login", "the flow the project needs was not brought along")
+	s.NotNil(result)
 }

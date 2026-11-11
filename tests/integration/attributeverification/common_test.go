@@ -87,11 +87,16 @@ const (
 	errCodeAuthenticationRequired = "FES-1017"
 	// errCodeFlowIDNotPermitted is the flow ID entry point's refusal of a flow it may not start.
 	errCodeFlowIDNotPermitted = "FES-1018"
+	// errCodeFlowNotSharedWithOU is the refusal of a flow the caller's organization unit neither owns nor was shared.
+	errCodeFlowNotSharedWithOU = "FES-1029"
 	// errCodeFlowHandleNotFound is the start's refusal of a handle no self flow has.
 	errCodeFlowHandleNotFound = "FES-1025"
 	// errCodeAdministrationPermission is the flow ID entry point's refusal of a caller holding no system
 	// permission.
 	errCodeAdministrationPermission = "FES-1019"
+	// errCodeFlowStartedByAnotherCaller is the refusal of a step sent with the token of a caller other than
+	// the one who started the flow.
+	errCodeFlowStartedByAnotherCaller = "FES-1030"
 )
 
 // deliveryWait bounds the wait for an email or SMS the server sends during a request. A send
@@ -332,6 +337,13 @@ func (f *verificationFixture) newUser(t *testing.T, name string) testUser {
 func (f *verificationFixture) newUserOfType(t *testing.T, name, userType string) testUser {
 	t.Helper()
 
+	return f.newUserOfTypeIn(t, name, userType, f.ouID)
+}
+
+// newUserOfTypeIn creates a user of userType in ouID.
+func (f *verificationFixture) newUserOfTypeIn(t *testing.T, name, userType, ouID string) testUser {
+	t.Helper()
+
 	u := testUser{
 		username: fmt.Sprintf("verify_%s_%s", name, f.suffix),
 		password: "Correct-Horse-" + name + "1!",
@@ -348,10 +360,26 @@ func (f *verificationFixture) newUserOfType(t *testing.T, name, userType string)
 	})
 	require.NoError(t, err)
 
-	u.id, err = testutils.CreateUser(testutils.User{OUID: f.ouID, Type: userType, Attributes: attributes})
+	u.id, err = testutils.CreateUser(testutils.User{OUID: ouID, Type: userType, Attributes: attributes})
 	require.NoError(t, err, "failed to create the test user")
-	f.userIDs = append(f.userIDs, u.id)
+	if ouID == f.ouID {
+		f.userIDs = append(f.userIDs, u.id)
+	} else {
+		// Deleted before the test's own unit is.
+		t.Cleanup(func() {
+			if err := testutils.DeleteUser(u.id); err != nil {
+				t.Logf("cleanup: delete the test user: %v", err)
+			}
+		})
+	}
 	return u
+}
+
+// newUserIn creates a user of the fixture's type in ouID as newUser does, deleted when the test ends.
+func (f *verificationFixture) newUserIn(t *testing.T, name, ouID string) testUser {
+	t.Helper()
+
+	return f.newUserOfTypeIn(t, name, f.userType, ouID)
 }
 
 // newUserType creates a user type with schema in the fixture's organization unit for a test that
@@ -872,6 +900,24 @@ func confirmLink(t *testing.T, link string) *common.FlowStep {
 	done, err := common.CompleteFlow(confirm.ExecutionID, nil, actionConfirm, confirm.ChallengeToken)
 	require.NoError(t, err, "the confirmation must be answered in the flow, not as a server error")
 	return done
+}
+
+// metaComponentIDs returns the IDs of the top-level components in the step's verbose meta.
+func metaComponentIDs(t *testing.T, step *common.FlowStep) []string {
+	t.Helper()
+
+	meta, ok := step.Data.Meta.(map[string]interface{})
+	require.True(t, ok, "the step must carry meta: %+v", step.Data.Meta)
+	components, ok := meta["components"].([]interface{})
+	require.True(t, ok, "the meta must carry components: %+v", meta)
+	ids := make([]string, 0, len(components))
+	for _, item := range components {
+		component, ok := item.(map[string]interface{})
+		require.True(t, ok, "unexpected component %+v", item)
+		id, _ := component["id"].(string)
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // useFlowConfigWith writes value under key in the flow section until the test ends, keeping the

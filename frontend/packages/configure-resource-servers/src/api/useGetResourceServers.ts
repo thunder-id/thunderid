@@ -15,14 +15,18 @@ export default function useGetResourceServers(params?: {
   limit?: number;
   offset?: number;
   projectId?: string;
+  /** Lists only the resource servers this organization unit owns. */
+  ouId?: string;
+  enabled?: boolean;
 }): UseQueryResult<ResourceServerListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0, projectId} = params ?? {};
+  const {limit = 30, offset = 0, projectId, ouId, enabled = true} = params ?? {};
 
   return useQuery<ResourceServerListResponse>({
-    queryKey: [ResourceServerQueryKeys.RESOURCE_SERVERS, {limit, offset, projectId}],
+    queryKey: [ResourceServerQueryKeys.RESOURCE_SERVERS, {limit, offset, projectId, ouId}],
     placeholderData: keepPreviousData,
+    enabled,
     queryFn: async (): Promise<ResourceServerListResponse> => {
       const serverUrl = getServerUrl();
       const queryParams = new URLSearchParams({
@@ -31,6 +35,9 @@ export default function useGetResourceServers(params?: {
       });
       if (projectId) {
         queryParams.append('projectId', projectId);
+      }
+      if (ouId) {
+        queryParams.append('filter', `ouId eq "${ouId}"`);
       }
 
       const response: {data: ResourceServerListResponse} = await http.request({

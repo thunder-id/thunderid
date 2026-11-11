@@ -413,11 +413,12 @@ func (s *service) participantOU(ctx context.Context, subjectID, ouID string) (st
 	return ouID, nil
 }
 
-// snapshotRuntimeData copies the runtime data for the snapshot without the organization unit, which is
-// decided per sign-in; a replayed copy would overwrite the joining flow's own.
+// snapshotRuntimeData copies the runtime data for the snapshot without the organization unit and its fixed mark,
+// which are decided per sign-in; a replayed copy would overwrite the joining flow's own.
 func snapshotRuntimeData(runtimeData map[string]string) map[string]string {
 	snapshot := maps.Clone(runtimeData)
 	delete(snapshot, common.RuntimeKeyOUID)
+	delete(snapshot, common.RuntimeKeyOUFixed)
 	return snapshot
 }
 

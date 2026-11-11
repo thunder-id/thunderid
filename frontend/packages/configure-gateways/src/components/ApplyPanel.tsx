@@ -41,7 +41,7 @@ import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
-import {carriedWithProject, projectNeeds, sharedMissing} from '../utils/changeSummary';
+import {carriedWithProject, projectNeeds, sharedByDefault, sharedMissing} from '../utils/changeSummary';
 import {fromListText, toListText} from '../utils/listValue';
 import {fieldKey, missingFields, type MissingField, type RefusedFix} from '../utils/missingValues';
 import {withNeeded} from '../utils/needs';
@@ -146,14 +146,15 @@ export default function ApplyPanel({
       (startWith
         ? new Set(
             active
-              .filter((change: Change) => !startWith.includes(change.key) && !(scoped && sharedMissing(change)))
+              .filter((change: Change) => !startWith.includes(change.key) && !(scoped && sharedByDefault(change)))
               .map((change: Change) => change.key),
           )
         : scoped
-          ? // A shared resource the target lacks goes by default; one it holds is replaced only when ticked.
+          ? // A shared resource the target lacks, or one the project's applications rely on, goes by default;
+            // another the target holds is replaced only when ticked.
             new Set(
               active
-                .filter((change: Change) => !carriedWithProject(change) && !sharedMissing(change))
+                .filter((change: Change) => !carriedWithProject(change) && !sharedByDefault(change))
                 .map((change: Change) => change.key),
             )
           : new Set(active.filter((change: Change) => change.heldBack === true).map((change: Change) => change.key))),

@@ -221,7 +221,7 @@ func (s *RoleAuthzTestSuite) TestGetRolesByNames_OnlyReadable() {
 		{ID: "role-own", Name: "support", OUID: authzOwnOU}, {ID: "role-other", Name: "support", OUID: authzOtherOU},
 	}, nil)
 
-	byName, svcErr := s.service.GetRolesByNames(context.Background(), []string{"support"})
+	byName, svcErr := s.service.GetRolesByNames(context.Background(), []string{"support"}, "")
 	s.Require().Nil(svcErr)
 	s.Require().Len(byName["support"], 1)
 	s.Equal("role-own", byName["support"][0].ID)

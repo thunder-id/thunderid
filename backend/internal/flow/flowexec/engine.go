@@ -5,6 +5,7 @@ package flowexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -19,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -475,7 +477,8 @@ func (fe *flowEngine) runPostRequestInterceptorsOnExit(
 // applyVariableValues makes a VARIABLES node resolve to the values its flow holds for the organization unit a prompt
 // picked, when the flow was shared with that unit. A flow resolves for no other unit: not the one that owns the flow
 // nor the one that owns the application. A flow the unit owns, or does not hold, runs on its own defaults. A connection
-// variable that is still without a connection then stops the flow.
+// variable that is still without a connection then goes on to the onFailure node of the VARIABLES node, a prompt that
+// shows the failure, or stops the flow when the node has none.
 func (fe *flowEngine) applyVariableValues(
 	ctx *EngineContext, node core.NodeInterface, nodeResp *common.NodeResponse, logger *log.Logger,
 ) *tidcommon.ServiceError {
@@ -492,9 +495,47 @@ func (fe *flowEngine) applyVariableValues(
 		logger.Warn(ctx.Context, "The flow needs a connection that is not set for the organization unit",
 			log.String("flowID", ctx.Graph.GetID()), log.String("ouID", ctx.RuntimeData[common.RuntimeKeyOUID]),
 			log.String("variables", strings.Join(unset, ",")))
-		return &ErrorFlowConnectionNotSet
+		onFailure := ""
+		if variablesNode, ok := node.(core.VariablesNodeInterface); ok {
+			onFailure = variablesNode.GetOnFailure()
+		}
+		if onFailure == "" {
+			return &ErrorFlowConnectionNotSet
+		}
+		fe.forgetOUSelection(ctx)
+		nodeResp.Status = common.NodeStatusForward
+		nodeResp.NextNodeID = onFailure
+		nodeResp.Error = &ErrorFlowConnectionNotSet
+		if jsonBytes, err := json.Marshal(&ErrorFlowConnectionNotSet); err == nil {
+			nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+		}
 	}
 	return nil
+}
+
+// forgetOUSelection drops the organization unit a step of the flow picked, and the selection the user submitted for it,
+// so that a flow that goes on to an onFailure node and then back to the OU resolver asks for the organization unit
+// again, instead of keeping the one that just failed. An organization unit fixed before the flow ran stays.
+func (fe *flowEngine) forgetOUSelection(ctx *EngineContext) {
+	if ctx.RuntimeData[common.RuntimeKeyOUFixed] != "true" {
+		delete(ctx.RuntimeData, common.RuntimeKeyOUID)
+	}
+	// TODO: The engine should not know the OU resolver executor or its input names. Have the node or executor layer
+	// expose the inputs to clear, instead of matching the executor name and the "ouHandle" literal here.
+	delete(ctx.UserInputs, common.RuntimeKeyOUID)
+	delete(ctx.UserInputs, "ouHandle")
+	if ctx.Graph == nil {
+		return
+	}
+	for _, n := range ctx.Graph.GetNodes() {
+		resolver, ok := n.(core.ExecutorBackedNodeInterface)
+		if !ok || resolver.GetExecutorName() != executormeta.ExecutorNameOUResolver {
+			continue
+		}
+		for _, input := range resolver.GetInputs() {
+			delete(ctx.UserInputs, input.Identifier)
+		}
+	}
 }
 
 // applyHeldValues puts the values the organization unit a prompt picked holds in place of the defaults.
@@ -1141,6 +1182,7 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	// The caller's boundedness and decided organization unit are read before the reset below.
 	callerBounded := ctx.SignInBounded
 	callerOUID := ctx.RuntimeData[common.RuntimeKeyOUID]
+	callerOUFixed := ctx.RuntimeData[common.RuntimeKeyOUFixed]
 
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
@@ -1164,9 +1206,12 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.CurrentAction = ""
 	ctx.clearPausedPromptInputs()
 
-	// A bounded callee stays in the organization unit its caller decided.
+	// A bounded callee stays in the organization unit its caller decided, and keeps it fixed when the caller's was.
 	if ctx.SignInBounded && callerOUID != "" {
 		ctx.RuntimeData[common.RuntimeKeyOUID] = callerOUID
+		if callerOUFixed != "" {
+			ctx.RuntimeData[common.RuntimeKeyOUFixed] = callerOUFixed
+		}
 	}
 
 	// Set the current node to the start node of the callee graph

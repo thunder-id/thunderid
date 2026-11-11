@@ -34,7 +34,7 @@ paths:
         initiating a new flow; the header is ignored for other application types.
 
         A flow is initiated by `applicationId` and `flowType`, by `flowType` and `handle` for a
-        `SELF` flow, or, for administration and invitation flows only, by `flowId`. An
+        `SELF` or `ADMIN_INITIATED` flow, or, for administration and invitation flows only, by `flowId`. An
         `ADMINISTRATION`, `USER_ONBOARDING` or `INVITATION` flow requires an access token carrying at
         least one `system` permission. An `ADMINISTRATION` or `USER_ONBOARDING` flow runs as the caller
         who started it. Only that caller may continue it with a token; another caller is refused with
@@ -48,6 +48,12 @@ paths:
         specified application. Supplying the step's inputs on the initiating request runs the flow
         through to its terminal state in a single call; omitting them returns the required inputs and
         an `executionId` to continue with.
+
+        An `ADMIN_INITIATED` flow is started by an administrator for the user its `subject` input
+        names, with an access token carrying a `system` permission, and runs as that administrator,
+        so it acts only on a user the administrator may update. The user continues from the link the flow sends, with the `executionId` and the
+        invite token the link carries, and no access token; those steps run with the permissions the
+        administrator still holds.
       tags:
         - Flow Execution
       security:
@@ -72,6 +78,7 @@ paths:
               oneOf:
                 - $ref: '#/components/schemas/InitialFlowRequest'
                 - $ref: '#/components/schemas/SelfFlowRequest'
+                - $ref: '#/components/schemas/AdminInitiatedFlowRequest'
                 - $ref: '#/components/schemas/AdministrativeFlowRequest'
                 - $ref: '#/components/schemas/SubSequentFlowRequest'
             examples:
@@ -111,6 +118,22 @@ paths:
                   verbose: true
                   inputs: {
                     "attribute": "email"
+                  }
+              adminInitiatedFlowRequest:
+                summary: Administrator-initiated flow started with an administrator's bearer token
+                value:
+                  flowType: "ADMIN_INITIATED"
+                  handle: "default-admin-attribute-verification-flow"
+                  verbose: true
+                  inputs: {
+                    "subject": "019fd0e4-de6c-7ea5-9541-7982f40beeb9"
+                  }
+              adminInitiatedFlowLinkRequest:
+                summary: The user continues an administrator-initiated flow from the emailed link
+                value:
+                  executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
+                  inputs: {
+                    "inviteToken": "019fd0f1-2a3b-7c4d-8e5f-6a7b8c9d0e1f"
                   }
               administrativeFlowSingleCall:
                 summary: Administration flow run to completion in one call (inputs supplied up front)
@@ -302,7 +325,8 @@ paths:
             Unauthorized: The application must present a valid credential to initiate a new flow —
             a Flow Secret for backend applications, or a platform attestation token for mobile
             applications — and the presented credential was missing or invalid, or the flow runs for a
-            signed-in user and the user's access token was missing or invalid.
+            signed-in user and the user's access token was missing or invalid, or an `ADMIN_INITIATED`
+            flow was started without a valid access token.
           content:
             application/json:
               schema:
@@ -315,7 +339,8 @@ paths:
             (`FES-1019`), the flow was started by another caller (`FES-1030`), or the flow started by
             `flowId` is not permitted for the caller or its token: an `INVITATION` flow started with a
             token issued for no organization unit (`FES-1027`), or for one the flow is not shared with
-            (`FES-1029`).
+            (`FES-1029`), or an `ADMIN_INITIATED` flow started by `handle` is neither owned by nor
+            shared with the token's organization unit (`FES-1029`).
           content:
             application/json:
               schema:
@@ -342,8 +367,9 @@ components:
     OAuth2:
       type: oauth2
       description: >-
-        Access token. An administration, user onboarding or invitation flow requires a token carrying
-        at least one `system` permission; a `SELF` flow requires the signed-in user's token.
+        Access token. An administration, user onboarding, invitation or `ADMIN_INITIATED` flow requires
+        a token carrying at least one `system` permission; a `SELF` flow requires the signed-in user's
+        token.
       flows:
         authorizationCode:
           authorizationUrl: https://localhost:8090/oauth2/authorize
@@ -413,6 +439,46 @@ components:
           additionalProperties:
             type: string
           example: {attribute: "email"}
+        action:
+          type: string
+          description: Reference of the action to execute in the flow
+        verbose:
+          type: boolean
+          description: When true, the response includes full UI metadata (meta/components) for prompt nodes
+          example: false
+
+    AdminInitiatedFlowRequest:
+      type: object
+      description: >-
+        Initiates an administrator-initiated flow by its required handle, without an application ID.
+        The request must carry an administrator's access token with a `system` permission, as a
+        bearer token. The flow acts on the user the `subject` input names, never on the
+        administrator, and only when the administrator may update that user. The user finishes it
+        from the link it sends without a token; those steps run with the permissions the
+        administrator still holds.
+      required:
+        - flowType
+        - handle
+      properties:
+        flowType:
+          type: string
+          enum: [ADMIN_INITIATED]
+        handle:
+          type: string
+          description: >-
+            Required handle of the `ADMIN_INITIATED` flow to execute. The server ships
+            `default-admin-attribute-verification-flow`, which emails the user a link to verify
+            their email address.
+          example: "default-admin-attribute-verification-flow"
+        inputs:
+          type: object
+          description: >-
+            Input data for the flow. The start binds the flow to the user whose ID the `subject` input
+            names; later requests cannot change it. The shipped flow verifies the email attribute the
+            `attribute` input names, `email` when it is absent.
+          additionalProperties:
+            type: string
+          example: {subject: "019fd0e4-de6c-7ea5-9541-7982f40beeb9"}
         action:
           type: string
           description: Reference of the action to execute in the flow

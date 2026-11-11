@@ -9,6 +9,7 @@ import {computeValidationNotifications} from '../computeValidationNotifications'
 import {
   COMMON_GRAPH_VALIDATION_RULES,
   GRAPH_VALIDATION_RULES,
+  REGISTRATION_GRAPH_VALIDATION_RULES,
   SIGN_OUT_GRAPH_VALIDATION_RULES,
   VALIDATION_RULES,
 } from '../validation-rules';
@@ -940,6 +941,121 @@ describe('computeValidationNotifications', () => {
     });
   });
 
+  describe('Resolve OU parent rule', () => {
+    const resolver = (properties: Record<string, unknown>): Node =>
+      createNode({
+        id: 'resolve_ou',
+        type: 'TASK_EXECUTION',
+        data: {
+          action: {type: 'EXECUTOR', executor: {name: 'OUResolverExecutor'}},
+          properties,
+        } as unknown as StepData,
+      });
+
+    it.each([[''], ['  '], ['{{PARENT_OU_ID}}'], [undefined]])(
+      'should block saving a prompting Resolve OU step whose parent OU is %s',
+      (parentOuId) => {
+        const result = computeValidationNotifications(
+          [resolver({resolveFrom: 'prompt', parentOuId})],
+          VALIDATION_RULES,
+          t,
+          GRAPH_VALIDATION_RULES,
+        );
+
+        const notification = result.get('resolve_ou_OU_RESOLVER_NO_PARENT')!;
+        expect(notification).toBeDefined();
+        expect(notification.getType()).toBe(NotificationType.ERROR);
+        expect(notification.hasResource('resolve_ou')).toBe(true);
+      },
+    );
+
+    it('should accept a prompting Resolve OU step that names its parent OU', () => {
+      const result = computeValidationNotifications(
+        [resolver({resolveFrom: 'prompt', parentOuId: 'ou-1'})],
+        VALIDATION_RULES,
+        t,
+        GRAPH_VALIDATION_RULES,
+      );
+
+      expect(result.has('resolve_ou_OU_RESOLVER_NO_PARENT')).toBe(false);
+    });
+
+    it('should not ask for a parent OU outside the prompt strategy or outside sign-in flows', () => {
+      expect(
+        computeValidationNotifications(
+          [resolver({resolveFrom: 'promptAll'})],
+          VALIDATION_RULES,
+          t,
+          GRAPH_VALIDATION_RULES,
+        ).has('resolve_ou_OU_RESOLVER_NO_PARENT'),
+      ).toBe(false);
+      expect(
+        computeValidationNotifications(
+          [resolver({resolveFrom: 'prompt', parentOuId: ''})],
+          VALIDATION_RULES,
+          t,
+          REGISTRATION_GRAPH_VALIDATION_RULES,
+        ).has('resolve_ou_OU_RESOLVER_NO_PARENT'),
+      ).toBe(false);
+    });
+  });
+
+  describe('Role assignment roles rule', () => {
+    const roleStep = (mode: string, roles: unknown): Node =>
+      createNode({
+        id: 'assign_roles',
+        type: 'TASK_EXECUTION',
+        data: {
+          action: {type: 'EXECUTOR', executor: {name: 'RoleExecutor', mode}},
+          properties: {roles},
+        } as unknown as StepData,
+      });
+
+    it.each([[''], ['   '], [undefined]])('should block saving a sign-up that assigns roles %s', (roles) => {
+      const result = computeValidationNotifications(
+        [roleStep('role_assignment', roles)],
+        VALIDATION_RULES,
+        t,
+        REGISTRATION_GRAPH_VALIDATION_RULES,
+      );
+
+      const notification = result.get('assign_roles_ROLE_ASSIGNMENT_NO_ROLES')!;
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.ERROR);
+      expect(notification.hasResource('assign_roles')).toBe(true);
+    });
+
+    it('should accept a sign-up that names the roles it assigns', () => {
+      const result = computeValidationNotifications(
+        [roleStep('role_assignment', 'role-1 role-2')],
+        VALIDATION_RULES,
+        t,
+        REGISTRATION_GRAPH_VALIDATION_RULES,
+      );
+
+      expect(result.has('assign_roles_ROLE_ASSIGNMENT_NO_ROLES')).toBe(false);
+    });
+
+    it('should not ask for roles in another mode or outside sign-up flows', () => {
+      expect(
+        computeValidationNotifications(
+          [roleStep('role_selection', '')],
+          VALIDATION_RULES,
+          t,
+          REGISTRATION_GRAPH_VALIDATION_RULES,
+        ).has('assign_roles_ROLE_ASSIGNMENT_NO_ROLES'),
+      ).toBe(false);
+      expect(
+        computeValidationNotifications(
+          [roleStep('role_assignment', '')],
+          VALIDATION_RULES,
+          t,
+          COMMON_GRAPH_VALIDATION_RULES,
+        ).has('assign_roles_ROLE_ASSIGNMENT_NO_ROLES'),
+      ).toBe(false);
+    });
+  });
+
   describe('Account linking reject action rule', () => {
     const rejectButtonNode = (nodeId: string, buttonId: string): Node =>
       createNode({
@@ -1219,6 +1335,35 @@ describe('computeValidationNotifications', () => {
     it('should ignore a plain rich text and one carrying an empty ref', () => {
       expect(compute([createElementNode('prompt_1', [richText(undefined)])]).has(NOTIFICATION_ID)).toBe(false);
       expect(compute([createElementNode('prompt_1', [richText({ref: ''})])]).has(NOTIFICATION_ID)).toBe(false);
+    });
+  });
+
+  describe('Resolve Variables failure target rule', () => {
+    const edge = (target: string): Edge =>
+      ({id: `vars-failure-${target}`, source: 'vars', sourceHandle: 'failure', target}) as Edge;
+    const variablesNode = (): Node => createNode({id: 'vars', type: 'VARIABLES'});
+    const run = (nodes: Node[], edges: Edge[]) =>
+      computeValidationNotifications(nodes, VALIDATION_RULES, t, COMMON_GRAPH_VALIDATION_RULES, edges);
+
+    it('should accept a failure path that leads to a prompt view', () => {
+      const result = run([variablesNode(), createNode({id: 'retry', type: 'VIEW'})], [edge('retry')]);
+
+      expect(result.has('vars_VARIABLES_FAILURE_INVALID_TARGET')).toBe(false);
+    });
+
+    it('should warn when the failure path leads to a step that is not a prompt view', () => {
+      const result = run([variablesNode(), createNode({id: 'end', type: 'END'})], [edge('end')]);
+      const notification = result.get('vars_VARIABLES_FAILURE_INVALID_TARGET')!;
+
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.WARNING);
+      expect(notification.hasResource('vars')).toBe(true);
+    });
+
+    it('should stay silent when the failure handle is not connected', () => {
+      const result = run([variablesNode()], []);
+
+      expect(result.has('vars_VARIABLES_FAILURE_INVALID_TARGET')).toBe(false);
     });
   });
 

@@ -390,6 +390,35 @@ func (s *FlowFactoryTestSuite) TestCreateCallNode() {
 	s.NotNil(callNode)
 }
 
+func (s *FlowFactoryTestSuite) TestCloneVariablesNode() {
+	node, _ := s.factory.CreateNode("vars-1", string(common.NodeTypeVariables), nil, false, false)
+	node.AddNextNode("next-1")
+	node.AddPreviousNode("prev-1")
+
+	variablesNode, ok := node.(VariablesNodeInterface)
+	s.True(ok)
+	variablesNode.SetOnSuccess("success-node")
+	variablesNode.SetOnFailure("failure-node")
+
+	clonedNode, err := s.factory.CloneNode(node)
+
+	s.NoError(err)
+	s.NotNil(clonedNode)
+	s.Equal(node.GetID(), clonedNode.GetID())
+	s.Equal(node.GetType(), clonedNode.GetType())
+	s.Equal(node.GetNextNodeList(), clonedNode.GetNextNodeList())
+	s.Equal(node.GetPreviousNodeList(), clonedNode.GetPreviousNodeList())
+
+	clonedVariablesNode, ok := clonedNode.(VariablesNodeInterface)
+	s.True(ok, "Cloned node should implement VariablesNodeInterface")
+	s.Equal("success-node", clonedVariablesNode.GetOnSuccess())
+	s.Equal("failure-node", clonedVariablesNode.GetOnFailure())
+
+	// Verify independence: mutating the clone does not affect the source
+	clonedVariablesNode.SetOnFailure("different-node")
+	s.Equal("failure-node", variablesNode.GetOnFailure())
+}
+
 func (s *FlowFactoryTestSuite) TestCloneCallNode() {
 	node, _ := s.factory.CreateNode("call-1", string(common.NodeTypeCall),
 		map[string]interface{}{"prop": "val"}, false, false)

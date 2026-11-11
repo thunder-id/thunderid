@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {act, renderWithProviders, screen, userEvent, fireEvent, waitFor, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {AuthorizationDetailType} from '../../models/authorization-detail-type';
@@ -103,6 +104,37 @@ describe('CreateAuthorizationDetailTypePage', () => {
       '/authorization-detail-types/type-9',
       {replace: true},
     );
+  });
+
+  it('creates the type in the selected project', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <CreateAuthorizationDetailTypePage createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Flight booking');
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+    await user.click(screen.getByRole('button', {name: CREATE}));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      {
+        type: 'flight_booking',
+        name: 'Flight booking',
+        schema: {type: 'object', properties: {}},
+        reuse: false,
+        projectId: 'project-1',
+      },
+      expect.any(Object),
+    );
+  });
+
+  it('shows no wizard outside a project when intents are created in projects only', () => {
+    renderWithProviders(<CreateAuthorizationDetailTypePage createInProjectsOnly />);
+
+    expect(screen.queryByRole('heading', {name: "Let's collect some details about your intent"})).toBeNull();
   });
 
   it('creates a type with its fields, consent, and processor', async () => {

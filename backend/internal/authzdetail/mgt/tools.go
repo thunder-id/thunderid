@@ -29,6 +29,7 @@ type typeMCPItem struct {
 	Version     int    `json:"version"`
 	Reuse       bool   `json:"reuse"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	ProjectID   string `json:"projectId,omitempty"`
 }
 
 // typeListMCPResponse is the MCP list tool output.
@@ -90,6 +91,7 @@ Key Requirements:
 - consentTemplate: The consent summary, with {{field.path}} placeholders.
 - processor: Required when any field is supplied or changed by the processor.
 - reuse: Whether an approval may stand in for later prompts and be renewed by refresh (default false).
+- projectId: The project the type belongs to. Required on a deployment that serves projects.
 
 Use get_authorization_detail_type_by_id on an existing type to see a complete example.`,
 		InputSchema: tool.GenerateSchema[AuthorizationDetailTypeRequest](
@@ -111,7 +113,8 @@ Use get_authorization_detail_type_by_id on an existing type to see a complete ex
 
 Use get_authorization_detail_type_by_id first to get the current definition, change it, and send ` +
 			`the complete definition back. The version increments when the schema, consent template or reuse ` +
-			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests.`,
+			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests. ` +
+			`Leaving projectId out keeps the type's project.`,
 		InputSchema: tool.GenerateSchema[updateTypeInput](
 			withSchemaObject("The JSON Schema 2020-12 object schema of the type, with field "+
 				"policies."),
@@ -186,7 +189,8 @@ func (t *typeTools) listTypes(ctx context.Context, _ *mcp.CallToolRequest,
 	items := make([]typeMCPItem, 0, len(types))
 	for _, typ := range types {
 		items = append(items, typeMCPItem{ID: typ.ID, Type: typ.Type, Name: typ.Name,
-			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly})
+			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly,
+			ProjectID: typ.ProjectID})
 	}
 	return nil, &typeListMCPResponse{TotalResults: len(items), Types: items}, nil
 }

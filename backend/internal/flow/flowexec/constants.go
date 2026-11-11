@@ -12,6 +12,7 @@ const (
 	defaultRegistrationFlowExpiry   int64 = 3600  // 60 minutes in seconds
 	defaultUserOnboardingFlowExpiry int64 = 86400 // 24 hours in seconds
 	defaultSelfFlowExpiry           int64 = 1800  // 30 minutes in seconds
+	defaultAdminInitiatedFlowExpiry int64 = 86400 // 24 hours in seconds
 	defaultRecoveryFlowExpiry       int64 = 1800  // 30 minutes in seconds
 	defaultSignOutFlowExpiry        int64 = 1800  // 30 minutes in seconds
 
@@ -24,6 +25,9 @@ const (
 	// maxNodeVisitsPerRequest is the number of times a node may run within a single request. A flow
 	// that goes past it is cycling without pausing for user input.
 	maxNodeVisitsPerRequest = 10
+
+	// adminInitiatedSubjectInput is the start input naming the user an administrator-initiated flow is for.
+	adminInitiatedSubjectInput = "subject"
 )
 
 // flowInitiationMode classifies how an application is permitted to initiate a new authentication
