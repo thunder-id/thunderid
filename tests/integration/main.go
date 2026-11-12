@@ -53,6 +53,15 @@ func main() {
 		}
 		defer stopMockServices()
 	}
+	if testutils.IsPackRun() {
+		if shouldRunGroups() {
+			os.Exit(runGroups())
+		}
+		if code := runPack(); code != 0 {
+			os.Exit(code)
+		}
+		return
+	}
 	if shouldRunGroups() {
 		os.Exit(runGroups())
 	}
@@ -325,6 +334,26 @@ func cleanTestCache() error {
 // goTestCommand builds the go test run of the given packages against this run's server, with
 // gotestsum when it is installed.
 func goTestCommand(filter []string, packages []string) *exec.Cmd {
+	cmd := newGoTestCommand(filter, packages)
+	if testutils.IsPackRun() {
+		cmd.Env = append(os.Environ(), testutils.PackEnv()...)
+		return cmd
+	}
+
+	// Export test-context state so that test subprocesses can self-initialize
+	// via ensureInitialized() without requiring an explicit InitializeTestContext call.
+	cmd.Env = append(os.Environ(),
+		"SERVER_EXTRACTED_HOME="+testutils.GetExtractedProductHome(),
+		"SERVER_PORT="+serverPort,
+		"ZIP_PATTERN="+zipFilePattern,
+		"SERVER_PID="+strconv.Itoa(testutils.GetServerPID()),
+	)
+	return cmd
+}
+
+// newGoTestCommand builds the go test run of the given packages, with gotestsum when it is installed,
+// leaving its environment for the caller to set.
+func newGoTestCommand(filter []string, packages []string) *exec.Cmd {
 	var cmdName string
 	var args []string
 
@@ -343,15 +372,6 @@ func goTestCommand(filter []string, packages []string) *exec.Cmd {
 	cmd := exec.Command(cmdName, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
-	// Export test-context state so that test subprocesses can self-initialize
-	// via ensureInitialized() without requiring an explicit InitializeTestContext call.
-	cmd.Env = append(os.Environ(),
-		"SERVER_EXTRACTED_HOME="+testutils.GetExtractedProductHome(),
-		"SERVER_PORT="+serverPort,
-		"ZIP_PATTERN="+zipFilePattern,
-		"SERVER_PID="+strconv.Itoa(testutils.GetServerPID()),
-	)
 	return cmd
 }
 
@@ -364,17 +384,33 @@ func packagesToTest() ([]string, error) {
 	if controlPlane {
 		return []string{controlPlanePackages}, nil
 	}
+	if testutils.IsPackRun() {
+		return packTestPackages()
+	}
 	out, err := exec.Command("go", "list", "./...").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list test packages: %w", err)
 	}
-	controlPlaneRoot := strings.TrimSuffix(strings.TrimPrefix(controlPlanePackages, "."), "/...")
+	var otherPlaneRoots []string
+	for _, planePackages := range []string{controlPlanePackages, packPackages} {
+		otherPlaneRoots = append(otherPlaneRoots, strings.TrimSuffix(strings.TrimPrefix(planePackages, "."), "/..."))
+	}
 	var packages []string
 	for _, pkg := range strings.Fields(string(out)) {
-		if strings.HasSuffix(pkg, controlPlaneRoot) || strings.Contains(pkg, controlPlaneRoot+"/") {
+		if inAnyRoot(pkg, otherPlaneRoots) {
 			continue
 		}
 		packages = append(packages, pkg)
 	}
 	return packages, nil
+}
+
+// inAnyRoot reports whether a package is one of the roots or below one.
+func inAnyRoot(pkg string, roots []string) bool {
+	for _, root := range roots {
+		if strings.HasSuffix(pkg, root) || strings.Contains(pkg, root+"/") {
+			return true
+		}
+	}
+	return false
 }
