@@ -42,6 +42,7 @@
     "clean": "pnpm clean:node_modules && pnpm clean:dist",
     "clean:dist": "rimraf dist",
     "clean:node_modules": "rimraf node_modules",
+    "codegen:icons": "node scripts/generate-oxygen-icons.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run --passWithNoTests",

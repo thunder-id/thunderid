@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@testing-library/react';
+import {render, screen, waitFor} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Step} from '../../../../../../models/steps';
 import {ExecutionTypes} from '../../../../../../models/steps';
@@ -136,7 +136,7 @@ describe('ExecutionFactory', () => {
       expect(screen.getByText('GitHub')).toBeInTheDocument();
     });
 
-    it('should render icon-library names in display.image the same way as the resource panel', () => {
+    it('should render icon-library names in display.image the same way as the resource panel', async () => {
       const resource = createMockResource({
         display: {
           label: 'Widget Executor',
@@ -153,9 +153,10 @@ describe('ExecutionFactory', () => {
       });
       const {container} = render(<ExecutionFactory resource={resource} />);
 
-      expect(container.querySelector('svg')).toBeInTheDocument();
+      // Icons named in data are resolved from the icon set, which loads on first use.
+      await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument(), {timeout: 30000});
       expect(screen.getByText('Widget Executor')).toBeInTheDocument();
-    });
+    }, 30000);
 
     it('should use the fallback label when displayLabel is undefined', () => {
       const resource = createMockResource({

@@ -2,15 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {PageLoader} from '@thunderid/components';
-import {AgentTypeCreateProvider} from '@thunderid/configure-agent-types';
-import {ApplicationCreateProvider} from '@thunderid/configure-applications';
-import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
-import {GroupCreateProvider} from '@thunderid/configure-groups';
-import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
 import {PROJECT_HANDLE_PARAM} from '@thunderid/configure-projects';
-import {RoleCreateProvider} from '@thunderid/configure-roles';
-import {TranslationCreateProvider} from '@thunderid/configure-translations';
-import {UserTypeCreateProvider} from '@thunderid/configure-user-types';
 import {
   AdministrationModes,
   AdministrationProvider,
@@ -27,6 +19,37 @@ import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
+// The route-scoped providers are loaded lazily, like the pages they wrap. Importing them statically
+// would put their packages in the entry graph, and since the pages are imported dynamically from the
+// same package entry points, every page of those packages (and the packages they import) would then
+// load before the first paint.
+const AgentTypeCreateProvider = lazy(() =>
+  import('@thunderid/configure-agent-types').then((m) => ({default: m.AgentTypeCreateProvider})),
+);
+const ApplicationCreateProvider = lazy(() =>
+  import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationCreateProvider})),
+);
+const LayoutBuilderProvider = lazy(() =>
+  import('@thunderid/configure-design').then((m) => ({default: m.LayoutBuilderProvider})),
+);
+const ThemeBuilderProvider = lazy(() =>
+  import('@thunderid/configure-design').then((m) => ({default: m.ThemeBuilderProvider})),
+);
+const GroupCreateProvider = lazy(() =>
+  import('@thunderid/configure-groups').then((m) => ({default: m.GroupCreateProvider})),
+);
+const OrganizationUnitProvider = lazy(() =>
+  import('@thunderid/configure-organization-units').then((m) => ({default: m.OrganizationUnitProvider})),
+);
+const RoleCreateProvider = lazy(() =>
+  import('@thunderid/configure-roles').then((m) => ({default: m.RoleCreateProvider})),
+);
+const TranslationCreateProvider = lazy(() =>
+  import('@thunderid/configure-translations').then((m) => ({default: m.TranslationCreateProvider})),
+);
+const UserTypeCreateProvider = lazy(() =>
+  import('@thunderid/configure-user-types').then((m) => ({default: m.UserTypeCreateProvider})),
+);
 const ProjectsListPage = lazy(() =>
   import('@thunderid/configure-projects').then((m) => ({default: m.ProjectsListPage})),
 );
