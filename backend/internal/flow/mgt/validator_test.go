@@ -5,6 +5,7 @@ package flowmgt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -3599,4 +3600,80 @@ func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() 
 		s.NotNil(s.v.validateFlowTypeBasedConstraints(flowType,
 			attributeVerificationNodes(executor.ExecutorModePrepare)), "%s must record what it prepares", flowType)
 	}
+}
+
+func (s *ValidatorTestSuite) TestValidateCallTargets() {
+	callNodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "call"},
+		{ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
+			Flow: &providers.FlowReferenceDefinition{Ref: "target-id"}},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+
+	for _, tc := range []struct {
+		name       string
+		flowType   providers.FlowType
+		targetType providers.FlowType
+		refused    bool
+	}{
+		{"authentication calls administration", providers.FlowTypeAuthentication,
+			providers.FlowTypeAdministration, true},
+		{"registration calls user onboarding", providers.FlowTypeRegistration,
+			providers.FlowTypeUserOnboarding, true},
+		{"recovery calls admin initiated", providers.FlowTypeRecovery, providers.FlowTypeAdminInitiated, true},
+		{"system calls invitation", providers.FlowTypeSystem, providers.FlowTypeInvitation, true},
+		{"authentication calls authentication", providers.FlowTypeAuthentication,
+			providers.FlowTypeAuthentication, false},
+		{"authentication calls registration", providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration, false},
+		{"administration calls administration", providers.FlowTypeAdministration,
+			providers.FlowTypeAdministration, false},
+		{"user onboarding calls invitation", providers.FlowTypeUserOnboarding,
+			providers.FlowTypeInvitation, false},
+	} {
+		s.Run(tc.name, func() {
+			store := newFlowStoreInterfaceMock(s.T())
+			store.On("GetFlowByID", mock.Anything, "target-id").
+				Return(&providers.CompleteFlowDefinition{ID: "target-id", FlowType: tc.targetType}, nil).Maybe()
+			s.v.flowStore = store
+
+			svcErr := s.v.validateCallTargets(context.Background(), tc.flowType, callNodes)
+			if !tc.refused {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorInvalidNodeConfig.Code, svcErr.Code)
+			s.Equal("call", svcErr.ErrorDescription.Params["nodeID"])
+			s.Equal(string(tc.targetType), svcErr.ErrorDescription.Params["targetType"])
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateCallTargets_MissingTargetIsSkipped() {
+	store := newFlowStoreInterfaceMock(s.T())
+	store.On("GetFlowByID", mock.Anything, "target-id").Return(nil, errFlowNotFound)
+	s.v.flowStore = store
+
+	s.Nil(s.v.validateCallTargets(context.Background(), providers.FlowTypeAuthentication,
+		[]providers.NodeDefinition{{ID: "call", Type: string(common.NodeTypeCall),
+			Flow: &providers.FlowReferenceDefinition{Ref: "target-id"}}}))
+}
+
+func (s *ValidatorTestSuite) TestValidateCallTargets_StoreError() {
+	store := newFlowStoreInterfaceMock(s.T())
+	store.On("GetFlowByID", mock.Anything, "target-id").Return(nil, errors.New("db down"))
+	s.v.flowStore = store
+
+	svcErr := s.v.validateCallTargets(context.Background(), providers.FlowTypeAuthentication,
+		[]providers.NodeDefinition{{ID: "call", Type: string(common.NodeTypeCall),
+			Flow: &providers.FlowReferenceDefinition{Ref: "target-id"}}})
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateCallTargets_NoStore() {
+	s.Nil(s.v.validateCallTargets(context.Background(), providers.FlowTypeAuthentication,
+		[]providers.NodeDefinition{{ID: "call", Type: string(common.NodeTypeCall),
+			Flow: &providers.FlowReferenceDefinition{Ref: "target-id"}}}))
 }

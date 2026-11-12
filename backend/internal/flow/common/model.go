@@ -235,3 +235,16 @@ func RuntimeDataOrShared(runtimeData, sharedRuntimeData map[string]string, key s
 	}
 	return sharedRuntimeData[key]
 }
+
+// ActsForCaller reports whether a flow of flowType acts with the authority of the caller who started it. The
+// other flows act for whoever drives them, often an anonymous caller, so their nodes run with the server's
+// authority. An unknown type acts for its caller.
+func ActsForCaller(flowType providers.FlowType) bool {
+	switch flowType {
+	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeRecovery,
+		providers.FlowTypeSignOut, providers.FlowTypeDeviceGrant, providers.FlowTypeSelf, providers.FlowTypeSystem:
+		return false
+	default:
+		return true
+	}
+}

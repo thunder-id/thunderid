@@ -349,7 +349,7 @@ func (s *flowExecService) validateFlowCaller(ctx context.Context) *tidcommon.Ser
 // subject attached for audit, or the caller's own once the caller clears the floor.
 func (s *flowExecService) startAuthority(ctx context.Context, flowType providers.FlowType) (
 	context.Context, *tidcommon.ServiceError) {
-	if !actsForCaller(flowType) {
+	if !common.ActsForCaller(flowType) {
 		return security.WithRuntimeContext(ctx), nil
 	}
 	if svcErr := s.validateFlowCaller(ctx); svcErr != nil {
@@ -365,7 +365,7 @@ func (s *flowExecService) startAuthority(ctx context.Context, flowType providers
 func (s *flowExecService) continuationAuthority(ctx context.Context, engineCtx *EngineContext,
 	logger *log.Logger) (context.Context, *tidcommon.ServiceError) {
 	flowType := engineCtx.rootFlowType()
-	if !actsForCaller(flowType) {
+	if !common.ActsForCaller(flowType) {
 		return security.WithRuntimeContext(ctx), nil
 	}
 	if !recordsAuthority(flowType) {
