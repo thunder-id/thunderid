@@ -94,6 +94,7 @@ describe('OperationModesSection', () => {
         'client_credentials',
         'authorization_code',
         'CIBA (Client-Initiated Backchannel Authentication)',
+        'Device Authorization Grant',
         'refresh_token',
         'Token exchange',
         'JWT bearer',

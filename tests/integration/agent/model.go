@@ -26,6 +26,7 @@ type Agent struct {
 	Status      *AgentStatus          `json:"status,omitempty"`
 
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
+	DeviceGrantFlowID         string              `json:"deviceGrantFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
 	IsRegistrationFlowEnabled bool                `json:"isRegistrationFlowEnabled,omitempty"`
 	ThemeID                   string              `json:"themeId,omitempty"`

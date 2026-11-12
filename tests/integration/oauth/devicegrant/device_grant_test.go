@@ -37,6 +37,8 @@ const (
 	deviceGrantNoFlowSecret   = "device_grant_integration_no_flow_secret"
 	deviceGrantDenyClientID   = "device_grant_integration_deny_client"
 	deviceGrantDenySecret     = "device_grant_integration_deny_secret"
+	deviceGrantAgentClientID  = "device_grant_integration_agent_client"
+	deviceGrantAgentSecret    = "device_grant_integration_agent_secret"
 )
 
 type deviceAuthorizationResponse struct {
@@ -62,9 +64,11 @@ type DeviceGrantTestSuite struct {
 	client            *http.Client
 	ouID              string
 	userTypeID        string
+	agentTypeSnapshot *testutils.AgentTypeSnapshot
 	userID            string
 	authFlowID        string
 	deviceGrantFlowID string
+	agentID           string
 	appID             string
 	secondAppID       string
 	noFlowAppID       string
@@ -101,6 +105,20 @@ func (ts *DeviceGrantTestSuite) SetupSuite() {
 	ts.Require().NoError(err)
 	ts.userTypeID = userTypeID
 
+	agentTypeSnapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err)
+	ts.agentTypeSnapshot = agentTypeSnapshot
+
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        ts.ouID,
+		Schema: map[string]interface{}{
+			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err)
+
 	userID, err := testutils.CreateUser(testutils.User{
 		OUID: ts.ouID,
 		Type: deviceGrantUserTypeHandle,
@@ -121,6 +139,27 @@ func (ts *DeviceGrantTestSuite) SetupSuite() {
 		"Device Grant Integration Approval Flow", "device_grant_integration_approval_flow", true))
 	ts.Require().NoError(err)
 	ts.deviceGrantFlowID = deviceFlowID
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		OUID:              ts.ouID,
+		Type:              "default",
+		Attributes:        map[string]interface{}{"name": "Device Grant Integration Agent"},
+		AuthFlowID:        ts.authFlowID,
+		DeviceGrantFlowID: ts.deviceGrantFlowID,
+		AllowedUserTypes:  []string{deviceGrantUserTypeHandle},
+		Delegated:         true,
+		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
+			Type: "oauth2",
+			Config: &testutils.AgentOAuthConfig{
+				ClientID:                deviceGrantAgentClientID,
+				ClientSecret:            deviceGrantAgentSecret,
+				GrantTypes:              []string{deviceGrantType},
+				TokenEndpointAuthMethod: "client_secret_basic",
+			},
+		}},
+	})
+	ts.Require().NoError(err)
+	ts.agentID = agentID
 
 	appID, err := testutils.CreateApplication(testutils.Application{
 		OUID:              ts.ouID,
@@ -174,6 +213,9 @@ func (ts *DeviceGrantTestSuite) SetupSuite() {
 }
 
 func (ts *DeviceGrantTestSuite) TearDownSuite() {
+	if ts.agentID != "" {
+		_ = testutils.DeleteAgent(ts.agentID)
+	}
 	if ts.denyAppID != "" {
 		_ = testutils.DeleteApplication(ts.denyAppID)
 	}
@@ -204,7 +246,14 @@ func (ts *DeviceGrantTestSuite) TearDownSuite() {
 	if ts.userTypeID != "" {
 		_ = testutils.DeleteUserType(ts.userTypeID)
 	}
-	if ts.ouID != "" {
+	agentTypeRestored := true
+	if ts.agentTypeSnapshot != nil {
+		if err := testutils.RestoreAgentType(ts.agentTypeSnapshot); err != nil {
+			ts.T().Errorf("Failed to restore the default agent type: %v", err)
+			agentTypeRestored = false
+		}
+	}
+	if ts.ouID != "" && agentTypeRestored {
 		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
 			ts.T().Logf("Failed to delete Device Grant test organization unit: %v", err)
 		}
@@ -304,6 +353,55 @@ func (ts *DeviceGrantTestSuite) TestDeviceGrantLifecycle() {
 	reuse := ts.pollToken(authResponse.DeviceCode)
 	ts.Equal(http.StatusBadRequest, reuse.statusCode)
 	ts.Equal("invalid_grant", reuse.errorCode)
+}
+
+func (ts *DeviceGrantTestSuite) TestAgentDeviceGrantLifecycle() {
+	authStatus, authResponse, _ := ts.deviceAuthorizeAs(
+		"openid", deviceGrantAgentClientID, deviceGrantAgentSecret,
+	)
+	ts.Require().Equal(http.StatusOK, authStatus, "device authorization error: %s: %s",
+		authResponse.Error, authResponse.ErrorDescription)
+	ts.Require().NotEmpty(authResponse.DeviceCode)
+	ts.Require().NotEmpty(authResponse.UserCode)
+
+	verificationURI, err := url.Parse(authResponse.VerificationURI)
+	ts.Require().NoError(err)
+	ts.Equal(ts.agentID, verificationURI.Query().Get("applicationId"))
+
+	codePrompt := ts.startDeviceGrantFlowFor(ts.agentID)
+	authPrompt, err := testutils.ExecuteAuthenticationFlow(codePrompt.ExecutionID,
+		map[string]string{"user_code": authResponse.UserCode}, "device-code-submit", codePrompt.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Equal("INCOMPLETE", authPrompt.FlowStatus)
+
+	completed, err := testutils.ExecuteAuthenticationFlow(authPrompt.ExecutionID, map[string]string{
+		"username": deviceGrantUsername,
+		"password": deviceGrantPassword,
+	}, "action_credentials", authPrompt.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Equal("COMPLETE", completed.FlowStatus)
+	ts.Require().NotEmpty(completed.Assertion)
+
+	assertionClaims, err := testutils.DecodeJWT(completed.Assertion)
+	ts.Require().NoError(err)
+	authRequestID, ok := assertionClaims.Additional["authorization_request_id"].(string)
+	ts.Require().True(ok)
+	ts.Require().NotEmpty(authRequestID)
+
+	callbackStatus, callbackError := ts.postCallback(authRequestID, completed.Assertion)
+	ts.Equal(http.StatusOK, callbackStatus, callbackError)
+
+	tokens := ts.pollTokenAs(authResponse.DeviceCode, deviceGrantAgentClientID, deviceGrantAgentSecret)
+	ts.Equal(http.StatusOK, tokens.statusCode, tokens.errorCode)
+	ts.Require().NotEmpty(tokens.accessToken)
+	ts.Require().NotEmpty(tokens.idToken)
+
+	accessTokenClaims, err := testutils.DecodeJWT(tokens.accessToken)
+	ts.Require().NoError(err)
+	ts.Equal(ts.userID, accessTokenClaims.Sub)
+	actor, ok := accessTokenClaims.Additional["act"].(map[string]interface{})
+	ts.Require().True(ok, "the token must identify the delegated agent as its actor")
+	ts.Equal(ts.agentID, actor["sub"])
 }
 
 func (ts *DeviceGrantTestSuite) TestDeviceGrantDeniedByUser() {

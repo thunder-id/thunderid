@@ -59,8 +59,10 @@ export interface Agent {
   allowedAgentTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
   // Inbound-client fields the agent shares with applications. Populated only when an inbound
-  // client row exists for the agent (i.e., create modes 2 or 3 — not entity-only).
+  // client row exists for the agent (i.e., create modes 2 or 3, not entity-only).
   authFlowId?: string;
+  /** Device Grant flow used when this agent accepts the OAuth Device Code grant. */
+  deviceGrantFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
   assertion?: AssertionConfig;
@@ -142,6 +144,7 @@ export interface UpdateAgentRequest {
   allowedAgentTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
   authFlowId?: string;
+  deviceGrantFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
   /** Absent leaves the lifespan unchanged; null removes its end. */

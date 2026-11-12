@@ -563,6 +563,8 @@ type Agent struct {
 	AllowedAgentTypes         []string                 `json:"allowedAgentTypes,omitempty"`
 	LoginConsent              *LoginConsent            `json:"loginConsent,omitempty"`
 	InboundAuthConfig         []AgentInboundAuthConfig `json:"inboundAuthConfig,omitempty"`
+	DeviceGrantFlowID         string                   `json:"deviceGrantFlowId,omitempty"`
+	Delegated                 bool                     `json:"delegated,omitempty"`
 
 	Kind string `json:"kind,omitempty"`
 }
