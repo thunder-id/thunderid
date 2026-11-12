@@ -36,7 +36,6 @@ function makeData(overrides?: Partial<CorsConfigResponse>): CorsConfigResponse {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -188,8 +187,7 @@ describe('CorsSection', () => {
     expect(screen.getByPlaceholderText('https://app.example.com')).toBeInTheDocument();
   });
 
-  it('disables Save when the admin may not update server configuration', async () => {
-    const user = userEvent.setup();
+  it('offers no Add origin when the admin may not update server configuration', () => {
     mockUseGetCorsConfig.mockReturnValue({
       data: makeData({readOnly: {allowedOrigins: []}, writable: {allowedOrigins: []}}),
       isLoading: false,
@@ -201,10 +199,7 @@ describe('CorsSection', () => {
       </CapabilitiesProvider>,
     );
 
-    await user.click(screen.getByRole('button', {name: 'Add origin'}));
-    await user.type(screen.getByPlaceholderText('https://app.example.com'), 'https://new.example.com');
-
-    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Add origin'})).not.toBeInTheDocument();
   });
 
   it('saves the edited origins via the update mutation and clears the unsaved bar on success', async () => {

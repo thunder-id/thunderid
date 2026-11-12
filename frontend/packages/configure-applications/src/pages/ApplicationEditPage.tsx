@@ -110,8 +110,9 @@ export default function ApplicationEditPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const {applicationId} = useParams<{applicationId: string}>();
-
   const {data: application, isLoading, error, refetch} = useGetApplication(applicationId ?? '');
+  // An application shared into the organization unit is read only there.
+  const canUpdate = can('app', 'update') && application?.isOwnedByOU !== false;
   const {projectId} = useProjectScope();
   // Another project's application is not shown in the selected one: a deep link, a stale tab or a
   // switch of project goes to the selected project's applications instead.
@@ -220,7 +221,8 @@ export default function ApplicationEditPage() {
       editedApp.deviceGrantFlowId ||
       application?.deviceGrantFlowId ||
       !defaultDeviceGrantFlow ||
-      application?.isReadOnly
+      application?.isReadOnly ||
+      !canUpdate
     ) {
       return;
     }
@@ -229,6 +231,7 @@ export default function ApplicationEditPage() {
   }, [
     application?.deviceGrantFlowId,
     application?.isReadOnly,
+    canUpdate,
     deviceGrantEnabled,
     deviceGrantFlowList,
     editedApp.deviceGrantFlowId,
@@ -368,6 +371,9 @@ export default function ApplicationEditPage() {
     (config) => config.type === 'oauth2',
   )?.config;
 
+  const permittedApplication = canUpdate ? application : {...application, isReadOnly: true};
+  const isReadOnly = permittedApplication.isReadOnly === true;
+  const isDeletable = !application.isReadOnly && application.isOwnedByOU !== false;
   const isMcpClient = application.template === TemplateConstants.MCP_CLIENT_TEMPLATE_ID;
   // A metadata-document client's redirect URIs, authentication method, and keys come from its document.
   const isCimdClient = oauth2Config?.clientIdMetadataDocument === true;
@@ -378,7 +384,7 @@ export default function ApplicationEditPage() {
   // User-facing tabs (Flows, Customization) and the general Access section only apply when the
   // client can act on behalf of a user. When it can't, they are frozen/hidden rather than removed.
   const userAccessUnlocked = !oauth2Config || hasUserAccess(oauth2Config.grantTypes);
-  const userGatedApplication = userAccessUnlocked ? application : {...application, isReadOnly: true};
+  const userGatedApplication = userAccessUnlocked ? permittedApplication : {...permittedApplication, isReadOnly: true};
   const userAccessLockMessage = t(
     'applications:edit.userAccessLock.message',
     'These settings apply only to user-facing flows. Enable a user-facing grant (e.g. authorization code) in the Advanced tab to configure them.',
@@ -443,10 +449,10 @@ export default function ApplicationEditPage() {
             label: t('applications:edit.page.tabs.general'),
             panel: (
               <McpConnectTab
-                application={application}
+                application={permittedApplication}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
-                isReadOnly={application.isReadOnly === true}
+                isReadOnly={isReadOnly}
                 onValidationChange={setMcpAccessInvalid}
                 sectionResetKey={sectionResetKey}
                 onGoToCredentials={isCimdClient ? undefined : () => setActiveTabKey('credentials')}
@@ -458,7 +464,7 @@ export default function ApplicationEditPage() {
             label: t('applications:edit.page.tabs.credentials', 'Credentials'),
             panel: (
               <EditCredentialsSettings
-                application={application}
+                application={permittedApplication}
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
@@ -473,7 +479,11 @@ export default function ApplicationEditPage() {
             key: 'flows',
             label: t('applications:edit.page.tabs.flows'),
             panel: (
-              <EditFlowsSettings application={application} editedApp={editedApp} onFieldChange={handleFieldChange} />
+              <EditFlowsSettings
+                application={permittedApplication}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+              />
             ),
             hidden: !userAccessUnlocked,
           },
@@ -482,7 +492,7 @@ export default function ApplicationEditPage() {
             label: t('applications:edit.page.tabs.customization'),
             panel: (
               <EditCustomizationSettings
-                application={application}
+                application={permittedApplication}
                 editedApp={editedApp}
                 onFieldChange={handleFieldChange}
                 onValidationChange={setCustomizationSettingsInvalid}
@@ -497,7 +507,7 @@ export default function ApplicationEditPage() {
             panel: (
               <EditTokenSettings
                 sectionResetKey={sectionResetKey}
-                application={application}
+                application={permittedApplication}
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
@@ -508,14 +518,15 @@ export default function ApplicationEditPage() {
           {
             key: 'organizationAccess',
             label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
-            panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
+            panel: <EditOrganizationAccessSettings application={permittedApplication} access={organizationAccess} />,
           },
           {
             key: 'advanced',
             label: t('applications:edit.page.tabs.advanced'),
             panel: (
               <EditAdvancedSettings
-                application={application}
+                application={permittedApplication}
+                deletable={isDeletable}
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 // The backend rejects pkceRequired: true without the authorization_code grant, so
@@ -548,7 +559,7 @@ export default function ApplicationEditPage() {
           label: t('applications:edit.page.tabs.overview'),
           panel: (
             <IntegrationGuides
-              application={application}
+              application={permittedApplication}
               oauth2Config={oauth2Config}
               onGoToFlows={mcpFlowsTabIndex >= 0 ? () => setActiveTabKey('flows') : undefined}
               onGoToCustomization={mcpCustomizationTabIndex >= 0 ? () => setActiveTabKey('customization') : undefined}
@@ -566,7 +577,7 @@ export default function ApplicationEditPage() {
           label: t('applications:edit.page.tabs.overview'),
           panel: (
             <IntegrationGuides
-              application={application}
+              application={permittedApplication}
               oauth2Config={oauth2Config}
               onGoToFlows={() => setActiveTabKey('flows')}
               onGoToCustomization={() => setActiveTabKey('customization')}
@@ -581,10 +592,10 @@ export default function ApplicationEditPage() {
                 label: t('applications:edit.page.tabs.metadataDocument', 'Metadata document'),
                 panel: (
                   <CimdDocumentSection
-                    application={application}
+                    application={permittedApplication}
                     oauth2Config={oauth2Config}
                     onFieldChange={handleFieldChange}
-                    isReadOnly={application.isReadOnly === true}
+                    isReadOnly={isReadOnly}
                   />
                 ),
               },
@@ -595,7 +606,7 @@ export default function ApplicationEditPage() {
           label: t('applications:edit.page.tabs.access', 'Access'),
           panel: (
             <EditAccessSettings
-              application={application}
+              application={permittedApplication}
               editedApp={editedApp}
               onFieldChange={handleFieldChange}
               onValidationChange={setAccessSettingsInvalid}
@@ -612,7 +623,7 @@ export default function ApplicationEditPage() {
                 label: t('applications:edit.page.tabs.credentials', 'Credentials'),
                 panel: (
                   <EditCredentialsSettings
-                    application={application}
+                    application={permittedApplication}
                     editedApp={editedApp}
                     oauth2Config={oauth2Config}
                     onFieldChange={handleFieldChange}
@@ -656,7 +667,7 @@ export default function ApplicationEditPage() {
           panel: (
             <EditTokenSettingsTabs
               sectionResetKey={sectionResetKey}
-              application={application}
+              application={permittedApplication}
               editedApp={editedApp}
               oauth2Config={oauth2Config}
               onFieldChange={handleFieldChange}
@@ -667,14 +678,15 @@ export default function ApplicationEditPage() {
         {
           key: 'organizationAccess',
           label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
-          panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
+          panel: <EditOrganizationAccessSettings application={permittedApplication} access={organizationAccess} />,
         },
         {
           key: 'advanced',
           label: t('applications:edit.page.tabs.advanced'),
           panel: (
             <EditAdvancedSettings
-              application={application}
+              application={permittedApplication}
+              deletable={isDeletable}
               editedApp={editedApp}
               oauth2Config={oauth2Config}
               oauth2Constraints={oauth2Constraints}
@@ -717,7 +729,7 @@ export default function ApplicationEditPage() {
             size={55}
             variant="rounded"
             supportedShapes={['rounded']}
-            editable={!application.isReadOnly}
+            editable={!isReadOnly}
             value={editedApp.logoUrl ?? application.logoUrl}
             fallback={ApplicationConstants.DEFAULT_AVATAR}
             editAriaLabel={t('applications:edit.page.logoUpdate.label', 'Update logo')}
@@ -760,9 +772,10 @@ export default function ApplicationEditPage() {
             ) : (
               <>
                 <Typography variant="h3">{editedApp.name ?? application.name}</Typography>
-                {!application.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('applications:edit.page.editName', 'Edit application name')}
                     onClick={() => {
                       setTempName(editedApp.name ?? application.name);
                       setIsEditingName(true);
@@ -822,9 +835,10 @@ export default function ApplicationEditPage() {
                 <Typography variant="body2" color="text.secondary">
                   {editedApp.description ?? application.description ?? t('applications:edit.page.description.empty')}
                 </Typography>
-                {!application.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('applications:edit.page.editDescription', 'Edit description')}
                     onClick={() => {
                       setTempDescription(editedApp.description ?? application.description ?? '');
                       setIsEditingDescription(true);
@@ -857,8 +871,8 @@ export default function ApplicationEditPage() {
               ) : null;
             })()}
         </PageTitle.SubHeader>
-        {/* Read-only records too: the flows change only runtime state. */}
-        {!isConsoleClient && (
+        {/* Declarative records too: the flows change only runtime state. The default flows need update. */}
+        {!isConsoleClient && canUpdate && (
           <PageTitle.Actions>
             <AccountStatusAction
               category="application"
@@ -913,8 +927,7 @@ export default function ApplicationEditPage() {
             isMissingDeviceGrantFlow ||
             isInvalidBackchannelLogoutUri ||
             isMissingCertificate ||
-            application.isReadOnly === true ||
-            !can('app', 'update')
+            isReadOnly
           }
           error={
             (updateApplication.error

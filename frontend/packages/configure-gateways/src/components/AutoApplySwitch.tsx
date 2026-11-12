@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, Stack, Switch, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Info} from '@wso2/oxygen-ui-icons-react';
@@ -44,6 +44,7 @@ function ProjectAutoSyncSwitch({
   const tForErrors = useGatewayErrorTranslator();
   const {showToast} = useToast();
   const status = useProjectStatus(targetId);
+  const canUpdate = useCapabilitiesContext().can('project', 'update');
   const save = useSetProjectAutoSync();
   const autoSync = status.data?.autoSync;
   // While a change is saved the switch shows it; a refused one puts the switch back as it was.
@@ -79,7 +80,7 @@ function ProjectAutoSyncSwitch({
           <Switch
             checked={enabled}
             onChange={(_event, checked: boolean) => set(checked)}
-            disabled={!autoSync || locked || save.isPending}
+            disabled={!canUpdate || !autoSync || locked || save.isPending}
             slotProps={{input: {'aria-label': label}}}
             data-testid="auto-apply-switch"
           />
@@ -123,7 +124,7 @@ function ProjectAutoSyncSwitch({
               variant="text"
               size="small"
               onClick={() => set(null)}
-              disabled={locked || save.isPending}
+              disabled={!canUpdate || locked || save.isPending}
               sx={{px: 0, minHeight: 0}}
               data-testid="auto-apply-use-default"
             >
@@ -156,6 +157,7 @@ function OrganizationAutoApplySwitch({target, compact}: {target: string; compact
   const tForErrors = useGatewayErrorTranslator();
   const {showToast} = useToast();
   const setting = useAutoApply();
+  const canUpdate = useCapabilitiesContext().can('serverconfig', 'update');
   const save = useSetAutoApply();
   const locked = setting.data?.locked ?? false;
   const label = t('autoApply.label', 'Default for projects: auto-sync configuration to {{target}}', {target});
@@ -179,7 +181,7 @@ function OrganizationAutoApplySwitch({target, compact}: {target: string; compact
       <Switch
         checked={enabled}
         onChange={(_event, checked: boolean) => toggle(checked)}
-        disabled={locked || setting.isLoading || setting.isError || save.isPending}
+        disabled={!canUpdate || locked || setting.isLoading || setting.isError || save.isPending}
         slotProps={{input: {'aria-label': label}}}
         data-testid="auto-apply-switch"
       />

@@ -26,11 +26,17 @@ vi.mock('@thunderid/react', async (importOriginal) => {
 
 const mockShowToast = vi.fn();
 const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
+let mockCanUpdateServerConfig = true;
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useCapabilitiesContext: () => ({
+      can: (resource: string, action = 'view') =>
+        resource !== 'serverconfig' || action !== 'update' || mockCanUpdateServerConfig,
+      isLoading: false,
+    }),
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
     useProjectScope: () => mockUseProjectScope(),
     useToast: () => ({showToast: mockShowToast}),
@@ -126,6 +132,7 @@ vi.mock('@thunderid/configure-organization-units', () => ({
 describe('CreateResourceServerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCanUpdateServerConfig = true;
     mockUseCreateResourceServer.mockReturnValue({
       mutate: mockCreateResourceServerMutate,
       isPending: false,
@@ -694,6 +701,7 @@ describe('CreateResourceServerPage', () => {
 describe('CreateResourceServerPage default resource server', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCanUpdateServerConfig = true;
     mockUseCreateResourceServer.mockReturnValue({
       mutate: mockCreateResourceServerMutate,
       isPending: false,
@@ -781,6 +789,14 @@ describe('CreateResourceServerPage default resource server', () => {
     expect(defaultCheckbox()).toBeNull();
   });
 
+  it('does not offer the choice to an admin who cannot change the server configuration', async () => {
+    mockCanUpdateServerConfig = false;
+
+    await goToLastStep();
+
+    expect(defaultCheckbox()).toBeNull();
+  });
+
   it('does not offer the choice while the default config is still loading', async () => {
     mockDefaultConfig.mockReturnValue({data: undefined, isLoading: true, error: null});
 
@@ -828,6 +844,7 @@ describe('CreateResourceServerPage default resource server', () => {
 describe('CreateResourceServerPage submit locking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCanUpdateServerConfig = true;
     mockUseCreateResourceServer.mockReturnValue({
       mutate: mockCreateResourceServerMutate,
       isPending: false,

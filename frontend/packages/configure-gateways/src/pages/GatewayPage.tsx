@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Accordion,
   AccordionDetails,
@@ -116,6 +117,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   const {gatewayId = ''} = useParams<{gatewayId: string}>();
   const routes = useDeployRoutes();
   const project = useProjectScope();
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   const [showAllValues, setShowAllValues] = useState(false);
   const pipeline = usePipeline();
   const stages: PipelineStage[] = useMemo(() => pipeline.data?.stages ?? [], [pipeline.data]);
@@ -228,7 +230,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
     // its own, with what it needs.
     const bringable = change.failed === true || change.change !== 'unchanged';
     const bring =
-      bringable && next && (!project || change.section === 'project') ? (
+      canDeploy && bringable && next && (!project || change.section === 'project') ? (
         <Button
           size="small"
           variant="text"
@@ -300,7 +302,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
       <Typography variant="body2" color="text.secondary">
         {deployLine(deploy)}
       </Typography>
-      {position === 0 && rollbackTo && (
+      {canDeploy && position === 0 && rollbackTo && (
         <Tooltip title={projectRollback ? rollbackHint(t, projectRollback, rollbackTo, stage.name) : ''}>
           <Button
             size="small"
@@ -469,9 +471,11 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
           severity="warning"
           data-testid="gateway-redeploy-notice"
           action={
-            <Button color="inherit" size="small" onClick={() => panels.redeploy(stage.gateway)}>
-              {t('stage.redeploy', 'Redeploy')}
-            </Button>
+            canDeploy && (
+              <Button color="inherit" size="small" onClick={() => panels.redeploy(stage.gateway)}>
+                {t('stage.redeploy', 'Redeploy')}
+              </Button>
+            )
           }
         >
           {t('gateway.savedRedeploy', {

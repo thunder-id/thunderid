@@ -237,6 +237,8 @@ export default function OrganizationUnitEditPage({
   };
 
   const resourceTypeTitle = t('navigation:pages.organizationUnits', 'Organization units');
+  const isReadOnly = Boolean(organizationUnit?.isReadOnly) || !can('ou', 'update');
+  const canDelete = !organizationUnit?.isReadOnly && can('ou', 'delete');
 
   if (isLoading) {
     return (
@@ -321,7 +323,7 @@ export default function OrganizationUnitEditPage({
             size={55}
             variant="rounded"
             supportedShapes={['rounded']}
-            editable={!organizationUnit.isReadOnly}
+            editable={!isReadOnly}
             value={editedOU.logoUrl ?? organizationUnit.logoUrl ?? undefined}
             fallback={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
             editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label', 'Update logo')}
@@ -363,9 +365,10 @@ export default function OrganizationUnitEditPage({
             ) : (
               <>
                 <Typography variant="h3">{editedOU.name ?? organizationUnit.name}</Typography>
-                {!organizationUnit.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('organizationUnits:edit.page.editName', 'Edit organization unit name')}
                     onClick={() => {
                       setTempName(editedOU.name ?? organizationUnit.name);
                       setIsEditingName(true);
@@ -421,9 +424,10 @@ export default function OrganizationUnitEditPage({
                   {(editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
                     t('organizationUnits:edit.page.description.empty')}
                 </Typography>
-                {!organizationUnit.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('organizationUnits:edit.page.editDescription', 'Edit description')}
                     onClick={() => {
                       setTempDescription(
                         (editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
@@ -486,12 +490,14 @@ export default function OrganizationUnitEditPage({
           aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-5' : 'ou-tabpanel-4'}
           sx={{textTransform: 'none'}}
         />
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.advanced')}
-          id={renderDefaultFlowsSettings ? 'ou-tab-6' : 'ou-tab-5'}
-          aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-6' : 'ou-tabpanel-5'}
-          sx={{textTransform: 'none'}}
-        />
+        {canDelete && (
+          <Tab
+            label={t('organizationUnits:edit.page.tabs.advanced')}
+            id={renderDefaultFlowsSettings ? 'ou-tab-6' : 'ou-tab-5'}
+            aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-6' : 'ou-tabpanel-5'}
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -533,11 +539,11 @@ export default function OrganizationUnitEditPage({
         </TabPanel>
 
         {/* Advanced Tab */}
-        <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 6 : 5}>
-          {!organizationUnit.isReadOnly && can('ou', 'delete') && (
+        {canDelete && (
+          <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 6 : 5}>
             <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
-          )}
-        </TabPanel>
+          </TabPanel>
+        )}
       </>
 
       {/* Delete Dialog */}
@@ -556,7 +562,7 @@ export default function OrganizationUnitEditPage({
           saveLabel={t('organizationUnits:edit.actions.save.label')}
           savingLabel={t('organizationUnits:edit.actions.saving.label')}
           isSaving={updateOrganizationUnit.isPending}
-          saveDisabled={organizationUnit.isReadOnly === true || !can('ou', 'update')}
+          saveDisabled={isReadOnly}
           error={
             updateOrganizationUnit.error
               ? getErrorMessage(

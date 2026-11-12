@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useApplicationRoutes, useGetApplications} from '@thunderid/configure-applications';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {alpha, Box, Button, Card, Stack, Typography, useMediaQuery, useTheme} from '@wso2/oxygen-ui';
 import {ArrowRight} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
@@ -18,6 +18,8 @@ export default function StartBuildingSection(): JSX.Element {
   const {t} = useTranslation('home');
   const {data} = useGetApplications({limit: 1});
   const {config} = useConfig();
+  const {can} = useCapabilitiesContext();
+  const canCreate = can('app', 'create');
 
   const showFrameworks = useMediaQuery(theme.breakpoints.up('lg'));
   const showAllFrameworkSlots = useMediaQuery(theme.breakpoints.up('xl'));
@@ -97,16 +99,18 @@ export default function StartBuildingSection(): JSX.Element {
               <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5}}>
                 {hasApps ? (
                   <>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() => {
-                        navigate(applicationRoutes.types())?.catch(() => undefined);
-                      }}
-                      sx={{textTransform: 'none', whiteSpace: 'nowrap'}}
-                    >
-                      {t('start_building.hero.actions.view_apps.label', 'Create applications')}
-                    </Button>
+                    {canCreate && (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => {
+                          navigate(applicationRoutes.types())?.catch(() => undefined);
+                        }}
+                        sx={{textTransform: 'none', whiteSpace: 'nowrap'}}
+                      >
+                        {t('start_building.hero.actions.view_apps.label', 'Create applications')}
+                      </Button>
+                    )}
                     <Box
                       onClick={goToApplicationList}
                       sx={{
@@ -128,22 +132,24 @@ export default function StartBuildingSection(): JSX.Element {
                     </Box>
                   </>
                 ) : (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => {
-                      navigate(applicationRoutes.types())?.catch(() => undefined);
-                    }}
-                    sx={{textTransform: 'none'}}
-                  >
-                    {t('start_building.hero.actions.create.label', 'Create application')}
-                  </Button>
+                  canCreate && (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => {
+                        navigate(applicationRoutes.types())?.catch(() => undefined);
+                      }}
+                      sx={{textTransform: 'none'}}
+                    >
+                      {t('start_building.hero.actions.create.label', 'Create application')}
+                    </Button>
+                  )
                 )}
               </Box>
             </Stack>
           </Box>
 
-          {showFrameworks && (
+          {showFrameworks && canCreate && (
             <Box
               sx={{
                 display: 'flex',

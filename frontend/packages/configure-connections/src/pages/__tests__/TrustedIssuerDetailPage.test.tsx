@@ -94,7 +94,6 @@ const mockIdJagEnabled = (idJagEnabled: boolean): void => {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -284,8 +283,7 @@ describe('TrustedIssuerDetailPage', () => {
     expect(mockMutate.mock.calls[0]?.[0]).not.toHaveProperty('ouId');
   });
 
-  it('should hide delete and disable save when the admin may only view connections', async () => {
-    const user = userEvent.setup();
+  it('should hide delete and lock the form when the admin may only view connections', () => {
     render(
       <CapabilitiesProvider capabilities={viewOnly}>
         <TrustedIssuerDetailPage />
@@ -294,11 +292,7 @@ describe('TrustedIssuerDetailPage', () => {
 
     expect(screen.queryByTestId('trusted-issuer-delete-button')).not.toBeInTheDocument();
 
-    const nameField = screen.getByLabelText(/^Name/);
-    await user.clear(nameField);
-    await user.type(nameField, 'Updated Acme Okta');
-
-    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.getByLabelText(/^Name/)).toBeDisabled();
   });
 
   it('should navigate back to connections when Back is clicked', async () => {

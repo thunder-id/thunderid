@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import PendingDeployBanner from '../PendingDeployBanner';
@@ -74,6 +75,17 @@ describe('PendingDeployBanner', () => {
 
     expect(screen.queryByTestId('project-picker')).not.toBeInTheDocument();
     expect(selection.selectProject).toHaveBeenCalledWith('bill', '/pipeline');
+  });
+
+  it('offers no deploy to an admin who cannot update gateways', () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (_r, action = 'view') => action === 'view', isLoading: false}}>
+        <PendingDeployBanner />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText("You have changes that aren't in Development yet")).toBeInTheDocument();
+    expect(screen.queryByTestId('organization-deploy')).not.toBeInTheDocument();
   });
 
   it('says nothing while auto deploy is on, or when nothing is waiting', () => {

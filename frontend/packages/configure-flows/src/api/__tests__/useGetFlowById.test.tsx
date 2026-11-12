@@ -72,6 +72,20 @@ describe('useGetFlowById', () => {
     vi.clearAllMocks();
   });
 
+  it('should load a flow shared into the organization unit, which comes without its nodes', async () => {
+    mockHttpRequest.mockResolvedValueOnce({
+      data: {...mockFlowResponse, nodes: undefined, isOwnedByOU: false, isReadOnly: true},
+    });
+
+    const {result} = renderHook(() => useGetFlowById('flow-123'));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(result.current.data?.nodes).toEqual([]);
+    expect(result.current.data?.isOwnedByOU).toBe(false);
+  });
+
   it('should fetch flow by ID successfully', async () => {
     mockHttpRequest.mockResolvedValueOnce({
       data: mockFlowResponse,

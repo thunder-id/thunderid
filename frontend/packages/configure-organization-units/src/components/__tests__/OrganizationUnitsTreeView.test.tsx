@@ -93,7 +93,6 @@ const mockRefetchOrganizationUnits = vi.fn();
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -266,7 +265,7 @@ describe('OrganizationUnitsTreeView', () => {
     expect(screen.getAllByLabelText(t('common:actions.delete'))).toHaveLength(2);
   });
 
-  it('should hide the add, edit and delete actions when the admin may only view organization units', async () => {
+  it('should offer View instead of edit, and hide add and delete, when the admin may only view organization units', async () => {
     renderWithProviders(
       <CapabilitiesProvider capabilities={viewOnly}>
         <OrganizationUnitsTreeView />
@@ -281,6 +280,8 @@ describe('OrganizationUnitsTreeView', () => {
     expect(screen.queryByLabelText(t('common:actions.edit'))).not.toBeInTheDocument();
     expect(screen.queryByLabelText(t('common:actions.delete'))).not.toBeInTheDocument();
     expect(screen.queryByText(t('organizationUnits:listing.addRootOrganizationUnit'))).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByLabelText(t('common:actions.view', 'View'))[0]);
+    expect(mockNavigate).toHaveBeenCalled();
   });
 
   it('offers no create action outside a project when organization units are created only in projects', async () => {

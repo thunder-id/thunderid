@@ -465,7 +465,6 @@ vi.mock('../../components/SubjectMappingSection', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -697,7 +696,7 @@ describe('ConnectionDetailPage', () => {
     expect(screen.getByTestId('connection-delete-button')).toBeInTheDocument();
   });
 
-  it('omits the advanced tab and disables save when the admin may only view connections', () => {
+  it('omits the advanced tab and locks the form when the admin may only view connections', () => {
     render(
       <CapabilitiesProvider capabilities={viewOnly}>
         <ConnectionDetailPage />
@@ -706,8 +705,9 @@ describe('ConnectionDetailPage', () => {
 
     expect(screen.queryByTestId('connection-tab-advanced')).not.toBeInTheDocument();
 
+    expect(screen.getByTestId('edit-client-id')).toBeDisabled();
     fireEvent.click(screen.getByTestId('edit-client-id'));
-    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
   });
 
   it('shows the Configured status under the name in the card style, with no redundant subtitle', () => {

@@ -27,13 +27,13 @@ const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplications
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
 let mockSdkConfig: Record<string, unknown> | undefined;
-let mockCapabilities: {can: (resource: string, action?: string) => boolean; canManageRoot: boolean; isLoading: boolean};
+let mockCapabilities: {
+  can: (resource: string, action?: string) => boolean;
+  isLoading: boolean;
+  error?: Error | null;
+  retry?: () => void;
+};
 let mockPathname: string | undefined;
-
-vi.mock('@thunderid/hooks', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
-  useCapabilities: () => mockCapabilities,
-}));
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
@@ -57,6 +57,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useCapabilitiesContext: () => mockCapabilities,
     useConfig: () => ({
       config: {
         brand: {
@@ -93,14 +94,9 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock Outlet
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  const {useCapabilitiesContext} = await vi.importActual<typeof import('@thunderid/contexts')>('@thunderid/contexts');
   return {
     ...actual,
-    Outlet: () => (
-      <div data-testid="outlet" data-can-delete-app={String(useCapabilitiesContext().can('app', 'delete'))}>
-        Outlet Content
-      </div>
-    ),
+    Outlet: () => <div data-testid="outlet">Outlet Content</div>,
     Link: ({children, to}: {children: React.ReactNode; to: string}) => (
       <a href={to} data-testid="router-link">
         {children}
@@ -118,7 +114,7 @@ describe('DashboardLayout', () => {
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
     mockDiscovery = undefined;
-    mockCapabilities = {can: () => true, canManageRoot: true, isLoading: false};
+    mockCapabilities = {can: () => true, isLoading: false};
     mockPathname = undefined;
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
@@ -206,7 +202,7 @@ describe('DashboardLayout', () => {
 
   describe('capabilities', () => {
     it('hides the pages the admin cannot view, and groups left empty', () => {
-      mockCapabilities = {can: (resource) => resource === 'user', canManageRoot: false, isLoading: false};
+      mockCapabilities = {can: (resource) => resource === 'user', isLoading: false};
       render(<DashboardLayout />);
 
       expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
@@ -218,7 +214,7 @@ describe('DashboardLayout', () => {
     });
 
     it('hides Agent types from admins who cannot view agent types', () => {
-      mockCapabilities = {can: (resource) => resource !== 'agenttype', canManageRoot: false, isLoading: false};
+      mockCapabilities = {can: (resource) => resource !== 'agenttype', isLoading: false};
       render(<DashboardLayout />);
 
       expect(screen.getByRole('button', {name: 'navigation:pages.userTypes'})).toBeInTheDocument();
@@ -226,21 +222,27 @@ describe('DashboardLayout', () => {
     });
 
     it('keeps a parent entry while one of its children is visible', () => {
-      mockCapabilities = {can: (resource) => resource === 'vc', canManageRoot: false, isLoading: false};
+      mockCapabilities = {can: (resource) => resource === 'vc', isLoading: false};
       render(<DashboardLayout />);
 
       expect(screen.getByText('navigation:pages.verifiableCredentials')).toBeInTheDocument();
     });
 
-    it('offers Import / Export only to admins who can manage root-only APIs', () => {
-      mockCapabilities = {can: () => true, canManageRoot: false, isLoading: false};
-      render(<DashboardLayout />);
+    it('offers Import / Export only to admins who can import or export', () => {
+      mockCapabilities = {can: (resource) => resource !== 'import' && resource !== 'export', isLoading: false};
+      const {unmount} = render(<DashboardLayout />);
 
       expect(screen.queryByRole('button', {name: 'navigation:pages.importExport'})).not.toBeInTheDocument();
+      unmount();
+
+      mockCapabilities = {can: (resource, action) => resource === 'export' && action === 'create', isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByRole('button', {name: 'navigation:pages.importExport'})).toBeInTheDocument();
     });
 
     it('shows a notice instead of a page the admin cannot view', () => {
-      mockCapabilities = {can: (resource) => resource !== 'app', canManageRoot: false, isLoading: false};
+      mockCapabilities = {can: (resource) => resource !== 'app', isLoading: false};
       mockPathname = '/applications';
       render(<DashboardLayout />);
 
@@ -248,19 +250,18 @@ describe('DashboardLayout', () => {
       expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
     });
 
-    it('hands the capabilities to the page', () => {
-      mockCapabilities = {
-        can: (_resource, action = 'view') => action === 'view',
-        canManageRoot: false,
-        isLoading: false,
-      };
+    it('offers a retry instead of the page when the capabilities could not be read', () => {
+      mockCapabilities = {can: () => false, isLoading: false, error: new Error('unavailable'), retry: vi.fn()};
+      mockPathname = '/applications';
       render(<DashboardLayout />);
 
-      expect(screen.getByTestId('outlet')).toHaveAttribute('data-can-delete-app', 'false');
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:forbidden.description')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /refresh/i})).toBeInTheDocument();
     });
 
     it('shows the page while the capabilities load', () => {
-      mockCapabilities = {can: () => false, canManageRoot: false, isLoading: true};
+      mockCapabilities = {can: () => false, isLoading: true};
       mockPathname = '/applications';
       render(<DashboardLayout />);
 
@@ -268,7 +269,7 @@ describe('DashboardLayout', () => {
     });
 
     it('keeps the navigation and Import / Export while the capabilities load', () => {
-      mockCapabilities = {can: () => false, canManageRoot: false, isLoading: true};
+      mockCapabilities = {can: () => false, isLoading: true};
       render(<DashboardLayout />);
 
       expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();

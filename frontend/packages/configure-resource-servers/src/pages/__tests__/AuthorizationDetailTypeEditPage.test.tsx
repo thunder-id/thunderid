@@ -142,7 +142,6 @@ async function typeDescription(user: User, text: string): Promise<void> {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -218,8 +217,7 @@ describe('AuthorizationDetailTypeEditPage', () => {
     expect(screen.getByLabelText(/^Endpoint URL/)).toHaveValue('https://bank.example.com/process');
   });
 
-  it('omits the Advanced tab and disables Save when the admin may only view intents', async () => {
-    const user = userEvent.setup();
+  it('omits the Advanced tab and the name edit when the admin may only view intents', () => {
     renderWithProviders(
       <CapabilitiesProvider capabilities={viewOnly}>
         <AuthorizationDetailTypeEditPage />
@@ -228,8 +226,7 @@ describe('AuthorizationDetailTypeEditPage', () => {
 
     expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
 
-    await typeName(user, ' v2');
-    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Edit intent name'})).not.toBeInTheDocument();
   });
 
   it('saves an edited name with the whole type, then starts again from what was saved', async () => {

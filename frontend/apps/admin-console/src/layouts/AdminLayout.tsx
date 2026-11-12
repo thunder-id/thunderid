@@ -1,7 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useConfig} from '@thunderid/contexts';
+import {CapabilitiesErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {AppShell, Box, ColorSchemeImage, ColorSchemeToggle, Footer, Header, Sidebar, UserMenu} from '@wso2/oxygen-ui';
@@ -38,6 +39,7 @@ export default function AdminLayout(): JSX.Element {
   const {clearSession, discovery} = useThunderID();
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {visible} = useVisibleResources();
+  const {error: capabilitiesError} = useCapabilitiesContext();
   const organization: string | undefined = useOrganizationName();
   const basePath: string = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -154,9 +156,7 @@ export default function AdminLayout(): JSX.Element {
         </Sidebar>
       </AppShell.Sidebar>
 
-      <AppShell.Main>
-        <Outlet />
-      </AppShell.Main>
+      <AppShell.Main>{capabilitiesError ? <CapabilitiesErrorNotice /> : <Outlet />}</AppShell.Main>
 
       <AppShell.Footer>
         <Footer>

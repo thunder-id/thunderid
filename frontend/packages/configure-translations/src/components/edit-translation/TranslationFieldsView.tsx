@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, FormControl, FormLabel, IconButton, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Plus, RotateCcw} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX} from 'react';
@@ -94,6 +95,7 @@ export default function TranslationFieldsView({
   onDraftChange,
 }: TranslationFieldsViewProps): JSX.Element {
   const {t} = useTranslation('translations');
+  const {can} = useCapabilitiesContext();
 
   const allKeys = Object.keys(localValues);
 
@@ -118,7 +120,7 @@ export default function TranslationFieldsView({
 
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-      {allowNewKeys && (
+      {allowNewKeys && can('i18n', 'update') && (
         <Box>
           {!draft.adding ? (
             <Button
@@ -218,6 +220,7 @@ export default function TranslationFieldsView({
                   minRows={1}
                   maxRows={5}
                   value={value}
+                  InputProps={{readOnly: !can('i18n', 'update')}}
                   onChange={(e) => onChange(key, e.target.value)}
                   sx={{
                     '& .MuiOutlinedInput-root': isDirty

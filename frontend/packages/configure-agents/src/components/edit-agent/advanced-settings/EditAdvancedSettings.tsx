@@ -30,6 +30,11 @@ interface EditAdvancedSettingsProps {
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onDeleteSuccess?: () => void;
+  /**
+   * Whether the agent record itself may be deleted. Defaults to `!agent.isReadOnly`; pass it when
+   * `agent.isReadOnly` also covers an admin who may not update, which says nothing about deleting.
+   */
+  deletable?: boolean;
   onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
   /** Reports whether the Identity assertions (ID-JAG) card has a validation error, to gate Save. */
   onIdentityAssertionsValidationChange?: (hasError: boolean) => void;
@@ -41,6 +46,7 @@ export default function EditAdvancedSettings({
   oauth2Config = undefined,
   onFieldChange,
   onDeleteSuccess = undefined,
+  deletable = undefined,
   onBackchannelLogoutUriValidationChange = undefined,
   onIdentityAssertionsValidationChange = undefined,
 }: EditAdvancedSettingsProps) {
@@ -156,7 +162,7 @@ export default function EditAdvancedSettings({
           onValidationChange={onIdentityAssertionsValidationChange}
         />
       )}
-      {!agent.isReadOnly && can('agent', 'delete') && (
+      {(deletable ?? !agent.isReadOnly) && can('agent', 'delete') && (
         <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
       )}
 

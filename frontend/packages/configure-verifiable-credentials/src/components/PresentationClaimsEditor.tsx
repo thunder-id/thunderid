@@ -27,6 +27,8 @@ export interface ClaimsEditorProps {
   onChange: (claims: ClaimRow[]) => void;
   /** Rows whose claim name repeats an earlier row, keyed by row id. */
   duplicateNames?: Record<string, true>;
+  /** Shows the claims without letting them change. */
+  readOnly?: boolean;
 }
 
 /**
@@ -34,7 +36,12 @@ export interface ClaimsEditorProps {
  * (mandatory/optional), an optional value constraint, and a subject-derivation
  * toggle — instead of separate comma lists for each.
  */
-export default function ClaimsEditor({claims, onChange, duplicateNames = {}}: ClaimsEditorProps): JSX.Element {
+export default function ClaimsEditor({
+  claims,
+  onChange,
+  duplicateNames = {},
+  readOnly = false,
+}: ClaimsEditorProps): JSX.Element {
   const {t} = useTranslation('verifiable-presentations');
   const [valueInput, setValueInput] = useState<Record<string, string>>({});
 
@@ -136,7 +143,12 @@ export default function ClaimsEditor({claims, onChange, duplicateNames = {}}: Cl
             {claim.values.length > 0 && (
               <Box sx={{mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1}}>
                 {claim.values.map((value) => (
-                  <Chip key={value} label={value} size="small" onDelete={(): void => removeValue(claim, value)} />
+                  <Chip
+                    key={value}
+                    label={value}
+                    size="small"
+                    onDelete={readOnly ? undefined : (): void => removeValue(claim, value)}
+                  />
                 ))}
               </Box>
             )}

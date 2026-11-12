@@ -739,7 +739,4 @@ type CapabilitiesResponse struct {
 		OUID string `json:"ouId"`
 	} `json:"scope"`
 	Resources map[string]map[string]bool `json:"resources"`
-	Root      struct {
-		Manage bool `json:"manage"`
-	} `json:"root"`
 }

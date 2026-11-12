@@ -616,6 +616,7 @@ const translations = {
     'pages.gateways': 'Deployment',
     'breadcrumb.console': 'Console',
     'forbidden.description': 'You do not have permission to view this page.',
+    'capabilities.loadFailed': 'Could not load what your account may do.',
   },
 
   // ============================================================================
@@ -1622,6 +1623,8 @@ const translations = {
     'edit.page.logoUpdate.label': 'Update logo',
     'edit.page.copyOuId': 'Copy organization unit ID',
     'edit.page.back': 'Back to organization units',
+    'edit.page.editName': 'Edit organization unit name',
+    'edit.page.editDescription': 'Edit description',
     'edit.page.backToOU': 'Back to {{name}}',
     'edit.page.description.empty': 'No description',
     'edit.page.description.placeholder': 'Enter a description...',
@@ -3493,6 +3496,8 @@ const translations = {
     'edit.page.error': 'Failed to load application information',
     'edit.page.notFound': 'Application not found',
     'edit.page.back': 'Back to applications',
+    'edit.page.editName': 'Edit application name',
+    'edit.page.editDescription': 'Edit description',
     'edit.page.logoUpdate.label': 'Update logo',
     'edit.page.description.empty': 'No description',
     'edit.page.description.placeholder': 'Add a description',
@@ -5243,6 +5248,8 @@ const translations = {
     'core.variables.preview.empty': 'Add a variable to see it here.',
     'core.headerPanel.share': 'Share',
     'core.sharing.dialog.title': 'Share flow',
+    'core.sharing.sharedIntoUnit':
+      'This flow is shared into this organization unit. Only the organization unit that owns it can view or change its steps.',
     'core.sharing.dialog.saveError': 'Failed to update how the flow is shared. Please try again.',
     'core.sharing.dialog.saved': 'Sharing updated.',
     'core.sharing.dialog.savedWithFlow': 'These changes are saved when you save the flow.',
@@ -7180,6 +7187,8 @@ const translations = {
     'applyPanel.submitCount_other': 'Deploy {{count}} changes to {{gateway}}',
     'applyPanel.title': 'Deploy {{label}}',
     'applyPanel.to': 'to',
+    'applyPanel.valuesNeedAccess':
+      "Your account may not set this gateway's variables and secrets, so this deploy waits for an admin who can.",
     'autoApply.failed': 'Auto-sync could not be changed.',
     'autoApply.inherited': 'Follows the organization default',
     'autoApply.label': 'Default for projects: auto-sync configuration to {{target}}',

@@ -44,6 +44,15 @@ export {default as MaskedSecretField} from './MaskedSecretField/MaskedSecretFiel
 export type {MaskedSecretFieldProps} from './MaskedSecretField/MaskedSecretField';
 export {default as OrganizationUnitSummaryChip} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export type {OrganizationUnitSummaryChipProps} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
+export {default as CapabilityGuard} from './CapabilityGuard/CapabilityGuard';
+export type {CapabilityGuardProps} from './CapabilityGuard/CapabilityGuard';
+export {default as ForbiddenNotice} from './CapabilityGuard/ForbiddenNotice';
+export {default as CapabilitiesErrorNotice} from './CapabilityGuard/CapabilitiesErrorNotice';
+export {default as EditOrViewAction} from './EditOrViewAction/EditOrViewAction';
+export type {EditOrViewActionProps} from './EditOrViewAction/EditOrViewAction';
+export {default as ReadOnlyFieldset} from './ReadOnlyFieldset/ReadOnlyFieldset';
+export type {ReadOnlyFieldsetProps} from './ReadOnlyFieldset/ReadOnlyFieldset';
+export {default as ServerCapabilitiesProvider} from './CapabilityGuard/ServerCapabilitiesProvider';
 export {default as PageLoader} from './PageLoader/PageLoader';
 export {default as ResourceDeployStatus} from './ResourceDeployStatus/ResourceDeployStatus';
 export type {ResourceDeployStatusProps} from './ResourceDeployStatus/ResourceDeployStatus';

@@ -176,7 +176,6 @@ const {useIsMutating} = await import('@tanstack/react-query');
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -417,7 +416,7 @@ describe('RoleEditPage', () => {
   });
 
   describe('without write access', () => {
-    it('should hide delete, lock assignments and disable save when the admin may only view roles', async () => {
+    it('should hide delete and the name edit, and lock assignments, when the admin may only view roles', async () => {
       const user = userEvent.setup();
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
@@ -425,19 +424,32 @@ describe('RoleEditPage', () => {
         </CapabilitiesProvider>,
       );
 
-      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
-      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('tab', {name: 'Assignments'}));
       expect(screen.getByTestId('edit-assignments-settings')).toHaveAttribute('data-readonly', 'true');
 
-      await user.click(screen.getByRole('button', {name: 'Edit role name'}));
-      const nameInput = screen.getByRole('textbox');
-      await user.clear(nameInput);
-      await user.type(nameInput, 'New Name');
-      await user.tab();
+      expect(screen.queryByRole('button', {name: 'Edit role name'})).not.toBeInTheDocument();
+    });
+  });
 
-      expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
+  describe('a role shared into the organization unit', () => {
+    it('should lock the role and its assignments', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useGetRole).mockReturnValue({
+        data: {...mockRole, isOwnedByOU: false},
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useGetRole>);
+      render(<RoleEditPage />);
+
+      expect(screen.queryByRole('button', {name: 'Edit role name'})).not.toBeInTheDocument();
+
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Assignments'}));
+      expect(screen.getByTestId('edit-assignments-settings')).toHaveAttribute('data-readonly', 'true');
     });
   });
 

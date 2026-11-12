@@ -23,7 +23,9 @@ vi.mock('@/api/useUpdateNotificationTemplate', () => ({default: mockUseUpdate}))
 
 // Stub the config + preview panes; this suite covers the editor's header editing and save payload.
 vi.mock('@/components/edit-template/TemplateContentEditor', () => ({
-  default: () => <div data-testid="content-editor" />,
+  default: ({readOnly = false}: {readOnly?: boolean}) => (
+    <div data-testid="content-editor" data-readonly={String(readOnly)} />
+  ),
 }));
 vi.mock('@/components/edit-template/TemplatePreviewPanel', () => ({
   default: () => <div data-testid="preview-panel" />,
@@ -49,7 +51,6 @@ const smsTemplate: SmsTemplate = {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -176,17 +177,16 @@ describe('TemplateEditor', () => {
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
     });
 
-    it('disables Save when the admin may not update templates', async () => {
-      const user = userEvent.setup();
+    it('offers no inline edits and keeps the content read-only when the admin may not update templates', () => {
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
           <TemplateEditor channel="email" template={emailTemplate} />
         </CapabilitiesProvider>,
       );
 
-      await makeDirty(user, 'OTP Verification', 'OTP Verification v2');
-
-      expect(screen.getByRole('button', {name: t('notificationTemplates:editor.save')})).toBeDisabled();
+      expect(screen.getByText('OTP Verification')).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+      expect(screen.getByTestId('content-editor')).toHaveAttribute('data-readonly', 'true');
     });
 
     it('saves an email template with the design color scheme and full content', async () => {

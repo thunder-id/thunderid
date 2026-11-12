@@ -38,6 +38,12 @@ vi.mock('@thunderid/contexts', () => ({
   }),
 }));
 
+vi.mock('@thunderid/components', () => ({
+  ServerCapabilitiesProvider: ({children}: {children: React.ReactNode}) => (
+    <div data-testid="capabilities-provider">{children}</div>
+  ),
+}));
+
 vi.mock('@thunderid/react', () => ({
   ThunderIDProvider: ({
     children,
@@ -137,6 +143,11 @@ describe('withConfig (console)', () => {
 
     render(<WithConfigComponent />);
     expect(screen.getByTestId('thunderid-provider')).toBeInTheDocument();
+  });
+
+  it('reads the capabilities for every page beneath it', () => {
+    render(<WithConfigComponent />);
+    expect(screen.getByTestId('capabilities-provider')).toContainElement(screen.getByTestId('mock-child'));
   });
 
   it('passes baseUrl from getTrustedIssuerUrl to ThunderIDProvider', () => {

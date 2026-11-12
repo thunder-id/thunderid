@@ -218,7 +218,6 @@ vi.mock('@thunderid/components', async (importOriginal) => {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -1398,7 +1397,14 @@ describe('OrganizationUnitEditPage', () => {
   });
 
   describe('Without write access', () => {
-    it('should hide delete and disable save when the admin may only view organization units', async () => {
+    it('should offer the name and description edits when the admin may update organization units', async () => {
+      renderWithProviders(<OrganizationUnitEditPage />);
+
+      expect(await screen.findByRole('button', {name: 'Edit organization unit name'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Edit description'})).toBeInTheDocument();
+    });
+
+    it('should lock the fields and hide delete when the admin may only view organization units', async () => {
       renderWithProviders(
         <CapabilitiesProvider capabilities={viewOnly}>
           <OrganizationUnitEditPage />
@@ -1409,22 +1415,10 @@ describe('OrganizationUnitEditPage', () => {
         expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
       });
 
-      const descEditButton = screen
-        .getAllByRole('button')
-        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes('A test description'));
-      fireEvent.click(descEditButton!);
-      const descInput = screen.getByDisplayValue('A test description');
-      fireEvent.change(descInput, {target: {value: 'New description'}});
-      fireEvent.blur(descInput);
+      expect(screen.queryByRole('button', {name: 'Edit organization unit name'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit description'})).not.toBeInTheDocument();
 
-      await waitFor(() => {
-        expect(screen.getByText(t('organizationUnits:edit.actions.save.label'))).toBeDisabled();
-      });
-
-      fireEvent.click(screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')}));
-      expect(
-        screen.queryByRole('button', {name: t('organizationUnits:edit.general.dangerZone.delete.button.label')}),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')})).not.toBeInTheDocument();
     });
   });
 

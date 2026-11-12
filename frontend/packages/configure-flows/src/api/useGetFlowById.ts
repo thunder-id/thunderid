@@ -41,8 +41,9 @@ export default function useGetFlowById(
     queryFn: async (): Promise<FlowDefinitionResponse> => {
       const serverUrl: string = getServerUrl();
 
+      // A flow shared into the caller's organization unit comes without its nodes.
       const response: {
-        data: FlowDefinitionResponse;
+        data: Omit<FlowDefinitionResponse, 'nodes'> & {nodes?: FlowDefinitionResponse['nodes']};
       } = await http.request({
         url: `${serverUrl}/flows/${flowId}`,
         method: 'GET',
@@ -51,7 +52,7 @@ export default function useGetFlowById(
         },
       } as unknown as Parameters<typeof http.request>[0]);
 
-      return response.data;
+      return {...response.data, nodes: response.data.nodes ?? []};
     },
     enabled: enabled && Boolean(flowId),
   });

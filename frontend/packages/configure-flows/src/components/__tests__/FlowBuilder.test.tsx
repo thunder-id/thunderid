@@ -1,9 +1,18 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {act, render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {
+  act,
+  render as rtlRender,
+  screen,
+  fireEvent,
+  waitFor,
+  type RenderOptions,
+  type RenderResult,
+} from '@testing-library/react';
 import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import type {Node, Edge} from '@xyflow/react';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowConstants from '../../constants/FlowConstants';
 import {ElementTypes, ButtonVariants, ButtonTypes, ElementCategories, BlockTypes} from '../../models/elements';
@@ -11,6 +20,14 @@ import type {Element} from '../../models/elements';
 import {ExecutionTypes, StepTypes} from '../../models/steps';
 import {REGISTRATION_GRAPH_VALIDATION_RULES} from '../../validation/validation-rules';
 import FlowBuilder from '../FlowBuilder';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 // Use vi.hoisted for mock functions that need to be available during vi.mock hoisting
 const {
@@ -1200,7 +1217,6 @@ describe('Save Functionality with Validation', () => {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

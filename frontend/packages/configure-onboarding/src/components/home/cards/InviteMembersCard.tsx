@@ -3,6 +3,7 @@
 
 import {getInitials, ResourceAvatar} from '@thunderid/components';
 import {useGetUsers, UserConstants, useUserRoutes} from '@thunderid/configure-users';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Skeleton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
@@ -117,6 +118,8 @@ export default function InviteMembersCard(): JSX.Element {
   const {t} = useTranslation('home');
   const {data, isLoading} = useGetUsers({limit: AVATAR_LIMIT});
   const userRoutes = useUserRoutes();
+  const {can} = useCapabilitiesContext();
+  const canCreate = can('user', 'create');
 
   const totalResults = data?.totalResults ?? 0;
   const users = data?.users ?? [];
@@ -143,8 +146,8 @@ export default function InviteMembersCard(): JSX.Element {
         'next_steps.invite_members.description',
         'Add or invite collaborators to help manage your organization.',
       )}
-      primaryLabel={t('next_steps.invite_members.actions.primary.label', 'Add user')}
-      primaryRoute={userRoutes.add()}
+      primaryLabel={canCreate ? t('next_steps.invite_members.actions.primary.label', 'Add user') : undefined}
+      primaryRoute={canCreate ? userRoutes.add() : undefined}
       preview={preview}
     />
   );

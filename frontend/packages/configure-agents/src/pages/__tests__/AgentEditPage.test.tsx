@@ -268,7 +268,6 @@ const fetchWithStubbedServerMetadata = (input: RequestInfo | URL, init?: Request
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -1021,6 +1020,23 @@ describe('AgentEditPage', () => {
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/agents');
       });
+    });
+
+    it('offers no delete for an agent shared into the organization unit', async () => {
+      advancedSettings.real = true;
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, isOwnedByOU: false},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+      expect(screen.queryByRole('button', {name: 'Delete agent'})).not.toBeInTheDocument();
     });
   });
 

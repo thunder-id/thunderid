@@ -94,7 +94,6 @@ vi.mock('../../../AgentDeleteDialog', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -646,6 +645,22 @@ describe('EditAdvancedSettings', () => {
       );
 
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
+    });
+
+    it('keeps the Danger Zone for an admin who may delete but not update, when told the record is deletable', () => {
+      render(
+        <CapabilitiesProvider capabilities={{can: (_r, a = 'view') => a !== 'update', isLoading: false}}>
+          <EditAdvancedSettings
+            agent={{...mockAgent, isReadOnly: true}}
+            deletable
+            editedAgent={{}}
+            oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+            onFieldChange={mockOnFieldChange}
+          />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
     });
 
     it('opens the delete dialog when Delete Agent is clicked and reports success', async () => {

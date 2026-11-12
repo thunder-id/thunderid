@@ -147,7 +147,6 @@ const addAttribute = async (user: ReturnType<typeof userEvent.setup>, id: string
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -733,7 +732,7 @@ describe('ViewUserTypePage', () => {
   });
 
   describe('Without write access', () => {
-    it('hides delete and disables save when the admin may only view user types', async () => {
+    it('hides delete and keeps the fields read-only when the admin may only view user types', async () => {
       const user = userEvent.setup();
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
@@ -742,10 +741,9 @@ describe('ViewUserTypePage', () => {
       );
 
       await user.click(screen.getByTestId('select-ou-child'));
-      expect(await screen.findByRole('button', {name: /^save$/i})).toBeDisabled();
+      expect(screen.queryByRole('button', {name: /^save$/i})).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole('tab', {name: /advanced/i}));
-      expect(screen.queryByRole('button', {name: /^delete$/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', {name: /advanced/i})).not.toBeInTheDocument();
     });
   });
 

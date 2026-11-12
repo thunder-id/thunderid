@@ -190,6 +190,10 @@ export default function RoleEditPage(): JSX.Element {
   };
 
   const resourceTypeTitle = t('navigation:pages.roles', 'Roles');
+  // A role shared into the organization unit is read only there.
+  const isOwned = role?.isOwnedByOU !== false;
+  const isReadOnly = Boolean(role?.isReadOnly) || !isOwned || !can('role', 'update');
+  const canDelete = !role?.isReadOnly && isOwned && can('role', 'delete');
 
   if (isLoading || isOtherProject) {
     return (
@@ -295,7 +299,7 @@ export default function RoleEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedRole.name ?? role.name}</Typography>
-                {!role.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label={t('edit.page.editName', 'Edit role name')}
@@ -347,7 +351,7 @@ export default function RoleEditPage(): JSX.Element {
                 <Typography component="span" variant="body2" color="text.secondary">
                   {effectiveDescription || t('edit.page.description.empty', 'No description')}
                 </Typography>
-                {!role.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label={t('edit.page.editDescription', 'Edit role description')}
@@ -392,12 +396,14 @@ export default function RoleEditPage(): JSX.Element {
           aria-controls="role-tabpanel-3"
           sx={{textTransform: 'none'}}
         />
-        <Tab
-          label={t('edit.page.tabs.advanced', 'Advanced')}
-          id="role-tab-4"
-          aria-controls="role-tabpanel-4"
-          sx={{textTransform: 'none'}}
-        />
+        {canDelete && (
+          <Tab
+            label={t('edit.page.tabs.advanced', 'Advanced')}
+            id="role-tab-4"
+            aria-controls="role-tabpanel-4"
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -410,27 +416,26 @@ export default function RoleEditPage(): JSX.Element {
           <EditPermissionsSettings
             permissions={editedRole.permissions ?? serverPermissions}
             onPermissionsChange={handlePermissionsChange}
-            isReadOnly={role.isReadOnly}
+            isReadOnly={isReadOnly}
           />
         </TabPanel>
 
         <TabPanel value={activeTab} index={2}>
-          <EditAssignmentsSettings
-            roleId={role.id}
-            ouId={role.ouId}
-            isReadOnly={role.isReadOnly === true || !can('role', 'update')}
-          />
+          <EditAssignmentsSettings roleId={role.id} ouId={role.ouId} isReadOnly={isReadOnly} />
         </TabPanel>
 
         <TabPanel value={activeTab} index={ORGANIZATION_ACCESS_TAB_INDEX}>
-          <EditOrganizationAccessSettings role={role} access={organizationAccess} />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={4}>
-          <EditAdvancedSettings
-            onDeleteClick={role.isReadOnly || !can('role', 'delete') ? undefined : () => setDeleteDialogOpen(true)}
+          <EditOrganizationAccessSettings
+            role={isOwned ? role : {...role, isReadOnly: true}}
+            access={organizationAccess}
           />
         </TabPanel>
+
+        {canDelete && (
+          <TabPanel value={activeTab} index={4}>
+            <EditAdvancedSettings onDeleteClick={() => setDeleteDialogOpen(true)} />
+          </TabPanel>
+        )}
       </>
 
       {/* Delete Dialog */}
@@ -450,7 +455,7 @@ export default function RoleEditPage(): JSX.Element {
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
           resetDisabled={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
-          saveDisabled={isRoleUpdating || role.isReadOnly === true || !can('role', 'update')}
+          saveDisabled={isRoleUpdating || isReadOnly}
           error={
             (updateRole.error
               ? getErrorMessage(updateRole.error, t, 'update.error', 'Failed to update role. Please try again.')

@@ -79,7 +79,6 @@ async function addValidCertificate(user: ReturnType<typeof userEvent.setup>, cer
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

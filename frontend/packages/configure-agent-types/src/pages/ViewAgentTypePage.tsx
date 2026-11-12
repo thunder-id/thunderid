@@ -373,12 +373,14 @@ export default function ViewAgentTypePage(): JSX.Element {
           aria-controls="agenttype-tabpanel-0"
           sx={{textTransform: 'none'}}
         />
-        <Tab
-          label={t('agentTypes:edit.tabs.advanced', 'Advanced')}
-          id="agenttype-tab-1"
-          aria-controls="agenttype-tabpanel-1"
-          sx={{textTransform: 'none'}}
-        />
+        {isEditable && can('agenttype', 'delete') && (
+          <Tab
+            label={t('agentTypes:edit.tabs.advanced', 'Advanced')}
+            id="agenttype-tab-1"
+            aria-controls="agenttype-tabpanel-1"
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -387,16 +389,16 @@ export default function ViewAgentTypePage(): JSX.Element {
           properties={effectiveProperties}
           onPropertiesChange={handlePropertiesChange}
           agentTypeHandle={agentTypeHandle}
-          disabled={!isEditable}
+          disabled={!isEditable || !can('agenttype', 'update')}
           isEditMode
         />
       </TabPanel>
 
-      <TabPanel value={activeTab} index={1}>
-        <EditAdvancedSettings
-          onDeleteClick={isEditable && can('agenttype', 'delete') ? () => setDeleteDialogOpen(true) : undefined}
-        />
-      </TabPanel>
+      {isEditable && can('agenttype', 'delete') && (
+        <TabPanel value={activeTab} index={1}>
+          <EditAdvancedSettings onDeleteClick={() => setDeleteDialogOpen(true)} />
+        </TabPanel>
+      )}
 
       {/* Delete Dialog */}
       <AgentTypeDeleteDialog
