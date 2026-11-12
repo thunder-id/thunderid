@@ -1,0 +1,32 @@
+.notFoundWrapper {
+    text-align: center;
+}
+
+.illustration {
+    max-width: 600px;
+    width: 100%;
+    margin-bottom: 1.5rem;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    color: var(--ifm-color-emphasis-700);
+    max-width: 500px;
+    margin: 0 auto 2rem;
+}
+
+.actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.actionButton {
+    border-radius: var(--ifm-button-border-radius, 8px);
+    font-weight: 500;
+}
+
+.primaryAction {
+    color: var(--ifm-button-color, #fff) !important;
+}
