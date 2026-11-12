@@ -21,8 +21,8 @@ import (
 
 // Initialize initializes the entity type service and registers its routes.
 //
-// bus is required: the service publishes the audit event of every user type and agent type it creates,
-// updates or deletes on it.
+// bus is required: the service publishes the audit event of every user type, agent type and organization
+// unit type it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,

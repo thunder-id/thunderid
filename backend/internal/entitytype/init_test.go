@@ -896,7 +896,7 @@ func TestValidateEntityTypeWithOUCheck(t *testing.T) {
 			} else {
 				assert.NotNil(t, err, "Expected validation to fail")
 				if err != nil {
-					assert.Contains(t, err.ErrorDescription.DefaultValue, tc.errorContains,
+					assert.Contains(t, err.ErrorDescription.String(), tc.errorContains,
 						"Error message should contain expected text")
 					assert.Equal(t, ErrorInvalidEntityTypeRequest.Code, err.Code)
 				}
@@ -1080,7 +1080,7 @@ this is not valid yaml:
 				} else {
 					assert.NotNil(t, validationErr, "Expected validation to fail")
 					if validationErr != nil && tc.errorContains != "" {
-						assert.Contains(t, validationErr.ErrorDescription.DefaultValue, tc.errorContains)
+						assert.Contains(t, validationErr.ErrorDescription.String(), tc.errorContains)
 					}
 				}
 			} else {
