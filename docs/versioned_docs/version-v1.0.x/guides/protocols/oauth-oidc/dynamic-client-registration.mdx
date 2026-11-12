@@ -88,7 +88,7 @@ A successful registration returns `201 Created` with the assigned `client_id`, `
 | `userinfo_signed_response_alg` | No | Requests a signed (JWS) userinfo response. Signing uses the deployment signing key, so set this to an algorithm advertised in `userinfo_signing_alg_values_supported` ([Server Metadata](../server-metadata)). |
 | `userinfo_encrypted_response_alg` | No | Key-management algorithm for userinfo response encryption. Supported values: `RSA-OAEP`, `RSA-OAEP-256`. |
 | `userinfo_encrypted_response_enc` | No | Content-encryption algorithm for userinfo response encryption. Required when `userinfo_encrypted_response_alg` is set. Supported values: `A128CBC-HS256`, `A256GCM`. |
-| `id_token_encrypted_response_alg` | No | Key-management algorithm for ID token encryption. Supported values: `RSA-OAEP`, `RSA-OAEP-256`. |
+| `id_token_encrypted_response_alg` | No | Key-management algorithm for ID token encryption. Required when `id_token_encrypted_response_enc` is set. Supported values: `RSA-OAEP`, `RSA-OAEP-256`. |
 | `id_token_encrypted_response_enc` | No | Content-encryption algorithm for ID token encryption. Required when `id_token_encrypted_response_alg` is set. Supported values: `A128CBC-HS256`, `A256GCM`. |
 
 ## Response Fields
@@ -145,6 +145,7 @@ All localized fields are echoed back in the registration response.
 | `400` | `invalid_client_metadata` | A language tag is not a valid BCP 47 tag (e.g. `client_name#not-valid`). |
 | `400` | `invalid_client_metadata` | More than 20 language variants provided for a single field. |
 | `400` | `invalid_client_metadata` | A localized `logo_uri`, `tos_uri`, or `policy_uri` value is not a valid URI. |
+| `400` | `invalid_client_metadata` | `id_token_encrypted_response_enc` is set without `id_token_encrypted_response_alg`. |
 
 ## Related Guides
 
