@@ -53,6 +53,7 @@ import (
 	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/outype"
 	"github.com/thunder-id/thunderid/internal/project"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -184,6 +185,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityTypeService")
 	exporters = append(exporters, entityTypeExporter)
 	exporters = append(exporters, agentTypeExporter)
+
+	outype.Initialize(mux, entityTypeService)
 
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
 		sharingService, observabilitySvc)

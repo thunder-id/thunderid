@@ -46,6 +46,12 @@ const (
 	EventUserTypeUpdate = "user_type.update"
 	// EventUserTypeDelete names an attempt to delete a user type.
 	EventUserTypeDelete = "user_type.delete"
+	// EventOUTypeCreate names an attempt to create an organization unit type.
+	EventOUTypeCreate = "ou_type.create"
+	// EventOUTypeUpdate names an attempt to change an organization unit type.
+	EventOUTypeUpdate = "ou_type.update"
+	// EventOUTypeDelete names an attempt to delete an organization unit type.
+	EventOUTypeDelete = "ou_type.delete"
 	// EventApplicationCreate names an attempt to create an application.
 	EventApplicationCreate = "application.create"
 	// EventApplicationUpdate names an attempt to change an application.
@@ -222,6 +228,8 @@ const (
 	TargetTypeTheme = "theme"
 	// TargetTypeOU is the target type of an event about an organization unit.
 	TargetTypeOU = "ou"
+	// TargetTypeOUType is the target type of an event about an organization unit type.
+	TargetTypeOUType = "ou_type"
 	// TargetTypeProject is the target type of an event about a project.
 	TargetTypeProject = "project"
 )
@@ -268,6 +276,10 @@ var auditedEvents = map[string][]string{
 	EventUserTypeCreate: nil,
 	EventUserTypeUpdate: nil,
 	EventUserTypeDelete: nil,
+
+	EventOUTypeCreate: nil,
+	EventOUTypeUpdate: nil,
+	EventOUTypeDelete: nil,
 
 	EventApplicationCreate: nil,
 	EventApplicationUpdate: nil,

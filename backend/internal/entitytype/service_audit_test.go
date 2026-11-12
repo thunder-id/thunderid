@@ -91,10 +91,12 @@ var (
 		audit.EventUserTypeCreate, audit.EventUserTypeUpdate, audit.EventUserTypeDelete}
 	agentTypeEvents = auditEvents{TypeCategoryAgent, audit.TargetTypeAgentType,
 		audit.EventAgentTypeCreate, audit.EventAgentTypeUpdate, audit.EventAgentTypeDelete}
+	ouTypeEvents = auditEvents{TypeCategoryOU, audit.TargetTypeOUType,
+		audit.EventOUTypeCreate, audit.EventOUTypeUpdate, audit.EventOUTypeDelete}
 )
 
-// EntityTypeServiceAuditTestSuite tests the audit events of the user types and agent types the
-// entity type service creates, updates and deletes.
+// EntityTypeServiceAuditTestSuite tests the audit events of the user types, agent types and organization
+// unit types the entity type service creates, updates and deletes.
 type EntityTypeServiceAuditTestSuite struct {
 	suite.Suite
 	store   *entityTypeStoreInterfaceMock
@@ -215,7 +217,7 @@ func (s *EntityTypeServiceAuditTestSuite) requireOnlyEvent(events []publishedEve
 }
 
 func (s *EntityTypeServiceAuditTestSuite) TestCreateEntityType_PublishesTheCreatedTypeByCategory() {
-	for _, events := range []auditEvents{userTypeEvents, agentTypeEvents} {
+	for _, events := range []auditEvents{userTypeEvents, agentTypeEvents, ouTypeEvents} {
 		s.Run(string(events.category), func() {
 			published := s.record()
 			s.created(events.category, nil)
@@ -332,6 +334,16 @@ func (s *EntityTypeServiceAuditTestSuite) TestUpdateEntityType_PublishesOneEvent
 			outcome: audit.OutcomeSucceeded,
 		},
 		{
+			name:   "an organization unit type is updated",
+			events: ouTypeEvents,
+			arrange: func() {
+				existing(TypeCategoryOU, true)
+				s.store.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryOU, testAuditTypeID,
+					mock.Anything).Return(nil).Once()
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
 			name:    "the caller may not change the user type",
 			events:  userTypeEvents,
 			arrange: func() { existing(TypeCategoryUser, false) },
@@ -401,6 +413,19 @@ func (s *EntityTypeServiceAuditTestSuite) TestDeleteEntityType_PublishesOneEvent
 				existing(true)
 				s.store.On("IsEntityTypeDeclarative", TypeCategoryUser, testAuditTypeID).Return(false).Once()
 				s.store.On("DeleteEntityTypeByID", mock.Anything, TypeCategoryUser, testAuditTypeID).
+					Return(nil).Once()
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name:   "the organization unit type is deleted",
+			events: ouTypeEvents,
+			arrange: func() {
+				s.store.On("GetEntityTypeByID", mock.Anything, TypeCategoryOU, testAuditTypeID).
+					Return(storedType(TypeCategoryOU), nil).Once()
+				s.access(true)
+				s.store.On("IsEntityTypeDeclarative", TypeCategoryOU, testAuditTypeID).Return(false).Once()
+				s.store.On("DeleteEntityTypeByID", mock.Anything, TypeCategoryOU, testAuditTypeID).
 					Return(nil).Once()
 			},
 			outcome: audit.OutcomeSucceeded,

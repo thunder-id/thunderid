@@ -322,6 +322,15 @@ packages:
       inpackage: true
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/outype:
+    config:
+      all: true
+      dir: internal/outype
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: outype
+      inpackage: true
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/vc/credential:
     config:
       all: true

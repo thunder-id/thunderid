@@ -20,6 +20,8 @@ tags:
     description: Create and manage organization units including member, group, and role assignments.
   - name: organization-units-by-path
     description: Create, retrieve, update, delete, and list organization units using their hierarchical handle path.
+  - name: Organization Unit Types
+    description: Create and manage organization unit types, which define the attributes of organization units.
 
 security:
   - OAuth2: [system]
@@ -1735,6 +1737,241 @@ paths:
         "500":
           description: Internal server error
 
+  /organization-unit-types:
+    get:
+      tags:
+        - Organization Unit Types
+      summary: List organization unit types
+      description: |
+        Lists the organization unit types. A caller in a child organization unit also sees the types of the
+        organization units above its own.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/ouTypeIncludeQueryParam'
+      responses:
+        "200":
+          description: List of organization unit types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OUTypeListResponse'
+              example:
+                totalResults: 1
+                startIndex: 1
+                count: 1
+                types:
+                  - id: "550e8400-e29b-41d4-a716-446655440000"
+                    handle: "partner"
+                    displayName: "Partner"
+                    ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "OUT-1005"
+                message:
+                  key: "error.outypeservice.invalid_limit_parameter"
+                  defaultValue: "Invalid pagination parameter"
+                description:
+                  key: "error.outypeservice.invalid_limit_parameter_description"
+                  defaultValue: "The limit parameter must be a positive integer"
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          description: Internal server error
+
+    post:
+      tags:
+        - Organization Unit Types
+      summary: Create an organization unit type
+      description: |
+        Creates an organization unit type in an organization unit. The type defines the attributes of the
+        organization units that use it. The `handle` must be unique among organization unit types.
+        Organization unit types cannot declare credential attributes. A field the request schema does not
+        define, such as `allowSelfRegistration`, is rejected with `OUT-1001`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOUTypeRequest'
+            example:
+              handle: "partner"
+              displayName: "Partner"
+              ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
+              schema:
+                registrationNo:
+                  type: "string"
+                  required: true
+                  unique: true
+                tier:
+                  type: "string"
+                  enum: ["silver", "gold"]
+      responses:
+        "201":
+          description: Organization unit type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OUType'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-request-format:
+                  summary: Invalid request format
+                  value:
+                    code: "OUT-1001"
+                    message:
+                      key: "error.outypeservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.outypeservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains a field that is not supported"
+                invalid-ou-type-request:
+                  summary: Invalid attribute definition
+                  value:
+                    code: "OUT-1004"
+                    message:
+                      key: "error.outypeservice.invalid_ou_type_request"
+                      defaultValue: "Invalid organization unit type request"
+                    description:
+                      key: "error.outypeservice.invalid_ou_type_request_description"
+                      defaultValue: "The organization unit type request contains invalid or missing required fields"
+                credential-attribute-not-allowed:
+                  summary: Credential attribute
+                  value:
+                    code: "OUT-1009"
+                    message:
+                      key: "error.outypeservice.credential_attribute_not_allowed"
+                      defaultValue: "Credential attribute not allowed"
+                    description:
+                      key: "error.outypeservice.credential_attribute_not_allowed_description"
+                      defaultValue: "Organization unit types cannot declare credential attributes. Remove the credential flag"
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "OUT-1003"
+                message:
+                  key: "error.outypeservice.ou_type_handle_conflict"
+                  defaultValue: "Organization unit type handle conflict"
+                description:
+                  key: "error.outypeservice.ou_type_handle_conflict_description"
+                  defaultValue: "An organization unit type with the same handle already exists"
+        "500":
+          description: Internal server error
+
+  /organization-unit-types/{id}:
+    get:
+      tags:
+        - Organization Unit Types
+      summary: Get an organization unit type
+      description: Retrieves an organization unit type and its schema by its ID.
+      parameters:
+        - $ref: '#/components/parameters/ouTypeIdPathParam'
+        - $ref: '#/components/parameters/ouTypeIncludeQueryParam'
+      responses:
+        "200":
+          description: Organization unit type details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OUType'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/OUTypeNotFound'
+        "500":
+          description: Internal server error
+
+    put:
+      tags:
+        - Organization Unit Types
+      summary: Update an organization unit type
+      description: |
+        Replaces the display name, organization unit and schema of an organization unit type. The `handle`
+        cannot be changed: sending a different handle is rejected with `OUT-1008`. A field the request schema
+        does not define, such as `allowSelfRegistration`, is rejected with `OUT-1001`. A type defined in
+        declarative resources (`OUT-1010`) or deployed by the control plane (`OUT-1011`) cannot be changed.
+      parameters:
+        - $ref: '#/components/parameters/ouTypeIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOUTypeRequest'
+      responses:
+        "200":
+          description: Organization unit type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OUType'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                credential-attribute-not-allowed:
+                  summary: Credential attribute
+                  value:
+                    code: "OUT-1009"
+                    message:
+                      key: "error.outypeservice.credential_attribute_not_allowed"
+                      defaultValue: "Credential attribute not allowed"
+                    description:
+                      key: "error.outypeservice.credential_attribute_not_allowed_description"
+                      defaultValue: "Organization unit types cannot declare credential attributes. Remove the credential flag"
+                handle-update-not-allowed:
+                  summary: Handle changed
+                  value:
+                    code: "OUT-1008"
+                    message:
+                      key: "error.outypeservice.ou_type_handle_update_not_allowed"
+                      defaultValue: "Organization unit type handle cannot be changed"
+                    description:
+                      key: "error.outypeservice.ou_type_handle_update_not_allowed_description"
+                      defaultValue: "Omit the handle or send the current handle of the organization unit type"
+        "403":
+          $ref: '#/components/responses/OUTypeForbidden'
+        "404":
+          $ref: '#/components/responses/OUTypeNotFound'
+        "500":
+          description: Internal server error
+
+    delete:
+      tags:
+        - Organization Unit Types
+      summary: Delete an organization unit type
+      description: |
+        Deletes an organization unit type. A type defined in declarative resources (`OUT-1010`) or deployed
+        by the control plane (`OUT-1011`) cannot be deleted and is rejected with `403`. Deleting a type that
+        does not exist succeeds.
+      parameters:
+        - $ref: '#/components/parameters/ouTypeIdPathParam'
+      responses:
+        "204":
+          description: Organization unit type deleted
+        "403":
+          $ref: '#/components/responses/OUTypeForbidden'
+        "500":
+          description: Internal server error
 components:
   securitySchemes:
     OAuth2:
@@ -1780,6 +2017,26 @@ components:
         resolved from the schema-configured display attribute. Falls back to
         the user ID when no display attribute is configured or the value
         cannot be resolved.
+      schema:
+        type: string
+        enum:
+          - display
+    ouTypeIdPathParam:
+      in: path
+      name: id
+      required: true
+      description: ID of the organization unit type.
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+    ouTypeIncludeQueryParam:
+      in: query
+      name: include
+      required: false
+      description: |
+        Specifies additional information to include in the response.
+        Supported values: `display` - includes the handle of the organization unit that owns the type.
       schema:
         type: string
         enum:
@@ -1833,6 +2090,59 @@ components:
             description:
               key: "error.unauthorized_description"
               defaultValue: "The caller is not authorized to perform this operation"
+    OUTypeNotFound:
+      description: Organization unit type not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "OUT-1002"
+            message:
+              key: "error.outypeservice.ou_type_not_found"
+              defaultValue: "Organization unit type not found"
+            description:
+              key: "error.outypeservice.ou_type_not_found_description"
+              defaultValue: "The organization unit type with the specified id does not exist"
+    OUTypeForbidden:
+      description: |
+        The caller may not change the organization unit type, or the type is read only because it is defined
+        in declarative resources or deployed by the control plane
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unauthorized:
+              summary: Caller not authorized
+              value:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
+            declarative:
+              summary: Declarative organization unit type
+              value:
+                code: "OUT-1010"
+                message:
+                  key: "error.outypeservice.cannot_modify_declarative_ou_type"
+                  defaultValue: "Cannot modify a declarative organization unit type"
+                description:
+                  key: "error.outypeservice.cannot_modify_declarative_ou_type_description"
+                  defaultValue: "The organization unit type is declared in a resource file and is read only"
+            managed:
+              summary: Organization unit type deployed by the control plane
+              value:
+                code: "OUT-1011"
+                message:
+                  key: "error.outypeservice.cannot_modify_managed_ou_type"
+                  defaultValue: "Cannot modify an organization unit type deployed by the control plane"
+                description:
+                  key: "error.outypeservice.cannot_modify_managed_ou_type_description"
+                  defaultValue: "The organization unit type was deployed by the control plane and can only be changed there"
   schemas:
     OrganizationUnitBasic:
       type: object
@@ -2285,13 +2595,229 @@ components:
           items:
             $ref: '#/components/schemas/Link'
 
+    OUType:
+      type: object
+      required: [id, handle, displayName, ouId, schema]
+      properties:
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Whether the organization unit type is read only because it is declared in a resource file.
+          example: false
+        id:
+          type: string
+          format: uuid
+          description: The unique identifier of the organization unit type.
+        handle:
+          type: string
+          description: |
+            Unique handle of the organization unit type (lowercase letters, numbers, hyphens, and underscores
+            only). Once set, the handle cannot be changed.
+          pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
+          maxLength: 100
+          example: "partner"
+        displayName:
+          type: string
+          description: Human-readable name of the organization unit type. It does not need to be unique.
+          minLength: 1
+          maxLength: 100
+          example: "Partner"
+        ouId:
+          type: string
+          format: uuid
+          description: ID of the organization unit that owns the organization unit type.
+        ouHandle:
+          type: string
+          readOnly: true
+          description: Handle of the owning organization unit, included only with `include=display`.
+        systemAttributes:
+          type: object
+          description: System-level metadata for the organization unit type.
+          properties:
+            display:
+              type: string
+              description: The schema attribute to use as the human-readable display name.
+          additionalProperties: false
+        schema:
+          type: object
+          description: Attribute definitions of the organization unit type. Credential attributes are not allowed.
+          additionalProperties:
+            oneOf:
+              - type: object
+                description: Leaf property - string, email, mobile, or number
+                required: [type]
+                properties:
+                  type:
+                    type: string
+                    enum: ["string", "email", "mobile", "number"]
+                  required:
+                    type: boolean
+                    default: false
+                    description: Whether the attribute must be provided.
+                  unique:
+                    type: boolean
+                    default: false
+                    description: Whether the value must be unique across organization units.
+                  displayName:
+                    type: string
+                    description: Human-readable label shown in the UI for this property.
+                  enum:
+                    type: array
+                    items:
+                      type: string
+                    description: List of allowed values. Not supported for email or mobile types.
+                  regex:
+                    type: string
+                    description: Regular expression pattern for validating the value.
+                additionalProperties: false
+              - type: object
+                description: Leaf property - boolean
+                required: [type]
+                properties:
+                  type:
+                    type: string
+                    enum: ["boolean"]
+                  required:
+                    type: boolean
+                    default: false
+                  displayName:
+                    type: string
+                additionalProperties: false
+              - type: object
+                description: Object property
+                required: [type, properties]
+                properties:
+                  type:
+                    type: string
+                    enum: ["object"]
+                  required:
+                    type: boolean
+                    default: false
+                  displayName:
+                    type: string
+                  properties:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/OUType/properties/schema/additionalProperties"
+                additionalProperties: false
+              - type: object
+                description: Array property
+                required: [type, items]
+                properties:
+                  type:
+                    type: string
+                    enum: ["array"]
+                  required:
+                    type: boolean
+                    default: false
+                  displayName:
+                    type: string
+                  items:
+                    type: object
+                    required: [type]
+                    properties:
+                      type:
+                        type: string
+                        enum: ["string", "email", "mobile", "number", "boolean", "object"]
+                      enum:
+                        type: array
+                        items:
+                          type: string
+                      regex:
+                        type: string
+                      properties:
+                        type: object
+                        additionalProperties:
+                          $ref: "#/components/schemas/OUType/properties/schema/additionalProperties"
+                additionalProperties: false
+          example:
+            registrationNo:
+              type: "string"
+              required: true
+              unique: true
+            tier:
+              type: "string"
+              enum: ["silver", "gold"]
+
+    OUTypeListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: Number of results that match the listing operation.
+        startIndex:
+          type: integer
+          description: Index of the first element of the page, which equals offset + 1.
+        count:
+          type: integer
+          description: Number of elements in the returned page.
+        types:
+          type: array
+          items:
+            type: object
+            required: [id, handle, displayName, ouId]
+            properties:
+              isReadOnly:
+                $ref: "#/components/schemas/OUType/properties/isReadOnly"
+              id:
+                $ref: "#/components/schemas/OUType/properties/id"
+              handle:
+                $ref: "#/components/schemas/OUType/properties/handle"
+              displayName:
+                $ref: "#/components/schemas/OUType/properties/displayName"
+              ouId:
+                $ref: "#/components/schemas/OUType/properties/ouId"
+              ouHandle:
+                $ref: "#/components/schemas/OUType/properties/ouHandle"
+              systemAttributes:
+                $ref: "#/components/schemas/OUType/properties/systemAttributes"
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    CreateOUTypeRequest:
+      type: object
+      additionalProperties: false
+      required: [handle, displayName, ouId, schema]
+      properties:
+        handle:
+          $ref: "#/components/schemas/OUType/properties/handle"
+        displayName:
+          $ref: "#/components/schemas/OUType/properties/displayName"
+        ouId:
+          $ref: "#/components/schemas/OUType/properties/ouId"
+        systemAttributes:
+          $ref: "#/components/schemas/OUType/properties/systemAttributes"
+        schema:
+          $ref: "#/components/schemas/OUType/properties/schema"
+
+    UpdateOUTypeRequest:
+      type: object
+      additionalProperties: false
+      required: [displayName, ouId, schema]
+      properties:
+        handle:
+          type: string
+          description: Optional. The handle cannot be changed, so when provided it must be the current handle.
+          pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
+          maxLength: 100
+        displayName:
+          $ref: "#/components/schemas/OUType/properties/displayName"
+        ouId:
+          $ref: "#/components/schemas/OUType/properties/ouId"
+        systemAttributes:
+          $ref: "#/components/schemas/OUType/properties/systemAttributes"
+        schema:
+          $ref: "#/components/schemas/OUType/properties/schema"
+
     Error:
       type: object
       required: [code, message]
       properties:
         code:
           type: string
-          description: "Error code. Codes follow the OU-XXXX convention."
+          description: "Error code. Codes follow the OU-XXXX convention, and OUT-XXXX for organization unit types."
           example: "OU-1001"
         message:
           $ref: '#/components/schemas/I18nMessage'

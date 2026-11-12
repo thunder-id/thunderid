@@ -274,6 +274,34 @@ func (cs *Schema) GetUniqueAttributes() []string {
 	return fields
 }
 
+// HasCredentialAttribute reports whether any property is a credential, including properties nested in
+// objects and in array items at any depth.
+func (cs *Schema) HasCredentialAttribute() bool {
+	for _, prop := range cs.properties {
+		if hasCredential(prop) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCredential reports whether the property, or a property nested in it, is a credential.
+func hasCredential(prop property) bool {
+	switch p := prop.(type) {
+	case *object:
+		for _, child := range p.properties {
+			if hasCredential(child) {
+				return true
+			}
+		}
+		return false
+	case *array:
+		return hasCredential(p.items)
+	default:
+		return prop.isCredential()
+	}
+}
+
 // Validate validates the user attributes against the schema.
 // When skipCredentialRequired is true, missing credential properties do not fail
 // the required check. This is used during updates where credentials are not
