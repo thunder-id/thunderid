@@ -17,6 +17,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
@@ -82,6 +84,8 @@ type ValidatorTestSuite struct {
 	mockInterceptorRegistry *interceptormock.InterceptorRegistryInterfaceMock
 	mockGraphBuilder        *graphBuilderInterfaceMock
 	mockConnections         *httpConnectionProviderMock
+	mockGroups              *groupProviderMock
+	mockRoles               *roleProviderMock
 }
 
 func TestValidatorTestSuite(t *testing.T) {
@@ -93,8 +97,10 @@ func (s *ValidatorTestSuite) SetupTest() {
 	s.mockInterceptorRegistry = interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	s.mockGraphBuilder = newGraphBuilderInterfaceMock(s.T())
 	s.mockConnections = newHttpConnectionProviderMock(s.T())
+	s.mockGroups = newGroupProviderMock(s.T())
+	s.mockRoles = newRoleProviderMock(s.T())
 	s.v = newFlowValidator(s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockGraphBuilder,
-		s.mockConnections, nil)
+		s.mockConnections, nil, s.mockGroups, s.mockRoles)
 }
 
 // ---------------------------------------------------------------------------
@@ -3599,4 +3605,159 @@ func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() 
 		s.NotNil(s.v.validateFlowTypeBasedConstraints(flowType,
 			attributeVerificationNodes(executor.ExecutorModePrepare)), "%s must record what it prepares", flowType)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// validateProvisioningSteps
+// ---------------------------------------------------------------------------
+
+// provisioningNodes returns a flow's nodes whose task is a provisioning step with the given properties.
+func provisioningNodes(properties map[string]interface{}) []providers.NodeDefinition {
+	nodes := minimalValidNodes()
+	nodes[1].Executor = &providers.ExecutorDefinition{Name: executormeta.ExecutorNameProvisioning}
+	nodes[1].Properties = properties
+	return nodes
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_ExistingGroupsAndRoles() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1", "group-2"}).
+		Return(map[string]*group.Group{"group-1": {ID: "group-1"}, "group-2": {ID: "group-2"}}, nil)
+	s.mockRoles.EXPECT().GetRolesByIDs(mock.Anything, []string{"role-1"}).
+		Return(map[string]*role.Role{"role-1": {ID: "role-1"}}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: " group-1, group-2,group-1 ,",
+		common.NodePropertyAssignRole:  "role-1",
+	}))
+
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_MissingGroupIsRefused() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1", "group-gone"}).
+		Return(map[string]*group.Group{"group-1": {ID: "group-1"}}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: "group-1,group-gone",
+		common.NodePropertyAssignRole:  "role-1",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
+	s.Equal(map[string]string{"nodeID": "task", "groupIDs": "group-gone"}, err.ErrorDescription.Params)
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_MissingRolesAreRefused() {
+	s.mockRoles.EXPECT().GetRolesByIDs(mock.Anything, []string{"role-gone", "role-1", "role-old"}).
+		Return(map[string]*role.Role{"role-1": {ID: "role-1"}}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignRole: "role-gone, role-1, role-old",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningRoleNotFound.Code, err.Code)
+	s.Equal(map[string]string{"nodeID": "task", "roleIDs": "role-gone, role-old"}, err.ErrorDescription.Params)
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_LookupFailureRefusesTheSave() {
+	s.Run("group", func() {
+		s.SetupTest()
+		s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1"}).
+			Return(nil, &tidcommon.InternalServerError)
+
+		err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+			common.NodePropertyAssignGroup: "group-1",
+		}))
+
+		s.Require().NotNil(err)
+		s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+	s.Run("role", func() {
+		s.SetupTest()
+		s.mockRoles.EXPECT().GetRolesByIDs(mock.Anything, []string{"role-1"}).
+			Return(nil, &tidcommon.InternalServerError)
+
+		err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+			common.NodePropertyAssignRole: "role-1",
+		}))
+
+		s.Require().NotNil(err)
+		s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+}
+
+// Values the step resolves when it runs, or that name nothing, are not looked up.
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_SkipsValuesThatNameNoID() {
+	cases := map[string]interface{}{
+		"empty":        "",
+		"separators":   " , ,",
+		"variable":     "{{var(groups)}}",
+		"placeholder":  "{{var(groupID)}}, {{var(other)}}",
+		"within an ID": "group-{{var(n)}}",
+		"not a string": []interface{}{"group-1"},
+	}
+	for name, value := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+
+			err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+				common.NodePropertyAssignGroup: value,
+				common.NodePropertyAssignRole:  value,
+			}))
+
+			s.Nil(err)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_IgnoresOtherExecutors() {
+	nodes := minimalValidNodes()
+	nodes[1].Properties = map[string]interface{}{common.NodePropertyAssignGroup: "group-gone"}
+
+	s.Nil(s.v.validateProvisioningSteps(context.Background(), nodes))
+}
+
+// The IDs a step assigns beside a placeholder are still looked up, and the placeholder is resolved when it runs.
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_ChecksPlainIDsBesidePlaceholders() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-gone"}).
+		Return(map[string]*group.Group{}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: "{{var(groupID)}},group-gone",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
+	s.Equal("group-gone", err.ErrorDescription.Params["groupIDs"])
+}
+
+// Only a variable placeholder is resolved when the step runs, so any other one reaches the step as a literal ID.
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_ChecksAnIDThatIsNotAVariablePlaceholder() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"{{ctx(groupID)}}"}).
+		Return(map[string]*group.Group{}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: "{{ctx(groupID)}}",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ProvisioningStepWithAMissingGroupIsRefused() {
+	meta, ok := executormeta.MetaFor(executormeta.ExecutorNameProvisioning)
+	s.Require().True(ok)
+	s.mockExecutorRegistry.EXPECT().IsRegistered(executormeta.ExecutorNameProvisioning).Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta(executormeta.ExecutorNameProvisioning).Return(&meta, nil)
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-gone"}).
+		Return(map[string]*group.Group{}, nil)
+	fd := minimalValidFlow()
+	fd.FlowType = providers.FlowTypeAdministration
+	fd.Nodes = provisioningNodes(map[string]interface{}{common.NodePropertyAssignGroup: "group-gone"})
+
+	err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
 }

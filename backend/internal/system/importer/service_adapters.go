@@ -340,8 +340,8 @@ func (s *importService) importRole(
 	}
 	req.OUID = resolvedOUID
 
-	// Assignments are added once the sharing policies are in place, since one may be made in an
-	// organization unit only a policy lets the role reach.
+	// Assignments are added by linkRoleAssignments, after the applications they may name, so a flow imported in
+	// between can name the role.
 	createReq := role.RoleCreationDetail{
 		ID:          req.ID,
 		Name:        req.Name,
@@ -384,9 +384,6 @@ func (s *importService) importRole(
 				updated.ID, updated.Name, updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
 				return *outcome
 			}
-			if assignErr := s.addRoleAssignments(ctx, updated.ID, req.Assignments); assignErr != nil {
-				return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate, assignErr)
-			}
 			return successOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate)
 		}
 
@@ -400,20 +397,12 @@ func (s *importService) importRole(
 		return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationCreate, svcErr)
 	}
 
-	// A policy names the role it governs, so the policies are replayed once the role exists, and the
-	// assignments after them. A refusal of either undoes the create, so a retry does not meet a
-	// half-imported role.
-	outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
-		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate)
-	if outcome == nil {
-		if assignErr := s.addRoleAssignments(ctx, created.ID, req.Assignments); assignErr != nil {
-			refused := serviceErrorOutcome(resourceTypeRole, created.ID, created.Name, operationCreate, assignErr)
-			outcome = &refused
-		}
-	}
-	if outcome != nil {
+	// A policy names the role it governs, so the policies are replayed once the role exists. A refusal undoes the
+	// create, so a retry does not meet a half-imported role.
+	if outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
+		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
 		if delErr := s.roleService.DeleteRole(ctx, created.ID); delErr != nil {
-			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies or assignments were refused",
+			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies were refused",
 				log.String("roleID", created.ID), log.String("code", delErr.Code))
 		}
 		return *outcome
@@ -518,14 +507,6 @@ func (s *importService) importGroup(
 			if updateErr != nil {
 				return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationUpdate, updateErr)
 			}
-			if len(raw.Members) > 0 {
-				if _, memberErr := s.groupService.AddGroupMembers(ctx, updated.ID, raw.Members); memberErr != nil {
-					return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
-				}
-			}
-			if memberErr := s.reconcileManagedMembers(ctx, updated.ID, raw.Members); memberErr != nil {
-				return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
-			}
 			return successOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate)
 		}
 		if !isNotFoundServiceError(svcErr) {
@@ -537,15 +518,38 @@ func (s *importService) importGroup(
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationCreate, svcErr)
 	}
+	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
+}
+
+// linkGroupMembers adds a group document's members and, in a managed import, reconciles them. It runs after the
+// applications, users and agents the members may name, which is why importGroup leaves them out.
+func (s *importService) linkGroupMembers(
+	ctx context.Context, doc parsedDocument, groupID string,
+) *tidcommon.ServiceError {
+	var raw struct {
+		Members []group.Member `yaml:"members,omitempty"`
+	}
+	if err := doc.Node.Decode(&raw); err != nil {
+		return &tidcommon.InternalServerError
+	}
 	if len(raw.Members) > 0 {
-		if _, memberErr := s.groupService.AddGroupMembers(ctx, grp.ID, raw.Members); memberErr != nil {
-			return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
+		if _, svcErr := s.groupService.AddGroupMembers(ctx, groupID, raw.Members); svcErr != nil {
+			return svcErr
 		}
 	}
-	if memberErr := s.reconcileManagedMembers(ctx, grp.ID, raw.Members); memberErr != nil {
-		return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
+	return s.reconcileManagedMembers(ctx, groupID, raw.Members)
+}
+
+// linkRoleAssignments adds a role document's assignments. It runs after the applications, users, agents and groups
+// the assignments may name, which is why importRole leaves them out.
+func (s *importService) linkRoleAssignments(
+	ctx context.Context, doc parsedDocument, roleID string,
+) *tidcommon.ServiceError {
+	var req roleDeclarativeYAML
+	if err := doc.Node.Decode(&req); err != nil {
+		return &tidcommon.InternalServerError
 	}
-	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
+	return s.addRoleAssignments(ctx, roleID, req.Assignments)
 }
 
 func (s *importService) importResourceServer(
@@ -1007,6 +1011,45 @@ func (s *importService) importUser(
 	}
 
 	return successOutcome(resourceTypeUser, created.ID, "", operationCreate)
+}
+
+// linkedDocument is a group or role document imported without its members or assignments, and the result its
+// outcome was recorded at.
+type linkedDocument struct {
+	doc         parsedDocument
+	resultIndex int
+}
+
+// needsLinking reports whether an imported document is a group or role whose members or assignments are still to be
+// added.
+func needsLinking(doc parsedDocument, outcome ImportItemOutcome, dryRun bool) bool {
+	return !dryRun && outcome.Status == statusSuccess &&
+		(doc.ResourceType == resourceTypeGroup || doc.ResourceType == resourceTypeRole)
+}
+
+// linkGroupsAndRoles adds the members of the imported groups and the assignments of the imported roles, returning
+// how many failed. A failure turns the outcome of the group or role into one but leaves the group or role in place,
+// since a flow imported meanwhile may already assign it. Importing again adds what was refused.
+func (s *importService) linkGroupsAndRoles(
+	ctx context.Context, links []linkedDocument, results []ImportItemOutcome,
+) int {
+	failed := 0
+	for _, link := range links {
+		outcome := results[link.resultIndex]
+		var svcErr *tidcommon.ServiceError
+		if link.doc.ResourceType == resourceTypeGroup {
+			svcErr = s.linkGroupMembers(ctx, link.doc, outcome.ResourceID)
+		} else {
+			svcErr = s.linkRoleAssignments(ctx, link.doc, outcome.ResourceID)
+		}
+		if svcErr == nil {
+			continue
+		}
+		results[link.resultIndex] = serviceErrorOutcome(
+			link.doc.ResourceType, outcome.ResourceID, outcome.ResourceName, outcome.Operation, svcErr)
+		failed++
+	}
+	return failed
 }
 
 // replayMandatingUserSharing replays the role-mandating user shares after the roles, returning how many failed.

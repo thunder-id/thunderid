@@ -730,9 +730,10 @@ func (f *fakeOUService) UpdateOrganizationUnit(
 }
 
 type fakeRoleService struct {
-	created []role.RoleCreationDetail
-	updated []role.RoleUpdateDetail
-	deleted []string
+	created   []role.RoleCreationDetail
+	updated   []role.RoleUpdateDetail
+	deleted   []string
+	deleteErr *tidcommon.ServiceError
 }
 
 func (f *fakeRoleService) CreateRole(
@@ -2134,6 +2135,11 @@ func TestImportResources_GroupMemberFailureReturnsError(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "GRP-4001", resp.Results[0].Code)
+	assert.Equal(t, 0, resp.Summary.Imported)
+	assert.Equal(t, 1, resp.Summary.Failed)
+	// A flow imported before the members may already name the group, so it is kept.
+	assert.Len(t, groupSvc.created, 1)
 }
 
 func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
@@ -3359,16 +3365,22 @@ func TestOrderDocumentsByDependencies(t *testing.T) {
 		{ResourceType: resourceTypeResourceServer, Sequence: 1},
 		{ResourceType: resourceTypeConnection, Sequence: 0},
 		{ResourceType: resourceTypeUser, Sequence: 5},
+		{ResourceType: resourceTypeRole, Sequence: 6},
+		{ResourceType: resourceTypeGroup, Sequence: 7},
 	}
 
 	ordered := orderDocumentsByDependencies(docs)
-	require.Len(t, ordered, 6)
+	require.Len(t, ordered, 8)
 	assert.Equal(t, resourceTypeConnection, ordered[0].ResourceType)
 	assert.Equal(t, resourceTypeResourceServer, ordered[1].ResourceType)
-	assert.Equal(t, resourceTypeFlow, ordered[2].ResourceType)
-	assert.Equal(t, resourceTypeApplication, ordered[3].ResourceType)
-	assert.Equal(t, resourceTypeUser, ordered[4].ResourceType)
-	assert.Equal(t, resourceTypeAgent, ordered[5].ResourceType)
+	// Groups and roles precede the flows that assign them. Their members and assignments are added after the
+	// agents, in a later pass.
+	assert.Equal(t, resourceTypeGroup, ordered[2].ResourceType)
+	assert.Equal(t, resourceTypeRole, ordered[3].ResourceType)
+	assert.Equal(t, resourceTypeFlow, ordered[4].ResourceType)
+	assert.Equal(t, resourceTypeApplication, ordered[5].ResourceType)
+	assert.Equal(t, resourceTypeUser, ordered[6].ResourceType)
+	assert.Equal(t, resourceTypeAgent, ordered[7].ResourceType)
 }
 
 func TestOrderDocumentsByDependencies_ImportsAProjectBeforeItsAuthorizationDetailTypes(t *testing.T) {
@@ -5918,6 +5930,82 @@ func refuseMandates() *fakeSharingService {
 	}}
 }
 
+// ImportGroupMemberOrderTestSuite covers when an import adds a group's members, relative to the resources it creates.
+type ImportGroupMemberOrderTestSuite struct {
+	suite.Suite
+}
+
+func TestImportGroupMemberOrderTestSuite(t *testing.T) {
+	suite.Run(t, new(ImportGroupMemberOrderTestSuite))
+}
+
+// A document that cannot be read again for its members or assignments is refused, not half applied.
+func (s *ImportGroupMemberOrderTestSuite) TestADocumentThatCannotBeReadAgainIsRefused() {
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{}).(*importService)
+	for name, content := range map[string]string{
+		"group": "resource_type: group\nid: group-1\nname: Engineers\nmembers: not-a-list\n",
+		"role":  "resource_type: role\nid: role-1\nname: Viewer\nassignments: not-a-list\n",
+	} {
+		s.Run(name, func() {
+			docs, err := parseDocuments(content)
+			s.Require().NoError(err)
+			s.Require().Len(docs, 1)
+
+			var svcErr *tidcommon.ServiceError
+			if name == "group" {
+				svcErr = svc.linkGroupMembers(context.Background(), docs[0], "group-1")
+			} else {
+				svcErr = svc.linkRoleAssignments(context.Background(), docs[0], "role-1")
+			}
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+		})
+	}
+}
+
+// A group is created before the flows that assign it, but its members name users imported later, so they are added once
+// those exist.
+func (s *ImportGroupMemberOrderTestSuite) TestGroupMembersAreAddedAfterTheUsersTheyName() {
+	var order []string
+	groups := newGroupAdapterMock(s.T())
+	users := newUserAdapterMock(s.T())
+	groups.EXPECT().CreateGroup(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, req group.CreateGroupRequest) (*group.Group, *tidcommon.ServiceError) {
+			order = append(order, "group created")
+			return &group.Group{ID: req.ID, Name: req.Name}, nil
+		})
+	users.EXPECT().CreateUser(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, u *providers.User) (*providers.User, *tidcommon.ServiceError) {
+			order = append(order, "user created")
+			return u, nil
+		})
+	groups.EXPECT().AddGroupMembers(mock.Anything, "group-new", mock.Anything).
+		RunAndReturn(func(context.Context, string, []group.Member) (*group.Group, *tidcommon.ServiceError) {
+			order = append(order, "members added")
+			return &group.Group{}, nil
+		})
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, groups, nil, nil, nil, users, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+	content := strings.Join([]string{
+		"resource_type: user", "id: u1", "type: person", "ouId: ou-1", "attributes:", "  username: u1",
+		"---",
+		"resource_type: group", "id: group-new", "name: Engineers", "ouId: ou-1", "members:", "  - id: u1",
+		"    type: user",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: content, Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	s.Require().Nil(err)
+	s.Equal(2, resp.Summary.Imported)
+	s.Equal([]string{"group created", "user created", "members added"}, order)
+}
+
 // ImportUserMandatedRolesTestSuite covers importing a user whose share mandates roles.
 type ImportUserMandatedRolesTestSuite struct {
 	suite.Suite
@@ -5970,9 +6058,9 @@ func (s *ImportUserMandatedRolesTestSuite) TestImportUserMandatingARoleInTheSame
 	s.Assert().Empty(userSvc.deleted, "the user survives")
 	s.Assert().Empty(roleSvc.deleted)
 	s.Require().Len(sharingSvc.calls, 3)
-	s.Assert().Equal(user.UserSharingType, sharingSvc.calls[0].resourceType)
-	s.Assert().Empty(mandatedIn(sharingSvc.calls[0]), "the user's reach is replayed first, without its roles")
-	s.Assert().Equal(role.RoleSharingType, sharingSvc.calls[1].resourceType)
+	s.Assert().Equal(role.RoleSharingType, sharingSvc.calls[0].resourceType, "the role is imported before the user")
+	s.Assert().Equal(user.UserSharingType, sharingSvc.calls[1].resourceType)
+	s.Assert().Empty(mandatedIn(sharingSvc.calls[1]), "the user's reach is replayed first, without its roles")
 	s.Assert().Equal(user.UserSharingType, sharingSvc.calls[2].resourceType)
 	s.Assert().Equal(map[string][]string{"ou-child": {"role-1"}}, mandates)
 }
@@ -7158,8 +7246,21 @@ func (s *ImportRoleSharingTestSuite) TestRefusedPoliciesUndoTheCreate() {
 	s.Equal([]string{"role-1"}, s.roleSvc.deleted)
 }
 
-// A refused assignment undoes the create too, for the same reason a refused policy does.
-func (s *ImportRoleSharingTestSuite) TestRefusedAssignmentsUndoTheCreate() {
+// A role whose sharing policies were refused is reported failed even when it cannot be removed.
+func (s *ImportRoleSharingTestSuite) TestRefusedPoliciesFailTheRoleEvenWhenItCannotBeRemoved() {
+	s.roleSvc.deleteErr = &tidcommon.InternalServerError
+	s.sharingSvc.failure = &sharing.PolicyReplayError{
+		Index: 0, InitiatingOUID: "ou-owner", Err: &sharing.ErrorInvalidRequestFormat}
+
+	resp, _ := s.svc.ImportResources(context.Background(), &ImportRequest{Content: roleDocWithPolicies("role-new")})
+
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal([]string{"role-1"}, s.roleSvc.deleted)
+}
+
+// A refused assignment fails the role but keeps it: a flow imported before the assignments may already assign it.
+func (s *ImportRoleSharingTestSuite) TestRefusedAssignmentsFailTheRoleAndKeepIt() {
 	s.roleAssignmentSvc.assignmentErr = &tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType, Code: "ROL-1026",
 		Error: tidcommon.I18nMessage{DefaultValue: "Role not shared with the organization unit"},
@@ -7169,7 +7270,8 @@ func (s *ImportRoleSharingTestSuite) TestRefusedAssignmentsUndoTheCreate() {
 
 	s.Require().Len(resp.Results, 1)
 	s.Equal(statusFailed, resp.Results[0].Status)
-	s.Equal([]string{"role-1"}, s.roleSvc.deleted)
+	s.Equal("ROL-1026", resp.Results[0].Code)
+	s.Empty(s.roleSvc.deleted, "a flow imported meanwhile may assign the role, so it is kept")
 }
 
 // An update replays the document's policies against the role as stored, and adds its assignments as

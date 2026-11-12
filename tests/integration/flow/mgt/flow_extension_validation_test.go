@@ -4,10 +4,8 @@
 package mgt
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -40,8 +38,7 @@ type flowExtError struct {
 // connection or one that does not exist (AC1.5), an inline endpoint, malformed property values and
 // runtime-data keys outside the allow list.
 type FlowExtensionValidationTestSuite struct {
-	suite.Suite
-	ouID         string
+	flowSaveSuite
 	connectionID string
 }
 
@@ -73,49 +70,6 @@ func (s *FlowExtensionValidationTestSuite) TearDownSuite() {
 			s.T().Logf("Failed to delete organization unit during teardown: %v", err)
 		}
 	}
-}
-
-func (s *FlowExtensionValidationTestSuite) request(method, path string, body interface{}) (int, []byte) {
-	s.T().Helper()
-	var reader io.Reader
-	if body != nil {
-		payload, err := json.Marshal(body)
-		s.Require().NoError(err, "Failed to marshal the request body")
-		reader = bytes.NewReader(payload)
-	}
-	req, err := http.NewRequest(method, testServerURL+path, reader)
-	s.Require().NoError(err, "Failed to build %s %s", method, path)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := testutils.GetHTTPClient().Do(req)
-	s.Require().NoError(err, "%s %s failed", method, path)
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
-	s.Require().NoError(err, "Failed to read the %s %s response", method, path)
-	return resp.StatusCode, raw
-}
-
-// createFlow saves flow, deletes it when the test ends if it was saved, and returns the status, the
-// body and the flow's ID.
-func (s *FlowExtensionValidationTestSuite) createFlow(flow testutils.Flow) (int, []byte, string) {
-	s.T().Helper()
-	if flow.OUID == "" {
-		flow.OUID = s.ouID
-	}
-	status, body := s.request(http.MethodPost, flowsEndpoint, flow)
-	var created struct {
-		ID string `json:"id"`
-	}
-	_ = json.Unmarshal(body, &created)
-	if created.ID != "" {
-		s.T().Cleanup(func() {
-			if err := testutils.DeleteFlow(created.ID); err != nil {
-				s.T().Logf("Failed to delete flow %s: %v", created.ID, err)
-			}
-		})
-	}
-	return status, body, created.ID
 }
 
 // assertRefused checks that status and body are the invalid executor configuration error, naming

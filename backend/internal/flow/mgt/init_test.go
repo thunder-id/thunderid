@@ -1040,7 +1040,7 @@ func (s *InitTestSuite) TestInitializeStore_ModeNormalization() {
 
 func (s *InitTestSuite) TestInitialize_RefusesANilEventBus() {
 	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, false, nil, nil, nil, nil)
+		nil, nil, nil, false, nil, nil, nil, nil)
 
 	s.ErrorIs(err, errNilEventBus)
 	s.Nil(service)

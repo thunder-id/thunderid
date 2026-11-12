@@ -5402,6 +5402,10 @@ const translations = {
     'errors.FLM-1027': 'The organization unit for this flow does not exist.',
     'errors.FLM-1028': 'The organization unit of a flow cannot be changed once the flow is created.',
     'errors.FLM-1029': 'A flow needs an organization unit.',
+    'errors.FLM-1049':
+      'Provisioning step {{nodeID}} assigns groups that do not exist: {{groupIDs}}. Remove them from Assign group, then save again.',
+    'errors.FLM-1050':
+      'Provisioning step {{nodeID}} assigns roles that do not exist: {{roleIDs}}. Remove them from Assign role, then save again.',
   },
 
   // ============================================================================

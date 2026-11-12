@@ -51,6 +51,8 @@ type RoleServiceInterface interface {
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
 	GetRoleInOU(ctx context.Context, id, ouID string) (*RoleWithPermissions, *tidcommon.ServiceError)
+	// GetRolesByIDs reads the roles with the given IDs, keyed by ID. An ID naming no role is left out.
+	GetRolesByIDs(ctx context.Context, ids []string) (map[string]*Role, *tidcommon.ServiceError)
 	GetRolesByNames(ctx context.Context, names []string, ouID string) (map[string][]*Role, *tidcommon.ServiceError)
 	GetRolesByPermission(ctx context.Context, resourceServerID, permission string) ([]Role, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
@@ -662,6 +664,23 @@ func (rs *roleService) sharedRoleRefusal(ctx context.Context, id, ownerOUID stri
 		return &ErrorSharedRoleReadOnly
 	}
 	return refusal
+}
+
+// GetRolesByIDs retrieves the roles with the given IDs in one read, keyed by ID. An ID naming no role is left out.
+func (rs *roleService) GetRolesByIDs(
+	ctx context.Context, ids []string,
+) (map[string]*Role, *tidcommon.ServiceError) {
+	roles, err := rs.roleStore.GetRolesByIDs(ctx, utils.UniqueStrings(ids))
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to get roles by IDs", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	result := make(map[string]*Role, len(roles))
+	for i := range roles {
+		result[roles[i].ID] = &roles[i]
+	}
+	return result, nil
 }
 
 // GetRolesByNames retrieves the roles with the given names that an organization unit owns or has shared

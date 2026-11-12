@@ -603,6 +603,8 @@ packages:
       notificationTemplateAdapter:
       senderAdapter:
       translationAdapter:
+      groupAdapter:
+      userAdapter:
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:
