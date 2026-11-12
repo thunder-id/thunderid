@@ -95,17 +95,29 @@ var (
 	}
 
 	// queryUpsertParticipant records an application as a participant of a session under an organization
-	// unit, refreshing LAST_ACTIVE_AT and the current-grant TFID (but preserving FIRST_JOINED_AT) when the
-	// application has already joined under that unit. TFID moves to the latest grant so logout revokes the
-	// most recent family; another unit is another row with its own family.
-	// The ON CONFLICT ... DO UPDATE form is valid in both PostgreSQL and SQLite.
+	// unit, refreshing LAST_ACTIVE_AT (but preserving FIRST_JOINED_AT and TFID) when the application has
+	// already joined under that unit, and returns the TFID the participant holds. Keeping TFID puts every
+	// grant the application receives in the session into one token family, so logout revokes them all;
+	// another unit is another row with its own family. An empty TFID is filled by the next join.
+	// The ON CONFLICT ... DO UPDATE ... RETURNING form is valid in both PostgreSQL and SQLite.
 	queryUpsertParticipant = model.DBQuery{
 		ID: "SEQ-SESS-09",
 		Query: `INSERT INTO "SESSION_PARTICIPANT" ` +
 			`(SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID) ` +
 			`VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
 			`ON CONFLICT (SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID) DO UPDATE SET ` +
-			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, TFID = excluded.TFID`,
+			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, ` +
+			`TFID = COALESCE(NULLIF("SESSION_PARTICIPANT".TFID, ''), excluded.TFID) ` +
+			`RETURNING TFID`,
+	}
+
+	// queryReplaceParticipantTokenFamily moves a participant to a new token family while it still holds the
+	// expected one, and returns the TFID it holds afterwards. The guard makes concurrent joins that replace
+	// the same family converge on the first replacement.
+	queryReplaceParticipantTokenFamily = model.DBQuery{
+		ID: "SEQ-SESS-19",
+		Query: `UPDATE "SESSION_PARTICIPANT" SET TFID = CASE WHEN TFID = $1 THEN $2 ELSE TFID END ` +
+			`WHERE SESSION_ID = $3 AND APP_ID = $4 AND OU_ID = $5 AND DEPLOYMENT_ID = $6 RETURNING TFID`,
 	}
 
 	// queryListParticipantsBySessionID returns the applications that have joined a session, oldest

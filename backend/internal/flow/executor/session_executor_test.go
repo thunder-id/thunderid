@@ -435,7 +435,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PassesClientInfo() {
 			AuthUser: json.RawMessage(
 				`{"default":{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"}}}`),
 			ContextVersion: 1,
-		}, nil)
+		}, "tfid-1", nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 	ctx := ssoLoadCtx()
 	ctx.Context = sysContext.WithRequestMetadata(ctx.Context,
@@ -468,7 +468,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad() {
 			},
 			AuthUser:       json.RawMessage(snapAuthUser),
 			ContextVersion: 1,
-		}, nil)
+		}, "tfid-1", nil)
 	// The load path rehydrates the subject from the snapshot and never calls the provider.
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
@@ -501,7 +501,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PassesForwardedReadsToService
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
 		return in.Session == forwardedSession && in.Context == forwardedContext
-	})).Return(forwardedSession, forwardedContext, nil)
+	})).Return(forwardedSession, forwardedContext, "tfid-1", nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	ctx := ssoLoadCtx()
@@ -524,7 +524,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_ForwardsNothingWhenAbsent() {
 	})).Return(
 		&session.Session{SessionID: "sess-1", HandleID: "handle-abc"},
 		&session.SessionContext{SessionID: "sess-1", CheckpointID: "session", AuthUser: json.RawMessage("{}")},
-		nil)
+		"tfid-1", nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	ctx := ssoLoadCtx()
@@ -540,7 +540,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_ForwardsNothingWhenAbsent() {
 func (suite *SessionExecutorTestSuite) TestSSOLoad_ErrorFailsFlow() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).
-		Return(nil, nil, errors.New("resolved session no longer exists"))
+		Return(nil, nil, "", errors.New("resolved session no longer exists"))
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	_, err := exec.Execute(ssoLoadCtx())
@@ -555,7 +555,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_RehydrateErrorFailsFlow() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).Return(
 		&session.Session{SessionID: "sess-1", HandleID: "handle-abc"},
-		&session.SessionContext{SessionID: "sess-1", AuthUser: json.RawMessage("not-json")}, nil)
+		&session.SessionContext{SessionID: "sess-1", AuthUser: json.RawMessage("not-json")}, "tfid-1", nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	_, err := exec.Execute(ssoLoadCtx())
@@ -667,7 +667,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PublishesSessionIDFromSession
 			},
 			AuthUser:       json.RawMessage(snapAuthUser),
 			ContextVersion: 1,
-		}, nil)
+		}, "tfid-1", nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	resp, err := exec.Execute(ssoLoadCtx())
@@ -703,4 +703,136 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SkippedClearsCarriedSession
 	published, present := resp.RuntimeData[common.RuntimeKeySSOSessionID]
 	suite.True(present, "the key must be republished so the merge overwrites the carried value")
 	suite.Empty(published)
+}
+
+// testGeneratedTokenFamilyID is the token family id stubUUIDGenerator generates.
+const testGeneratedTokenFamilyID = "tfid-generated"
+
+// stubUUIDGenerator stands in for the UUID source, generating testGeneratedTokenFamilyID.
+func stubUUIDGenerator() (string, error) {
+	return testGeneratedTokenFamilyID, nil
+}
+
+// failingUUIDGenerator stands in for a UUID source that cannot produce an id.
+func failingUUIDGenerator() (string, error) {
+	return "", errors.New("entropy unavailable")
+}
+
+// TestFreshSave_PublishesTheParticipantsTokenFamily covers a rejoin: the executor offers a generated
+// token family, and the grant carries the one the participant already holds, as the service reports it.
+func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesTheParticipantsTokenFamily() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-abc", TokenFamilyID: "tfid-held"})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	exec.uuidGenerator = stubUUIDGenerator
+
+	resp, err := exec.Execute(freshCtx())
+	suite.Require().NoError(err)
+
+	suite.Equal(testGeneratedTokenFamilyID, in.TokenFamilyID, "the service is offered the generated family")
+	suite.Equal("tfid-held", resp.RuntimeData[common.RuntimeKeyTokenFamilyID])
+}
+
+// TestFreshSave_SaveErrorKeepsTheGeneratedTokenFamily covers the degraded save: the grant is still issued,
+// carrying the family generated for it.
+func (suite *SessionExecutorTestSuite) TestFreshSave_SaveErrorKeepsTheGeneratedTokenFamily() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	sso.EXPECT().SaveCheckpoint(mock.Anything, mock.Anything).
+		Return(session.SaveCheckpointResult{}, errors.New("db down"))
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	exec.uuidGenerator = stubUUIDGenerator
+
+	resp, err := exec.Execute(freshCtx())
+
+	suite.Require().NoError(err)
+	suite.Equal(testGeneratedTokenFamilyID, resp.RuntimeData[common.RuntimeKeyTokenFamilyID])
+}
+
+// TestFreshSave_OffersAFreshTokenFamilyOnEachJoin covers a later checkpoint of the same execution: it offers a
+// generated family rather than the one an earlier Session node published, so a participant under another
+// organization unit gets a family of its own. The grant carries the family the service reports.
+func (suite *SessionExecutorTestSuite) TestFreshSave_OffersAFreshTokenFamilyOnEachJoin() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-abc", TokenFamilyID: "tfid-held"})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	exec.uuidGenerator = stubUUIDGenerator
+	ctx := freshCtx()
+	ctx.RuntimeData[common.RuntimeKeyTokenFamilyID] = "tfid-earlier"
+
+	resp, err := exec.Execute(ctx)
+	suite.Require().NoError(err)
+
+	suite.Equal(testGeneratedTokenFamilyID, in.TokenFamilyID)
+	suite.Equal("tfid-held", resp.RuntimeData[common.RuntimeKeyTokenFamilyID])
+}
+
+// TestFreshSave_SaveErrorKeepsTheExecutionsTokenFamily covers a later checkpoint whose save fails: the grant keeps
+// the family an earlier Session node published rather than the unrecorded one this join offered. The engine
+// merges RuntimeData by overwriting, so leaving the key unset keeps the earlier family.
+func (suite *SessionExecutorTestSuite) TestFreshSave_SaveErrorKeepsTheExecutionsTokenFamily() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	sso.EXPECT().SaveCheckpoint(mock.Anything, mock.Anything).
+		Return(session.SaveCheckpointResult{}, errors.New("db down"))
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	exec.uuidGenerator = stubUUIDGenerator
+	ctx := freshCtx()
+	ctx.RuntimeData[common.RuntimeKeyTokenFamilyID] = "tfid-earlier"
+
+	resp, err := exec.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyTokenFamilyID)
+}
+
+// TestFreshSave_TokenFamilyGenerationErrorFailsFlow covers a grant that could get no token family: unlike
+// a save failure, it fails the flow, since the grant could not be revoked with the session.
+func (suite *SessionExecutorTestSuite) TestFreshSave_TokenFamilyGenerationErrorFailsFlow() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	exec.uuidGenerator = failingUUIDGenerator
+
+	_, err := exec.Execute(freshCtx())
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "failed to generate token family id")
+	sso.AssertNotCalled(suite.T(), "SaveCheckpoint", mock.Anything, mock.Anything)
+}
+
+// TestSSOLoad_PublishesTheParticipantsTokenFamily covers a reuse: the grant carries the family the service
+// reports for the participant, over the generated one and over any copy replayed from the snapshot.
+func (suite *SessionExecutorTestSuite) TestSSOLoad_PublishesTheParticipantsTokenFamily() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
+		return in.TokenFamilyID == testGeneratedTokenFamilyID
+	})).Return(
+		&session.Session{SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc"},
+		&session.SessionContext{
+			SessionID:      "sess-1",
+			RuntimeData:    map[string]string{common.RuntimeKeyTokenFamilyID: "tfid-stale"},
+			AuthUser:       json.RawMessage("{}"),
+			ContextVersion: 1,
+		}, "tfid-held", nil)
+	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
+	exec.uuidGenerator = stubUUIDGenerator
+
+	resp, err := exec.Execute(ssoLoadCtx())
+	suite.Require().NoError(err)
+
+	suite.Equal("tfid-held", resp.RuntimeData[common.RuntimeKeyTokenFamilyID])
+}
+
+// TestSSOLoad_TokenFamilyGenerationErrorFailsFlow covers a reuse that could get no token family: the load
+// is not attempted and the flow fails.
+func (suite *SessionExecutorTestSuite) TestSSOLoad_TokenFamilyGenerationErrorFailsFlow() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
+	exec.uuidGenerator = failingUUIDGenerator
+
+	_, err := exec.Execute(ssoLoadCtx())
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "failed to generate token family id")
+	sso.AssertNotCalled(suite.T(), "LoadCheckpoint", mock.Anything, mock.Anything)
 }

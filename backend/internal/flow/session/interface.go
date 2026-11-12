@@ -47,9 +47,14 @@ type sessionStore interface {
 	// DeleteSession removes the session row itself and reports whether a row was removed.
 	DeleteSession(ctx context.Context, sessionID string) (bool, error)
 
-	// Record inserts the participant, or refreshes its LAST_ACTIVE_AT (preserving FIRST_JOINED_AT)
-	// when the application has already joined the session under the same organization unit.
-	Record(ctx context.Context, p Participant) error
+	// Record inserts the participant, or refreshes its LAST_ACTIVE_AT (preserving FIRST_JOINED_AT and the
+	// token family) when the application has already joined the session under the same organization unit.
+	// It returns the token family id the participant holds: the existing one on a rejoin, else
+	// p.TokenFamilyID.
+	Record(ctx context.Context, p Participant) (string, error)
+	// ReplaceTokenFamily moves the participant identified by p to p.TokenFamilyID while it still holds
+	// currentTokenFamilyID, and returns the token family id it holds afterwards.
+	ReplaceTokenFamily(ctx context.Context, p Participant, currentTokenFamilyID string) (string, error)
 	// ListBySessionID returns the applications that have joined the session, oldest first.
 	ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error)
 	// ListBySessionIDs returns the participants of all the given sessions, each session's

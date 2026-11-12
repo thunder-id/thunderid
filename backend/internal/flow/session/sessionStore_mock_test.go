@@ -893,20 +893,29 @@ func (_c *sessionStoreMock_ListBySubject_Call) RunAndReturn(run func(ctx context
 }
 
 // Record provides a mock function for the type sessionStoreMock
-func (_mock *sessionStoreMock) Record(ctx context.Context, p Participant) error {
+func (_mock *sessionStoreMock) Record(ctx context.Context, p Participant) (string, error) {
 	ret := _mock.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Record")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, Participant) error); ok {
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Participant) (string, error)); ok {
+		return returnFunc(ctx, p)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Participant) string); ok {
 		r0 = returnFunc(ctx, p)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(string)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, Participant) error); ok {
+		r1 = returnFunc(ctx, p)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // sessionStoreMock_Record_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Record'
@@ -939,12 +948,84 @@ func (_c *sessionStoreMock_Record_Call) Run(run func(ctx context.Context, p Part
 	return _c
 }
 
-func (_c *sessionStoreMock_Record_Call) Return(err error) *sessionStoreMock_Record_Call {
-	_c.Call.Return(err)
+func (_c *sessionStoreMock_Record_Call) Return(s string, err error) *sessionStoreMock_Record_Call {
+	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *sessionStoreMock_Record_Call) RunAndReturn(run func(ctx context.Context, p Participant) error) *sessionStoreMock_Record_Call {
+func (_c *sessionStoreMock_Record_Call) RunAndReturn(run func(ctx context.Context, p Participant) (string, error)) *sessionStoreMock_Record_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReplaceTokenFamily provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ReplaceTokenFamily(ctx context.Context, p Participant, currentTokenFamilyID string) (string, error) {
+	ret := _mock.Called(ctx, p, currentTokenFamilyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplaceTokenFamily")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Participant, string) (string, error)); ok {
+		return returnFunc(ctx, p, currentTokenFamilyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Participant, string) string); ok {
+		r0 = returnFunc(ctx, p, currentTokenFamilyID)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, Participant, string) error); ok {
+		r1 = returnFunc(ctx, p, currentTokenFamilyID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ReplaceTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplaceTokenFamily'
+type sessionStoreMock_ReplaceTokenFamily_Call struct {
+	*mock.Call
+}
+
+// ReplaceTokenFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p Participant
+//   - currentTokenFamilyID string
+func (_e *sessionStoreMock_Expecter) ReplaceTokenFamily(ctx any, p any, currentTokenFamilyID any) *sessionStoreMock_ReplaceTokenFamily_Call {
+	return &sessionStoreMock_ReplaceTokenFamily_Call{Call: _e.mock.On("ReplaceTokenFamily", ctx, p, currentTokenFamilyID)}
+}
+
+func (_c *sessionStoreMock_ReplaceTokenFamily_Call) Run(run func(ctx context.Context, p Participant, currentTokenFamilyID string)) *sessionStoreMock_ReplaceTokenFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 Participant
+		if args[1] != nil {
+			arg1 = args[1].(Participant)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ReplaceTokenFamily_Call) Return(s string, err error) *sessionStoreMock_ReplaceTokenFamily_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ReplaceTokenFamily_Call) RunAndReturn(run func(ctx context.Context, p Participant, currentTokenFamilyID string) (string, error)) *sessionStoreMock_ReplaceTokenFamily_Call {
 	_c.Call.Return(run)
 	return _c
 }

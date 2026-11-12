@@ -107,10 +107,10 @@ type Participant struct {
 	AppID string
 	// OUID is the organization unit the application signed in under, or empty when the sign-in had none.
 	OUID string
-	// TokenFamilyID is the token family id (tfid) minted for this application's most recent grant in
-	// the session. It links the session to the grant's tokens so logout can revoke the whole family.
-	// Refreshed on each re-authorization (latest grant wins); empty for participants recorded before
-	// tfid was introduced.
+	// TokenFamilyID is the token family id (tfid) shared by every grant the application receives in the
+	// session under this organization unit. It links the session to the grants' tokens so logout can
+	// revoke the whole family. The first grant sets it and later grants keep it, unless it has been
+	// revoked, when the next grant replaces it. Empty for participants recorded before tfid was introduced.
 	TokenFamilyID string
 	// FirstJoinedAt is when the application first joined the session (write-once).
 	FirstJoinedAt time.Time
