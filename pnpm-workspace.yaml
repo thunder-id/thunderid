@@ -33,6 +33,7 @@ catalog:
   '@rolldown/plugin-babel': '0.2.3'
   '@tanstack/react-query': 5.90.5
   '@tanstack/react-query-devtools': 5.90.2
+  '@tanstack/react-virtual': 3.14.22
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
@@ -98,6 +99,11 @@ overrides:
   ajv-formats>ajv: 8.18.0
   flatted: 3.4.2
   vite: 'catalog:'
+  # JUSTIFICATION: dayjs is a peer of @wso2/oxygen-ui and @mui/x-date-pickers. The apps resolve it from
+  # the catalog while the packages get it as an auto-installed peer, and when the two versions differ
+  # pnpm installs a second copy of each, so both copies end up in the console bundle. Pinning
+  # dayjs to the catalog version keeps a single copy.
+  dayjs: 'catalog:'
   # JUSTIFICATION: Fixes GHSA-fx2h-pf6j-xcff — vite `server.fs.deny` bypass on Windows alternate paths.
   vite@>=8.0.0 <=8.0.15: '>=8.0.16'
   # JUSTIFICATION: Fixes GHSA-g2v6-rqmx-r4w6, XSS via a missing carriage return in

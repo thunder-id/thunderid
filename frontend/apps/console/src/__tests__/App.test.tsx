@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor} from '@testing-library/react';
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
 vi.mock('@thunderid/react-router', () => ({
@@ -145,6 +145,17 @@ vi.mock('../layouts/FullScreenLayout', async () => {
 });
 
 describe('App', () => {
+  // App loads its feature packages lazily, so the first route to reach one triggers its import.
+  // The mocks of these packages spread the real package, which takes longer to load than a test
+  // waits for a page. Load them up front, as a static import would.
+  beforeAll(async () => {
+    await Promise.all([
+      import('@thunderid/configure-applications'),
+      import('@thunderid/configure-design'),
+      import('@thunderid/configure-groups'),
+    ]);
+  }, 30000);
+
   afterEach(() => {
     window.history.pushState({}, '', '/');
   });
