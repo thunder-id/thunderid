@@ -21,6 +21,10 @@ vi.mock('@/api/useGetUserType', () => ({
   default: (id?: string) => mockUseGetUserType(id),
 }));
 
+vi.mock('@/api/useGetAttributeVerificationFlow', () => ({
+  default: () => ({data: 'default-admin-attribute-verification-flow'}),
+}));
+
 vi.mock('@/utils/renderSchemaField', () => ({
   default: (
     fieldName: string,
@@ -29,6 +33,7 @@ vi.mock('@/utils/renderSchemaField', () => ({
     _errors: unknown,
     _resolveDisplayName: unknown,
     labelSuffix?: ReactNode,
+    endAdornment?: ReactNode,
   ) => (
     <div key={fieldName} data-testid={`field-${fieldName}`}>
       {labelSuffix}
@@ -43,6 +48,7 @@ vi.mock('@/utils/renderSchemaField', () => ({
           />
         )}
       />
+      {endAdornment}
     </div>
   ),
 }));
@@ -271,10 +277,71 @@ describe('EditUserAttributes', () => {
       expect(within(field('username')).queryByText(/Verified|Unverified/)).not.toBeInTheDocument();
     });
 
-    it('offers no action that starts verification', () => {
+    it('offers a verification link beside the unverified email only', () => {
       render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
 
-      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(
+        within(field('workEmail')).getByRole('button', {name: 'Send verification link for Work Email'}),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('button', {name: /^Send verification link/})).toHaveLength(1);
+    });
+
+    it('disables the verification link for a suspended user', () => {
+      render(
+        <EditUserAttributes
+          user={{...contactUser, status: {value: 'SUSPENDED'}}}
+          editedUser={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(
+        within(field('workEmail')).getByRole('button', {name: 'Send verification link for Work Email'}),
+      ).toBeDisabled();
+    });
+
+    it('hides the verification link while the email holds an edited value', async () => {
+      const user = userEvent.setup();
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      await user.type(screen.getByLabelText('workEmail-input'), 'x');
+
+      expect(screen.queryByRole('button', {name: /^Send verification link/})).not.toBeInTheDocument();
+      expect(within(field('workEmail')).getByText('Save to verify')).toBeInTheDocument();
+    });
+
+    it('asks to save an edited verified email before verifying it', async () => {
+      const user = userEvent.setup();
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(within(field('email')).queryByText('Save to verify')).not.toBeInTheDocument();
+      await user.type(screen.getByLabelText('email-input'), 'x');
+
+      expect(within(field('email')).getByText('Save to verify')).toBeInTheDocument();
+    });
+
+    it('shows no save hint for a cleared email, an edited mobile or a suspended user', async () => {
+      const user = userEvent.setup();
+      const {unmount} = render(
+        <EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      await user.clear(screen.getByLabelText('workEmail-input'));
+      await user.type(screen.getByLabelText('mobile-input'), '1');
+
+      expect(screen.queryByText('Save to verify')).not.toBeInTheDocument();
+      unmount();
+
+      render(
+        <EditUserAttributes
+          user={{...contactUser, status: {value: 'SUSPENDED'}}}
+          editedUser={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+      await user.type(screen.getByLabelText('workEmail-input'), 'x');
+
+      expect(screen.queryByText('Save to verify')).not.toBeInTheDocument();
     });
 
     it('hides the status while a contact holds an edited value, keeps the input, and restores it on revert', async () => {

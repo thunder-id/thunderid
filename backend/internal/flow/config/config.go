@@ -36,7 +36,8 @@ type FlowTypeConfig struct {
 // FlowSectionConfig is the value of the server-config "flow" section. It carries per-type default
 // handles and context TTLs. A zero ExpirySeconds falls back to the built-in default for that type.
 // The lifecycle entries name the suspend, unsuspend and unlock administration flows. Applications
-// never lock, so have no unlock.
+// never lock, so have no unlock. AdminAttributeVerificationFlow names the administrator-initiated flow
+// the Console starts to send a user a verification link.
 type FlowSectionConfig struct {
 	AuthFlow               FlowTypeConfig `json:"authFlow"`
 	RegistrationFlow       FlowTypeConfig `json:"registrationFlow"`
@@ -47,6 +48,8 @@ type FlowSectionConfig struct {
 	AdminInitiatedFlow     FlowTypeConfig `json:"adminInitiatedFlow"`
 	SecretRegenerationFlow FlowTypeConfig `json:"secretRegenerationFlow"`
 	AgentOnboardingFlow    FlowTypeConfig `json:"agentOnboardingFlow"`
+
+	AdminAttributeVerificationFlow FlowTypeConfig `json:"adminAttributeVerificationFlow"`
 
 	UserUnlockFlow           FlowTypeConfig `json:"userUnlockFlow"`
 	UserSuspendFlow          FlowTypeConfig `json:"userSuspendFlow"`

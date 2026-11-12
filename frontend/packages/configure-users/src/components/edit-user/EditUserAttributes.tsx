@@ -9,9 +9,11 @@ import {useEffect, useRef, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import AttributesSummarySection from './AttributesSummarySection';
+import SendVerificationLinkButton from './SendVerificationLinkButton';
 import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
+import UserConstants from '../../constants/user-constants';
 import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
 import orderSchemaAttributes from '../../utils/orderSchemaAttributes';
 import renderSchemaField from '../../utils/renderSchemaField';
@@ -94,7 +96,14 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
         {schemaFields.length > 0 ? (
           schemaFields.map(([fieldName, fieldDef]) => {
             // The status is for the stored value, so it hides while the field holds an edited one.
-            const showStatus = verifiable.has(fieldName) && watchedValues[fieldName] === user.attributes?.[fieldName];
+            const value = watchedValues[fieldName];
+            const edited = value !== user.attributes?.[fieldName];
+            const showStatus = verifiable.has(fieldName) && !edited;
+            // An unverified value can be sent a link, and a non-blank edited one once saved.
+            const sendable = edited ? typeof value === 'string' && value.trim() !== '' : !verifiable.get(fieldName);
+            const resolvedLabel = fieldDef.displayName ? resolveDisplayName(fieldDef.displayName) : '';
+            const showAction =
+              verifiable.has(fieldName) && UserConstants.ADMIN_VERIFIABLE_TYPES.includes(fieldDef.type) && sendable;
 
             return renderSchemaField(
               fieldName,
@@ -103,6 +112,15 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
               errors,
               resolveDisplayName,
               showStatus ? <VerificationStatus verifiedAt={verifiable.get(fieldName)} /> : undefined,
+              showAction ? (
+                <SendVerificationLinkButton
+                  userId={user.id}
+                  attribute={fieldName}
+                  label={resolvedLabel !== '' ? resolvedLabel : fieldName}
+                  accessStatus={user.status?.value}
+                  edited={edited}
+                />
+              ) : undefined,
             );
           })
         ) : (

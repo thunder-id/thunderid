@@ -755,6 +755,15 @@ const translations = {
     'verification.verified': 'Verified',
     'verification.unverified': 'Unverified',
     'verification.verifiedAt': 'Verified on {{date}}',
+    'verification.verify': 'Verify',
+    'verification.send': 'Send verification link',
+    'verification.sent': 'Verification link sent to {{destination}}.',
+    'verification.sentGeneric': 'Verification link sent.',
+    'verification.sendError': 'Could not send the verification link. Please try again.',
+    'verification.sendFor': 'Send verification link for {{attribute}}',
+    'verification.sendSuspended': 'Unsuspend the user to send a verification link.',
+    'verification.sendExpired': "This user's account has expired, so a verification link cannot be sent.",
+    'verification.saveToVerify': 'Save to verify',
 
     // Update credentials
     'updateCredentials.button': 'Update credentials',
@@ -763,6 +772,9 @@ const translations = {
     'updateCredentials.error': 'Failed to update credentials. Please try again.',
 
     // Backend error code translations (per user service error envelope).
+    // Raised by the verification flow; scoped here so other flows keep their own copy.
+    'errors.FET-1038': 'Email provider is not configured.',
+    'errors.FET-1114': 'This user is suspended. Unsuspend the user and try again.',
     'errors.USR-1003': 'This user no longer exists. It may have already been deleted.',
     'errors.USR-1005': 'The organization unit for this user no longer exists. Refresh and try again.',
     'errors.USR-1014': 'A user with the same unique attribute value already exists.',

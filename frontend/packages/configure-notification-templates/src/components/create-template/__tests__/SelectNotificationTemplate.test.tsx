@@ -27,6 +27,21 @@ describe('SelectNotificationTemplate', () => {
     expect(screen.getByTestId('template-card-sms-otp')).toBeInTheDocument();
   });
 
+  it('offers the attribute verification samples for email only', async () => {
+    const user = userEvent.setup();
+    const {unmount} = render(<SelectNotificationTemplate channel="email" selected={null} onSelect={vi.fn()} />);
+
+    await user.type(screen.getByPlaceholderText('Search templates...'), 'email verification');
+
+    expect(screen.getByRole('button', {name: /^Self Email Verification/})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /^Administrator Initiated Email Verification/})).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /^Email OTP Verification/})).not.toBeInTheDocument();
+    unmount();
+
+    render(<SelectNotificationTemplate channel="sms" selected={null} onSelect={vi.fn()} />);
+    expect(screen.queryByRole('button', {name: /Email Verification/})).not.toBeInTheDocument();
+  });
+
   it('reports a blank selection', async () => {
     const onSelect = vi.fn<(selection: TemplateSelection) => void>();
     const user = userEvent.setup();

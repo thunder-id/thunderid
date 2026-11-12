@@ -89,7 +89,19 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 
 For a user that is not declarative (read-only), each top-level `email` or `mobile` attribute that holds a value and is not a credential shows a **Verified** or **Unverified** label on the user's **General** and **Attributes** tabs. Hover over **Verified** to see when the value was verified. The label describes the stored value, so the **Attributes** tab hides it while you edit that field. See [Attribute Types](../user-type-reference#attribute-types).
 
-The Console only shows verification status. In the <ProductName /> SDK profile, a signed-in user selects **Verify** beside a saved email address or mobile number to start the self-service flow. See [Build a Flow](../../flows/build-a-flow#go-further).
+To ask a user to verify an unverified email address, the Console starts the flow named by `adminAttributeVerificationFlow` in the `flow` server configuration section, the shipped `default-admin-attribute-verification-flow` by default. That flow's **Send Email** step ships without an email provider, so first select your provider on that step and save the flow. Edit the flow to change the email or the steps, or point the setting at your own flow; see [Build a Flow](../../flows/build-a-flow#go-further) and [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+Then open the user's **Attributes** tab and select **Verify** in that email field. <ProductName /> emails the user a link, and the address shows **Verified** once the user opens the link and confirms. You can send a link only when:
+
+- You can update users and read the server configuration.
+- A flow is set for `adminAttributeVerificationFlow`.
+- The Console runs user administration through flows. Otherwise it shows the status only.
+- The address is saved. After you change an address, save the user first.
+- The user is not suspended and their account has not expired. A locked user can still be sent a link.
+
+Mobile numbers cannot be sent a link from the Console.
+
+In the <ProductName /> SDK profile, a signed-in user selects **Verify** beside a saved email address or mobile number to start the self-service flow. See [Build a Flow](../../flows/build-a-flow#go-further).
 
 User API responses that include a user's attributes also include `verifiedAttributes`: each verified attribute with the time it was verified, or an empty object when none is verified. The field is omitted when the server could not read the user's verification state, and from listings that return identifiers only.
 
