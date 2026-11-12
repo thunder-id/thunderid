@@ -471,7 +471,7 @@ export default function OAuth2ConfigSection({
         </FormControl>
 
         {showRedirectUris && (
-          <FormControl fullWidth>
+          <FormControl fullWidth required={hasAuthorizationCodeGrant}>
             <FormLabel htmlFor="redirect-uris-section">{t('applications:edit.general.redirectUris.title')}</FormLabel>
             <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
               {t('applications:edit.general.redirectUris.description')}
