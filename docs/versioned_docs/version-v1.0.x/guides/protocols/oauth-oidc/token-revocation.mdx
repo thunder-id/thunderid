@@ -1,0 +1,146 @@
+---
+title: Token Revocation
+docType: reference
+sidebar_position: 2
+description: RFC 7009 token revocation in {{ProductName}}, from revoking a single token to invalidating every token of a grant or a user, and where each is enforced.
+---
+
+# Token Revocation
+
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with two broader scopes, so an operational event such as a sign-out or a user deletion can invalidate many tokens at once.
+
+Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The three scopes below differ only in what goes on that list.
+
+## The Three Scopes
+
+| Scope | What it invalidates | Typical trigger |
+|---|---|---|
+| **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
+| **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
+| **User** | Every token belonging to one user, by its `sub` | A user is deleted |
+
+A token is rejected if **any** of these matches.
+
+## Revoke a Single Token
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `POST /oauth2/revoke` |
+| Authentication | Required, same client authentication method as the token endpoint (see [Client Authentication Methods](../client-authentication-methods)) |
+| `token` parameter | Required. The access token or refresh token to revoke |
+| `token_type_hint` parameter | Accepted but not used internally: the server determines the token type itself |
+| Success response | HTTP 200 with an empty body, as RFC 7009 §2.2 requires |
+| Unknown or already-expired token | HTTP 200. The endpoint never reveals whether a token existed |
+| Token issued to another client | HTTP 400 with `invalid_grant` |
+| Tokens supported | Access tokens and refresh tokens |
+| Signature | Verified before anything is recorded, so a token <ProductName /> did not issue cannot be added to the denylist |
+| Expired tokens | Still revocable. Expiry is ignored on this endpoint, so an expired token can be presented to revoke the rest of its grant |
+
+</details>
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/revoke \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "token=$ACCESS_TOKEN"
+```
+
+A successful revocation returns `200 OK` with no body.
+
+### Ownership
+
+RFC 7009 §2.1 requires the server to verify that the token was issued to the authenticated client. <ProductName /> enforces this for both token types: access tokens are matched on their `client_id` claim, and refresh tokens on their `sub` claim, which carries the owning client. A client attempting to revoke another client's token receives `invalid_grant`.
+
+## Grant-Scoped Revocation
+
+Revoking one token of a grant usually should not leave its siblings working. Five refreshes produce a chain of access and refresh tokens that all descend from the same authorization, and revoking the newest refresh token alone would leave live access tokens behind.
+
+<ProductName /> groups these into a **token family**, identified by a `tfid` claim carried on every token of the grant. By default, revoking any token of a family revokes the family in both directions: revoking a refresh token invalidates the access tokens issued alongside it, and revoking an access token invalidates the refresh token that would mint replacements. [What Revokes a Family](#what-revokes-a-family) below lists the setting that controls this, along with the other triggers.
+
+### Where `tfid` Comes From
+
+| Flow | Behavior |
+|---|---|
+| Authorization code with SSO | Minted when the session is established and stored against the session participant, which is what makes sign-out revocation possible |
+| Authorization code without SSO | Minted when the authorization code is created, so the grant is still revocable |
+| Refresh | Copied to the new tokens, so a family survives rotation |
+| Token exchange | Controlled by `oauth.token_exchange.token_family`. `none` (the default) issues an independent token; `inherit` copies the subject token's family |
+| Client credentials, CIBA | No `tfid`. There is no user grant to group, so family-scoped revocation does not apply |
+
+### What Revokes a Family
+
+| Trigger | Setting | Default |
+|---|---|---|
+| A client revokes a token that carries a `tfid` | `oauth.revocation.token_family.on_explicit_revoke` | `true` |
+| A rotated-out refresh token is presented again (replay) | `oauth.revocation.token_family.on_refresh_replay` | `true` |
+| An authorization code is redeemed twice (replay) | `oauth.revocation.token_family.on_code_replay` | `true` |
+| The user signs out through RP-Initiated Logout | Always on | Not configurable |
+
+:::note
+Refresh-token replay detection depends on rotation, since a token can only be replayed once it has been rotated out. Enable `oauth.refresh_token.renew_on_grant` to use it.
+:::
+
+Session **sign-out** revokes the family. Session **expiry** does not: a session that simply times out leaves its tokens valid until they expire on their own.
+
+## User-Scoped Revocation
+
+Some events invalidate tokens that no single client is holding, and that span more than one grant. Deleting a user is the clearest case: their tokens may be spread across several applications and devices, and nobody presents them to be revoked.
+
+For these, <ProductName /> revokes by **subject**: every token issued to that user is rejected, across every application and device, without anyone having to present or enumerate them. Tokens already carry `sub`, so no additional claim is needed.
+
+### User Deletion
+
+<ProductName /> ships an administration flow that runs when a user is deleted from the Console. It checks the caller's permission, revokes the user's tokens by subject, terminates their sessions, and then removes the record. `flow.userDeletionFlow.defaultHandle` names the flow to run. Pointing it at a different administration flow replaces the shipped one.
+
+:::warning
+Deleting a user through the `DELETE /users/{id}` API removes the record only. It does not run the deletion flow, so the user's tokens stay valid until they expire. To revoke tokens as part of deletion, delete from the Console, or run the deletion flow directly from automation.
+:::
+
+## Where Revocation Is Enforced
+
+Revocation is checked at two independent points, and they do not become consistent at the same speed.
+
+| Enforcement point | What it covers | Freshness |
+|---|---|---|
+| **Authorization server** | Introspection, the refresh grant, token exchange, and internal validation | **Immediate.** Reads the denylist directly |
+| **Resource server** | Requests to <ProductName />'s own protected APIs | **Eventually consistent.** Serves an in-memory snapshot refreshed on an interval |
+
+:::note
+A revoked token normally stops being accepted by a resource server within `server.security.token_revocation.sync_interval_seconds` (60 seconds by default). For an immediate answer, call [Token Introspection](../token-introspection), which reads current state. Lower the sync interval to shorten the delay, at the cost of more frequent database reads.
+:::
+
+Authorization-server enforcement **fails closed**. If the denylist cannot be read, token validation fails rather than assuming the token is good. Resource-server enforcement keeps serving its last good snapshot across a transient refresh failure.
+
+Resource-server enforcement covers services that share this deployment's database. An external resource server with no access to it should use [Token Introspection](../token-introspection) instead.
+
+## Configuration
+
+Revocation behavior on the authorization server, part of [OAuth Configuration](../../../../deployment/configuration#oauth-configuration):
+
+| Setting | Default | Description |
+|---|---|---|
+| `oauth.token_revocation.enabled` | `true` | Enables revocation on the authorization server: the `/oauth2/revoke` endpoint, the implicit triggers below, and the check that rejects revoked tokens during introspection, the refresh grant, and token exchange. Setting it to `false` turns off all of them, not just the endpoint |
+| `oauth.revocation.token_family.on_explicit_revoke` | `true` | Revoking a token also revokes its token family |
+| `oauth.revocation.token_family.on_refresh_replay` | `true` | A replayed refresh token revokes its token family. Requires `oauth.refresh_token.renew_on_grant` |
+| `oauth.revocation.token_family.on_code_replay` | `true` | A replayed authorization code revokes the token family issued from it |
+| `oauth.token_exchange.token_family` | `none` | `none` issues an independent token; `inherit` keeps the subject token's family |
+| `oauth.refresh_token.renew_on_grant` | `false` | Issues a new refresh token on each grant. Required for rotation and replay detection |
+| `oauth.refresh_token.revoke_previous_on_renew` | `true` | Revokes the consumed refresh token after rotation, making refresh tokens single-use |
+
+Revocation enforcement on resource-server requests, part of [Security Configuration](../../../../deployment/configuration#security-configuration):
+
+| Setting | Default | Description |
+|---|---|---|
+| `server.security.token_revocation.enabled` | `true` | Enforces revocation on requests to protected APIs |
+| `server.security.token_revocation.source` | `db` | Where the revocation snapshot is read from. `db` is the only supported value |
+| `server.security.token_revocation.sync_interval_seconds` | `60` | How often the snapshot refreshes, which sets the normal propagation delay before a revoked token stops being accepted |
+
+## Related Guides
+
+- [Token Introspection](../token-introspection), for checking revocation state immediately
+- [Refresh Token](../refresh-token), for rotation and its relationship to replay detection
+- [RP-Initiated Logout](../rp-initiated-logout), which revokes the session's token family
+- [Token Exchange](../token-exchange), for how exchanged tokens inherit or escape a family
+- [Configuration](../../../../deployment/configuration), for where these settings live
