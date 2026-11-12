@@ -29,16 +29,28 @@ vi.mock('../layouts/AdminLayout', async () => {
   return {default: () => <Outlet />};
 });
 
-vi.mock('@thunderid/configure-users', () => ({
-  UserAddPage: () => <div data-testid="user-add-page">User Add Page</div>,
-  UserEditPage: () => <div data-testid="user-edit-page">User Edit Page</div>,
-  UsersListPage: () => <div data-testid="users-list-page">Users List Page</div>,
+vi.mock('@thunderid/configure-users/pages/UserAddRoute', () => ({
+  default: () => <div data-testid="user-add-page">User Add Page</div>,
 }));
 
-vi.mock('@thunderid/configure-agents', () => ({
-  AgentsListPage: () => <div data-testid="agents-list-page">AgentsListPage</div>,
-  AgentEditPage: () => <div data-testid="agent-edit-page">AgentEditPage</div>,
-  AgentOnboardPage: () => <div data-testid="agent-onboard-page">AgentOnboardPage</div>,
+vi.mock('@thunderid/configure-users/pages/UserEditPage', () => ({
+  default: () => <div data-testid="user-edit-page">User Edit Page</div>,
+}));
+
+vi.mock('@thunderid/configure-users/pages/UsersListPage', () => ({
+  default: () => <div data-testid="users-list-page">Users List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-agents/pages/AgentsListPage', () => ({
+  default: () => <div data-testid="agents-list-page">AgentsListPage</div>,
+}));
+
+vi.mock('@thunderid/configure-agents/pages/AgentEditPage', () => ({
+  default: () => <div data-testid="agent-edit-page">AgentEditPage</div>,
+}));
+
+vi.mock('@thunderid/configure-agents/pages/AgentAddRoute', () => ({
+  default: () => <div data-testid="agent-onboard-page">AgentOnboardPage</div>,
 }));
 
 vi.mock('@thunderid/configure-groups', () => ({
@@ -48,11 +60,35 @@ vi.mock('@thunderid/configure-groups', () => ({
   CreateGroupPage: () => <div data-testid="create-group-page">CreateGroupPage</div>,
 }));
 
+vi.mock('@thunderid/configure-groups/pages/GroupsListPage', () => ({
+  default: () => <div data-testid="groups-list-page">GroupsListPage</div>,
+}));
+
+vi.mock('@thunderid/configure-groups/pages/GroupEditPage', () => ({
+  default: () => <div data-testid="group-edit-page">GroupEditPage</div>,
+}));
+
+vi.mock('@thunderid/configure-groups/pages/CreateGroupPage', () => ({
+  default: () => <div data-testid="create-group-page">CreateGroupPage</div>,
+}));
+
 vi.mock('@thunderid/configure-roles', () => ({
   RoleCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
   RolesListPage: () => <div data-testid="roles-list-page">RolesListPage</div>,
   RoleEditPage: () => <div data-testid="role-edit-page">RoleEditPage</div>,
   CreateRolePage: () => <div data-testid="create-role-page">CreateRolePage</div>,
+}));
+
+vi.mock('@thunderid/configure-roles/pages/RolesListPage', () => ({
+  default: () => <div data-testid="roles-list-page">RolesListPage</div>,
+}));
+
+vi.mock('@thunderid/configure-roles/pages/RoleEditPage', () => ({
+  default: () => <div data-testid="role-edit-page">RoleEditPage</div>,
+}));
+
+vi.mock('@thunderid/configure-roles/pages/CreateRolePage', () => ({
+  default: () => <div data-testid="create-role-page">CreateRolePage</div>,
 }));
 
 vi.mock('../layouts/FullScreenLayout', async () => {
