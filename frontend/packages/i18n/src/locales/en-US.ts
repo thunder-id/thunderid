@@ -563,6 +563,7 @@ const translations = {
     'categories.configure': 'Configure',
     'categories.customize': 'Customize',
     'categories.system': 'System',
+    'categories.organization': 'Organization',
     'categories.administration': 'Administration',
     'categories.identitySetup': 'Identity setup',
     'categories.shared': 'Shared by all projects',
@@ -591,7 +592,6 @@ const translations = {
     'pages.organizationSettings': 'Organization settings',
     'pages.users': 'Users',
     'pages.administrators': 'Administrators',
-    'pages.administratorsHint': 'People who manage your gateways',
     'pages.userTypes': 'User types',
     'pages.agentTypes': 'Agent types',
     'pages.organizationUnits': 'Organization units',
@@ -719,6 +719,9 @@ const translations = {
     'createUser.subtitle': 'Add a new user to your organization',
 
     // Add form (native creation, no onboarding flow)
+    'addForm.administratorRolesError':
+      'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
+    'addForm.retryRoles': 'Try again',
     'addForm.creating': 'Creating...',
     'addForm.noUserTypes': 'No user types are defined yet. Create one before adding a user.',
     'addForm.organizationUnit': 'Organization unit',

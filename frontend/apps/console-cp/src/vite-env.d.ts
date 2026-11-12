@@ -9,6 +9,7 @@ declare global {
   const __DEV_SERVER_URL__: string;
   const __DEV_GATE_URL__: string;
   const __DEV_TRUSTED_ISSUER_URL__: string;
+  const __DEV_ADMINISTRATOR_ROLE_ID__: string;
 }
 
 export {};

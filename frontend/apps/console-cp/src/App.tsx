@@ -21,6 +21,7 @@ import {
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
+import AdministratorsScope from './components/AdministratorsScope';
 import DefaultProjectRedirect from './components/DefaultProjectRedirect';
 import RouteProjectScope from './components/RouteProjectScope';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
@@ -247,6 +248,17 @@ function projectDashboardRoutes(): JSX.Element {
       <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
       <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
       <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+      {/* The Control Plane's own users, outside any project. */}
+      <Route
+        element={
+          <AdministratorsScope>
+            <Outlet />
+          </AdministratorsScope>
+        }
+      >
+        <Route path={ROUTE_SEGMENTS.administrators} element={<UsersListPage />} />
+        <Route path={`${ROUTE_SEGMENTS.administrators}/:userId`} element={<UserEditPage />} />
+      </Route>
       <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
       <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
       <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
@@ -322,6 +334,16 @@ function projectFullScreenRoutes(): JSX.Element {
         <Route index element={<CreateRolePage />} />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.users}/add`} element={<FullScreenLayout />}>
+        <Route index element={<UserAddPage />} />
+      </Route>
+      <Route
+        path={`${ROUTE_SEGMENTS.administrators}/add`}
+        element={
+          <AdministratorsScope>
+            <FullScreenLayout />
+          </AdministratorsScope>
+        }
+      >
         <Route index element={<UserAddPage />} />
       </Route>
       <Route path={ROUTE_SEGMENTS.deploy} element={<FullScreenLayout />}>

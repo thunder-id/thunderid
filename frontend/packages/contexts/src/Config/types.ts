@@ -304,6 +304,19 @@ export interface DeployConfig {
 }
 
 /**
+ * Administrators configuration for a Control Plane console.
+ *
+ * @public
+ */
+export interface AdministratorsConfig {
+  /**
+   * The roles an administrator is given when added. An administrator is a user added outside any
+   * project. Empty or unset, an administrator is given none.
+   */
+  role_ids?: string[];
+}
+
+/**
  * Runtime overrides for the ThunderID SDK provider (ThunderIDProvider props).
  *
  * Accepts any valid ThunderIDProvider prop. Values are deep-merged on top of
@@ -367,6 +380,9 @@ export interface ProductConfig {
 
   /** Optional deploy configuration, such as where a gateway's own page is. */
   deploy?: DeployConfig;
+
+  /** Optional administrators configuration, such as the roles a new administrator is given. */
+  administrators?: AdministratorsConfig;
 }
 
 /**
