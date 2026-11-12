@@ -42,6 +42,7 @@ export {default as ApplicationQueryKeys} from './constants/application-query-key
 // Pages
 export {default as ApplicationCreatePage} from './pages/ApplicationCreatePage';
 export {default as ApplicationEditPage} from './pages/ApplicationEditPage';
+export type {ApplicationEditPageProps} from './pages/ApplicationEditPage';
 export {default as ApplicationsListPage} from './pages/ApplicationsListPage';
 export {default as ApplicationTemplateSelectPage} from './pages/ApplicationTemplateSelectPage';
 

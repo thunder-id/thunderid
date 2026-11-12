@@ -30,6 +30,8 @@ const (
 	TerminationReasonSignOut TerminationReason = "sign_out"
 	// TerminationReasonSubjectRevocation is an administrative termination of all the subject's sessions.
 	TerminationReasonSubjectRevocation TerminationReason = "subject_revocation"
+	// TerminationReasonSessionRevocation is a revocation of sessions through the session management API.
+	TerminationReasonSessionRevocation TerminationReason = "session_revocation"
 )
 
 // TerminatedSession describes a session the service has ended. Participants is captured before the

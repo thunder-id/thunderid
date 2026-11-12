@@ -897,6 +897,21 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/users/me/profile", wantPerm: "",
 		},
 
+		// ---- Session management paths ----
+		{name: "GET /sessions falls back to system on the control plane", method: http.MethodGet, path: "/sessions",
+			wantPerm: p.Root},
+		{name: "GET /users/me/sessions self-service", method: http.MethodGet, path: "/users/me/sessions", wantPerm: ""},
+		{name: "DELETE /sessions/{id} falls back to system on the control plane", method: http.MethodDelete,
+			path: "/sessions/s-1", wantPerm: p.Root},
+		{name: "DELETE /users/me/sessions self-service", method: http.MethodDelete, path: "/users/me/sessions",
+			wantPerm: ""},
+		{name: "DELETE /users/me/sessions/{id} self-service", method: http.MethodDelete, path: "/users/me/sessions/s-1",
+			wantPerm: ""},
+		{name: "DELETE /users/me stays behind user delete permission", method: http.MethodDelete, path: "/users/me",
+			wantPerm: p.UserDelete},
+		{name: "DELETE /users/me/other stays behind user delete permission", method: http.MethodDelete,
+			path: "/users/me/other", wantPerm: p.UserDelete},
+
 		// ---- OU tree paths ----
 		{
 			name:   "GET /organization-units/tree",
@@ -1225,7 +1240,7 @@ func declaredPermissions(t *testing.T, path, id string, roots ...string) (string
 }
 
 // TestDataPlaneCatalogMatchesBootstrapBundle verifies that the System resource server in the bootstrap
-// bundle is the Data Plane's representation: the system root with no children, the org root and its
+// bundle is the Data Plane's representation: the system root and its children, the org root and its
 // children. Both planes import this bundle, and the Control Plane publishes roles built on it to the
 // Data Planes.
 func TestDataPlaneCatalogMatchesBootstrapBundle(t *testing.T) {
@@ -1246,6 +1261,24 @@ func TestControlPlaneCatalogMatchesResourceServer(t *testing.T) {
 	delimiter, declared := declaredPermissions(t, controlPlaneResourceServerPath, rsControlPlane)
 	assert.Equal(t, ":", delimiter)
 	assert.ElementsMatch(t, GetSystemPermissions().Catalog, declared)
+}
+
+// TestControlPlaneDeclaresNoSessionPermission verifies that the Control Plane, which serves no sessions,
+// declares no session permission, so the session routes fall back to the system root.
+func TestControlPlaneDeclaresNoSessionPermission(t *testing.T) {
+	InitControlPlanePermissions("")
+	p := GetSystemPermissions()
+	assert.Empty(t, p.SessionView)
+	assert.Empty(t, p.SessionDelete)
+	for _, perm := range p.Catalog {
+		assert.NotContains(t, perm, ":"+string(ResourceTypeSession))
+	}
+
+	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
+	require.NoError(t, err)
+	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodGet, "/sessions"))
+	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodDelete, "/sessions"))
+	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodDelete, "/sessions/s-1"))
 }
 
 // TestSystemCatalogKeepsExistingPermissions verifies that the catalog holds every permission
@@ -1278,6 +1311,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 
 	selfService := map[string]bool{
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
+		"DELETE /users/me/sessions": true, "DELETE /users/me/sessions/**": true,
 		"POST /users/me/update-credentials": true, "DELETE /users/me/agents/*": true,
 		"POST /users/me/agents/suspend": true, "POST /users/me/agents/*/suspend": true,
 		"POST /users/me/agents/*/unsuspend": true,

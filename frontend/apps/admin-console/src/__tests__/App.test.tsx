@@ -31,8 +31,14 @@ vi.mock('../layouts/AdminLayout', async () => {
 
 vi.mock('@thunderid/configure-users', () => ({
   UserAddPage: () => <div data-testid="user-add-page">User Add Page</div>,
-  UserEditPage: () => <div data-testid="user-edit-page">User Edit Page</div>,
+  UserEditPage: ({renderSessions = undefined}: {renderSessions?: (userId: string) => React.ReactNode}) => (
+    <div data-testid="user-edit-page">User Edit Page{renderSessions?.('user-123')}</div>
+  ),
   UsersListPage: () => <div data-testid="users-list-page">Users List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-sessions', () => ({
+  SessionsPanel: ({filter}: {filter: {userId: string}}) => <div data-testid="sessions-panel">{filter.userId}</div>,
 }));
 
 vi.mock('@thunderid/configure-agents', () => ({
@@ -96,6 +102,12 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('user-edit-page')).toBeInTheDocument();
     });
+  });
+
+  it('gives UserEditPage the sessions of the user it shows', async () => {
+    window.history.pushState({}, '', '/users/user-123');
+    render(<App />);
+    expect(await screen.findByTestId('sessions-panel')).toHaveTextContent('user-123');
   });
 
   it('loads UserAddPage lazily at /users/add', async () => {

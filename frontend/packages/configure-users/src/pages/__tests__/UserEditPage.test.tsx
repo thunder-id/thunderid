@@ -702,6 +702,20 @@ describe('UserEditPage', () => {
       expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
+    it('shows the sessions the host app renders on the Sessions tab', async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage renderSessions={(userId) => <div data-testid="sessions-panel">{userId}</div>} />);
+
+      await user.click(screen.getByRole('tab', {name: 'Sessions'}));
+      expect(screen.getByTestId('sessions-panel')).toHaveTextContent('user123');
+    });
+
+    it('omits the Sessions tab when the host app renders no sessions', () => {
+      render(<UserEditPage />);
+
+      expect(screen.queryByRole('tab', {name: 'Sessions'})).not.toBeInTheDocument();
+    });
+
     it('shows the read-only attributes summary and QuickCopy on the General tab', () => {
       render(<UserEditPage />);
 
