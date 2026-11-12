@@ -42,6 +42,8 @@ const (
 	ActionRevoke Action = "revoke"
 	// ActionRevert returns a resource to the configuration it held before.
 	ActionRevert Action = "revert"
+	// ActionEnroll registers a new credential, such as a passkey, for an identity.
+	ActionEnroll Action = "enroll"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

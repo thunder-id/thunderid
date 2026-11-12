@@ -1224,6 +1224,15 @@ func (as *applicationService) ValidateCredentialAction(
 func (as *applicationService) ApplyCredentialAction(
 	ctx context.Context, appID string, action model.CredentialAction) (
 	string, *tidcommon.ServiceError) {
+	secret, svcErr := as.applyCredentialAction(ctx, appID, action)
+	as.publishApplicationEvent(ctx, audit.EventApplicationUpdate, audit.ActionUpdate, appID, svcErr)
+	return secret, svcErr
+}
+
+// applyCredentialAction performs the action without publishing its audit event.
+func (as *applicationService) applyCredentialAction(
+	ctx context.Context, appID string, action model.CredentialAction) (
+	string, *tidcommon.ServiceError) {
 	if _, svcErr := as.ValidateCredentialAction(ctx, appID, action); svcErr != nil {
 		return "", svcErr
 	}

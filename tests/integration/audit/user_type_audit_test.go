@@ -269,7 +269,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserTypeItCreates() 
 
 	imported, result := ts.importUpsert(fmt.Sprintf("resource_type: user_type\nid: %s\nhandle: %s\n"+
 		"displayName: Audit Imported Type\nouId: %s\nschema:\n  %s:\n    type: string\n",
-		typeID, handle, ouID, auditTypeAttribute))
+		typeID, handle, ouID, auditTypeAttribute), 1)
 	ts.T().Cleanup(func() { _ = testutils.DeleteUserType(typeID) })
 	ts.Require().Equal("create", result.Results[0].Operation)
 
@@ -296,7 +296,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserTypeItUpdates() 
 
 	imported, result := ts.importUpsert(fmt.Sprintf("resource_type: user_type\nid: %s\nhandle: %s\n"+
 		"displayName: Audit Reimported Type\nouId: %s\nschema:\n  %s:\n    type: string\n"+
-		"  %s_issued:\n    type: number\n", typeID, handle, ouID, auditTypeAttribute, auditTypeAttribute))
+		"  %s_issued:\n    type: number\n", typeID, handle, ouID, auditTypeAttribute, auditTypeAttribute), 1)
 	ts.Require().Equal("update", result.Results[0].Operation)
 
 	written := ts.linesPerCall(imported)[0]
@@ -323,7 +323,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheAgentTypeItUpdates()
 	})
 	ts.Require().NoError(err)
 
-	imported, result := ts.importUpsert(string(document))
+	imported, result := ts.importUpsert(string(document), 1)
 	ts.Require().Equal("update", result.Results[0].Operation)
 
 	written := ts.linesPerCall(imported)[0]
@@ -334,8 +334,9 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheAgentTypeItUpdates()
 }
 
 // importUpsert imports one document into the runtime with upsert and returns the response and its
-// result, which must report the document imported.
-func (ts *AuditLogTestSuite) importUpsert(content string) (*http.Response, testutils.ImportResponse) {
+// result, which must report wantImported documents imported.
+func (ts *AuditLogTestSuite) importUpsert(content string, wantImported int) (*http.Response,
+	testutils.ImportResponse) {
 	ts.T().Helper()
 	request, err := json.Marshal(testutils.ImportRequest{
 		Content: content,
@@ -346,7 +347,7 @@ func (ts *AuditLogTestSuite) importUpsert(content string) (*http.Response, testu
 	ts.Require().Equal(http.StatusOK, imported.StatusCode, string(body))
 	var result testutils.ImportResponse
 	ts.Require().NoError(json.Unmarshal(body, &result))
-	ts.Require().Equal(1, result.Summary.Imported, string(body))
+	ts.Require().Equal(wantImported, result.Summary.Imported, string(body))
 	ts.Require().Len(result.Results, 1, string(body))
 	return imported, result
 }

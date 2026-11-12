@@ -1298,6 +1298,14 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 // the agent's type declares, and keeps the ones not given as they are.
 func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID string,
 	credentials json.RawMessage) *tidcommon.ServiceError {
+	svcErr := s.updateAgentCredentials(ctx, agentID, credentials)
+	s.publishAgentEvent(ctx, audit.EventAgentCredentialUpdate, audit.ActionUpdate, agentID, svcErr)
+	return svcErr
+}
+
+// updateAgentCredentials sets the given credentials of an agent without publishing its audit event.
+func (s *agentService) updateAgentCredentials(ctx context.Context, agentID string,
+	credentials json.RawMessage) *tidcommon.ServiceError {
 	if agentID == "" {
 		return &ErrorMissingAgentID
 	}
