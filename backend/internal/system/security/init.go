@@ -14,8 +14,9 @@ import (
 // non-empty, is the required audience.
 //
 // managementAPIKeyHash, when configured, admits a second mechanism for the import and the
-// variable store APIs only. It is registered ahead of the JWT authenticator because it claims a request only
-// when the API-Key header hashes to that digest; anything else falls through to JWT unchanged.
+// variable store APIs only. It is registered ahead of the JWT authenticator and claims every request on
+// those paths that carries an API-Key header: a key that does not hash to the digest is refused, not
+// passed on. A request without the header falls through to JWT unchanged.
 func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface,
 	expectedAud string, managementAPIKeyHash string,
 ) (func(http.Handler) http.Handler, error) {

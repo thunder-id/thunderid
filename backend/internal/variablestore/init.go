@@ -22,15 +22,22 @@ import (
 // store puts a database read on that path. The cache is invalidated by every write rather than
 // expiring, so replacing a value takes effect on the next read.
 //
+// managementAPIKeyOnly makes every variable and secret API answer only the management API key. A
+// server is given that key so that what deploys to it (a control plane) can push the values its
+// configuration refers to, and those values are then that deployer's to keep: an administrator's token,
+// however privileged, must not be able to change or remove them under it. A server with no key has
+// nothing deploying to it, so its own administrators keep managing the store with their tokens.
+//
 // It also returns the store as a reference resolver, which is how a reference a resource carries is
-// turned into the value held here. That half is not served over HTTP.
+// turned into the value held here. That half is not served over HTTP, so it is not restricted.
 func Initialize(mux *http.ServeMux, crypto kmprovider.ConfigCryptoProvider,
-	cacheManager cache.CacheManagerInterface) (ServiceInterface, ReferenceResolverInterface) {
+	cacheManager cache.CacheManagerInterface, managementAPIKeyOnly bool,
+) (ServiceInterface, ReferenceResolverInterface) {
 	variables := cache.GetCache[*Variable](cacheManager, "VariableByNameCache")
 	secrets := cache.GetCache[*Secret](cacheManager, "SecretByNameCache")
 
 	service := newService(newCacheBackedStore(newStore(), variables, secrets), crypto)
-	registerRoutes(mux, newHandler(service))
+	registerRoutes(mux, newHandler(service, managementAPIKeyOnly))
 	// The same service resolves references; ServiceInterface leaves that out, so nothing served over
 	// HTTP can reach the one method that returns a secret's value.
 	return service, service.(ReferenceResolverInterface)
@@ -49,23 +56,26 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
+	// A preflight carries no credentials, so the OPTIONS routes are left open.
+	keyOnly := h.requireManagementAPIKey
 
-	mux.HandleFunc(middleware.WithCORS("GET "+pathVariables, h.HandleVariableListRequest, collectionCORS))
-	mux.HandleFunc(middleware.WithCORS("POST "+pathVariables, h.HandleVariablePostRequest, collectionCORS))
+	mux.HandleFunc(middleware.WithCORS("GET "+pathVariables, keyOnly(h.HandleVariableListRequest), collectionCORS))
+	mux.HandleFunc(middleware.WithCORS("POST "+pathVariables, keyOnly(h.HandleVariablePostRequest), collectionCORS))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+pathVariables, noContent, collectionCORS))
 
-	mux.HandleFunc(middleware.WithCORS("GET "+pathVariables+"/{name}", h.HandleVariableGetRequest, itemCORS))
-	mux.HandleFunc(middleware.WithCORS("PUT "+pathVariables+"/{name}", h.HandleVariablePutRequest, itemCORS))
-	mux.HandleFunc(middleware.WithCORS("DELETE "+pathVariables+"/{name}", h.HandleVariableDeleteRequest, itemCORS))
+	mux.HandleFunc(middleware.WithCORS("GET "+pathVariables+"/{name}", keyOnly(h.HandleVariableGetRequest), itemCORS))
+	mux.HandleFunc(middleware.WithCORS("PUT "+pathVariables+"/{name}", keyOnly(h.HandleVariablePutRequest), itemCORS))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+pathVariables+"/{name}",
+		keyOnly(h.HandleVariableDeleteRequest), itemCORS))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+pathVariables+"/{name}", noContent, itemCORS))
 
-	mux.HandleFunc(middleware.WithCORS("GET "+pathSecrets, h.HandleSecretListRequest, collectionCORS))
-	mux.HandleFunc(middleware.WithCORS("POST "+pathSecrets, h.HandleSecretPostRequest, collectionCORS))
+	mux.HandleFunc(middleware.WithCORS("GET "+pathSecrets, keyOnly(h.HandleSecretListRequest), collectionCORS))
+	mux.HandleFunc(middleware.WithCORS("POST "+pathSecrets, keyOnly(h.HandleSecretPostRequest), collectionCORS))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+pathSecrets, noContent, collectionCORS))
 
-	mux.HandleFunc(middleware.WithCORS("GET "+pathSecrets+"/{name}", h.HandleSecretGetRequest, itemCORS))
-	mux.HandleFunc(middleware.WithCORS("PUT "+pathSecrets+"/{name}", h.HandleSecretPutRequest, itemCORS))
-	mux.HandleFunc(middleware.WithCORS("DELETE "+pathSecrets+"/{name}", h.HandleSecretDeleteRequest, itemCORS))
+	mux.HandleFunc(middleware.WithCORS("GET "+pathSecrets+"/{name}", keyOnly(h.HandleSecretGetRequest), itemCORS))
+	mux.HandleFunc(middleware.WithCORS("PUT "+pathSecrets+"/{name}", keyOnly(h.HandleSecretPutRequest), itemCORS))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+pathSecrets+"/{name}", keyOnly(h.HandleSecretDeleteRequest), itemCORS))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+pathSecrets+"/{name}", noContent, itemCORS))
 }
 

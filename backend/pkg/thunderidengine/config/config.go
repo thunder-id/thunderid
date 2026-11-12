@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -122,6 +123,16 @@ type SecurityConfig struct {
 
 	REST RESTConfig `yaml:"rest" json:"rest"`
 	MCP  MCPConfig  `yaml:"mcp"  json:"mcp"`
+}
+
+// HasManagementAPIKey reports whether a management API key digest is configured. It is the one rule
+// for that: the key authenticator is registered on it, and the APIs that only the key may call are
+// restricted on it, so the two always agree. A value of nothing but whitespace and control
+// characters counts as unset.
+func (c SecurityConfig) HasManagementAPIKey() bool {
+	return strings.IndexFunc(strings.TrimSpace(c.ManagementAPIKeyHash), func(r rune) bool {
+		return !unicode.IsControl(r) || r == '\n' || r == '\t'
+	}) >= 0
 }
 
 // RESTConfig configures the REST API gate. Audience is the RFC 8707 resource indicator a

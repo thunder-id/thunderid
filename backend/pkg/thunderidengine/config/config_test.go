@@ -52,3 +52,19 @@ func TestIDJAGRolesAreOnUnlessSwitchedOff(t *testing.T) {
 	assert.True(t, IDJAGRoleConfig{Enabled: new(true)}.IsEnabled())
 	assert.False(t, IDJAGRoleConfig{Enabled: new(false)}.IsEnabled())
 }
+
+// A management API key digest counts as configured only when something other than whitespace and
+// control characters is left, so a digest of control characters neither registers the key
+// authenticator nor restricts the APIs only the key may call.
+func TestHasManagementAPIKey(t *testing.T) {
+	for value, want := range map[string]bool{
+		"":                 false,
+		"   ":              false,
+		"\x00\x01\x7f":     false,
+		" \x02 ":           false,
+		"4955d93012fc5e2e": true,
+		" 4955d93012 ":     true,
+	} {
+		assert.Equal(t, want, SecurityConfig{ManagementAPIKeyHash: value}.HasManagementAPIKey(), "%q", value)
+	}
+}

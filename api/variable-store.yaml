@@ -17,7 +17,13 @@ info:
 
     ## Authorization
 
-    Every route here requires the **root system permission**, the one named by
+    Where a management API key is configured (`server.security.management_api_key_hash`), the store is
+    kept by whatever holds that key, typically the control plane that deploys to this server, and every
+    route here answers only that key. Any other caller, a token with the root permission included, is
+    refused with `403` and `VAR-1012`. An administrator cannot then change or remove the values the
+    deployed configuration refers to.
+
+    Where no key is configured, every route here requires the **root system permission**, the one named by
     `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
     `tenant_instance:system` where a prefix is configured). A narrower permission is not enough for
     any of them, including the reads.
@@ -46,6 +52,7 @@ tags:
 
 security:
   - OAuth2: [system]
+  - ManagementAPIKey: []
 
 paths:
   /variables:
@@ -91,7 +98,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "500":
           $ref: '#/components/responses/InternalServerError'
     post:
@@ -122,7 +129,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "409":
           $ref: '#/components/responses/Conflict'
         "500":
@@ -152,7 +159,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "404":
           $ref: '#/components/responses/NotFound'
         "500":
@@ -190,7 +197,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "500":
           $ref: '#/components/responses/InternalServerError'
     delete:
@@ -207,7 +214,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "500":
           $ref: '#/components/responses/InternalServerError'
 
@@ -256,7 +263,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "500":
           $ref: '#/components/responses/InternalServerError'
     post:
@@ -294,7 +301,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "409":
           $ref: '#/components/responses/Conflict'
         "500":
@@ -329,7 +336,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "404":
           $ref: '#/components/responses/NotFound'
         "500":
@@ -367,7 +374,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "500":
           $ref: '#/components/responses/InternalServerError'
     delete:
@@ -384,12 +391,20 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ManagementAPIKeyRequired'
         "500":
           $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
+    ManagementAPIKey:
+      type: apiKey
+      in: header
+      name: API-Key
+      description: >
+        The deployment's management API key, whose SHA-256 digest is configured as
+        `server.security.management_api_key_hash`. Where it is configured, it is the only caller these
+        routes answer.
     OAuth2:
       type: oauth2
       flows:
@@ -513,12 +528,26 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    Forbidden:
-      description: The caller is authenticated but not permitted
+    ManagementAPIKeyRequired:
+      description: |
+        The caller is refused. Where a management API key is configured, only that key may call these
+        APIs, and any other caller, a token with the root permission included, gets `VAR-1012`. Where
+        none is configured, a token without the root permission is refused as not permitted.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+          examples:
+            managementAPIKeyRequired:
+              summary: A management API key is configured and the caller did not present it
+              value:
+                code: "VAR-1012"
+                message:
+                  key: "error.variablestore.management_api_key_required"
+                  defaultValue: "Management API key required"
+                description:
+                  key: "error.variablestore.management_api_key_required_description"
+                  defaultValue: "Variables and secrets can only be managed with the management API key"
     InternalServerError:
       description: The store could not serve the request
       content:

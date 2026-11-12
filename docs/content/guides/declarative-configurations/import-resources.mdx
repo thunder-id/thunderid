@@ -50,7 +50,7 @@ The key is off by default. To turn it on, set [`server.security.management_api_k
 API-Key: <management_api_key>
 ```
 
-The key opens the import APIs (`/import`, `/import/managed` and `/import/delete`), the variable store (`/variables`) and the secret store (`/secrets`), and nothing else. Only the managed import marks what it writes as read only.
+The key opens the import APIs (`/import`, `/import/managed` and `/import/delete`), the variable store (`/variables`) and the secret store (`/secrets`), and nothing else. Only the managed import marks what it writes as read only. Once the key is set, the variable store and the secret store answer only the key: a token is refused with `VAR-1012`, whatever its permissions.
 
 ## Managed Import
 

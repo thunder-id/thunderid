@@ -30,7 +30,7 @@ func TestHandlerSuite(t *testing.T) {
 func (s *HandlerTestSuite) SetupTest() {
 	s.service = NewServiceInterfaceMock(s.T())
 	s.mux = http.NewServeMux()
-	registerRoutes(s.mux, newHandler(s.service))
+	registerRoutes(s.mux, newHandler(s.service, false))
 }
 
 func (s *HandlerTestSuite) send(method, target, body string) *httptest.ResponseRecorder {
