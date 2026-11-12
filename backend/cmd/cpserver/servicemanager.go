@@ -391,7 +391,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, sharingService,
 		inboundClientService, ouService, roleService, resourceService, flowMgtService, ouAuthzService,
 		governanceService, valueCapture, entityTypeService, dbprovider.GetDBProvider(), observabilitySvc,
-		projectService, auditBus, nil, nil)
+		projectService, auditBus, nil, nil, agent.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 	// The control plane creates agents directly. The data plane creates them through its agent

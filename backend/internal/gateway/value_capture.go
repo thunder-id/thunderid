@@ -5,11 +5,17 @@ package gateway
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
 	"time"
 
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/variablestore"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -61,6 +67,11 @@ type ValueCapture struct {
 
 	mu      sync.Mutex
 	pending map[string]*pendingValue
+	// fills counts the fills running, and capturedDuringFill the values a write captured meanwhile,
+	// by key. A fill reads a value before it writes it, so one a write captured in between is newer
+	// than the fill's, even once its own write has finished and it is no longer pending.
+	fills              int
+	capturedDuringFill map[string]bool
 }
 
 // pendingValue is one value on its way to a gateway's store: the latest value given for its name,
@@ -135,13 +146,16 @@ func (c *ValueCapture) CaptureValues(ctx context.Context, resourceType string, r
 		return
 	}
 
-	c.enqueue(ctx, gw.ID, collectionVariables, variables)
-	c.enqueue(ctx, gw.ID, collectionSecrets, secrets)
+	c.enqueue(ctx, gw.ID, collectionVariables, variables, true)
+	c.enqueue(ctx, gw.ID, collectionSecrets, secrets, true)
 }
 
 // enqueue puts each value in a collection on its way to the gateway's store, in the order of their
-// names. A value already on its way under the same name is replaced by the newer one.
-func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string, values map[string]string) {
+// names. A value a write captures, with replace set, replaces one already on its way under the same
+// name. A value a fill puts, without it, is dropped when a value under that name is on its way or was
+// captured since a fill started.
+func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string, values map[string]string,
+	replace bool) {
 	names := make([]string, 0, len(values))
 	for name := range values {
 		names = append(names, name)
@@ -153,6 +167,12 @@ func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string
 	for _, name := range names {
 		key := gatewayID + "/" + collection + "/" + name
 		p := c.pending[key]
+		if !replace && (p != nil || c.capturedDuringFill[key]) {
+			continue
+		}
+		if replace && c.fills > 0 {
+			c.capturedDuringFill[key] = true
+		}
 		if p == nil {
 			p = &pendingValue{gatewayID: gatewayID, collection: collection, name: name}
 			c.pending[key] = p
@@ -269,4 +289,133 @@ func (c *ValueCapture) firstGateway(ctx context.Context) (*Gateway, error) {
 		return nil, nil
 	}
 	return &gw, nil
+}
+
+// fillMissingVariables writes to the first gateway each variable the exporters' resources refer to
+// that its store does not hold, with the value the resource holds here.
+//
+// A write captures only the values it makes, so a resource written before one of its fields was
+// referred to by name has no value for that field on the gateway, and every apply that sends the
+// resource is refused until one is set. This puts it there. A value the gateway holds, or one a write
+// has already put on its way, is never replaced, so it is safe to run on every start, and a secret is
+// never filled, since a read holds none. A gateway that does not answer is asked again the way a
+// captured value is written; one that refuses is not.
+//
+// It is the system's own work, so it reads every resource whoever is signed in.
+func (c *ValueCapture) fillMissingVariables(ctx context.Context, exporters []declarativeresource.ResourceExporter) {
+	if c == nil || c.values == nil {
+		return
+	}
+	ctx = security.WithRuntimeContext(ctx)
+	c.mu.Lock()
+	c.fills++
+	if c.capturedDuringFill == nil {
+		c.capturedDuringFill = map[string]bool{}
+	}
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.fills--; c.fills == 0 {
+			c.capturedDuringFill = nil
+		}
+	}()
+	for failures := 0; ; failures++ {
+		err := c.fillMissingVariablesOnce(ctx, exporters)
+		if err == nil {
+			return
+		}
+		var refusal *StoreRefusal
+		if errors.As(err, &refusal) || failures+1 >= c.attempts {
+			c.logger.Warn(ctx, "Gave up filling the variables the first gateway lacks", log.Error(err))
+			return
+		}
+		time.Sleep(c.pushDelay(failures + 1))
+	}
+}
+
+// fillMissingVariablesOnce finds the first gateway, works out the variables the resources refer to
+// now, and puts on its way each one the gateway does not hold. A resource that could not be read is
+// reported once the rest are filled, so the next try reads it again.
+func (c *ValueCapture) fillMissingVariablesOnce(ctx context.Context,
+	exporters []declarativeresource.ResourceExporter) error {
+	gw, err := c.firstGateway(ctx)
+	if err != nil {
+		return err
+	}
+	if gw == nil {
+		c.logger.Debug(ctx, "The pipeline has no first gateway, so no variables were filled")
+		return nil
+	}
+	wanted, readErr := c.referredVariables(ctx, exporters)
+	if len(wanted) == 0 {
+		return readErr
+	}
+	missing, err := c.unheldVariables(ctx, gw.ID, wanted)
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		c.logger.Info(ctx, "Filling the variables the first gateway lacks", log.String("gatewayID", gw.ID),
+			log.Int("variables", len(missing)))
+		c.enqueue(ctx, gw.ID, collectionVariables, missing, false)
+	}
+	return readErr
+}
+
+// referredVariables returns, by name, the variables the exporters' resources refer to, with their
+// values. An exporter whose rules name no variable is passed over. A resource that could not be read
+// is left out, and the error returned beside the rest.
+func (c *ValueCapture) referredVariables(ctx context.Context,
+	exporters []declarativeresource.ResourceExporter) (map[string]string, error) {
+	wanted := map[string]string{}
+	var readErr error
+	for _, exporter := range exporters {
+		rules := exporter.GetResourceRules()
+		if rules == nil || len(rules.Variables) == 0 && len(rules.ArrayVariables) == 0 {
+			continue
+		}
+		resourceType := exporter.GetResourceType()
+		ids, svcErr := exporter.GetAllResourceIDs(ctx)
+		if svcErr != nil {
+			readErr = fmt.Errorf("failed to list %s resources: %s", resourceType, svcErr.Code)
+			continue
+		}
+		for _, id := range ids {
+			resource, _, svcErr := exporter.GetResourceByID(ctx, id)
+			if svcErr != nil {
+				readErr = fmt.Errorf("failed to read a %s resource: %s", resourceType, svcErr.Code)
+				continue
+			}
+			variables, _, err := c.values.PlaceholderValues(ctx, resourceType, resource)
+			if err != nil {
+				c.logger.Warn(ctx, "Failed to work out the values a resource refers to",
+					log.String("resourceType", resourceType), log.Error(err))
+				continue
+			}
+			maps.Copy(wanted, variables)
+		}
+	}
+	return wanted, readErr
+}
+
+// unheldVariables returns those of the wanted variables the gateway's store does not hold.
+func (c *ValueCapture) unheldVariables(ctx context.Context, gatewayID string, wanted map[string]string) (
+	map[string]string, error) {
+	names := slices.Sorted(maps.Keys(wanted))
+	missing := maps.Clone(wanted)
+	for start := 0; start < len(names); start += maxNamesPerLookup {
+		answer, svcErr := c.store.ListVariables(ctx, gatewayID,
+			lookupOf(names[start:min(start+maxNamesPerLookup, len(names))]))
+		if svcErr != nil {
+			return nil, fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
+		}
+		if answer.Refusal != nil {
+			return nil, answer.Refusal
+		}
+		for _, variable := range answer.Value.Variables {
+			delete(missing, variable.Name)
+		}
+	}
+	return missing, nil
 }

@@ -46,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 // AgentServiceInterface defines the operations exposed by the agent service.
@@ -121,6 +122,9 @@ type agentService struct {
 	// managed says which agents a control plane deployed, which stay read only here. Nil where nothing is
 	// deployed from one.
 	managed managedresource.StoreInterface
+	// keepsReferences is set on a control plane, which keeps a value reference where an owner's value
+	// belongs.
+	keepsReferences bool
 }
 
 // artifactLifetimeResolver reports how long an artifact issued to the given OAuth client can remain valid, so a
@@ -298,7 +302,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
 	resp.Kind = agent.Kind
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp, agent.Attributes)
+	s.captureValues(ctx, resp, agent.Attributes, true)
 	s.publishLifespanSet(ctx, agentID, validUntil)
 	return resp, nil
 }
@@ -548,7 +552,7 @@ func (s *agentService) updateOwnedAgent(ctx context.Context, ownerID, agentID st
 		InboundAuthConfig:     full.InboundAuthConfig,
 	}
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp, req.Attributes)
+	s.captureValues(ctx, resp, req.Attributes, false)
 	return resp, nil
 }
 
@@ -1290,7 +1294,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	resp.ValidUntil, resp.Lifespan = lifespanView(currentValidUntil, now)
 	resp.Kind = currentSysAttrs.Kind
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp, req.Attributes)
+	s.captureValues(ctx, resp, req.Attributes, !sameOwner(owner, currentOwner))
 	return resp, nil
 }
 
@@ -1427,7 +1431,7 @@ func (s *agentService) regenerateAgentSecret(ctx context.Context, agentID string
 			Type:        providers.OAuthInboundAuthType,
 			OAuthConfig: oauthProfileToComplete(clientID, oauth),
 		}}, clientID, clientSecret),
-	}, nil)
+	}, nil, false)
 	return clientSecret, nil
 }
 
@@ -1923,7 +1927,7 @@ func (s *agentService) validatePlacedAgent(ctx context.Context, agent *providers
 	if svcErr := validateLogoURL(agent.LogoURL); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
-	owner, svcErr := normalizeOwner(agent.Owner)
+	owner, svcErr := normalizeOwner(agent.Owner, s.keepsReferences)
 	if svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
@@ -2225,7 +2229,7 @@ func (s *agentService) resolveUpdateOwner(
 	if requestedOwner == nil {
 		return currentOwner, nil
 	}
-	owner, svcErr := normalizeOwner(requestedOwner)
+	owner, svcErr := normalizeOwner(requestedOwner, s.keepsReferences)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -2242,9 +2246,10 @@ func (s *agentService) resolveUpdateOwner(
 }
 
 // checkOwner checks that a local owner exists in this deployment. An external owner is managed in another
-// identity system, so it is stored as given and never looked up.
+// identity system, so it is stored as given and never looked up, and so is an owner whose ID is a
+// reference a control plane keeps.
 func (s *agentService) checkOwner(ctx context.Context, owner *providers.AgentOwner) *tidcommon.ServiceError {
-	if !owner.Local() {
+	if !owner.Local() || (s.keepsReferences && isVariableReference(owner.ID)) {
 		return nil
 	}
 	_, svcErr := s.validateOwnerExists(ctx, owner.ID)
@@ -2253,7 +2258,13 @@ func (s *agentService) checkOwner(ctx context.Context, owner *providers.AgentOwn
 
 // normalizeOwner checks an agent owner and returns a copy that states its ID type and whether it is
 // local. A nil owner stays nil.
-func normalizeOwner(owner *providers.AgentOwner) (*providers.AgentOwner, *tidcommon.ServiceError) {
+//
+// Where references are kept, any of the owner's values may instead be a variable reference, for each
+// deployment to resolve. A value given as itself is still checked, and a check that relates two values
+// applies only where both are given. A secret reference is refused anywhere: a credential is never an
+// owner, and an export would carry it where a secret may not stand.
+func normalizeOwner(owner *providers.AgentOwner, keepsReferences bool) (*providers.AgentOwner,
+	*tidcommon.ServiceError) {
 	if owner == nil {
 		return nil, nil
 	}
@@ -2262,12 +2273,31 @@ func normalizeOwner(owner *providers.AgentOwner) (*providers.AgentOwner, *tidcom
 	if idType == "" {
 		idType = providers.AgentOwnerIDTypeUUID
 	}
-	local := owner.Local()
-	if id == "" || utf8.RuneCountInString(id) > maxOwnerIDLength || !slices.Contains(ownerIDTypes, idType) ||
-		(local && idType != providers.AgentOwnerIDTypeUUID) || !ownerIDMatchesType(id, idType) {
+	locality := localityOf(owner)
+	idRef := keepsReferences && isVariableReference(id)
+	typeRef := keepsReferences && isVariableReference(string(idType))
+	localityRef := keepsReferences && isVariableReference(string(locality))
+	local, stated := locality.Bool()
+	if isSecretReference(id) || isSecretReference(string(idType)) || isSecretReference(string(locality)) {
 		return nil, &ErrorInvalidOwner
 	}
-	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: &local}, nil
+	if id == "" || utf8.RuneCountInString(id) > maxOwnerIDLength ||
+		(!typeRef && !slices.Contains(ownerIDTypes, idType)) || (!localityRef && !stated) ||
+		(!typeRef && local && idType != providers.AgentOwnerIDTypeUUID) ||
+		(!idRef && !typeRef && !ownerIDMatchesType(id, idType)) {
+		return nil, &ErrorInvalidOwner
+	}
+	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: locality}, nil
+}
+
+// isVariableReference reports whether a value is wholly a reference to a variable a deployment holds.
+func isVariableReference(value string) bool {
+	return valueref.IsWellFormedReference(value) && !valueref.IsSecretReference(value)
+}
+
+// isSecretReference reports whether a value is wholly a reference to a secret a deployment holds.
+func isSecretReference(value string) bool {
+	return valueref.IsWellFormedReference(value) && valueref.IsSecretReference(value)
 }
 
 // ownerIDMatchesType reports whether an owner ID has the form its ID type needs. An email is a bare
@@ -2305,7 +2335,8 @@ func (s *agentService) callerAsOwner(ctx context.Context) (*providers.AgentOwner
 			local = false
 		}
 	}
-	return &providers.AgentOwner{ID: subject, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}, nil
+	return &providers.AgentOwner{ID: subject, IDType: providers.AgentOwnerIDTypeUUID,
+		IsLocal: providers.AgentOwnerLocalityOf(local)}, nil
 }
 
 // checkPersonalAgentOwner checks that a personal agent's owner is a user, the only owner who can sign in for it,
@@ -2344,7 +2375,15 @@ func sameOwner(a, b *providers.AgentOwner) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return a.ID == b.ID && a.IDType == b.IDType && a.Local() == b.Local()
+	return a.ID == b.ID && a.IDType == b.IDType && localityOf(a) == localityOf(b)
+}
+
+// localityOf returns an owner's locality, which reads as local when the owner does not state one.
+func localityOf(owner *providers.AgentOwner) providers.AgentOwnerLocality {
+	if owner.IsLocal == "" {
+		return providers.AgentOwnerLocal
+	}
+	return owner.IsLocal
 }
 
 // ownerGovernanceContext marks a governance call as the owner's. It runs with the runtime context, since

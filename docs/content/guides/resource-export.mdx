@@ -143,6 +143,37 @@ the agent type, but it cannot set a credential the system manages, such as `clie
 `flowSecret`, or `passkey`. A control-plane export does not load as a file: its credentials are
 `sec:` references, which only an import resolves.
 
+## Agent Owners
+
+A control plane exports an agent's owner as three variable references, so each gateway a version is
+applied to names its own owner for the agent:
+
+```yaml
+owner:
+  id: var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__ID
+  idType: var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__ID_TYPE
+  isLocal: var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__IS_LOCAL
+```
+
+The variables are named after the agent's ID. `ID_TYPE` holds `uuid`, `email`, or `mobile`, and
+`IS_LOCAL` holds `true` or `false`, so one gateway can name a user of its own and another a user
+managed in another identity system. Each gateway checks the owner it is given: a local owner must be
+an entity of that gateway, such as one of its users, and is identified by `uuid`, while an external
+owner is stored as given. No owner value may be a secret reference (`sec:`). See
+[Value References](./declarative-configurations/value-references.mdx) for how a gateway resolves them.
+
+The control plane gives its own owner for the agent to its first gateway when the agent is created
+and whenever the owner is changed there. Set an agent's owner for a gateway, the first included, as
+any other value: in the deploy dialog when the gateway lacks it, or on the gateway's variables page.
+
+The owner is written as it is in these cases:
+
+- An agent without an owner exports no `owner`.
+- A personal agent's owner is the user the agent acts for, so it stays the same everywhere.
+- A data plane's export writes the owner's values themselves rather than template placeholders. A
+  template is filled in as text before it is read as YAML, which a free-text ID such as `#team: ops`
+  would break.
+
 ## Resource Server Identifiers
 
 A resource server's `identifier` is the audience it is served under, such as an API's base URL or

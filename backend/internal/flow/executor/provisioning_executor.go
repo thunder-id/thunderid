@@ -1140,8 +1140,8 @@ func (p *provisioningExecutor) resolveAgentOwner(nodeCtx *providers.NodeContext)
 		ownerID = userID
 	}
 
-	local := true
-	return &providers.AgentOwner{ID: ownerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}, nil
+	return &providers.AgentOwner{ID: ownerID, IDType: providers.AgentOwnerIDTypeUUID,
+		IsLocal: providers.AgentOwnerLocal}, nil
 }
 
 // resolveRegisteringUserID resolves the registering user. A user the flow signed in takes precedence;
