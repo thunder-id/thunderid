@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -229,4 +230,42 @@ func (s *ServiceTestSuite) TestEachCascadedHoldIsAudited() {
 	s.Equal(string(event.EventTypeIdentityUnsuspensionFailed), (*published)[0].Type)
 	s.Equal("agent-1", (*published)[0].Data[event.DataKey.Subject])
 	s.Equal(string(providers.SuspensionAppliedByCascade), (*published)[0].Data[event.DataKey.AppliedBy])
+}
+
+// Each dependent's cascaded hold is written to the audit event bus as that identity's own suspension or
+// unsuspension, before the user's.
+func (s *ServiceTestSuite) TestEachCascadedHoldPublishesItsAuditEvent() {
+	svc, published := s.auditedService(s.permittingAuthorizer())
+	svc.SetDependencyRegistry(dependentsRegistry{dependents: []string{"agent-1"}, asked: &[]string{}})
+	s.expectRead(s.activeEntity())
+	s.expectDependent("agent-1", false)
+	s.port.On("SetCascadeSuspension", mock.Anything, "agent-1", s.now).Return(true, nil).Once()
+	s.port.On("SetSuspension", mock.Anything, "e1", s.now, "").Return(true, nil).Once()
+
+	s.Require().Nil(svc.Suspend(adminContext(), "e1", ""))
+
+	events := published()
+	s.Require().Len(events, 2)
+	s.Equal(audit.EventAgentSuspend, events[0].name)
+	s.Equal(audit.ActionSuspend, events[0].payload.Action())
+	s.Equal(audit.Ref{Type: audit.TargetTypeAgent, ID: "agent-1"}, events[0].payload.Target())
+	s.Equal(audit.OutcomeSucceeded, events[0].payload.Outcome())
+	s.Equal(audit.EventUserSuspend, events[1].name)
+
+	s.SetupTest()
+	svc, published = s.auditedService(s.permittingAuthorizer())
+	svc.SetDependencyRegistry(dependentsRegistry{dependents: []string{"agent-1"}, asked: &[]string{}})
+	s.expectRead(s.suspendedEntity())
+	s.expectDependent("agent-1", true)
+	s.port.On("ClearCascadeSuspension", mock.Anything, "agent-1").Return(false, errors.New("store down")).Once()
+
+	s.requireServiceError(svc.Unsuspend(adminContext(), "e1"), tidcommon.InternalServerError)
+
+	events = published()
+	s.Require().Len(events, 2, "the failed release and the user's failed unsuspension are both published")
+	s.Equal(audit.EventAgentUnsuspend, events[0].name)
+	s.Equal(audit.ActionUnsuspend, events[0].payload.Action())
+	s.Equal(audit.Ref{Type: audit.TargetTypeAgent, ID: "agent-1"}, events[0].payload.Target())
+	s.Equal(audit.ResultFailed, events[0].payload.Outcome().Result)
+	s.Equal(audit.EventUserUnsuspend, events[1].name)
 }

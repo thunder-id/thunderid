@@ -159,6 +159,30 @@ const (
 	EventProjectUpdate = "project.update"
 	// EventProjectDelete names an attempt to delete a project.
 	EventProjectDelete = "project.delete"
+	// EventUserLock names a lock that failed authentication attempts placed on a user.
+	EventUserLock = "user.lock"
+	// EventUserUnlock names an attempt to release every automatic lock on a user.
+	EventUserUnlock = "user.unlock"
+	// EventUserSuspend names an attempt to suspend a user.
+	EventUserSuspend = "user.suspend"
+	// EventUserUnsuspend names an attempt to release the suspension of a user.
+	EventUserUnsuspend = "user.unsuspend"
+	// EventAgentLock names a lock that failed authentication attempts placed on an agent.
+	EventAgentLock = "agent.lock"
+	// EventAgentUnlock names an attempt to release every automatic lock on an agent.
+	EventAgentUnlock = "agent.unlock"
+	// EventAgentSuspend names an attempt to suspend an agent.
+	EventAgentSuspend = "agent.suspend"
+	// EventAgentUnsuspend names an attempt to release the suspension of an agent.
+	EventAgentUnsuspend = "agent.unsuspend"
+	// EventApplicationLock names a lock that failed authentication attempts placed on an application.
+	EventApplicationLock = "application.lock"
+	// EventApplicationUnlock names an attempt to release every automatic lock on an application.
+	EventApplicationUnlock = "application.unlock"
+	// EventApplicationSuspend names an attempt to suspend an application.
+	EventApplicationSuspend = "application.suspend"
+	// EventApplicationUnsuspend names an attempt to release the suspension of an application.
+	EventApplicationUnsuspend = "application.unsuspend"
 )
 
 const (
@@ -231,6 +255,9 @@ const DetailGrantType = "grant_type"
 
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
+
+// DetailAuthenticationMethod is the detail key of the authentication method a lock holds.
+const DetailAuthenticationMethod = "authentication_method"
 
 // auditedEvents maps every audited event to the detail keys it may carry, so what is audited, and what
 // each event may record, is reviewed in one place. An event not listed here is never written.
@@ -327,4 +354,19 @@ var auditedEvents = map[string][]string{
 	EventProjectCreate: nil,
 	EventProjectUpdate: nil,
 	EventProjectDelete: nil,
+
+	EventUserLock:      {DetailAuthenticationMethod},
+	EventUserUnlock:    nil,
+	EventUserSuspend:   nil,
+	EventUserUnsuspend: nil,
+
+	EventAgentLock:      {DetailAuthenticationMethod},
+	EventAgentUnlock:    nil,
+	EventAgentSuspend:   nil,
+	EventAgentUnsuspend: nil,
+
+	EventApplicationLock:      {DetailAuthenticationMethod},
+	EventApplicationUnlock:    nil,
+	EventApplicationSuspend:   nil,
+	EventApplicationUnsuspend: nil,
 }

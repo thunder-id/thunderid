@@ -304,7 +304,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			Templates:   notifTemplateRenderer,
 			Senders:     notifSenderSvc,
 			EntityTypes: entityTypeService,
-		}, ouAuthzService, observabilitySvc)
+		}, ouAuthzService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 	governanceProvider := identitygovernanceprovider.Initialize(governanceService,
 		runtime.Config.IdentityGovernanceProvider)

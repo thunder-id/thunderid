@@ -32,6 +32,7 @@ type AuditLine struct {
 	Action        string            `json:"action"`
 	Outcome       map[string]string `json:"outcome"`
 	Client        map[string]string `json:"client"`
+	Details       map[string]string `json:"details"`
 	// Raw is the line as the server wrote it, for a check on anything the fields above omit.
 	Raw string `json:"-"`
 }

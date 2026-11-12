@@ -16,6 +16,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -887,4 +888,22 @@ func accountAccessNotificationsFrom(n sysconfig.AccessNotificationsConfig) *acco
 	return &accountAccessNotifications{OnLock: &accountAccessLockNotification{Email: &accountAccessLockEmail{
 		Enabled: email.Enabled,
 	}}}
+}
+
+// auditEventNames maps a category and lifecycle action to its audit event.
+var auditEventNames = map[providers.EntityCategory]map[audit.Action]string{
+	providers.EntityCategoryUser: {audit.ActionLock: audit.EventUserLock, audit.ActionUnlock: audit.EventUserUnlock,
+		audit.ActionSuspend: audit.EventUserSuspend, audit.ActionUnsuspend: audit.EventUserUnsuspend},
+	providers.EntityCategoryAgent: {audit.ActionLock: audit.EventAgentLock, audit.ActionUnlock: audit.EventAgentUnlock,
+		audit.ActionSuspend: audit.EventAgentSuspend, audit.ActionUnsuspend: audit.EventAgentUnsuspend},
+	providers.EntityCategoryApp: {audit.ActionLock: audit.EventApplicationLock,
+		audit.ActionUnlock: audit.EventApplicationUnlock, audit.ActionSuspend: audit.EventApplicationSuspend,
+		audit.ActionUnsuspend: audit.EventApplicationUnsuspend},
+}
+
+// auditTargetTypes maps a category to its audit target type.
+var auditTargetTypes = map[providers.EntityCategory]string{
+	providers.EntityCategoryUser:  audit.TargetTypeUser,
+	providers.EntityCategoryAgent: audit.TargetTypeAgent,
+	providers.EntityCategoryApp:   audit.TargetTypeApplication,
 }
