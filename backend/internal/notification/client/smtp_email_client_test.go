@@ -103,7 +103,7 @@ func (suite *SMTPEmailClientTestSuite) newClient(port int, overrides map[string]
 	for name, value := range overrides {
 		props[name] = value
 	}
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 	return client.(*smtpEmailClient)
 }
@@ -120,7 +120,7 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_DefaultsToSTARTTLS() {
 	props := suite.baseProps(587)
 	delete(props, common.SMTPPropKeyTLS)
 
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 	suite.Equal("Test SMTP", client.GetName())
 	suite.Equal(common.TLSModeSTARTTLS, client.(*smtpEmailClient).config.tlsMode)
@@ -132,7 +132,7 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_ParsesAllProperties() {
 	props = withBasicAuth(props, "user", "pass")
 	props[common.SenderPropertySupportedChannels] = string(common.ChannelTypeEmail)
 
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 
 	config := client.(*smtpEmailClient).config
@@ -151,14 +151,14 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_DoesNotWarnOnAuthentication
 	props := withBasicAuth(suite.baseProps(2525), "user", "pass")
 	props[common.SMTPPropKeyTLS] = string(common.TLSModeSTARTTLS)
 
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 	suite.Equal(outboundauth.TypeBasic, client.(*smtpEmailClient).config.auth.Type)
 }
 
 // An omitted authentication block leaves the client presenting no credentials at all.
 func (suite *SMTPEmailClientTestSuite) TestNewClient_NoAuthenticationConfigured() {
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(suite.baseProps(2525)))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(suite.baseProps(2525)), privateAllowed)
 	suite.Require().NoError(err)
 
 	config := client.(*smtpEmailClient).config
@@ -217,7 +217,7 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_InvalidConfig() {
 		suite.Run(testCase.name, func() {
 			props := suite.baseProps(587)
 			testCase.mutate(props)
-			_, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+			_, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 			suite.Error(err)
 		})
 	}
@@ -300,6 +300,7 @@ func (suite *SMTPEmailClientTestSuite) clientWithAuth(port int, authConfig outbo
 			auth:    authConfig,
 		},
 		auth:   authenticator,
+		dialer: privateAllowed.NewDialer(smtpDialTimeout),
 		logger: log.GetLogger(),
 	}
 }

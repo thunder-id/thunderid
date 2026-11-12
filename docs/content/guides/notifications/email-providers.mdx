@@ -114,6 +114,8 @@ Both TLS modes require TLS 1.2 or later and check the server certificate against
 
 <ProductName /> opens a fresh SMTP connection for every email. It waits up to 30 seconds to connect, and up to 60 seconds for the whole exchange to finish.
 
+By default, <ProductName /> refuses to connect to an SMTP `host` that is, or resolves to, a loopback, link-local or private address, such as `localhost` or `10.0.0.5`, in every `tls` mode. To send through a local relay or one on a private network, set `server.allow_private_addresses: true` in `deployment.yaml` and restart the server. See [Configuration](../../../deployment/configuration).
+
 ### Authentication
 
 Use the `authentication` object to tell <ProductName /> how to authenticate to the SMTP server. Set the method in `type` and its fields in `properties`. SMTP providers support two methods:

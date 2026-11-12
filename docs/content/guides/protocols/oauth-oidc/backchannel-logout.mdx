@@ -66,7 +66,7 @@ backchannelLogoutUri: https://app.example.com/backchannel-logout
 | Empty | The application is not notified |
 | Format | An absolute URI with a scheme and a host. No user credentials, no fragment, no `*` |
 | Scheme | `https`, or `http` for a confidential client only. A public client must register an `https` URI |
-| Host | `localhost`, `*.localhost` and loopback, link-local, private or unspecified IP literals are rejected by default. Set `reject_private_addresses` to `false` for relying parties on a private network, see [Configuration](#configuration) |
+| Host | `localhost`, `*.localhost` and loopback, link-local, private or unspecified IP literals are rejected by default. Set `server.allow_private_addresses` to `true` for relying parties on a private network, see [Configuration](#configuration) |
 
 Use `https` for any endpoint outside a private network. Plain `http` exists for confidential clients on an internal network and for local development.
 
@@ -190,7 +190,6 @@ oauth:
       retry_delay: 2
       max_in_flight: 16
       queue_size: 1024
-      reject_private_addresses: true
 ```
 
 | Key | Default | Description |
@@ -202,13 +201,14 @@ oauth:
 | `retry_delay` | `2` | Seconds before the second attempt, doubled for each later one. At most `60` |
 | `max_in_flight` | `16` | Concurrent deliveries across all terminations |
 | `queue_size` | `1024` | Terminations waiting for delivery before new ones are dropped and recorded as `queue_full` |
-| `reject_private_addresses` | `true` | Rejects URIs that name `localhost` or a private, loopback, link-local or unspecified IP literal, and refuses to connect to such an address at delivery time. Set to `false` when relying parties run on a private network |
+
+URIs that name `localhost` or a private, loopback, link-local or unspecified IP literal are refused when they are registered, and such an address is refused at delivery time, unless the server-wide `server.allow_private_addresses` is `true`. It is the same setting that covers the server's other calls to destinations an administrator configures, see [Configuration](../../../deployment/configuration).
 
 ## Try It in <ProductName />
 
 1. Pick two server-side applications that sign in through the same authentication flow, and add the **Check SSO Session** and **Save / Load Session** nodes to that flow, see [Single Sign-On for Flows](../../flows/single-sign-on.mdx). The default authentication flow has no session nodes, so it records no session and sends no notification.
 2. In the first application, add the receiving route. For an app built with the [Express quickstart](../../../getting-started/connect-your-application/express.mdx), add `app.post('/backchannel-logout', handleBackchannelLogout())` after `thunderID()`, and register `http://localhost:3000/backchannel-logout` as its back-channel logout URI.
-3. A `localhost` URI is rejected by default. For local testing only, set `reject_private_addresses: false` in the server's `deployment.yaml` and restart the server.
+3. A `localhost` URI is rejected by default. For local testing only, set `server.allow_private_addresses: true` in the server's `deployment.yaml` and restart the server.
 4. Sign in to the first application. Then sign in to the second application in the same browser, so both join one <ProductName /> session.
 5. Sign out of the second application. The first application's next request finds its session ended.
 

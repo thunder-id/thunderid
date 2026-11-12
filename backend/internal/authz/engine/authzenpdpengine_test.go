@@ -772,3 +772,26 @@ func newAuthZENTestServer(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Cleanup(server.Close)
 	return server
 }
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPPostRefusesPrivateAddressesUnlessAllowed() {
+	server := newAuthZENTestServer(suite.T(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"decision": true}`))
+	}))
+	post := func(allowPrivate bool, endpoint string) error {
+		engine := &authZENPDPEngine{
+			client: httpservice.NewOutboundClientProvider(allowPrivate).NewHTTPClientWithoutRedirects(0),
+		}
+		var result authzen.AccessEvaluationResponse
+		return engine.post(context.Background(), &authZENPDPSettings{timeout: time.Second}, endpoint, []byte(`{}`),
+			&result)
+	}
+	loopback := strings.Replace(evaluationEndpoint(server), "127.0.0.1", "localhost", 1)
+
+	for _, endpoint := range []string{evaluationEndpoint(server), loopback,
+		"http://10.0.0.1:8080/access/v1/evaluation", "http://169.254.169.254/access/v1/evaluation"} {
+		suite.ErrorIs(post(false, endpoint), httpservice.ErrPrivateAddress, "reached %s", endpoint)
+	}
+	for _, endpoint := range []string{evaluationEndpoint(server), loopback} {
+		suite.NoError(post(true, endpoint), "refused %s", endpoint)
+	}
+}

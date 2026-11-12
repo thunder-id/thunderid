@@ -48,7 +48,7 @@ The feature uses these existing seams without changing their contracts:
 | Token configuration resolution | Resolves the issuer and signing algorithm, so a client that chose its own ID token signing algorithm gets a logout token it can verify |
 | Actor provider | Resolves a participating application's OAuth profile at delivery time |
 | Observability publisher | Publishes the delivery outcome events, one per participant. Its detached-work shape, with a derived context carrying the trace id, wait group accounting, panic recovery, and a shutdown drain, is the pattern the dispatcher follows |
-| Shared HTTP client | Issues the delivery request, configured with a redirect policy that refuses to follow a 3xx and, while `reject_private_addresses` is true, the SSRF-safe dialer |
+| Shared HTTP client | Issues the delivery request, configured with a redirect policy that refuses to follow a 3xx and, while `server.allow_private_addresses` is false, the SSRF-safe dialer |
 
 ```mermaid
 flowchart TB
@@ -202,7 +202,7 @@ flowchart LR
 | Mint | Signing or encryption error | Attempt counted as failed; retried like a transient error, then `server_error` |
 | Send | Connection error, timeout, 5xx, 429 | Retried per [Delivery](#delivery); terminal after `max_attempts` as `unreachable` or `server_error` |
 | Send | Any other status, including a 2xx other than 200 and 204, any 3xx and any other 4xx | Terminal immediately, `rejected` |
-| Send | Host resolves to a private address while `reject_private_addresses` is true | Terminal immediately, `private_address` |
+| Send | Host resolves to a private address while `server.allow_private_addresses` is false | Terminal immediately, `private_address` |
 | Record | Observability publisher unavailable | A failed delivery's warning log line still carries the outcome; successful deliveries are then visible only at debug level |
 | Shutdown | Deadline reached with work pending | Pending jobs recorded `shutdown` and abandoned |
 
@@ -220,7 +220,7 @@ The delivery request:
 
 - A POST to the registered URI, with content type `application/x-www-form-urlencoded` and a body carrying a single `logout_token` parameter.
 - A redirect policy that never follows a 3xx. Following one would turn the POST into a GET at a host the client did not register.
-- While `reject_private_addresses` is true, which is the default, the connection goes through the SSRF-safe dialer: it resolves the host, refuses any loopback, link-local, private, or unspecified address, and connects to the address it checked, so a hostname that resolves to a private address, or changes its answer after registration, is refused. The refusal is terminal and recorded with reason `private_address`, so the cause is visible. With the key set to false, any registered host is dialled. The residual risk of that choice is in [threat-model.md](threat-model.md).
+- While `server.allow_private_addresses` is false, which is the default, the connection goes through the SSRF-safe dialer: it resolves the host, refuses any loopback, link-local, private, or unspecified address, and connects to the address it checked, so a hostname that resolves to a private address, or changes its answer after registration, is refused. The refusal is terminal and recorded with reason `private_address`, so the cause is visible. With it set to true, any registered host is dialled. The residual risk of that choice is in [threat-model.md](threat-model.md).
 - One timeout per attempt, from `request_timeout`. The response body is drained up to a small cap and discarded, so a hostile endpoint cannot return an unbounded body and only the status code influences behaviour.
 
 Response classification:
@@ -274,7 +274,7 @@ One registration parameter joins the OAuth client configuration, beside the post
 
 Every configuration path that carries the post-logout redirect URIs today MUST carry the back-channel logout URI: the inbound client service, the application service, handler, and declarative resource, the configuration importer, the agent service, and the actor provider. A profile stored before this feature shipped MUST read back with an empty URI rather than as absent or invalid.
 
-Validation runs on every path, beside the existing redirect URI validation, and on every write of the profile, create and update alike. The whole profile is checked together, so a later change, such as turning a confidential client public while it keeps an `http` URI, is rejected rather than leaving a URI that no longer meets the rules. Delivery does not re-check the scheme; it re-checks only the address, through the SSRF-safe dialer while `reject_private_addresses` is true, which also covers a URI stored before an operator turned the guard on:
+Validation runs on every path, beside the existing redirect URI validation, and on every write of the profile, create and update alike. The whole profile is checked together, so a later change, such as turning a confidential client public while it keeps an `http` URI, is rejected rather than leaving a URI that no longer meets the rules. Delivery does not re-check the scheme; it re-checks only the address, through the SSRF-safe dialer while `server.allow_private_addresses` is false, which also covers a URI stored before an operator turned the guard on:
 
 | Rule | Behaviour |
 |---|---|
@@ -284,9 +284,9 @@ Validation runs on every path, beside the existing redirect URI validation, and 
 | Fragment | MUST be rejected, including an empty fragment |
 | Wildcard | Any `*` anywhere MUST be rejected. This is a URI ThunderID dials, so a wildcard is either meaningless or a request to post tokens at a host the client did not pin |
 | Scheme | MUST be `https` or `http`. Plain `http` is accepted only for a confidential client, so a public client, which Dynamic Client Registration derives from a token endpoint authentication method of `none`, MUST register `https` |
-| Host | By default, `localhost`, `*.localhost`, and IP literals in loopback, link-local, private, or unspecified ranges MUST be rejected. Setting `reject_private_addresses` to false accepts any host, for relying parties on internal networks and local development |
+| Host | By default, `localhost`, `*.localhost`, and IP literals in loopback, link-local, private, or unspecified ranges MUST be rejected. Setting `server.allow_private_addresses` to true accepts any host, for relying parties on internal networks and local development |
 
-The scheme rule is the condition section 2.2 attaches to `http`: the client type must be confidential and the OP must allow it. The confidential half is enforced at registration and the OP half is a project decision. A back-channel endpoint implies a server component, so the restriction costs public clients nothing real. Plain HTTP exists so that confidential relying parties on internal networks and local development setups can receive notifications, and the guide recommends HTTPS for anything outside a private network. Private hosts are refused by default, as the JWKS URI's are, so a deployment that never reads the documentation, including one that enables insecure Dynamic Client Registration, cannot be made to post to an internal address. Deployments whose relying parties sit on internal networks set `reject_private_addresses` to false.
+The scheme rule is the condition section 2.2 attaches to `http`: the client type must be confidential and the OP must allow it. The confidential half is enforced at registration and the OP half is a project decision. A back-channel endpoint implies a server component, so the restriction costs public clients nothing real. Plain HTTP exists so that confidential relying parties on internal networks and local development setups can receive notifications, and the guide recommends HTTPS for anything outside a private network. Private hosts are refused by default, as the JWKS URI's are, so a deployment that never reads the documentation, including one that enables insecure Dynamic Client Registration, cannot be made to post to an internal address. Deployments whose relying parties sit on internal networks set `server.allow_private_addresses` to true.
 
 A dedicated validation error is raised for a rejected URI and translated in both the application and the agent service, with defaults in the core locale.
 
@@ -393,7 +393,6 @@ oauth:
       retry_delay: 2                 # seconds, doubles per attempt, at most 60
       max_in_flight: 16              # concurrent deliveries across the dispatcher
       queue_size: 1024               # pending termination events before drops are recorded
-      reject_private_addresses: true  # reject localhost and private IP literals; set false for internal RPs
 ```
 
 | Key | Default | Notes |
@@ -405,7 +404,7 @@ oauth:
 | `retry_delay` | 2 | Seconds, doubled per attempt. At most 60 |
 | `max_in_flight` | 16 | Concurrent deliveries across the dispatcher |
 | `queue_size` | 1024 | Pending termination events before drops are recorded |
-| `reject_private_addresses` | `true` | Rejects back-channel logout URIs naming `localhost` or a loopback, link-local, private, or unspecified IP literal, and delivery dials through the SSRF-safe dialer, so a hostname resolving to a private address is refused at connect time and recorded with a reason that says so. On by default so a deployment is safe without reading the documentation, including one that enables `oauth.dcr.insecure`. Deployments whose relying parties sit on internal networks, and local development, set it to false; the guide says so prominently. An unset key is treated as true, so a configuration that omits it still fails safe |
+| `server.allow_private_addresses` | `false` | Server-wide, not a back-channel key. Off, back-channel logout URIs naming `localhost` or a loopback, link-local, private, or unspecified IP literal are rejected, and delivery dials through the SSRF-safe dialer, so a hostname resolving to a private address is refused at connect time and recorded with a reason that says so. Off by default so a deployment is safe without reading the documentation, including one that enables `oauth.dcr.insecure`. Deployments whose relying parties sit on internal networks, and local development, turn it on; the guide says so prominently. It is the same setting that guards the server's other calls to administrator-configured destinations |
 
 While back-channel logout is enabled, every numeric key must be positive, and `request_timeout`, `max_attempts`, and `retry_delay` must not exceed the bounds above. The server checks this at startup and refuses to start otherwise. The bounds exist because the retry wait doubles per attempt: without them, a large `max_attempts` or `retry_delay` overflows the wait to zero or less and the remaining attempts fire back to back. At the bounds the longest wait is 60 seconds doubled eight times, about 4.3 hours.
 
@@ -475,7 +474,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC4.2:** Given a registration request carrying `backchannel_logout_uri`, when registration succeeds, then it is stored and echoed in the registration response. A request that also carries `backchannel_logout_session_required` registers successfully and the parameter is ignored. Reading the client configuration back through the registration endpoint returns it too.
 - **AC4.3:** Given a URI that is relative, has no host, carries userinfo or a fragment, or contains a `*`, when it is submitted on any path, then it is rejected with `APP-1024` and `invalid_backchannel_logout_uri_description`, and Dynamic Client Registration maps that to `invalid_client_metadata`.
 - **AC4.4:** Given a public client, when an `http` URI is submitted, then it is rejected with `backchannel_logout_uri_requires_https_description`. Given a confidential client, when an `http` URI is submitted, then it is accepted. Given a confidential client with an `http` URI, when it is updated to a public client without changing the URI, then the update is rejected and nothing is saved.
-- **AC4.5:** Given a URI naming a loopback, link-local, or private address, when it is submitted with the default configuration, then it is rejected with `backchannel_logout_uri_private_host_description`; with `reject_private_addresses` set to false, it is accepted. With the key absent from configuration, it is rejected.
+- **AC4.5:** Given a URI naming a loopback, link-local, or private address, when it is submitted with the default configuration, then it is rejected with `backchannel_logout_uri_private_host_description`; with `server.allow_private_addresses` set to true, it is accepted. With the key absent from configuration, it is rejected.
 - **AC4.6:** Given an empty back-channel logout URI, when the profile is validated, then it is accepted and the application is not notified.
 - **AC4.7:** Given an application profile stored before this feature shipped, when it is read, then the back-channel logout URI is empty rather than absent or invalid.
 - **AC4.8:** Given any client, when a session is terminated, then the logout token delivered to it carries `sid`.
@@ -506,7 +505,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC6.7:** Given a subject-wide revocation across many sessions, when deliveries are dispatched, then concurrent deliveries never exceed `max_in_flight`.
 - **AC6.8:** Given the dispatch queue is full, when a further termination occurs, then the logout completes normally and the dropped event is recorded with reason `queue_full`.
 - **AC6.9:** Given work in flight, when the server shuts down gracefully, then queued and in-flight deliveries are drained within the shutdown deadline and anything abandoned is recorded with reason `shutdown`.
-- **AC6.10:** Given `reject_private_addresses` is true and a registered hostname resolves to a loopback, link-local, private, or unspecified address, when a delivery is attempted, then no connection is made, the delivery is not retried, and it is recorded as failed with reason `private_address`.
+- **AC6.10:** Given `server.allow_private_addresses` is false and a registered hostname resolves to a loopback, link-local, private, or unspecified address, when a delivery is attempted, then no connection is made, the delivery is not retried, and it is recorded as failed with reason `private_address`.
 - **AC6.11:** Given the listener panics, when the logout completes, then the panic is recovered and logged and the logout result is unaffected.
 - **AC6.12:** Given the terminating transaction fails, when the operation returns, then no listener call is made and no notification is sent.
 

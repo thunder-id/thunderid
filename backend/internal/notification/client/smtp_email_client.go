@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth"
@@ -58,11 +59,13 @@ type smtpEmailClient struct {
 	name   string
 	config smtpConfig
 	auth   smtpauth.Authenticator
+	dialer syshttp.DialerInterface
 	logger *log.Logger
 }
 
 // newSMTPEmailClient creates a new instance of smtpEmailClient.
-func newSMTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO) (EmailClientInterface, error) {
+func newSMTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO,
+	clients syshttp.OutboundClientProviderInterface) (EmailClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SMTPEmailClient"))
 
 	config, err := parseSMTPConfig(sender.Properties)
@@ -84,6 +87,7 @@ func newSMTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO
 		name:   sender.Name,
 		config: config,
 		auth:   authenticator,
+		dialer: clients.NewDialer(smtpDialTimeout),
 		logger: logger,
 	}, nil
 }
@@ -256,14 +260,17 @@ func (c *smtpEmailClient) sendViaSMTP(
 	return nil
 }
 
-// dial opens the transport, using a direct TLS connection for implicit TLS (SMTPS). The read cap
+// dial opens the transport, using a direct TLS connection for implicit TLS (SMTPS). The TCP
+// connection goes through the outbound dialer, which refuses a loopback, link-local or private
+// address unless the deployment allows them; TLS, implicit or by STARTTLS, runs over that same
+// connection and still verifies the certificate against the configured host. The read cap
 // sits under TLS rather than over it: net/smtp treats a session as encrypted only when its
 // connection is a *tls.Conn, and refuses to send credentials otherwise.
 func (c *smtpEmailClient) dial(ctx context.Context, serverAddress string) (net.Conn, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, smtpDialTimeout)
 	defer cancel()
 
-	rawConn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", serverAddress)
+	rawConn, err := c.dialer.DialContext(dialCtx, "tcp", serverAddress)
 	if err != nil {
 		return nil, err
 	}

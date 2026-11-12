@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
@@ -1738,7 +1739,8 @@ func (suite *CIBAServiceTestSuite) TestInitiate_InvalidAuthorizationDetailsAreRe
 
 func (suite *CIBAServiceTestSuite) TestInitiate_AuthorizationDetailsUnsupported() {
 	service := newCIBAService(suite.mockStore, suite.mockFlowExec, suite.mockJWTService, nil, suite.mockResourceSvc,
-		nil, authzdetailexec.Initialize(nil, time.Second), suite.service.(*cibaService).cfg)
+		nil, authzdetailexec.Initialize(nil, time.Second, httpservice.NewOutboundClientProvider(false)),
+		suite.service.(*cibaService).cfg)
 
 	_, cibaErr := service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
 		LoginHint: "alice", Scope: "openid", AuthorizationDetails: testDetailsRaw,

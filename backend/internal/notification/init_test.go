@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
@@ -92,7 +93,7 @@ func (suite *InitTestSuite) TearDownTest() {
 
 func (suite *InitTestSuite) TestInitialize() {
 	mgtService, _, _, configHandler, err := Initialize(suite.mockJWTService, notificationconfig.Config{}, nil,
-		discardingBus{})
+		discardingBus{}, httpservice.NewOutboundClientProvider(false))
 	suite.NoError(err)
 
 	suite.NotNil(mgtService)
@@ -102,7 +103,8 @@ func (suite *InitTestSuite) TestInitialize() {
 
 // The returned handler decodes the notification section and protects its declarative layer.
 func (suite *InitTestSuite) TestInitialize_ReturnsTheNotificationSectionHandler() {
-	_, _, _, configHandler, err := Initialize(suite.mockJWTService, notificationconfig.Config{}, nil, discardingBus{})
+	_, _, _, configHandler, err := Initialize(suite.mockJWTService, notificationconfig.Config{}, nil, discardingBus{},
+		httpservice.NewOutboundClientProvider(false))
 	suite.Require().NoError(err)
 	suite.IsType(&serverConfigHandler{}, configHandler)
 
@@ -120,7 +122,8 @@ func (suite *InitTestSuite) TestInitialize_ReturnsTheNotificationSectionHandler(
 
 func (suite *InitTestSuite) TestInitialize_RefusesANilEventBus() {
 	mgtService, otpService, senderService, configHandler, err :=
-		Initialize(suite.mockJWTService, notificationconfig.Config{}, nil, nil)
+		Initialize(suite.mockJWTService, notificationconfig.Config{}, nil, nil,
+			httpservice.NewOutboundClientProvider(false))
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(mgtService)
@@ -137,7 +140,8 @@ func (suite *InitTestSuite) TestInitialize_StoreErrorPropagates() {
 	defer func() { getDBProvider = originalGetDBProvider }()
 
 	mgtService, otpService, senderService, configHandler, err :=
-		Initialize(suite.mockJWTService, notificationconfig.Config{}, nil, discardingBus{})
+		Initialize(suite.mockJWTService, notificationconfig.Config{}, nil, discardingBus{},
+			httpservice.NewOutboundClientProvider(false))
 
 	suite.Error(err)
 	suite.Nil(mgtService)
@@ -162,7 +166,8 @@ func (suite *InitTestSuite) TestInitializeUsesInjectedConfig() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return("injected-session", int64(0), (*tidcommon.ServiceError)(nil)).Once()
 
-	_, otpService, _, _, err := Initialize(suite.mockJWTService, cfg, nil, discardingBus{})
+	_, otpService, _, _, err := Initialize(suite.mockJWTService, cfg, nil, discardingBus{},
+		httpservice.NewOutboundClientProvider(false))
 
 	suite.Require().NoError(err)
 	token, otp, expirySeconds, svcErr := otpService.GenerateOTP(

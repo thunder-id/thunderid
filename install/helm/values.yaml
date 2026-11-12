@@ -137,6 +137,11 @@ configuration:
   server:
     port: 8090
     httpOnly: false
+    # Let calls to destinations an administrator configures (identity providers, email and SMS
+    # providers, HTTP request steps and extensions in flows, AuthZEN policy decision points,
+    # authorization details processors and back-channel logout URIs) reach a loopback, link-local
+    # or private address. Leave it off unless those destinations run on internal networks.
+    allowPrivateAddresses: false
     # Logical deployment identifier. Every record is scoped to it, so give each
     # deployment sharing a database its own value. Defaults to "default-deployment".
     identifier: ""
@@ -493,9 +498,6 @@ configuration:
     logout:
       backchannel:
         enabled: true
-        # Reject back-channel logout URIs naming localhost or a private IP address, and refuse a
-        # hostname that resolves to one. Set to false when relying parties run on internal networks.
-        rejectPrivateAddresses: true
     # Validation policy for private_key_jwt client assertions, in seconds.
     clientAssertion:
       maxLifetime: 300

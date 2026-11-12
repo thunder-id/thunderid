@@ -26,6 +26,6 @@ func Initialize(
 		return nil
 	}
 	httpClient := syshttp.NewHTTPClientWithoutRedirects(
-		time.Duration(bcl.RequestTimeout)*time.Second, bcl.RejectsPrivateAddresses())
+		time.Duration(bcl.RequestTimeout)*time.Second, !cfg.AllowPrivateAddresses)
 	return newDispatcher(bcl, tokens, clients, httpClient, events)
 }

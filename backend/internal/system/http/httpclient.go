@@ -11,6 +11,8 @@
 //     follows redirects, optionally with the SSRF dial guard
 //   - NewHTTPClientWithRootCAs(duration, rootCAs, rejectPrivate) - creates a client with a custom timeout that never
 //     follows redirects and trusts the given certificate authorities, optionally with the SSRF dial guard
+//   - NewOutboundClientProvider(allowPrivateAddresses) - creates the provider of clients and dialers for
+//     destinations an administrator configures, guarded unless private addresses are allowed
 //
 // Usage examples:
 //
@@ -82,7 +84,7 @@ func NewHTTPClientWithTimeout(timeout time.Duration) HTTPClientInterface {
 // Use this when redirect behavior must be controlled, e.g. to prevent HTTPS→HTTP downgrades.
 // Requires server runtime to be initialized before calling (reads TLS config at construction time).
 // ssrfSafeDialContext is wired in to block hostnames that DNS-resolve to private/loopback addresses
-// and to pin the TCP connection to the first validated IP (prevents DNS rebinding).
+// and to pin the TCP connection to the validated IPs (prevents DNS rebinding).
 func NewHTTPClientWithCheckRedirect(checkRedirect func(*http.Request, []*http.Request) error) HTTPClientInterface {
 	return &HTTPClient{
 		client: &http.Client{
@@ -151,12 +153,57 @@ func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool, rej
 // loopback, link-local, private or unspecified address.
 var ErrPrivateAddress = errors.New("refused a private address")
 
-// ssrfSafeDialContext resolves the target hostname and validates every returned IP against
-// privateIPRanges before dialing. Connecting to the first validated IP directly pins the
-// connection and prevents DNS rebinding attacks. TLS hostname verification is unaffected:
-// http.Transport derives ServerName from the request URL (not addr) when TLSClientConfig.ServerName
-// is empty, so the certificate is still validated against the original hostname.
+// ssrfSafeDialContext dials through the SSRF-safe dialer with a 10-second connect timeout.
 func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return (&dialer{timeout: 10 * time.Second, rejectPrivate: true}).DialContext(ctx, network, addr)
+}
+
+// dialer opens network connections bounded by timeout. With rejectPrivate it resolves the target
+// hostname and validates every returned IP against privateIPRanges before dialing. Connecting to the
+// validated IPs directly pins the connection and prevents DNS rebinding attacks, so the address
+// checked is the address connected to. TLS hostname verification is unaffected: http.Transport derives
+// ServerName from the request URL (not addr) when TLSClientConfig.ServerName is empty, so the
+// certificate is still validated against the original hostname.
+type dialer struct {
+	timeout       time.Duration
+	rejectPrivate bool
+	// resolver and conns, when set, replace the system resolver and a plain net.Dialer for the guarded
+	// dial. Only tests set them.
+	resolver ipResolverInterface
+	conns    connDialerInterface
+}
+
+// ipResolverInterface resolves a host to its IP addresses, as net.Resolver does.
+type ipResolverInterface interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
+// connDialerInterface opens a connection, as net.Dialer does.
+type connDialerInterface interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+
+// DialContext connects to addr on the named network. timeout bounds the whole dial, the resolution and
+// every connection attempt together, as it does for the standard dialer; zero leaves it unbounded.
+func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	netDialer := &net.Dialer{Timeout: d.timeout}
+	if !d.rejectPrivate {
+		return netDialer.DialContext(ctx, network, addr)
+	}
+	if d.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d.timeout)
+		defer cancel()
+	}
+	var resolver ipResolverInterface = net.DefaultResolver
+	if d.resolver != nil {
+		resolver = d.resolver
+	}
+	var conns connDialerInterface = &net.Dialer{}
+	if d.conns != nil {
+		conns = d.conns
+	}
+
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		// addr has no port (unlikely from http.Transport, but handle defensively)
@@ -164,12 +211,11 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 		port = "443"
 	}
 
-	ipAddrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	ipAddrs, err := resolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, err
 	}
 
-	var safeIP net.IP
 	for _, ia := range ipAddrs {
 		if ia.IP.IsUnspecified() {
 			return nil, fmt.Errorf("host %q resolves to an unspecified address %s: %w", host, ia.IP, ErrPrivateAddress)
@@ -179,21 +225,56 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 				return nil, fmt.Errorf("host %q resolves to a private address %s: %w", host, ia.IP, ErrPrivateAddress)
 			}
 		}
-		if safeIP == nil {
-			safeIP = ia.IP
-		}
 	}
-	if safeIP == nil {
+	if len(ipAddrs) == 0 {
 		return nil, fmt.Errorf("host %q resolved to no usable addresses", host)
 	}
 
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
+	// Every address was validated above, so trying them in turn, as the standard dialer does, keeps a
+	// host reachable when its first address is not (an IPv6 address on an IPv4-only network). Like the
+	// standard dialer, each attempt gets a share of the time left, so an address that drops connection
+	// attempts cannot use up the whole deadline before a reachable one is tried.
+	var dialErr error
+	for i, ia := range ipAddrs {
+		attemptCtx, cancel := ctx, context.CancelFunc(func() {})
+		if deadline, ok := ctx.Deadline(); ok {
+			attemptCtx, cancel = context.WithDeadline(ctx, attemptDeadline(time.Now(), deadline, len(ipAddrs)-i))
+		}
+		conn, err := conns.DialContext(attemptCtx, network, net.JoinHostPort(ia.IP.String(), port))
+		cancel()
+		if err == nil {
+			return conn, nil
+		}
+		dialErr = err
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return nil, dialErr
 }
 
-// privateIPRanges lists CIDR blocks that must not be used as JWKS fetch targets.
-// Covers IPv4/IPv6 loopback, link-local (including cloud metadata services), and
-// RFC1918/unique-local private ranges.
+// minAttemptTime is the least share of the remaining time a connection attempt gets when more
+// addresses follow it, unless less than that remains, as the standard dialer's saneMinimum is.
+const minAttemptTime = 2 * time.Second
+
+// attemptDeadline is the deadline of one connection attempt when remaining addresses, this one
+// included, are left to try before deadline: an equal share of the time left, at least
+// minAttemptTime, never past deadline. The last address gets all that is left.
+func attemptDeadline(now, deadline time.Time, remaining int) time.Time {
+	timeLeft := deadline.Sub(now)
+	if remaining <= 1 || timeLeft <= 0 {
+		return deadline
+	}
+	share := timeLeft / time.Duration(remaining)
+	if share < minAttemptTime {
+		share = min(minAttemptTime, timeLeft)
+	}
+	return now.Add(share)
+}
+
+// privateIPRanges lists the CIDR blocks no guarded call may reach: IPv4/IPv6 loopback, link-local
+// (including cloud metadata services), RFC1918/unique-local private ranges, the RFC 6598 shared
+// address space some clusters and cloud metadata services use, and the "this network" block.
 var privateIPRanges = func() []*net.IPNet {
 	cidrs := []string{
 		"127.0.0.0/8",    // IPv4 loopback
@@ -204,6 +285,9 @@ var privateIPRanges = func() []*net.IPNet {
 		"172.16.0.0/12",  // RFC1918 private
 		"192.168.0.0/16", // RFC1918 private
 		"fc00::/7",       // IPv6 unique-local
+		"100.64.0.0/10",  // RFC 6598 shared address space (carrier-grade NAT; some cluster pod and
+		// service ranges, and Alibaba Cloud metadata at 100.100.100.200)
+		"0.0.0.0/8", // "this network" (RFC 1122); 0.0.0.0 itself is also refused as unspecified
 	}
 	nets := make([]*net.IPNet, 0, len(cidrs))
 	for _, c := range cidrs {

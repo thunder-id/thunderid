@@ -56,7 +56,7 @@ func (suite *VonageClientTestSuite) getValidVonageSender() common.NotificationSe
 func (suite *VonageClientTestSuite) TestNewVonageClient_Success() {
 	sender := suite.getValidVonageSender()
 
-	client, err := newVonageClient(context.Background(), sender)
+	client, err := newVonageClient(context.Background(), sender, privateAllowed)
 
 	suite.NoError(err)
 	suite.NotNil(client)
@@ -65,7 +65,7 @@ func (suite *VonageClientTestSuite) TestNewVonageClient_Success() {
 
 func (suite *VonageClientTestSuite) TestGetName() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	name := client.GetName()
 
@@ -74,7 +74,7 @@ func (suite *VonageClientTestSuite) TestGetName() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server to mock Vonage API
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +111,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	var gotCorrelationID string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +140,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_Error() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +170,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_Error() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_NetworkError() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Use an invalid URL to force a network error
 	vonageClient := client.(*VonageClient)
@@ -188,7 +188,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_NetworkError() {
 
 func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithPlus() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 	vonageClient := client.(*VonageClient)
 
 	formatted := vonageClient.formatPhoneNumber("+15559876543")
@@ -198,7 +198,7 @@ func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithPlus() {
 
 func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithDoubleZero() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 	vonageClient := client.(*VonageClient)
 
 	formatted := vonageClient.formatPhoneNumber("0015559876543")
@@ -208,7 +208,7 @@ func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithDoubleZero() {
 
 func (suite *VonageClientTestSuite) TestFormatPhoneNumber_NoPrefix() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 	vonageClient := client.(*VonageClient)
 
 	formatted := vonageClient.formatPhoneNumber("15559876543")
@@ -220,7 +220,7 @@ func (suite *VonageClientTestSuite) TestNewVonageClient_WithUnknownProperty() {
 	sender := suite.getValidVonageSender()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := newVonageClient(context.Background(), sender)
+	client, err := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)

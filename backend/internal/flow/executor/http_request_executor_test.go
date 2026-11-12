@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -20,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -51,7 +53,8 @@ func (suite *HTTPRequestExecutorTestSuite) SetupTest() {
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	suite.executor = newHTTPRequestExecutor(mockFlowFactory, nil, suite.mockAuthnProvider)
+	suite.executor = newHTTPRequestExecutor(mockFlowFactory, nil, suite.mockAuthnProvider,
+		httpservice.NewOutboundClientProvider(true))
 }
 
 func newHTTPRequestAuthUser() providers.AuthUser {
@@ -838,7 +841,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromEntit
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.NewOutboundClientProvider(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -894,7 +898,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromRunti
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.NewOutboundClientProvider(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -952,7 +957,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_RuntimeDataPr
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.NewOutboundClientProvider(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -1008,7 +1014,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.NewOutboundClientProvider(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -1062,7 +1069,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.NewOutboundClientProvider(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -1084,4 +1092,41 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.Equal(suite.T(), "{{ctx(ouHandle)}}", receivedBody["orgHandle"])
+}
+
+// sendTo sends a GET to url through an executor whose outbound clients allow or refuse private
+// addresses, and returns the error.
+func (suite *HTTPRequestExecutorTestSuite) sendTo(allowPrivate bool, url string) error {
+	executor := *suite.executor
+	executor.clients = httpservice.NewOutboundClientProvider(allowPrivate)
+	response, err := executor.executeRequestWithRetry(
+		&providers.NodeContext{Context: context.Background(), ExecutionID: "test-flow"},
+		&httpRequestConfig{URL: url, Method: http.MethodGet, Timeout: 10})
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	return err
+}
+
+func (suite *HTTPRequestExecutorTestSuite) TestExecuteRequest_RefusesPrivateAddresses() {
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	loopback := strings.Replace(suite.mockServer.URL, "127.0.0.1", "localhost", 1)
+	for _, url := range []string{suite.mockServer.URL, loopback, "http://10.0.0.1:8080/",
+		"http://169.254.169.254/latest/meta-data/"} {
+		suite.ErrorIs(suite.sendTo(false, url), httpservice.ErrPrivateAddress, "reached %s", url)
+	}
+}
+
+func (suite *HTTPRequestExecutorTestSuite) TestExecuteRequest_ReachesPrivateAddressesWhenAllowed() {
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	loopback := strings.Replace(suite.mockServer.URL, "127.0.0.1", "localhost", 1)
+	for _, url := range []string{suite.mockServer.URL, loopback} {
+		suite.NoError(suite.sendTo(true, url), "refused %s", url)
+	}
 }

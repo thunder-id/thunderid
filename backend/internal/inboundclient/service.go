@@ -1098,7 +1098,7 @@ func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
 		return ErrOAuthInvalidBackchannelLogoutURI
 	}
-	if config.GetServerRuntime().Config.OAuth.Logout.Backchannel.RejectsPrivateAddresses() &&
+	if !config.GetServerRuntime().Config.Server.AllowPrivateAddresses &&
 		syshttp.IsPrivateHost(parsed.Hostname()) {
 		return ErrOAuthBackchannelLogoutURIPrivateHost
 	}

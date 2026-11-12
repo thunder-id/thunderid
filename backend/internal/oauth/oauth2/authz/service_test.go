@@ -37,6 +37,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -174,7 +175,7 @@ func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 	inboundClient := actorprovider.Initialize(
 		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	return &authorizeService{
-		authzDetails:    authzdetailexec.Initialize(nil, time.Second),
+		authzDetails:    authzdetailexec.Initialize(nil, time.Second, httpservice.NewOutboundClientProvider(false)),
 		cfg:             authorizeServiceCfgFromRuntime(),
 		inboundClient:   inboundClient,
 		resourceService: suite.mockResourceService,

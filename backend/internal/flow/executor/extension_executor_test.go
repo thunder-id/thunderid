@@ -100,9 +100,10 @@ func (s *ExtensionExecutorTestSuite) flowFactory() *coremock.FlowFactoryInterfac
 	return factory
 }
 
-// client returns the client the server injects into the executor.
+// client returns the client the server injects into the executor, allowed to reach the loopback
+// service the tests start.
 func (s *ExtensionExecutorTestSuite) client() httpservice.HTTPClientInterface {
-	return httpservice.NewHTTPClientWithoutRedirects(0, false)
+	return httpservice.NewOutboundClientProvider(true).NewHTTPClientWithoutRedirects(0)
 }
 
 // serve starts the fake service with handler and records every request it receives.
@@ -482,6 +483,28 @@ func (s *ExtensionExecutorTestSuite) TestExecute_UnreachableServiceIsATransportE
 	evt := s.onlyEvent()
 	s.Equal(string(extensionErrorKindTransport), evt.Data[event.DataKey.ErrorKind])
 	s.NotContains(evt.Data, event.DataKey.HTTPStatus)
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_PrivateAddressIsRefusedAsATransportError() {
+	s.answer(http.StatusOK, `{"actionStatus":"SUCCESS"}`)
+	refusing := httpservice.NewOutboundClientProvider(false).NewHTTPClientWithoutRedirects(0)
+
+	for _, url := range []string{s.server.URL, strings.Replace(s.server.URL, "127.0.0.1", "localhost", 1),
+		"http://10.0.0.1:8080/", "http://169.254.169.254/"} {
+		s.Run(url, func() {
+			s.published = nil
+			s.connections = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+			executor := newExtensionExecutor(s.flowFactory(), s.connections, refusing, s.events)
+			s.resolveTo(url, time.Second)
+
+			execResp, err := executor.Execute(s.nodeContext())
+
+			s.Require().NoError(err)
+			s.assertCallFailed(execResp)
+			s.Equal(string(extensionErrorKindTransport), s.onlyEvent().Data[event.DataKey.ErrorKind])
+		})
+	}
+	s.Empty(s.requests, "the service was reached")
 }
 
 func (s *ExtensionExecutorTestSuite) TestExecute_BodyOfExactlyTheCapIsRead() {

@@ -2615,6 +2615,7 @@ Credential-bearing data is stripped at capture and is never available through th
 
 **Failure conditions:**
 - URL not configured or invalid
+- URL host is, or resolves to, a loopback, link-local or private address, unless `server.allow_private_addresses` is `true` in `deployment.yaml` (see [Configuration](../../../deployment/configuration))
 - HTTP request timeout
 - HTTP error status code (4xx, 5xx) when `failOnError: true`
 - Retries exhausted
