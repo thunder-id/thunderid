@@ -176,6 +176,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_member_type_description"
                       defaultValue: "The member type must be 'user', 'group', or 'app'"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be added to groups
+                  value:
+                    code: "GRP-1025"
+                    message:
+                      key: "error.groupservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be added to groups"
+                    description:
+                      key: "error.groupservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be a member of a group"
                 invalid-member-id:
                   summary: Invalid user or app member ID
                   value:
@@ -701,6 +711,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_member_type_description"
                       defaultValue: "The member type must be 'user', 'group', or 'app'"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be added to groups
+                  value:
+                    code: "GRP-1025"
+                    message:
+                      key: "error.groupservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be added to groups"
+                    description:
+                      key: "error.groupservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be a member of a group"
                 invalid-member-id:
                   summary: Invalid user or app member ID
                   value:
@@ -1072,6 +1092,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_member_type_description"
                       defaultValue: "The member type must be 'user', 'group', or 'app'"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be added to groups
+                  value:
+                    code: "GRP-1025"
+                    message:
+                      key: "error.groupservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be added to groups"
+                    description:
+                      key: "error.groupservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be a member of a group"
                 invalid-member-id:
                   summary: Invalid member ID
                   value:

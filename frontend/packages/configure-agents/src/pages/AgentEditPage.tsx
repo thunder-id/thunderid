@@ -467,11 +467,14 @@ export default function AgentEditPage(): JSX.Element {
     });
   }
 
-  tabs.push({
-    key: 'access',
-    label: t('agents:edit.page.tabs.access', 'Access'),
-    render: () => <EditAccessSettings agent={agent} />,
-  });
+  // The Access tab holds only roles and groups, which a personal agent cannot have.
+  if (agent.kind !== PERSONAL_AGENT_KIND) {
+    tabs.push({
+      key: 'access',
+      label: t('agents:edit.page.tabs.access', 'Access'),
+      render: () => <EditAccessSettings agent={agent} />,
+    });
+  }
 
   if (hasOAuth) {
     tabs.push({

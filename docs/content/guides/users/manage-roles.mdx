@@ -218,6 +218,8 @@ A role assignment grants the role's permissions to a principal. Principals can b
 | `app` | An application principal. |
 | `agent` | An agent principal. |
 
+A personal agent acts only on behalf of its owner, so it cannot be assigned a role. Such a request fails with `ROL-1046`, and the Console does not list personal agents.
+
 ### View Assignments
 
 Open the role from the **Roles** list and select the **Assignments** tab to see all current assignments organized by type.

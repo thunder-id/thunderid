@@ -423,7 +423,8 @@ func mapGroupServiceErrorToSCIM(svcErr *tidcommon.ServiceError) *tidcommon.Servi
 		return &scim.ErrorMutabilityViolation
 	case group.ErrorManagedGroup.Code, group.ErrorManagedGroupMember.Code:
 		return &scim.ErrorManagedResource
-	case group.ErrorInvalidMemberID.Code, group.ErrorInvalidGroupMemberID.Code, group.ErrorMemberOUMismatch.Code:
+	case group.ErrorInvalidMemberID.Code, group.ErrorInvalidGroupMemberID.Code, group.ErrorMemberOUMismatch.Code,
+		group.ErrorPersonalAgentNotAssignable.Code:
 		return &scim.ErrorInvalidGroupMember
 	case group.ErrorGroupNameConflict.Code:
 		return &scim.ErrorUniquenessConflict

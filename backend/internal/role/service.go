@@ -478,7 +478,7 @@ func (rs *roleService) createRole(
 	// Validate assignment IDs (existence + category check) before normalization.
 	if len(role.Assignments) > 0 {
 		// A role is created in its owner, so that is where its assignees must be available.
-		if err := validateAssignmentIDs(ctx, role.Assignments, role.OUID, rs.entityService, rs.groupService,
+		if err := validateAssignmentIDs(ctx, role.Assignments, role.OUID, true, rs.entityService, rs.groupService,
 			rs.sharingService, loggerComponentName); err != nil {
 			return nil, err
 		}

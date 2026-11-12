@@ -585,6 +585,19 @@ var (
 				"assignments in this organization unit instead",
 		},
 	}
+	// ErrorPersonalAgentNotAssignable is the error returned when a personal agent is assigned a role.
+	ErrorPersonalAgentNotAssignable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.personal_agent_not_assignable",
+			DefaultValue: "Personal agent cannot be assigned roles",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.personal_agent_not_assignable_description",
+			DefaultValue: "A personal agent acts only on behalf of its owner, so it cannot be assigned roles",
+		},
+	}
 )
 
 // Internal error constants for role management operations.

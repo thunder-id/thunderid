@@ -3236,7 +3236,7 @@ func TestValidateEntityMembers_GetEntitiesError(t *testing.T) {
 	}
 
 	err := service.validateEntityMembers(context.Background(),
-		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", true)
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", true, true)
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
@@ -3253,7 +3253,7 @@ func TestValidateEntityMembers_TypeMismatch(t *testing.T) {
 	}
 
 	err := service.validateEntityMembers(context.Background(),
-		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", true)
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", true, true)
 	require.NotNil(t, err)
 	require.Equal(t, ErrorInvalidMemberID.Code, err.Code)
 }
@@ -3387,7 +3387,7 @@ func (suite *GroupServiceTestSuite) TestValidateEntityMembers_MemberOutsideGroup
 				Return(tc.shared, (*tidcommon.ServiceError)(nil)).Once()
 
 			err := newSharingAwareService(entitySvcMock, sharingSvcMock).validateEntityMembers(
-				context.Background(), []Member{{ID: tc.member.ID, Type: tc.memType}}, "ou-1", true)
+				context.Background(), []Member{{ID: tc.member.ID, Type: tc.memType}}, "ou-1", true, true)
 
 			if tc.wantErr == nil {
 				require.Nil(t, err)
@@ -3410,7 +3410,7 @@ func (suite *GroupServiceTestSuite) TestValidateEntityMembers_WithoutOUCheck() {
 		Once()
 
 	err := newSharingAwareService(entitySvcMock, sharingSvcMock).validateEntityMembers(
-		context.Background(), []Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", false)
+		context.Background(), []Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", false, false)
 
 	require.Nil(t, err)
 	sharingSvcMock.AssertNotCalled(t, "IsVisible", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -3470,10 +3470,43 @@ func (suite *GroupServiceTestSuite) TestValidateEntityMembers_SharingLookupError
 		Return(false, &tidcommon.InternalServerError).Once()
 
 	err := newSharingAwareService(entitySvcMock, sharingSvcMock).validateEntityMembers(
-		context.Background(), []Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", true)
+		context.Background(), []Member{{ID: "usr-001", Type: MemberTypeUser}}, "ou-1", true, true)
 
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateEntityMembers_UnassignableKind() {
+	agent := personalAgent("agent-1", "ou-1")
+	members := []Member{{ID: "agent-1", Type: MemberTypeAgent}}
+
+	suite.Run("AddingIsRefused", func() {
+		entitySvcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+		entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).
+			Return([]providers.Entity{agent}, nil).Once()
+
+		err := newSharingAwareService(entitySvcMock, sharingmock.NewSharingServiceInterfaceMock(suite.T())).
+			validateEntityMembers(context.Background(), members, "ou-1", true, true)
+
+		suite.Equal(&ErrorPersonalAgentNotAssignable, err)
+	})
+
+	suite.Run("RemovingIsAllowed", func() {
+		entitySvcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+		entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).
+			Return([]providers.Entity{agent}, nil).Once()
+
+		err := newSharingAwareService(entitySvcMock, sharingmock.NewSharingServiceInterfaceMock(suite.T())).
+			validateEntityMembers(context.Background(), members, "ou-1", false, false)
+
+		suite.Nil(err)
+	})
+}
+
+// personalAgent is a personal agent entity owned by the given organization unit.
+func personalAgent(id, ouID string) providers.Entity {
+	return providers.Entity{ID: id, Category: providers.EntityCategoryAgent, OUID: ouID,
+		SystemAttributes: json.RawMessage(`{"kind":"personal-assistant"}`)}
 }
 
 func TestGetGroupsByIDs_StoreError(t *testing.T) {
