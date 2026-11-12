@@ -1029,6 +1029,8 @@ var defaultMessages = map[string]string{
 	"error.themeservice.invalid_limit_value_description": "Limit must be between 1 and {{param(max)}}",
 	"error.unauthorized": "Unauthorized",
 	"error.unauthorized_description": "The caller is not authorized to perform this operation",
+	"error.userinfoservice.audience_not_accepted": "Invalid access token",
+	"error.userinfoservice.audience_not_accepted_description": "The access token audience is not accepted by the UserInfo endpoint",
 	"error.userinfoservice.client_credentials_not_supported": "Invalid access token",
 	"error.userinfoservice.client_credentials_not_supported_description": "UserInfo endpoint is not applicable for client_credentials grant type",
 	"error.userinfoservice.dpop_bound_token_bearer_scheme": "Invalid access token",

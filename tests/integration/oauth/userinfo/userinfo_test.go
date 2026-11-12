@@ -426,9 +426,10 @@ func (ts *UserInfoTestSuite) getAuthorizationCodeToken(scope string) (string, er
 		return "", fmt.Errorf("failed to extract authorization code: %w", err)
 	}
 
-	// Step 7: Exchange code for token
-	tokenResult, err := testutils.RequestTokenWithResource(clientID, clientSecret, code, redirectURI,
-		"authorization_code", userInfoDefaultResourceServerIdentifier)
+	// Step 7: Exchange code for token. No 'resource' is requested so the access token's audience
+	// defaults to the client's own default audience (see OAuthClient.ResolveDefaultAudience),
+	// which is what the UserInfo endpoint accepts.
+	tokenResult, err := testutils.RequestToken(clientID, clientSecret, code, redirectURI, "authorization_code")
 	if err != nil {
 		return "", fmt.Errorf("failed to request token: %w", err)
 	}
@@ -497,9 +498,10 @@ func (ts *UserInfoTestSuite) getRefreshToken(scope string) (string, error) {
 		return "", fmt.Errorf("failed to extract authorization code: %w", err)
 	}
 
-	// Step 7: Exchange code for token (this should include refresh_token)
-	tokenResult, err := testutils.RequestTokenWithResource(clientID, clientSecret, code, redirectURI,
-		"authorization_code", userInfoDefaultResourceServerIdentifier)
+	// Step 7: Exchange code for token (this should include refresh_token). No 'resource' is
+	// requested so the resulting token's audience is the client's own default audience, which the
+	// UserInfo endpoint accepts.
+	tokenResult, err := testutils.RequestToken(clientID, clientSecret, code, redirectURI, "authorization_code")
 	if err != nil {
 		return "", fmt.Errorf("failed to request token: %w", err)
 	}
@@ -558,13 +560,13 @@ func (ts *UserInfoTestSuite) getTokenExchangeToken(scope string) (string, error)
 		return "", err
 	}
 
-	// Exchange the subject token for a new token
+	// Exchange the subject token for a new token. No 'resource' is requested so the exchanged
+	// token's audience is the client's own default audience, which the UserInfo endpoint accepts.
 	tokenData := url.Values{}
 	tokenData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
 	tokenData.Set("subject_token", subjectToken)
 	tokenData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
 	tokenData.Set("scope", scope)
-	tokenData.Set("resource", userInfoDefaultResourceServerIdentifier)
 
 	req, err := http.NewRequest("POST", testServerURL+"/oauth2/token", bytes.NewBufferString(tokenData.Encode()))
 	if err != nil {
@@ -1003,9 +1005,9 @@ func (ts *UserInfoTestSuite) getAuthorizationCodeTokenWithClient(scope, cID, cSe
 		return "", err
 	}
 
-	// 7. Exchange
-	tokenResult, err := testutils.RequestTokenWithResource(cID, cSecret, code, redirectURI,
-		"authorization_code", userInfoDefaultResourceServerIdentifier)
+	// 7. Exchange. No 'resource' is requested so the token's audience is the client's own default
+	// audience, which the UserInfo endpoint accepts.
+	tokenResult, err := testutils.RequestToken(cID, cSecret, code, redirectURI, "authorization_code")
 	if err != nil {
 		return "", err
 	}

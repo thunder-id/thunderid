@@ -410,10 +410,10 @@ func (ts *ClaimsParameterTestSuite) getTokenWithClaims(
 		return "", "", fmt.Errorf("failed to extract authorization code: %w", err)
 	}
 
-	// Step 7: Exchange code for token
-	tokenResult, err := testutils.RequestTokenWithResource(
+	// Step 7: Exchange code for token. No 'resource' is requested so the token's audience is the
+	// client's own default audience, which the UserInfo endpoint accepts.
+	tokenResult, err := testutils.RequestToken(
 		clientID, clientSecret, code, redirectURI, "authorization_code",
-		claimsTestResource,
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to request token: %w", err)
@@ -537,10 +537,10 @@ func (ts *ClaimsParameterTestSuite) getTokensWithClaims(
 		return "", "", fmt.Errorf("failed to extract authorization code: %w", err)
 	}
 
-	// Step 7: Exchange code for tokens
-	tokenResult, err := testutils.RequestTokenWithResource(
+	// Step 7: Exchange code for tokens. No 'resource' is requested so the token's audience is the
+	// client's own default audience, which the UserInfo endpoint accepts.
+	tokenResult, err := testutils.RequestToken(
 		clientID, clientSecret, code, redirectURI, "authorization_code",
-		claimsTestResource,
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to request token: %w", err)
