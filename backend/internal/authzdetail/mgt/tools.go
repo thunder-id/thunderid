@@ -38,6 +38,11 @@ type typeListMCPResponse struct {
 	Types        []typeMCPItem `json:"types"`
 }
 
+// listTypesInput is the input of the list tool.
+type listTypesInput struct {
+	ProjectID string `json:"projectId,omitempty" jsonschema:"Project ID. Lists only its authorization details types."`
+}
+
 // updateTypeInput is the input of the update tool.
 type updateTypeInput struct {
 	ID string `json:"id" jsonschema:"The unique identifier of the authorization details type to update."`
@@ -51,8 +56,9 @@ func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceI
 	tools := &typeTools{service: service}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_authorization_detail_types",
-		Description: `List the registered RFC 9396 authorization details types.`,
+		Name: "list_authorization_detail_types",
+		Description: `List the registered RFC 9396 authorization details types. ` +
+			`Pass projectId to list only the types of a project.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Authorization Detail Types",
 			ReadOnlyHint: true,
@@ -181,13 +187,16 @@ func withSchemaObject(description string) func(*jsonschema.Schema) {
 
 // listTypes handles the list_authorization_detail_types tool call.
 func (t *typeTools) listTypes(ctx context.Context, _ *mcp.CallToolRequest,
-	_ any) (*mcp.CallToolResult, *typeListMCPResponse, error) {
+	input listTypesInput) (*mcp.CallToolResult, *typeListMCPResponse, error) {
 	types, svcErr := t.service.ListAllAuthorizationDetailTypes(ctx)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to list authorization details types: %s", svcErr.ErrorDescription)
 	}
 	items := make([]typeMCPItem, 0, len(types))
 	for _, typ := range types {
+		if input.ProjectID != "" && typ.ProjectID != input.ProjectID {
+			continue
+		}
 		items = append(items, typeMCPItem{ID: typ.ID, Type: typ.Type, Name: typ.Name,
 			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly,
 			ProjectID: typ.ProjectID})

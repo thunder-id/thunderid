@@ -534,7 +534,7 @@ func (s *importService) importResources(
 	flowIDAliases := make(map[string]string)
 	var mandating []userSharingReplay
 	if request.DryRun {
-		ctx = withPlannedUnits(ctx, &plannedUnits{byID: map[string]bool{}, byHandle: map[string]string{}})
+		ctx = withPlannedUnits(ctx, newPlannedUnits())
 	}
 
 	orderedDocs := orderDocumentsByDependencies(docs)
@@ -1397,9 +1397,11 @@ var resourceDependencyOrder = []string{
 	// A gateway refers to no other resource and nothing refers to it, so its position is free.
 	// First keeps it out of the way of the ordering that does matter.
 	resourceTypeGateway,
-	resourceTypeAuthorizationDetailType,
 	// Before everything that is placed in a project, organization units included.
 	resourceTypeProject,
+	// After the project an authorization details type belongs to, so a project and its types import together and
+	// a removal takes the types off before the project, which is not deleted while it still has them.
+	resourceTypeAuthorizationDetailType,
 	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeAgentType,

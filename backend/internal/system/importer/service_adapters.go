@@ -2024,6 +2024,18 @@ func (s *importService) refuseReadOnlyType(ctx context.Context, id string) *tidc
 	return nil
 }
 
+// validateImportedType validates a type as the import would write it. The project is the last thing the
+// validation checks, so one the same dry run creates first is taken as there, as the real import finds it.
+func (s *importService) validateImportedType(ctx context.Context,
+	t providers.AuthorizationDetailType) *tidcommon.ServiceError {
+	svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, t)
+	if svcErr != nil && svcErr.Code == authzdetailmgt.ErrorInvalidProject.Code &&
+		plannedUnitsOf(ctx).hasProject(t.ProjectID) {
+		return nil
+	}
+	return svcErr
+}
+
 // dryRunAuthorizationDetailType predicts the outcome of importing a type, refusing it in the order the
 // real update or create would.
 func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *providers.AuthorizationDetailType,
@@ -2048,7 +2060,7 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
 				&authzdetailmgt.ErrorTypeValueImmutable)
 		}
-		if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, *t); svcErr != nil {
+		if svcErr := s.validateImportedType(ctx, *t); svcErr != nil {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
 		}
 		return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate)
@@ -2061,7 +2073,7 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 	// A create takes the credential as sent, so it is not checked against a stored type that holds the id.
 	candidate := *t
 	candidate.ID = ""
-	if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, candidate); svcErr != nil {
+	if svcErr := s.validateImportedType(ctx, candidate); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
 	}
 	byValue, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailTypeByValue(ctx, t.Type)

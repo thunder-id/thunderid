@@ -5,15 +5,21 @@ package importer
 
 import "context"
 
-// plannedUnits are the organization units a dry run would create, by id and by handle. A dry run writes nothing,
-// so a resource that the same import places in one of them would otherwise be checked against a unit that is not
-// there yet, though the real import creates the unit before it.
+// plannedUnits are the organization units a dry run would create, by id and by handle, and the projects it would
+// create, by id. A dry run writes nothing, so a resource that the same import places in one of them would otherwise
+// be checked against a unit or project that is not there yet, though the real import creates it before the resource.
 type plannedUnits struct {
 	byID     map[string]bool
 	byHandle map[string]string
+	projects map[string]bool
 }
 
 type plannedUnitsKey struct{}
+
+// newPlannedUnits returns an empty set of planned units and projects.
+func newPlannedUnits() *plannedUnits {
+	return &plannedUnits{byID: map[string]bool{}, byHandle: map[string]string{}, projects: map[string]bool{}}
+}
 
 // withPlannedUnits returns a context that carries the units a dry run would create.
 func withPlannedUnits(ctx context.Context, units *plannedUnits) context.Context {
@@ -36,9 +42,18 @@ func (p *plannedUnits) add(id, handle string) {
 	}
 }
 
-// record adds a unit the dry run would create, as its document names it; anything else it leaves out.
+// record adds a unit or project the dry run would create, as its document names it; anything else it leaves out.
 func (p *plannedUnits) record(doc parsedDocument, outcome ImportItemOutcome) {
-	if p == nil || doc.ResourceType != resourceTypeOrganizationUnit || outcome.Status != statusSuccess {
+	if p == nil || outcome.Status != statusSuccess {
+		return
+	}
+	if doc.ResourceType == resourceTypeProject {
+		if outcome.ResourceID != "" {
+			p.projects[outcome.ResourceID] = true
+		}
+		return
+	}
+	if doc.ResourceType != resourceTypeOrganizationUnit {
 		return
 	}
 	var unit struct {
@@ -60,4 +75,9 @@ func (p *plannedUnits) resolve(id, handle string) (string, bool) {
 	}
 	planned, ok := p.byHandle[handle]
 	return planned, ok && handle != ""
+}
+
+// hasProject reports whether the dry run would create the project.
+func (p *plannedUnits) hasProject(id string) bool {
+	return p != nil && id != "" && p.projects[id]
 }

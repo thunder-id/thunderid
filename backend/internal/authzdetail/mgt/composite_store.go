@@ -83,20 +83,40 @@ func (c *compositeTypeStore) ListTypePage(ctx context.Context, limit, offset int
 	return pageOf(types, limit, offset), nil
 }
 
-// CountTypesByProject counts the types of a project in both stores, counting a type both hold once.
+// CountTypesByProject counts the types of a project in both stores. Each store counts only the project's types, so
+// the deployment's other types never reach the composite mode limit.
 func (c *compositeTypeStore) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
-	types, err := c.listCappedTypes(ctx)
-	return len(typesOfProject(types, projectID)), err
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.CountTypesByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountTypesByProject(ctx, projectID) },
+	)
 }
 
-// ListTypePageByProject lists one page of the types of a project in both stores.
+// ListTypePageByProject lists one page of the types of a project in both stores. The limit of composite mode applies
+// to the project's types alone.
 func (c *compositeTypeStore) ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
 	[]providers.AuthorizationDetailType, error) {
-	types, err := c.listCappedTypes(ctx)
+	types, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.CountTypesByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountTypesByProject(ctx, projectID) },
+		func(count int) ([]providers.AuthorizationDetailType, error) {
+			return c.dbStore.ListTypePageByProject(ctx, projectID, count, 0)
+		},
+		func(count int) ([]providers.AuthorizationDetailType, error) {
+			return c.fileStore.ListTypePageByProject(ctx, projectID, count, 0)
+		},
+		mergeTypes,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
 	if err != nil {
 		return nil, err
 	}
-	return pageOf(typesOfProject(types, projectID), limit, offset), nil
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return types, nil
 }
 
 // listCappedTypes lists the types of both stores, refusing a merged list over the composite mode limit.
@@ -143,17 +163,6 @@ func pageOf(types []providers.AuthorizationDetailType, limit, offset int) []prov
 	start := min(offset, len(types))
 	end := min(start+limit, len(types))
 	return types[start:end]
-}
-
-// typesOfProject keeps the types that belong to the project.
-func typesOfProject(types []providers.AuthorizationDetailType, projectID string) []providers.AuthorizationDetailType {
-	kept := make([]providers.AuthorizationDetailType, 0, len(types))
-	for _, t := range types {
-		if t.ProjectID == projectID {
-			kept = append(kept, t)
-		}
-	}
-	return kept
 }
 
 // mergeTypes merges the types of both stores, ordered by type value; database types win on id clashes.

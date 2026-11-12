@@ -144,6 +144,17 @@ func typeFromDeclarativeData(id string, data interface{}) (providers.Authorizati
 	return stored, nil
 }
 
+// typesOfProject keeps the types that belong to the project.
+func typesOfProject(types []providers.AuthorizationDetailType, projectID string) []providers.AuthorizationDetailType {
+	kept := make([]providers.AuthorizationDetailType, 0, len(types))
+	for _, t := range types {
+		if t.ProjectID == projectID {
+			kept = append(kept, t)
+		}
+	}
+	return kept
+}
+
 // sortTypes orders types by type value, as the database store lists them.
 func sortTypes(types []providers.AuthorizationDetailType) {
 	slices.SortFunc(types, func(a, b providers.AuthorizationDetailType) int {
