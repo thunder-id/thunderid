@@ -41,11 +41,20 @@ func (s *ParticipantSchemaTestSuite) SetupTest() {
 	s.db = db
 }
 
-// record runs the participant upsert for app-1 in sess-1.
-func (s *ParticipantSchemaTestSuite) record(ouID, tokenFamilyID string, at time.Time) {
-	_, err := s.db.Exec(queryUpsertParticipant.Query,
-		"sess-1", testDeploymentID, "app-1", ouID, at, at, tokenFamilyID)
-	s.Require().NoError(err)
+// record runs the participant upsert for app-1 in sess-1 and returns the token family it reports.
+func (s *ParticipantSchemaTestSuite) record(ouID, tokenFamilyID string, at time.Time) string {
+	var held sql.NullString
+	s.Require().NoError(s.db.QueryRow(queryUpsertParticipant.Query,
+		"sess-1", testDeploymentID, "app-1", ouID, at, at, tokenFamilyID).Scan(&held))
+	return held.String
+}
+
+// replace runs the guarded token family replacement for app-1 in sess-1 and returns the family it reports.
+func (s *ParticipantSchemaTestSuite) replace(ouID, currentTokenFamilyID, tokenFamilyID string) string {
+	var held sql.NullString
+	s.Require().NoError(s.db.QueryRow(queryReplaceParticipantTokenFamily.Query,
+		currentTokenFamilyID, tokenFamilyID, "sess-1", "app-1", ouID, testDeploymentID).Scan(&held))
+	return held.String
 }
 
 // list runs a participant listing and maps its rows as the store does.
@@ -92,18 +101,45 @@ func (s *ParticipantSchemaTestSuite) TestAnApplicationUnderTwoOUsIsTwoParticipan
 	s.Equal("tfid-y", got[1].TokenFamilyID)
 }
 
-func (s *ParticipantSchemaTestSuite) TestRejoiningUnderTheSameOURefreshesItsRow() {
+func (s *ParticipantSchemaTestSuite) TestRejoiningUnderTheSameOUKeepsItsTokenFamily() {
 	joined := time.Unix(1700000000, 0).UTC()
 	rejoined := joined.Add(time.Hour)
-	s.record("ou-x", "tfid-1", joined)
-	s.record("ou-x", "tfid-2", rejoined)
+	s.Equal("tfid-1", s.record("ou-x", "tfid-1", joined))
 
+	held := s.record("ou-x", "tfid-2", rejoined)
+
+	s.Equal("tfid-1", held, "the rejoin reports the family the participant already holds")
 	got := s.list(queryListParticipantsBySessionID, "sess-1", testDeploymentID)
-
 	s.Require().Len(got, 1)
-	s.Equal("tfid-2", got[0].TokenFamilyID, "the latest grant's family replaces the earlier one")
+	s.Equal("tfid-1", got[0].TokenFamilyID, "a later grant must not replace the earlier grant's family")
 	s.True(got[0].FirstJoinedAt.Equal(joined), "the first join time is kept")
 	s.True(got[0].LastActiveAt.Equal(rejoined))
+}
+
+func (s *ParticipantSchemaTestSuite) TestAnEmptyTokenFamilyIsFilledByTheNextJoin() {
+	joined := time.Unix(1700000000, 0).UTC()
+	s.record("ou-x", "", joined)
+
+	held := s.record("ou-x", "tfid-2", joined.Add(time.Minute))
+
+	s.Equal("tfid-2", held)
+	got := s.list(queryListParticipantsBySessionID, "sess-1", testDeploymentID)
+	s.Require().Len(got, 1)
+	s.Equal("tfid-2", got[0].TokenFamilyID)
+}
+
+func (s *ParticipantSchemaTestSuite) TestReplaceTokenFamilyMovesOnlyFromTheExpectedFamily() {
+	joined := time.Unix(1700000000, 0).UTC()
+	s.record("ou-x", "tfid-1", joined)
+
+	s.Equal("tfid-2", s.replace("ou-x", "tfid-1", "tfid-2"))
+	// A concurrent join that also found tfid-1 revoked converges on the first replacement.
+	s.Equal("tfid-2", s.replace("ou-x", "tfid-1", "tfid-3"))
+
+	got := s.list(queryListParticipantsBySessionID, "sess-1", testDeploymentID)
+	s.Require().Len(got, 1)
+	s.Equal("tfid-2", got[0].TokenFamilyID)
+	s.True(got[0].FirstJoinedAt.Equal(joined), "the first join time is kept")
 }
 
 func (s *ParticipantSchemaTestSuite) TestASignInWithNoOUIsItsOwnParticipant() {

@@ -56,8 +56,9 @@ type Service interface {
 	// the rows the SSO-Check node forwarded when they match what is being loaded, and reads whatever it
 	// was not given. The activity refresh is best-effort, but recording the participant is not when
 	// in.TokenFamilyID is set: a token family with no persisted mapping would be unrevocable, so that
-	// failure aborts the load. It errors when a row it has to read no longer exists.
-	LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error)
+	// failure aborts the load. It also returns the token family id the participant holds, which the
+	// grant must carry. It errors when a row it has to read no longer exists.
+	LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, string, error)
 
 	// RecordActivity counts a use of the session outside the flow engine as activity: it refreshes the
 	// last-active timestamp and slides the idle deadline under the same activity-refresh throttle as a
@@ -95,8 +96,9 @@ type LoadCheckpointInput struct {
 	Checkpoint string
 	// AppID is the joining application, recorded as a session participant.
 	AppID string
-	// TokenFamilyID is the token family id (tfid) minted for this grant. Recording it is required
-	// when non-empty: a tfid with no persisted mapping would be unrevocable.
+	// TokenFamilyID is the token family id (tfid) generated for this grant, recorded when the joining
+	// participant has none. Recording it is required when non-empty: a tfid with no persisted mapping
+	// would be unrevocable.
 	TokenFamilyID string
 	// Session is the session the SSO-Check node resolved, or nil to read it by Handle.
 	Session *Session
@@ -120,9 +122,9 @@ type SaveCheckpointInput struct {
 	RuntimeData    map[string]string
 	CompletedSteps map[string]StepFact
 	AppID          string
-	// TokenFamilyID is the token family id (tfid) minted by the caller for this grant. It is stored on
-	// the joining participant so logout can resolve the session to its families. Empty leaves the
-	// participant's tfid unset.
+	// TokenFamilyID is the token family id (tfid) the caller generated for this grant. It is stored on
+	// the joining participant when the participant has none, so logout can resolve the session to its
+	// families. Empty leaves the participant's tfid unset.
 	TokenFamilyID string
 	// ClientInfo is the requesting client's metadata, recorded on a session this save establishes and
 	// used to update the last-active IP of an existing one.
@@ -141,6 +143,9 @@ type SaveCheckpointResult struct {
 	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
 	// too, rather than being re-derived from the clock when the assertion is built.
 	AuthenticatedAt time.Time
+	// TokenFamilyID is the token family id the joining participant holds, which the grant must carry so
+	// that logout revokes it with the session's other grants.
+	TokenFamilyID string
 }
 
 // CriteriaRevoker revokes a token family (one authorization grant) by its id. It is injected so session
@@ -150,16 +155,25 @@ type CriteriaRevoker interface {
 	RevokeTokenFamily(ctx context.Context, tokenFamilyID string) error
 }
 
+// RevocationChecker reports whether a grant issued now under a token family would be rejected as revoked.
+// A participant keeps its token family across grants, so one revoked while the session lives (RFC 7009
+// revocation, refresh-token or code replay) is replaced at the next join rather than handed to a new
+// grant. It is injected for the same reason as CriteriaRevoker. A nil checker keeps every family.
+type RevocationChecker interface {
+	IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error)
+}
+
 // service is the store-backed implementation of Service.
 type service struct {
-	store            sessionStore
-	resolver         Resolver
-	transactioner    providers.Transactioner
-	criteriaRevoker  CriteriaRevoker
-	ouEligibility    OUEligibility
-	terminationTopic *eventlistener.Topic[TerminatedSession]
-	timeouts         Timeouts
-	logger           *log.Logger
+	store             sessionStore
+	resolver          Resolver
+	transactioner     providers.Transactioner
+	criteriaRevoker   CriteriaRevoker
+	revocationChecker RevocationChecker
+	ouEligibility     OUEligibility
+	terminationTopic  *eventlistener.Topic[TerminatedSession]
+	timeouts          Timeouts
+	logger            *log.Logger
 }
 
 // OUEligibility answers whether the sign-in on the context may land in an organization unit. The OU provider
@@ -262,11 +276,15 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 
 	// Write this checkpoint's context (upsert) and the joining participant in one transaction.
 	now := time.Now().UTC()
+	var tokenFamilyID string
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := s.store.CreateContext(txCtx, snapshot); err != nil {
 			return err
 		}
-		return s.recordParticipant(txCtx, target.SessionID, in.AppID, participantOU, in.TokenFamilyID, now)
+		var recordErr error
+		tokenFamilyID, recordErr = s.recordParticipant(txCtx, target.SessionID, in.AppID, participantOU,
+			in.TokenFamilyID, now)
+		return recordErr
 	}); err != nil {
 		return SaveCheckpointResult{}, err
 	}
@@ -277,14 +295,15 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		SessionID:       target.SessionID,
 		Created:         created,
 		AuthenticatedAt: target.AuthenticatedAt,
+		TokenFamilyID:   tokenFamilyID,
 	}, nil
 }
 
 // LoadCheckpoint implements Service.
 func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
-	*Session, *SessionContext, error) {
+	*Session, *SessionContext, string, error) {
 	if in.Handle == "" {
-		return nil, nil, fmt.Errorf("no resolved session handle to load")
+		return nil, nil, "", fmt.Errorf("no resolved session handle to load")
 	}
 	// The SSO-Check node resolved the session and read this checkpoint's context to decide routing, and
 	// forwards both here, so this path re-reads neither. The resolver has already applied every liveness,
@@ -300,10 +319,10 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	if sess == nil {
 		loaded, err := s.store.GetByHandle(ctx, in.Handle)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		if loaded == nil {
-			return nil, nil, fmt.Errorf("resolved session no longer exists")
+			return nil, nil, "", fmt.Errorf("resolved session no longer exists")
 		}
 		sess = loaded
 	}
@@ -316,10 +335,10 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	if snapshot == nil {
 		loaded, err := s.store.GetByCheckpoint(ctx, sess.SessionID, in.Checkpoint)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		if loaded == nil {
-			return nil, nil, fmt.Errorf("session context for checkpoint %q no longer exists", in.Checkpoint)
+			return nil, nil, "", fmt.Errorf("session context for checkpoint %q no longer exists", in.Checkpoint)
 		}
 		snapshot = loaded
 	}
@@ -347,10 +366,10 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	// the replayed runtime data.
 	followedOUID, reusable, err := s.reuseOU(ctx, sess)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	if !reusable {
-		return nil, nil, fmt.Errorf("the sign-in can no longer reuse the session")
+		return nil, nil, "", fmt.Errorf("the sign-in can no longer reuse the session")
 	}
 	if followedOUID != "" {
 		followed := *snapshot
@@ -362,28 +381,30 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 		snapshot = &followed
 	}
 
-	// Record the joining application as a participant. When this reused session issues a token family,
-	// its SESSION_ID -> tfid mapping is security-critical: logout resolves the families to revoke from
-	// these rows, so a token stamped with a tfid that has no persisted mapping would be unrevocable.
-	// Fail closed in that case so the reuse does not issue an unrevocable family (the caller aborts the
-	// load before publishing the tfid, forcing full re-authentication). Without a tfid there is nothing
-	// to revoke, so the write stays best-effort. Either way it is not throttled with the activity
-	// refresh above: the upsert also registers an application joining the session for the first time.
+	// Record the joining application as a participant, taking the token family it holds for this grant.
+	// When this reused session issues a token family, its SESSION_ID -> tfid mapping is security-critical:
+	// logout resolves the families to revoke from these rows, so a token stamped with a tfid that has no
+	// persisted mapping would be unrevocable. Fail closed in that case so the reuse does not issue an
+	// unrevocable family (the caller aborts the load before publishing the tfid, forcing full
+	// re-authentication). Without a tfid there is nothing to revoke, so the write stays best-effort.
+	// Either way it is not throttled with the activity refresh above: the upsert also registers an
+	// application joining the session for the first time.
 	participantOU := followedOUID
 	if fixed := participantOUID(ctx); fixed != "" {
 		if participantOU, err = s.participantOU(ctx, sess.SubjectID, fixed); err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 	}
-	if partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, participantOU, in.TokenFamilyID,
-		now); partErr != nil {
+	tokenFamilyID, partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, participantOU,
+		in.TokenFamilyID, now)
+	if partErr != nil {
 		if in.TokenFamilyID != "" {
-			return nil, nil, fmt.Errorf("failed to record SSO session participant for token family: %w", partErr)
+			return nil, nil, "", fmt.Errorf("failed to record SSO session participant for token family: %w", partErr)
 		}
 		s.logger.Warn(ctx, "Failed to record SSO session participant", log.Error(partErr))
 	}
 
-	return sess, snapshot, nil
+	return sess, snapshot, tokenFamilyID, nil
 }
 
 // participantOUID returns the sign-in boundary's organization unit, the one the grant is signed in under,
@@ -820,21 +841,39 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 }
 
 // recordParticipant records the application as a participant of the session under the organization
-// unit, refreshing its last-active time and current-grant tfid if it has joined under that unit before.
-// It is a no-op when the application id is unknown.
+// unit, refreshing its last-active time if it has joined under that unit before, and returns the token
+// family id the grant must carry. A participant keeps its family, so every grant the application receives
+// in the session shares it and logout revokes them all. tokenFamilyID is taken when the participant is
+// new, has no family, or holds one that has been revoked. Nothing is recorded when the application id is
+// unknown, and the grant keeps tokenFamilyID.
 func (s *service) recordParticipant(ctx context.Context, sessionID, appID, ouID, tokenFamilyID string,
-	now time.Time) error {
+	now time.Time) (string, error) {
 	if appID == "" {
-		return nil
+		return tokenFamilyID, nil
 	}
-	return s.store.Record(ctx, Participant{
+	p := Participant{
 		SessionID:     sessionID,
 		AppID:         appID,
 		OUID:          ouID,
 		TokenFamilyID: tokenFamilyID,
 		FirstJoinedAt: now,
 		LastActiveAt:  now,
-	})
+	}
+	held, err := s.store.Record(ctx, p)
+	if err != nil || held == tokenFamilyID || tokenFamilyID == "" || s.revocationChecker == nil {
+		return held, err
+	}
+	// A family revoked after this check fails the grant at the code exchange, and the next join replaces it.
+	revoked, err := s.revocationChecker.IsTokenFamilyRevoked(ctx, held)
+	if err != nil {
+		// Replacing a family that may still be live would leave its grants out of logout, so keep it.
+		s.logger.Warn(ctx, "Failed to check the session participant's token family; keeping it", log.Error(err))
+		return held, nil
+	}
+	if !revoked {
+		return held, nil
+	}
+	return s.store.ReplaceTokenFamily(ctx, p, held)
 }
 
 // activeIP returns the IP to record as the session's last-active IP: the requesting client's, or the

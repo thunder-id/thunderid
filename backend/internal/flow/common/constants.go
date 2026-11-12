@@ -373,11 +373,12 @@ const (
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
 	// concepts off the reusable engine contract.
 	RuntimeKeySSOSessionCleared = "ssoSessionCleared"
-	// RuntimeKeyTokenFamilyID carries the token family id (tfid) minted once per login flow execution
-	// by the Session node. It is stamped onto the auth assertion, and from there onto the grant's
-	// access and refresh tokens, so revocation can target a whole family. It is deliberately excluded
-	// from the SSO checkpoint snapshot so each flow execution mints a fresh tfid rather than reusing a
-	// prior one on SSO reuse.
+	// RuntimeKeyTokenFamilyID carries the token family id (tfid) the Session node publishes for the grant:
+	// the family of the joining session participant, shared by every grant the application receives in
+	// the session. It is stamped onto the auth assertion, and from there onto the grant's access and
+	// refresh tokens, so revocation can target a whole family. It is excluded from the SSO checkpoint
+	// snapshot because a snapshot is replayed for other applications, whose grants have families of
+	// their own.
 	RuntimeKeyTokenFamilyID = "tokenFamilyId"
 	// RuntimeKeyLogoutPromptRequired is set by the OAuth RP-initiated logout layer when a logout was
 	// requested without a valid id_token_hint. A sign-out flow's session sign-out node reads it to

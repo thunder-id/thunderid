@@ -47,15 +47,34 @@ func (s *ParticipantStoreTestSuite) TestRecord_Upserts() {
 	}
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpsertParticipant,
+	s.mockDBClient.On("QueryContext", context.Background(), queryUpsertParticipant,
 		"sess-1", testDeploymentID, "app-1", "ou-1", now, now, "tfid-1").
-		Return(int64(1), nil)
+		Return([]map[string]interface{}{{"tfid": "tfid-1"}}, nil)
 
-	err := s.store.Record(context.Background(), p)
+	tokenFamilyID, err := s.store.Record(context.Background(), p)
 
 	s.NoError(err)
+	s.Equal("tfid-1", tokenFamilyID)
 	// DEPLOYMENT_ID is the second positional parameter, matching the SSO query convention.
 	s.mockDBClient.AssertExpectations(s.T())
+}
+
+func (s *ParticipantStoreTestSuite) TestRecord_ReturnsTheFamilyTheParticipantHolds() {
+	now := time.Unix(1700000000, 0).UTC()
+	p := Participant{
+		SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-new", FirstJoinedAt: now,
+		LastActiveAt: now,
+	}
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryUpsertParticipant,
+		"sess-1", testDeploymentID, "app-1", "ou-1", now, now, "tfid-new").
+		Return([]map[string]interface{}{{"tfid": []byte("tfid-existing")}}, nil)
+
+	tokenFamilyID, err := s.store.Record(context.Background(), p)
+
+	s.NoError(err)
+	s.Equal("tfid-existing", tokenFamilyID)
 }
 
 func (s *ParticipantStoreTestSuite) TestRecord_DBError() {
@@ -66,14 +85,75 @@ func (s *ParticipantStoreTestSuite) TestRecord_DBError() {
 	}
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpsertParticipant,
+	s.mockDBClient.On("QueryContext", context.Background(), queryUpsertParticipant,
 		"sess-1", testDeploymentID, "app-1", "ou-1", now, now, "tfid-1").
-		Return(int64(0), errors.New("db down"))
+		Return(nil, errors.New("db down"))
 
-	err := s.store.Record(context.Background(), p)
+	tokenFamilyID, err := s.store.Record(context.Background(), p)
 
 	s.Error(err)
 	s.Contains(err.Error(), "failed to record session participant")
+	s.Empty(tokenFamilyID)
+}
+
+func (s *ParticipantStoreTestSuite) TestRecord_NoRowReturned() {
+	now := time.Unix(1700000000, 0).UTC()
+	p := Participant{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now,
+		LastActiveAt: now}
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryUpsertParticipant,
+		"sess-1", testDeploymentID, "app-1", "", now, now, "tfid-1").
+		Return([]map[string]interface{}{}, nil)
+
+	_, err := s.store.Record(context.Background(), p)
+
+	s.Error(err)
+	s.Contains(err.Error(), "unexpected number of results")
+}
+
+func (s *ParticipantStoreTestSuite) TestReplaceTokenFamily() {
+	p := Participant{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-new"}
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryReplaceParticipantTokenFamily,
+		"tfid-revoked", "tfid-new", "sess-1", "app-1", "ou-1", testDeploymentID).
+		Return([]map[string]interface{}{{"tfid": "tfid-new"}}, nil)
+
+	tokenFamilyID, err := s.store.ReplaceTokenFamily(context.Background(), p, "tfid-revoked")
+
+	s.NoError(err)
+	s.Equal("tfid-new", tokenFamilyID)
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+func (s *ParticipantStoreTestSuite) TestReplaceTokenFamily_Errors() {
+	cases := []struct {
+		name    string
+		rows    []map[string]interface{}
+		err     error
+		wantErr string
+	}{
+		{name: "query error", err: errors.New("db down"),
+			wantErr: "failed to replace session participant token family"},
+		{name: "participant removed", rows: []map[string]interface{}{}, wantErr: "unexpected number of results"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			p := Participant{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-new"}
+			s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+			s.mockDBClient.On("QueryContext", context.Background(), queryReplaceParticipantTokenFamily,
+				"tfid-revoked", "tfid-new", "sess-1", "app-1", "ou-1", testDeploymentID).
+				Return(tc.rows, tc.err)
+
+			tokenFamilyID, err := s.store.ReplaceTokenFamily(context.Background(), p, "tfid-revoked")
+
+			s.Require().Error(err)
+			s.Contains(err.Error(), tc.wantErr)
+			s.Empty(tokenFamilyID)
+		})
+	}
 }
 
 func (s *ParticipantStoreTestSuite) TestListBySessionID() {

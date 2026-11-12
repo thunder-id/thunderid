@@ -29,6 +29,12 @@ const testOtherFlowID = "other-flow"
 // testHandle is the session handle the suite's fixtures are keyed by.
 const testHandle = "handle-abc"
 
+// testTokenFamilyID is the token family the baseline load input offers for its grant.
+const testTokenFamilyID = "tfid-1"
+
+// testNewTokenFamilyID is the token family a save offers for a grant joining an existing session.
+const testNewTokenFamilyID = "tfid-new"
+
 type ServiceTestSuite struct {
 	suite.Suite
 }
@@ -210,7 +216,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Establishes() {
 		func(_ context.Context, s Session) error { created = &s; return nil })
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
 	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
 	suite.Require().NoError(err)
@@ -240,7 +246,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	var savedCtx SessionContext
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 	// Saving a checkpoint into an existing session means the subject just authenticated again, so the
 	// session's authentication time moves forward with it.
 	var touchedAt, touchedIdle time.Time
@@ -283,7 +289,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_RecordsTheParticipantUnderItsO
 			m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
 			var recorded Participant
 			m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-				func(_ context.Context, p Participant) error { recorded = p; return nil })
+				func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 			in := saveInput()
 			in.HandleHint = testHandle
 			in.TokenFamilyID = "tfid-1"
@@ -316,7 +322,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_RecordsARefusedSignInUnderNoOU
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 	in := saveInput()
 	in.HandleHint = testHandle
 	in.TokenFamilyID = "tfid-1"
@@ -338,7 +344,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusedInAnOUItsSubjectCannotS
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
 
-	_, _, err := svc.LoadCheckpoint(boundaryContext("ou-x"), loadInput())
+	_, _, _, err := svc.LoadCheckpoint(boundaryContext("ou-x"), loadInput())
 
 	suite.Require().Error(err)
 	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
@@ -355,7 +361,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SnapshotDropsTheOrganizationUn
 	var savedCtx SessionContext
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 	in := saveInput()
 	in.HandleHint = testHandle
 	in.RuntimeData = map[string]string{
@@ -376,7 +382,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_ReauthRefreshFailureStillSaves
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("db down"))
 
@@ -402,7 +408,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_NewSessionDoesNotTouch() {
 		func(_ context.Context, s Session) error { created = &s; return nil })
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
 	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
 	suite.Require().NoError(err)
@@ -451,13 +457,81 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_ContextWriteError() {
 	suite.Require().Error(err)
 }
 
+// saveIntoExistingSession runs a save of a grant with testNewTokenFamilyID into the existing session sess-1, whose
+// participant upsert reports held as the family the participant holds.
+func (suite *ServiceTestSuite) saveIntoExistingSession(svc *service, m *serviceMocks, held string) (
+	SaveCheckpointResult, error) {
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.MatchedBy(func(p Participant) bool {
+		return p.TokenFamilyID == testNewTokenFamilyID
+	})).Return(held, nil)
+	in := saveInput()
+	in.HandleHint = testHandle
+	in.TokenFamilyID = testNewTokenFamilyID
+	return svc.SaveCheckpoint(context.Background(), in)
+}
+
+// The save reports the token family the participant holds, so a rejoin's grant joins the earlier grants'
+// family, unless that family has been revoked.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_ReturnsTheParticipantsTokenFamily() {
+	cases := []struct {
+		name    string
+		held    string
+		revoked bool
+		want    string
+	}{
+		{name: "first join", held: testNewTokenFamilyID, want: testNewTokenFamilyID},
+		{name: "rejoin keeps a live family", held: "tfid-existing", want: "tfid-existing"},
+		{name: "rejoin replaces a revoked family", held: "tfid-existing", revoked: true, want: testNewTokenFamilyID},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, m := suite.newService()
+			checker := NewRevocationCheckerMock(suite.T())
+			svc.revocationChecker = checker
+			if tc.held != testNewTokenFamilyID {
+				checker.EXPECT().IsTokenFamilyRevoked(mock.Anything, tc.held).Return(tc.revoked, nil)
+			}
+			if tc.revoked {
+				m.store.EXPECT().ReplaceTokenFamily(mock.Anything, mock.Anything, tc.held).
+					Return(testNewTokenFamilyID, nil)
+			}
+
+			res, err := suite.saveIntoExistingSession(svc, m, tc.held)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, res.TokenFamilyID)
+		})
+	}
+}
+
+// A failure to replace a revoked family fails the save, so the participant is not left without a live
+// family for the grant to carry.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_ReplaceErrorFailsTheSave() {
+	svc, m := suite.newService()
+	checker := NewRevocationCheckerMock(suite.T())
+	checker.EXPECT().IsTokenFamilyRevoked(mock.Anything, "tfid-existing").Return(true, nil)
+	svc.revocationChecker = checker
+	m.store.EXPECT().ReplaceTokenFamily(mock.Anything, mock.Anything, "tfid-existing").
+		Return("", errors.New("db down"))
+
+	res, err := suite.saveIntoExistingSession(svc, m, "tfid-existing")
+
+	suite.Require().Error(err)
+	suite.Empty(res.TokenFamilyID)
+}
+
 // --- LoadCheckpoint ---
 
 // loadInput is the baseline load input: a handle to resolve and nothing forwarded, so the service
 // reads both rows itself. Tests override the fields they are exercising.
 func loadInput() LoadCheckpointInput {
 	return LoadCheckpointInput{
-		Handle: "handle-abc", Checkpoint: "session", AppID: "app-456", TokenFamilyID: "tfid-1",
+		Handle: "handle-abc", Checkpoint: "session", AppID: "app-456", TokenFamilyID: testTokenFamilyID,
 	}
 }
 
@@ -483,9 +557,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_Success() {
 		func(_ context.Context, s *Session) error { updated = s; return nil })
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	sess, sc, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(sess)
@@ -510,12 +584,15 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RecordsEachOUOfAnApplication()
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
 	var recorded []Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = append(recorded, p); return nil })
+		func(_ context.Context, p Participant) (string, error) {
+			recorded = append(recorded, p)
+			return p.TokenFamilyID, nil
+		})
 
 	for ouID, tfid := range map[string]string{"ou-x": "tfid-x", "ou-y": "tfid-y"} {
 		in := loadInput()
 		in.TokenFamilyID = tfid
-		_, _, err := svc.LoadCheckpoint(boundaryContext(ouID), in)
+		_, _, _, err := svc.LoadCheckpoint(boundaryContext(ouID), in)
 		suite.Require().NoError(err)
 	}
 
@@ -534,13 +611,13 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RecordsEachOUOfAnApplication()
 func (suite *ServiceTestSuite) TestLoadCheckpoint_UsesForwardedReads() {
 	svc, m := suite.newService()
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(testTokenFamilyID, nil)
 
 	in := loadInput()
 	in.Session = liveStoreSession()
 	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), in)
+	sess, sc, _, err := svc.LoadCheckpoint(context.Background(), in)
 
 	suite.Require().NoError(err)
 	suite.Same(in.Session, sess)
@@ -557,14 +634,14 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ReadsWhenForwardedSessionIsAno
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-2", "session").
 		Return(&SessionContext{SessionID: "sess-2", CheckpointID: "session"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(testTokenFamilyID, nil)
 
 	in := loadInput()
 	in.Handle = "handle-xyz"
 	in.Session = liveStoreSession() // handle-abc, not the handle being loaded
 	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), in)
+	sess, sc, _, err := svc.LoadCheckpoint(context.Background(), in)
 
 	suite.Require().NoError(err)
 	suite.Equal("sess-2", sess.SessionID)
@@ -578,14 +655,14 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ReadsWhenForwardedContextIsAno
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "step_up").
 		Return(&SessionContext{SessionID: "sess-1", CheckpointID: "step_up"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(testTokenFamilyID, nil)
 
 	in := loadInput()
 	in.Checkpoint = "step_up"
 	in.Session = liveStoreSession()
 	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 
-	_, sc, err := svc.LoadCheckpoint(context.Background(), in)
+	_, sc, _, err := svc.LoadCheckpoint(context.Background(), in)
 
 	suite.Require().NoError(err)
 	suite.Equal("step_up", sc.CheckpointID)
@@ -594,7 +671,8 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ReadsWhenForwardedContextIsAno
 func (suite *ServiceTestSuite) TestLoadCheckpoint_NoHandle() {
 	svc, _ := suite.newService()
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), LoadCheckpointInput{Checkpoint: "session", AppID: "app-456"})
+	_, _, _, err := svc.LoadCheckpoint(context.Background(),
+		LoadCheckpointInput{Checkpoint: "session", AppID: "app-456"})
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "no resolved session handle")
@@ -604,7 +682,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_MissingSession() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByHandle(mock.Anything, mock.Anything).Return(nil, nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	_, _, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "resolved session no longer exists")
@@ -616,7 +694,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_MissingContext() {
 		Return(&Session{SessionID: "sess-1", HandleID: "handle-abc", State: StateActive}, nil)
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	_, _, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "session context for checkpoint")
@@ -629,9 +707,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorWithTokenFamil
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", errors.New("db down"))
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	sess, sc, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
 
 	suite.Require().Error(err, "issuing a token family whose mapping cannot persist must fail the load")
 	suite.Contains(err.Error(), "token family")
@@ -646,13 +724,105 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorWithoutTokenFa
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", errors.New("db down"))
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	sess, sc, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
 
 	suite.Require().NoError(err, "with no token family there is nothing to revoke, so the load survives")
 	suite.NotNil(sess)
 	suite.NotNil(sc)
+}
+
+// loadWithParticipant runs a load of the forwarded session sess-1 for a grant with testTokenFamilyID, whose participant
+// upsert reports held as the family the participant holds.
+func (suite *ServiceTestSuite) loadWithParticipant(svc *service, m *serviceMocks, held string) (string, error) {
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	m.store.EXPECT().Record(mock.Anything, mock.MatchedBy(func(p Participant) bool {
+		return p.TokenFamilyID == testTokenFamilyID
+	})).Return(held, nil)
+	in := loadInput()
+	in.Session = liveStoreSession()
+	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
+	_, _, tokenFamilyID, err := svc.LoadCheckpoint(context.Background(), in)
+	return tokenFamilyID, err
+}
+
+// The load reports the token family the participant holds, so every grant the application receives in the
+// session shares one family that logout revokes. Only a family that has been revoked is replaced.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_ReturnsTheParticipantsTokenFamily() {
+	cases := []struct {
+		name      string
+		held      string
+		noChecker bool
+		revoked   bool
+		checkErr  error
+		replaced  string
+		want      string
+	}{
+		{name: "first join", held: testTokenFamilyID, want: testTokenFamilyID},
+		{name: "rejoin keeps a live family", held: "tfid-existing", want: "tfid-existing"},
+		{name: "rejoin replaces a revoked family", held: "tfid-existing", revoked: true, replaced: testTokenFamilyID,
+			want: testTokenFamilyID},
+		{name: "a concurrent replacement wins", held: "tfid-existing", revoked: true, replaced: "tfid-other",
+			want: "tfid-other"},
+		{name: "an unreadable deny list keeps the family", held: "tfid-existing", checkErr: errors.New("db down"),
+			want: "tfid-existing"},
+		{name: "no checker keeps the family", held: "tfid-existing", noChecker: true, want: "tfid-existing"},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, m := suite.newService()
+			if !tc.noChecker {
+				checker := NewRevocationCheckerMock(suite.T())
+				svc.revocationChecker = checker
+				if tc.held != testTokenFamilyID {
+					checker.EXPECT().IsTokenFamilyRevoked(mock.Anything, tc.held).Return(tc.revoked, tc.checkErr)
+				}
+			}
+			if tc.replaced != "" {
+				m.store.EXPECT().ReplaceTokenFamily(mock.Anything, mock.MatchedBy(func(p Participant) bool {
+					return p.SessionID == "sess-1" && p.AppID == "app-456" && p.TokenFamilyID == testTokenFamilyID
+				}), tc.held).Return(tc.replaced, nil)
+			}
+
+			tokenFamilyID, err := suite.loadWithParticipant(svc, m, tc.held)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, tokenFamilyID)
+		})
+	}
+}
+
+// A failure to replace a revoked family fails the load closed, as any failure to record the grant's family does.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_ReplaceErrorIsFatal() {
+	svc, m := suite.newService()
+	checker := NewRevocationCheckerMock(suite.T())
+	checker.EXPECT().IsTokenFamilyRevoked(mock.Anything, "tfid-existing").Return(true, nil)
+	svc.revocationChecker = checker
+	m.store.EXPECT().ReplaceTokenFamily(mock.Anything, mock.Anything, "tfid-existing").
+		Return("", errors.New("participant gone"))
+
+	tokenFamilyID, err := suite.loadWithParticipant(svc, m, "tfid-existing")
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "token family")
+	suite.Empty(tokenFamilyID)
+}
+
+// Without an application id nothing is recorded, and the grant keeps the family it was given.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_WithoutAnApplicationKeepsTheGivenFamily() {
+	svc, m := suite.newService()
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	in := loadInput()
+	in.AppID = ""
+	in.Session = liveStoreSession()
+	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
+
+	_, _, tokenFamilyID, err := svc.LoadCheckpoint(context.Background(), in)
+
+	suite.Require().NoError(err)
+	suite.Equal(testTokenFamilyID, tokenFamilyID)
+	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
 }
 
 func (suite *ServiceTestSuite) TestLoadCheckpoint_ThrottledRefreshSkipsUpdate() {
@@ -666,9 +836,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ThrottledRefreshSkipsUpdate() 
 	}, nil)
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	sess, sc, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(sess)
@@ -690,9 +860,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_WritesAfterRefreshWindow() {
 	var updated *Session
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s *Session) error { updated = s; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	_, _, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(updated, "an activity refresh past the throttle window must persist")
@@ -716,11 +886,11 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshRecordsClientIP() {
 	var updated *Session
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s *Session) error { updated = s; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
 	in := noTFIDLoadInput()
 	in.ClientInfo = ClientInfo{IP: "198.51.100.7", UserAgent: "Mozilla/5.0 (iPhone) Safari/17.0"}
-	_, _, err := svc.LoadCheckpoint(context.Background(), in)
+	_, _, _, err := svc.LoadCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(updated)
@@ -742,9 +912,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshKeepsKnownIPWhenClientH
 	var updated *Session
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s *Session) error { updated = s; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	_, _, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(updated)
@@ -1212,9 +1382,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_FollowsTheLastUsedOU() {
 	svc.ouEligibility = suite.eligibilityAsked(true, nil)
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 
-	_, sc, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+	_, sc, _, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
 
 	suite.Require().NoError(err)
 	suite.Equal(map[string]string{"k": "v", common.RuntimeKeyOUID: "ou-last"}, sc.RuntimeData)
@@ -1233,7 +1403,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusesASignInThatCanNoLongerR
 	withLastUsedOU(m)
 	svc.ouEligibility = suite.eligibilityAsked(false, nil)
 
-	_, _, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+	_, _, _, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
 
 	suite.Require().Error(err)
 	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
