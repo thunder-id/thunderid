@@ -538,6 +538,46 @@ func (suite *ImportExportErrorSuite) TestImportResolvesASecretInACredentialField
 	suite.Equal(1, resp.Summary.Imported)
 }
 
+// TestImportCreatesAUserWhoseTypeRequiresItsCredential asserts a new user whose type requires a
+// credential is created with the one its credentials carry, as a gateway imports a user a control plane
+// deployed.
+func (suite *ImportExportErrorSuite) TestImportCreatesAUserWhoseTypeRequiresItsCredential() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "required-credential-" + suffix, Name: "Required credential " + suffix,
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeHandle := "required-credential-person-" + suffix
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: typeHandle, DisplayName: "Required credential person", OUID: ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string", "required": true},
+			"password": map[string]interface{}{"type": "string", "required": true, "credential": true},
+		},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+
+	username := "required-credential-user-" + suffix
+	payload := suite.importBody(testutils.ImportRequest{
+		Content: fmt.Sprintf("resource_type: user\ntype: %s\nouId: %s\nattributes:\n  username: %s\n"+
+			"credentials:\n  password: Imported@%s\n", typeHandle, ouID, username, suffix),
+		Options: runtimeOptions(),
+	})
+	status, body := suite.postJSON(suite.client, "/import", payload)
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var resp testutils.ImportResponse
+	suite.Require().NoError(json.Unmarshal(body, &resp))
+	suite.Require().Len(resp.Results, 1)
+	if resp.Results[0].ResourceID != "" {
+		defer func() { _ = testutils.DeleteUser(resp.Results[0].ResourceID) }()
+	}
+	suite.Equal("success", resp.Results[0].Status, "the user was not written: %+v", resp.Results[0])
+	suite.Equal(1, resp.Summary.Imported)
+}
+
 // TestImportCreatesAUserBeforeTheAgentItOwns asserts an agent imported together with the user that owns
 // it is written, though the agent comes first in the content.
 func (suite *ImportExportErrorSuite) TestImportCreatesAUserBeforeTheAgentItOwns() {

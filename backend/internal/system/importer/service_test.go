@@ -2203,6 +2203,51 @@ func TestImportResources_UserUpdateKeepsACredentialCarryingNoValue(t *testing.T)
 	assert.Equal(t, []string{"user-2"}, userSvc.credentialUpdates)
 }
 
+// A user whose type requires a credential is created with the credentials its type declares, so the
+// create's schema check finds them. A credential the type does not declare is still written after the
+// create, which refuses it.
+func TestImportResources_UserCreateCarriesTheCredentialsItsTypeDeclares(t *testing.T) {
+	userSvc := &fakeUserService{}
+	typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
+		"customer": {Handle: "customer", Schema: json.RawMessage(
+			`{"username":{"type":"string","required":true},` +
+				`"password":{"type":"string","required":true,"credential":true}}`)},
+	}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, typeSvc, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+	user := func(id, credential string) string {
+		return strings.Join([]string{
+			"resource_type: user",
+			"id: " + id,
+			"type: customer",
+			"ouId: ou-1",
+			"attributes:",
+			"  username: " + id,
+			"credentials:",
+			"  " + credential + ": secret",
+			"",
+		}, "\n")
+	}
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: user("user-1", "password")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	require.Len(t, userSvc.created, 1)
+	assert.JSONEq(t, `{"username":"user-1","password":"secret"}`, string(userSvc.created[0].Attributes))
+	assert.Empty(t, userSvc.credentialUpdates, "a credential the create carried was written again")
+
+	resp, err = svc.ImportResources(context.Background(), &ImportRequest{Content: user("user-2", "pin")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	require.Len(t, userSvc.created, 2)
+	assert.JSONEq(t, `{"username":"user-2"}`, string(userSvc.created[1].Attributes))
+	assert.Equal(t, []string{"user-2"}, userSvc.credentialUpdates)
+}
+
 // An upsert of a user that does not exist creates it without first attempting an update, so the user
 // service records no failed update for it.
 func TestImportResources_UserUpsertCreatesAMissingUserWithoutAnUpdate(t *testing.T) {
@@ -3679,6 +3724,28 @@ func TestImportAgent_StateIgnored(t *testing.T) {
 			assert.Equal(t, tc.warnings, strings.Count(resp.Results[0].Message, "State in the document was ignored"))
 		})
 	}
+}
+
+// An agent is created with the credentials its type declares; others are written after the create.
+func TestImportAgent_CreateCarriesTheCredentialsItsTypeDeclares(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
+		"default": {Handle: "default", Schema: json.RawMessage(
+			`{"name":{"type":"string"},"apiKey":{"type":"string","required":true,"credential":true}}`)},
+	}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, typeSvc, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	content := agentYAML + "credentials:\n  apiKey: key\n  pin: \"1234\"\n"
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	require.Len(t, agentSvc.created, 1)
+	assert.JSONEq(t, `{"name":"Test Agent","apiKey":"key"}`, string(agentSvc.created[0].Attributes))
+	assert.JSONEq(t, `{"pin":"1234"}`, string(agentSvc.credentials["Test Agent-id"]))
 }
 
 func TestImportAgent_CreateCarriesKind(t *testing.T) {

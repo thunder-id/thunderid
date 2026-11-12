@@ -20,6 +20,7 @@ import (
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -781,6 +782,56 @@ func credentialsToWrite(credentials map[string]interface{}, update bool) (json.R
 	return encoded, nil
 }
 
+// withDeclaredCredentials moves the credentials the type declares into the attributes, so a create
+// that requires them finds them. The rest are returned to write after the create.
+func (s *importService) withDeclaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, typeHandle string,
+	attributes, credentials map[string]interface{},
+) (map[string]interface{}, map[string]interface{}) {
+	declared := s.declaredCredentials(ctx, category, typeHandle)
+	var withCredentials map[string]interface{}
+	remaining := make(map[string]interface{}, len(credentials))
+	for name, value := range credentials {
+		if text, ok := value.(string); !ok || text == "" || !declared[name] {
+			remaining[name] = value
+			continue
+		}
+		if withCredentials == nil {
+			withCredentials = make(map[string]interface{}, len(attributes)+len(credentials))
+			for attribute, attributeValue := range attributes {
+				withCredentials[attribute] = attributeValue
+			}
+		}
+		withCredentials[name] = value
+	}
+	if withCredentials == nil {
+		return attributes, credentials
+	}
+	return withCredentials, remaining
+}
+
+// declaredCredentials names the credentials a type declares, or none when the type cannot be read.
+func (s *importService) declaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, handle string,
+) map[string]bool {
+	if s.entityTypeService == nil || handle == "" {
+		return nil
+	}
+	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, category, handle)
+	if svcErr != nil || entityType == nil {
+		return nil
+	}
+	schema, err := entitytypemodel.CompileSchema(entityType.Schema)
+	if err != nil {
+		return nil
+	}
+	declared := make(map[string]bool)
+	for _, attribute := range schema.GetAttributes(entitytypemodel.AttributeFilter{AllowCredential: true}) {
+		declared[attribute.Attribute] = true
+	}
+	return declared
+}
+
 // credentialRollbackError reports a resource whose credentials could not be written after it was
 // created, and which could not be deleted again either.
 func credentialRollbackError(resourceType, resourceID string,
@@ -838,11 +889,6 @@ func (s *importService) importUser(
 		Attributes: attributesJSON,
 	}
 
-	credentialsJSON, err := credentialsToWrite(req.Credentials, false)
-	if err != nil {
-		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
-			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
-	}
 	// A credential the document names but carries no value for is left as the user has it: a stored
 	// credential is a hash that never leaves an export, so a server importing its own export, or one
 	// that fills the placeholder with nothing, has nothing new to set. A new user is different:
@@ -908,7 +954,21 @@ func (s *importService) importUser(
 		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 	}
 
-	created, svcErr := s.userService.CreateUser(ctx, userReq)
+	createAttributes, createCredentials := s.withDeclaredCredentials(
+		ctx, entitytype.TypeCategoryUser, req.Type, req.Attributes, req.Credentials)
+	createAttributesJSON, err := json.Marshal(createAttributes)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user attributes: %v", err)}
+	}
+	credentialsJSON, err := credentialsToWrite(createCredentials, false)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
+	}
+	createReq := *userReq
+	createReq.Attributes = createAttributesJSON
+	created, svcErr := s.userService.CreateUser(ctx, &createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationCreate, svcErr)
 	}
@@ -1485,11 +1545,25 @@ func (s *importService) importAgent(
 		}
 	}
 
+	createAttributes, createCredentials := s.withDeclaredCredentials(
+		ctx, entitytype.TypeCategoryAgent, req.Type, req.Attributes, req.Credentials)
+	if len(createCredentials) < len(req.Credentials) {
+		raw, err := json.Marshal(createAttributes)
+		if err != nil {
+			return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+				Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent attributes: %v", err)}
+		}
+		createReq.Attributes = raw
+	}
+	if credentialsJSON, err = json.Marshal(createCredentials); err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
+	}
 	created, svcErr := s.agentService.CreateAgent(ctx, createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 	}
-	if len(req.Credentials) > 0 {
+	if len(createCredentials) > 0 {
 		if credErr := s.agentService.UpdateAgentCredentials(ctx, created.ID, credentialsJSON); credErr != nil {
 			if rollbackErr := s.agentService.DeleteAgent(ctx, created.ID); rollbackErr != nil {
 				return serviceErrorOutcome(resourceTypeAgent, created.ID, "", operationCreate,
