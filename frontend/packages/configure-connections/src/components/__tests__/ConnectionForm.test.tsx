@@ -152,6 +152,24 @@ describe('ConnectionForm', () => {
     ).toHaveLength(2);
   });
 
+  it('waits for interaction before flagging an empty required PDP endpoint', () => {
+    render(
+      <ConnectionForm
+        {...baseProps}
+        type="authzen-pdp"
+        values={{name: 'PDP', endpoint: '', batchEndpoint: ''}}
+        showAuthentication={false}
+        vendorDisplayName="AuthZEN PDP"
+      />,
+    );
+
+    expect(screen.queryByText('This field is required.')).not.toBeInTheDocument();
+
+    fireEvent.blur(getConnectionField('endpoint'));
+
+    expect(screen.getByText('This field is required.')).toBeInTheDocument();
+  });
+
   it('does not render the redirect URI or scopes fields on create (moved to a create hint / edit view)', () => {
     render(<ConnectionForm {...baseProps} />);
 

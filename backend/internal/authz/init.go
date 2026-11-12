@@ -7,6 +7,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authz/engine"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
@@ -16,12 +17,14 @@ import (
 // Initialize creates and initializes the authorization service.
 func Initialize(
 	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
 	resourceService resource.ResourceServiceInterface,
 	entityService entity.EntityServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 ) providers.AuthorizationProvider {
 	rbacEngine, authZENPDPEngine := engine.Initialize(
 		roleService,
+		groupService,
 		authZENPDPService,
 		httpservice.NewHTTPClientWithoutRedirects(0, false),
 	)
