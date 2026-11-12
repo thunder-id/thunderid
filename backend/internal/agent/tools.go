@@ -49,11 +49,12 @@ type agentTools struct {
 //
 //nolint:lll
 type listAgentsMCPInput struct {
-	Name   string `json:"name,omitempty" jsonschema:"Exact name of the agent. Can be combined with owner."`
-	Owner  string `json:"owner,omitempty" jsonschema:"User ID of the agent's owner, the person accountable for it. Can be combined with name."`
-	OUID   string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the agents it owns and then the ones shared into it. Can't be combined with name or owner."`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of agents to return, at most 100"`
-	Offset int    `json:"offset,omitempty" jsonschema:"Number of agents to skip"`
+	Name      string `json:"name,omitempty" jsonschema:"Exact name of the agent. Can be combined with owner."`
+	Owner     string `json:"owner,omitempty" jsonschema:"User ID of the agent's owner, the person accountable for it. Can be combined with name."`
+	OUID      string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the agents it owns and then the ones shared into it. With projectId, only the project's agents that organization unit owns. Can't be combined with name or owner."`
+	ProjectID string `json:"projectId,omitempty" jsonschema:"ID of a project, from list_projects, to list its agents. Can't be combined with name or owner."`
+	Limit     int    `json:"limit,omitempty" jsonschema:"Maximum number of agents to return, at most 100"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"Number of agents to skip"`
 }
 
 // getAgentMCPInput is the input of the get_agent tool.
@@ -89,7 +90,7 @@ type onboardAgentMCPInput struct {
 	Attributes  map[string]any `json:"attributes,omitempty" jsonschema:"Other attributes of the agent, by name. list_agent_types lists them and says which are required."`
 	Owner       string         `json:"owner,omitempty" jsonschema:"User ID of the person accountable for the agent. Defaults to you, as a local or an external owner."`
 	ProjectID   string         `json:"projectId,omitempty" jsonschema:"ID of the project the agent belongs to, from list_projects. Required where the deployment requires projects."`
-	OUID        string         `json:"ouId,omitempty" jsonschema:"ID of the organization unit to create the agent in. Defaults to the Default organization unit."`
+	OUID        string         `json:"ouId,omitempty" jsonschema:"ID of the organization unit to create the agent in. Defaults to the Default organization unit, or with projectId to the system organization unit. With projectId, it must be the system organization unit or one of the project's."`
 	ValidUntil  string         `json:"validUntil,omitempty" jsonschema:"RFC 3339 date and time after which the agent can't get tokens. Without it, the agent doesn't expire."`
 	Include     []string       `json:"include,omitempty" jsonschema:"Details to add. token_guide: how the agent gets each kind of token, with the endpoint, grant type and parameters."`
 	agentAccessMCPInput
@@ -117,12 +118,13 @@ type rotateAgentCredentialsMCPInput struct {
 
 // agentMCPItem is an agent in the list_agents output.
 type agentMCPItem struct {
-	ID       string `json:"id"`
-	Name     string `json:"name,omitempty"`
-	ClientID string `json:"clientId,omitempty"`
-	Owner    string `json:"owner,omitempty"`
-	OUID     string `json:"ouId"`
-	Status   string `json:"status,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name,omitempty"`
+	ClientID  string `json:"clientId,omitempty"`
+	Owner     string `json:"owner,omitempty"`
+	OUID      string `json:"ouId"`
+	ProjectID string `json:"projectId,omitempty"`
+	Status    string `json:"status,omitempty"`
 }
 
 // agentListMCPResponse is the list_agents output.
@@ -137,6 +139,7 @@ type agentMCPDetails struct {
 	Name               string                    `json:"name,omitempty"`
 	Description        string                    `json:"description,omitempty"`
 	OUID               string                    `json:"ouId"`
+	ProjectID          string                    `json:"projectId,omitempty"`
 	Owner              string                    `json:"owner,omitempty"`
 	Status             string                    `json:"status,omitempty"`
 	ValidUntil         string                    `json:"validUntil,omitempty"`
@@ -249,9 +252,10 @@ func registerMCPTools(server *mcp.Server, tools *agentTools) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_agents",
 		Description: `Find agents by exact name, by owner (the user ID of the person accountable for an agent), ` +
-			`or by organization unit. name and owner can be combined; ouId can't be combined with either. ` +
+			`by organization unit, or by project. name and owner can be combined; ouId and projectId can't be ` +
+			`combined with either, and ouId with projectId lists the project's agents that unit owns. ` +
 			`Without filters, it lists every agent you can see. Returns each agent's ID, name, client ID, ` +
-			`owner, organization unit and status (ACTIVE, LOCKED, SUSPENDED or EXPIRED), 30 per page unless ` +
+			`owner, organization unit, project and status (ACTIVE, LOCKED, SUSPENDED or EXPIRED), 30 per page unless ` +
 			`limit says otherwise, and the total. Use get_agent for one agent's credential, the ways it ` +
 			`acts for users, and its groups, roles and permissions.`,
 		InputSchema: tool.GenerateSchema[listAgentsMCPInput](
@@ -268,9 +272,9 @@ func registerMCPTools(server *mcp.Server, tools *agentTools) {
 		Description: `Get one agent, by agentId or by clientId. Returns how it proves who it is (credential: ` +
 			`client_secret, private_key_jwt or none) and the ways it acts for users (actsForUsers: sign_in, ` +
 			`approval, token_exchange) with their settings, in the terms update_agent takes, ` +
-			`and its name, owner, organization unit, status and attributes. credential none without a clientId ` +
-			`means the agent has no OAuth client. otherGrantTypes lists grants these terms don't describe. It ` +
-			`never returns a secret.
+			`and its name, owner, organization unit, project, status and attributes. credential none without a ` +
+			`clientId means the agent has no OAuth client. otherGrantTypes lists grants these terms don't ` +
+			`describe. It never returns a secret.
 
 Groups, roles and permissions come back only when include asks for them. notIncluded lists the ones ` +
 			`left out, so a section missing for that reason doesn't mean the agent has none. warnings says when ` +
@@ -352,8 +356,9 @@ func registerOnboardAgentTool(server *mcp.Server, tools *agentTools) {
 ` + accessTerms + `
 
 Without owner, you own the agent if you are a user. Without ouId, it goes in the Default organization ` +
-			`unit. Call list_agent_types first for the attributes the agent needs. Every problem with the input ` +
-			`is reported in one error, and nothing is created then. Use update_agent to change the agent later.`,
+			`unit, or with projectId in the system organization unit. Call list_agent_types first for the ` +
+			`attributes the agent needs. Every problem with the input is reported in one error, and nothing is ` +
+			`created then. Use update_agent to change the agent later.`,
 		InputSchema: tool.GenerateSchema[onboardAgentMCPInput](
 			tool.WithEnum("", "credential", credentials),
 			tool.WithDefault("", "credential", string(credentialClientSecret)),
@@ -377,6 +382,9 @@ func (t *agentTools) listAgents(
 	if input.OUID != "" && (input.Name != "" || input.Owner != "") {
 		return nil, nil, errors.New("failed to list agents: ouId can't be combined with name or owner")
 	}
+	if input.ProjectID != "" && (input.Name != "" || input.Owner != "") {
+		return nil, nil, errors.New("failed to list agents: projectId can't be combined with name or owner")
+	}
 
 	filters := map[string]interface{}{}
 	if input.Name != "" {
@@ -392,6 +400,12 @@ func (t *agentTools) listAgents(
 	switch {
 	case input.Owner != "":
 		resp, svcErr = t.agentService.GetAgentListByOwner(ctx, input.Owner, input.Limit, input.Offset, filters, true)
+	case input.ProjectID != "":
+		if input.OUID != "" {
+			filters[filter.AttributeOUID] = input.OUID
+		}
+		resp, svcErr = t.agentService.GetAgentListByProject(ctx, input.ProjectID, input.Limit, input.Offset,
+			filters, true)
 	case input.OUID != "":
 		filters[filter.AttributeOUID] = input.OUID
 		resp, svcErr = t.agentService.GetAgentList(ctx, input.Limit, input.Offset, filters, true)
@@ -405,12 +419,13 @@ func (t *agentTools) listAgents(
 	agents := make([]agentMCPItem, 0, len(resp.Agents))
 	for _, agent := range resp.Agents {
 		agents = append(agents, agentMCPItem{
-			ID:       agent.ID,
-			Name:     agent.Display,
-			ClientID: agent.ClientID,
-			Owner:    ownerIDOf(agent.Owner),
-			OUID:     agent.OUID,
-			Status:   statusOf(agent.Status),
+			ID:        agent.ID,
+			Name:      agent.Display,
+			ClientID:  agent.ClientID,
+			Owner:     ownerIDOf(agent.Owner),
+			OUID:      agent.OUID,
+			ProjectID: agent.ProjectID,
+			Status:    statusOf(agent.Status),
 		})
 	}
 	return nil, &agentListMCPResponse{TotalResults: resp.TotalResults, Agents: agents}, nil
@@ -537,7 +552,9 @@ func (t *agentTools) onboardAgent(
 			AllowedUserTypes:          input.AllowedUserTypes,
 		},
 	}
-	if input.OUID == "" {
+	// The Default organization unit is in no project, so an agent in a project without ouId goes where the
+	// service places it: the system organization unit.
+	if input.OUID == "" && input.ProjectID == "" {
 		agent.OUHandle = defaultOUHandle
 	}
 	if input.ValidUntil != "" {
@@ -551,7 +568,7 @@ func (t *agentTools) onboardAgent(
 
 	created, svcErr := t.agentService.CreateAgent(ctx, agent)
 	if svcErr != nil {
-		if input.OUID == "" && svcErr.Code == ErrorOrganizationUnitNotFound.Code {
+		if input.OUID == "" && input.ProjectID == "" && svcErr.Code == ErrorOrganizationUnitNotFound.Code {
 			return nil, nil, errors.New("failed to onboard agent: the Default organization unit wasn't found, " +
 				"so give ouId")
 		}
@@ -1024,6 +1041,7 @@ func describeAgent(agent *model.AgentGetResponse, nameAttribute string) agentMCP
 		Name:             name,
 		Description:      agent.Description,
 		OUID:             agent.OUID,
+		ProjectID:        agent.ProjectID,
 		Owner:            ownerIDOf(agent.Owner),
 		Status:           statusOf(agent.Status),
 		ValidUntil:       agent.ValidUntil,
@@ -1193,6 +1211,7 @@ func readViewOf(agent *model.AgentCompleteResponse) *model.AgentGetResponse {
 		ID:                    agent.ID,
 		OUID:                  agent.OUID,
 		OUHandle:              agent.OUHandle,
+		ProjectID:             agent.ProjectID,
 		Type:                  agent.Type,
 		Description:           agent.Description,
 		LogoURL:               agent.LogoURL,
