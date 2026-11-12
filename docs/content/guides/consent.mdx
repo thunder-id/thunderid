@@ -80,9 +80,20 @@ To enable this setting:
 
 ### Configure validity period for granted consent
 
-By default, once a user grants consent, it remains valid indefinitely until the user revokes it. However, you can configure a validity period for granted consent to require users to re-consent after a certain duration.
+By default, consent that a user grants does not expire. Set a validity period on an application or agent to ask users for consent again after that period.
 
-Currently, this configuration is supported via the Application Management API. When creating or updating an application, you can define the validity period under the `loginConsent` section in the JSON payload.
+To set the validity period in the Console:
+
+1. Go to **Applications** and open the application, or go to **Agents** and open the agent.
+2. Open the **Advanced** tab.
+3. In the **OAuth 2 configuration** card, enter the period in seconds in **Consent validity period**, below **Client authentication method**.
+4. Click **Save**.
+
+Leave **Consent validity period** empty or enter `0` so consent does not expire. The field appears only when the application or agent has a grant type that signs a user in, such as authorization code or CIBA.
+
+A new validity period applies to consent that users give after you save. Consent given earlier keeps the expiry it was saved with.
+
+You can also set the validity period through the Application Management API or the Agent Management API. Define it under the `loginConsent` section of the request payload when you create or update the application or agent.
 
 **Example request:**
 
@@ -103,7 +114,7 @@ curl --location -X POST 'https://localhost:8090/applications' \
 }'
 ```
 
-`validityPeriod` is specified in seconds (e.g., `120` for a 2-minute validity period). After this period expires, the user will be prompted to grant consent again during the next login attempt.
+`validityPeriod` is in seconds, so `120` is two minutes. A value of `0` means consent does not expire. After the period ends, <ProductName /> asks the user for consent again at their next sign-in.
 
 ## Authorization Details Consent
 

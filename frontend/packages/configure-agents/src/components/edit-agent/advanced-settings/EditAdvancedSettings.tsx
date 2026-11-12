@@ -33,6 +33,8 @@ interface EditAdvancedSettingsProps {
   onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
   /** Reports whether the Identity assertions (ID-JAG) card has a validation error, to gate Save. */
   onIdentityAssertionsValidationChange?: (hasError: boolean) => void;
+  /** Reports whether the Consent validity card holds a validity period it could not commit, to gate Save. */
+  onLoginConsentValidationChange?: (hasError: boolean) => void;
 }
 
 export default function EditAdvancedSettings({
@@ -43,6 +45,7 @@ export default function EditAdvancedSettings({
   onDeleteSuccess = undefined,
   onBackchannelLogoutUriValidationChange = undefined,
   onIdentityAssertionsValidationChange = undefined,
+  onLoginConsentValidationChange = undefined,
 }: EditAdvancedSettingsProps) {
   const {t} = useTranslation();
   const {can} = useCapabilitiesContext();
@@ -146,6 +149,11 @@ export default function EditAdvancedSettings({
         oauth2Config={oauth2Config}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
         onBackchannelLogoutUriValidationChange={onBackchannelLogoutUriValidationChange}
+        loginConsent={editedAgent.loginConsent ?? agent.loginConsent}
+        onLoginConsentChange={
+          agent.isReadOnly ? undefined : (loginConsent) => onFieldChange('loginConsent', loginConsent)
+        }
+        onLoginConsentValidationChange={onLoginConsentValidationChange}
         disabled={agent.isReadOnly}
       />
       {oauth2Config && isUnlocked && (

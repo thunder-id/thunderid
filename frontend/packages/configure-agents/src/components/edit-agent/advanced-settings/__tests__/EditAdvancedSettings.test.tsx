@@ -14,14 +14,27 @@ vi.mock('../OperationModesSection', () => ({
   default: ({
     oauth2Config,
     onOAuth2ConfigChange,
+    loginConsent,
+    onLoginConsentChange,
+    onLoginConsentValidationChange,
   }: {
     oauth2Config?: OAuthAgentConfig;
     onOAuth2ConfigChange?: (updates: Partial<OAuthAgentConfig>) => void;
+    loginConsent?: {validityPeriod?: number};
+    onLoginConsentChange?: (loginConsent: {validityPeriod?: number}) => void;
+    onLoginConsentValidationChange?: (hasError: boolean) => void;
   }) => (
     <div data-testid="operation-modes-section">
       <span data-testid="oauth2-grants">{(oauth2Config?.grantTypes ?? []).join(',')}</span>
+      <span data-testid="login-consent-validity">{loginConsent?.validityPeriod ?? ''}</span>
       <button type="button" onClick={() => onOAuth2ConfigChange?.({grantTypes: ['client_credentials']})}>
         Trigger OAuth Change
+      </button>
+      <button type="button" onClick={() => onLoginConsentChange?.({validityPeriod: 90})}>
+        Change consent validity
+      </button>
+      <button type="button" onClick={() => onLoginConsentValidationChange?.(true)}>
+        Report invalid consent validity
       </button>
     </div>
   ),
@@ -684,6 +697,71 @@ describe('EditAdvancedSettings', () => {
 
       expect(screen.getByTestId('owner-section')).toBeInTheDocument();
       expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
+    });
+  });
+
+  describe('Consent validity', () => {
+    it('should report the validity period validation state to the edit page', async () => {
+      const user = userEvent.setup();
+      const onLoginConsentValidationChange = vi.fn();
+      render(
+        <EditAdvancedSettings
+          agent={mockAgent}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+          onLoginConsentValidationChange={onLoginConsentValidationChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Report invalid consent validity'}));
+
+      expect(onLoginConsentValidationChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('should pass the edited validity period to the section in place of the saved one', () => {
+      render(
+        <EditAdvancedSettings
+          agent={{...mockAgent, loginConsent: {validityPeriod: 3600}}}
+          editedAgent={{loginConsent: {validityPeriod: 120}}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByTestId('login-consent-validity')).toHaveTextContent('120');
+    });
+
+    it('should commit a changed validity period through onFieldChange', async () => {
+      const user = userEvent.setup();
+      render(
+        <EditAdvancedSettings
+          agent={mockAgent}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Change consent validity'}));
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith('loginConsent', {validityPeriod: 90});
+    });
+
+    it('should not let a read-only agent change the validity period', async () => {
+      const user = userEvent.setup();
+      render(
+        <EditAdvancedSettings
+          agent={{...mockAgent, isReadOnly: true}}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Change consent validity'}));
+
+      expect(mockOnFieldChange).not.toHaveBeenCalledWith('loginConsent', expect.anything());
     });
   });
 });
