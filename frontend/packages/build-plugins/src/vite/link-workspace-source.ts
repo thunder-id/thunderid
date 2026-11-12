@@ -38,8 +38,18 @@ export interface LinkWorkspaceSourceOptions {
   root?: string;
 }
 
+// A wildcard subpath export (`"./*"`, `"./pages/*"`): specifiers that start with `prefix` and end
+// with `suffix` resolve through `distTarget`, with the part in between substituted for its `*`.
+interface WildcardLink {
+  prefix: string;
+  suffix: string;
+  packageDir: string;
+  distTarget: string;
+}
+
 interface WorkspaceLinks {
   specifierMap: Map<string, string>;
+  wildcardLinks: WildcardLink[];
   packageSrcRoots: string[];
 }
 
@@ -72,6 +82,11 @@ export function linkWorkspaceSource(options: LinkWorkspaceSourceOptions = {}): P
         return direct;
       }
 
+      const wildcard = resolveWildcard(links.wildcardLinks, source);
+      if (wildcard) {
+        return wildcard;
+      }
+
       // The app's own `@`/`@/*` aliases (resolved by Vite before this plugin runs) assume
       // every import lives under the app's `src`. When a linked package's own source uses
       // the same alias convention internally, Vite mis-substitutes it onto the app's `src`
@@ -96,6 +111,7 @@ export function linkWorkspaceSource(options: LinkWorkspaceSourceOptions = {}): P
 
 function buildWorkspaceLinks(appRoot: string): WorkspaceLinks {
   const specifierMap = new Map<string, string>();
+  const wildcardLinks: WildcardLink[] = [];
   const packageSrcRoots: string[] = [];
   const appPackageJson = readJson<AppPackageJson>(join(appRoot, 'package.json'));
 
@@ -121,6 +137,17 @@ function buildWorkspaceLinks(appRoot: string): WorkspaceLinks {
 
     for (const [subpath, target] of Object.entries(packageJson.exports ?? {})) {
       const distTarget = typeof target === 'string' ? target : target.import;
+      if (distTarget && subpath.includes('*') && distTarget.includes('*')) {
+        const star = subpath.indexOf('*');
+        wildcardLinks.push({
+          prefix: `${name}/${subpath.slice(2, star)}`,
+          suffix: subpath.slice(star + 1),
+          packageDir,
+          distTarget,
+        });
+        linked = true;
+        continue;
+      }
       const sourcePath = distTarget && resolveDistAsSource(packageDir, distTarget);
       if (!sourcePath) {
         continue;
@@ -134,7 +161,26 @@ function buildWorkspaceLinks(appRoot: string): WorkspaceLinks {
     }
   }
 
-  return {specifierMap, packageSrcRoots};
+  return {specifierMap, wildcardLinks, packageSrcRoots};
+}
+
+// Resolves a specifier matched by a wildcard subpath export to the package source it was built
+// from. A match with a `..` segment is ignored, so a subpath cannot reach outside the package.
+function resolveWildcard(wildcardLinks: WildcardLink[], source: string): string | undefined {
+  for (const {prefix, suffix, packageDir, distTarget} of wildcardLinks) {
+    if (!source.startsWith(prefix) || !source.endsWith(suffix) || source.length < prefix.length + suffix.length) {
+      continue;
+    }
+    const match = source.slice(prefix.length, source.length - suffix.length);
+    if (!match || match.split('/').includes('..')) {
+      continue;
+    }
+    const sourcePath = resolveDistAsSource(packageDir, distTarget.replace('*', match));
+    if (sourcePath) {
+      return sourcePath;
+    }
+  }
+  return undefined;
 }
 
 function resolveDistAsSource(packageDir: string, distTarget: string): string | undefined {
