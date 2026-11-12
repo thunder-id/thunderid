@@ -37,6 +37,13 @@
     "call-bind": "1.0.8",
     "flatted": "3.4.2",
     "picomatch": "4.0.4",
-    "dompurify": "3.4.9"
+    "dompurify": "3.4.9",
+    "@wso2/oxygen-ui": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    },
+    "@wso2/oxygen-ui-icons-react": {
+      "react": "$react"
+    }
   }
 }
