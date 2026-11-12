@@ -83,8 +83,7 @@ vi.mock('@thunderid/configure-groups', async (importOriginal) => ({
   GroupCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
 }));
 
-vi.mock('@thunderid/configure-import-export', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-import-export')>()),
+vi.mock('@thunderid/configure-import-export', () => ({
   ExportPage: () => <div data-testid="export-page">Export Page</div>,
   ImportConfigurationSummaryPage: () => (
     <div data-testid="import-configuration-summary-page">Import Configuration Summary Page</div>
