@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Link from '@docusaurus/Link';
+import type {PropSidebarItem} from '@docusaurus/plugin-content-docs';
+import {isActiveSidebarItem} from '@docusaurus/plugin-content-docs/client';
 import {Collapsible} from '@docusaurus/theme-common';
 import type {Props} from '@theme/DocSidebarItem/Category';
 import DocSidebarItems from '@theme/DocSidebarItems';
 import OriginalDocSidebarItemCategory from '@theme-original/DocSidebarItem/Category';
 import {Box} from '@wso2/oxygen-ui';
 import {Bot, ChevronDown, MonitorSmartphone, Server} from '@wso2/oxygen-ui-icons-react';
-import React from 'react';
+import React, {useState} from 'react';
 import {ConnectType, applyConnectType, useConnectType} from '@site/src/utils/connectType';
 
 type OriginalProps = Props;
@@ -107,12 +109,76 @@ const chevronSx = {
   transition: 'transform 0.2s ease',
 };
 
+const tabListSx = {
+  display: 'flex',
+  gap: '0.25rem',
+  margin: '0 0 0.4rem 1.5rem',
+  padding: '0.2rem',
+  background: 'rgba(255, 255, 255, 0.05)',
+  border: '1px solid rgba(255, 255, 255, 0.12)',
+  borderRadius: '8px',
+  '[data-theme="light"] &': {
+    background: 'rgba(0, 0, 0, 0.03)',
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+};
+
+const tabSx = {
+  background: 'transparent',
+  border: 'none',
+  borderRadius: '6px',
+  color: 'var(--ifm-color-content-secondary)',
+  cursor: 'pointer',
+  flex: 1,
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  padding: '0.3rem 0.5rem',
+  transition: 'background 0.2s ease, color 0.2s ease',
+  '&:hover': {color: 'var(--ifm-font-color-base)'},
+};
+
+const tabActiveSx = {
+  background: 'color-mix(in srgb, var(--ifm-color-primary) 18%, transparent)',
+  color: 'var(--ifm-color-primary)',
+  '&:hover': {color: 'var(--ifm-color-primary)'},
+};
+
+type SidebarCategory = Extract<PropSidebarItem, {type: 'category'}>;
+
+// A connect card whose children are categories marked `connect-app-tab` (B2C and B2B under
+// Applications) shows them as horizontal tabs, and lists the quickstarts of the selected tab.
+function tabsOf(items: PropSidebarItem[]): SidebarCategory[] {
+  return items.filter(
+    (i): i is SidebarCategory => i.type === 'category' && !!i.className?.includes('connect-app-tab'),
+  );
+}
+
 function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
   const {items, label, className, href} = item;
   const type = connectTypeFromClassName(className)!;
   const {Icon, comingSoon} = SECTIONS[type];
   const active = useConnectType();
   const expanded = !comingSoon && active === type;
+
+  const tabs = tabsOf(items);
+  const activeTabIndex = tabs.findIndex(tab => isActiveSidebarItem(tab, rest.activePath));
+  const [selectedTab, setSelectedTab] = useState(Math.max(activeTabIndex, 0));
+  // Follow navigation: opening a quickstart from the other tab selects that tab.
+  const [lastActiveTab, setLastActiveTab] = useState(activeTabIndex);
+  if (activeTabIndex !== lastActiveTab) {
+    setLastActiveTab(activeTabIndex);
+    if (activeTabIndex >= 0) setSelectedTab(activeTabIndex);
+  }
+  const listItems = tabs.length > 0 ? tabs[selectedTab].items : items;
+  const list = (
+    <DocSidebarItems
+      items={listItems}
+      tabIndex={expanded ? 0 : -1}
+      activePath={rest.activePath}
+      onItemClick={rest.onItemClick}
+      level={rest.level + 1}
+    />
+  );
 
   return (
     <li className={`menu__list-item connect-section connect-section--${type}`}>
@@ -140,15 +206,33 @@ function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
         )}
       </Box>
 
-      {!comingSoon && (
+      {!comingSoon && tabs.length === 0 && (
         <Collapsible lazy as="ul" className="menu__list" collapsed={!expanded}>
-          <DocSidebarItems
-            items={items}
-            tabIndex={expanded ? 0 : -1}
-            activePath={rest.activePath}
-            onItemClick={rest.onItemClick}
-            level={rest.level + 1}
-          />
+          {list}
+        </Collapsible>
+      )}
+
+      {!comingSoon && tabs.length > 0 && (
+        <Collapsible lazy as="div" className="connect-section__panel" collapsed={!expanded}>
+          <Box role="tablist" aria-label={label} sx={tabListSx}>
+            {tabs.map((tab, index) => (
+              <Box
+                key={tab.label}
+                component="button"
+                type="button"
+                role="tab"
+                aria-selected={index === selectedTab}
+                tabIndex={expanded ? 0 : -1}
+                onClick={() => setSelectedTab(index)}
+                sx={{...tabSx, ...(index === selectedTab ? tabActiveSx : {})}}
+              >
+                {tab.label}
+              </Box>
+            ))}
+          </Box>
+          <ul className="menu__list" role="tabpanel">
+            {list}
+          </ul>
         </Collapsible>
       )}
     </li>

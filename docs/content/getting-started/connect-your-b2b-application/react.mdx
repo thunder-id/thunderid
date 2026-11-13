@@ -1,0 +1,393 @@
+---
+toc_progress: quickstart
+title: React Quickstart
+docType: quickstart
+sidebar_position: 1
+persona: app
+description: Build a React B2B app where companies sign up as organizations, switch between them, and plug in their own identity provider, with @thunderid/react.
+---
+
+import {ArrowLeftRight, Building2, Clock, FileCode, Hexagon, KeyRound, Package} from '@wso2/oxygen-ui-icons-react';
+
+# React Quickstart
+
+Use this guide to build a React application for a business-to-business (B2B) product with `@thunderid/react`. Each
+company that signs up becomes its own organization in <ProductName />. People sign in to one company at a time, their
+tokens name that company and the roles they hold there, and a company admin plugs in the company's own identity
+provider.
+
+<SdkQuickstartDownload packageId="react" sample="quickstarts/react-b2b" icon={<ReactLogo size={22} />} />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Building2 />}>Let a company sign up as its own organization, with its first admin</TutorialHeroItem>
+<TutorialHeroItem icon={<ArrowLeftRight />}>Read the organization and roles from the token, and switch organizations</TutorialHeroItem>
+<TutorialHeroItem icon={<KeyRound />}>Let a company admin plug in the company's identity provider</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js 20 or later</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance:
+
+<RunThunderID />
+
+## Import the B2B Resources
+
+A B2B application needs more than an application: a platform organization that every company joins, an account type,
+two roles, a sign-up flow that creates the company, and a sign-in flow that lands in one company. The sample ships them
+as two files you import.
+
+1. Copy the resources:
+
+    ```bash
+    npx degit thunder-id/samples/quickstarts/react-b2b/thunderid-config thunderid-config
+    ```
+
+2. Sign in to the Control Plane console at `https://localhost:8095/console`.
+3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
+   file, choose **Continue**, and once the import test passes, choose **Import configuration**.
+4. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
+   configuration file and `thunderid-config/thunderid.env` as the environment variables file. Choose **Continue**, then
+   **Import configuration**.
+5. Add `https://localhost:5173` to the CORS allowed origins (**Settings → CORS**), so the browser lets the app call
+   <ProductName />.
+
+The second file places every resource in the organization unit the first one creates, so import the first one on its
+own.
+
+The import creates a root organization unit, and only the Control Plane creates one, so import there. Imported straight
+into a Data Plane, it is refused.
+
+| Resource | Name | What it does |
+|---|---|---|
+| Organization unit | React B2B Quickstart | The platform organization, a root organization unit in the Default project. Every company that signs up becomes its child. |
+| User type | React B2B User | The account schema, owned by the platform organization, so every company can use it |
+| Role | Admin | Grants the `org` permission, which manages the organization a token names. Shared with every company. |
+| Role | Member | Grants no permission. Shared with every company. |
+| Flow | React B2B Quickstart Company Sign-up | Creates the company and its first admin, with the account inside the company or shared into it |
+| Flow | React B2B Quickstart Sign-in | Password, enterprise single sign-on (SSO), or company sign-up. Keeps an SSO session, and lets each company set its own `enterpriseIdp`. |
+| Application | React B2B Quickstart | Client ID `REACT_B2B_QUICKSTART`, redirecting to `https://localhost:5173`. Shared with every company. |
+
+## Create a React App
+
+Create the app with Vite, and add the SDK and Vite's HTTPS plugin:
+
+```bash
+npm create vite@latest react-b2b -- --template react
+cd react-b2b
+npm install
+npm install @thunderid/react
+npm install -D @vitejs/plugin-basic-ssl
+```
+
+Serve the app over HTTPS, like <ProductName />. The two are then the same site, so a switch to another company can reuse
+the <ProductName /> sign-in in a hidden frame instead of leaving the page:
+
+```js title="vite.config.js"
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
+
+export default defineConfig({
+  plugins: [react(), basicSsl()],
+  server: { port: 5173, strictPort: true },
+})
+```
+
+## Add `ThunderIDProvider`
+
+Create a `.env` file with the values the import set up:
+
+```bash title=".env"
+VITE_THUNDERID_BASE_URL=https://localhost:8090
+VITE_THUNDERID_CLIENT_ID=REACT_B2B_QUICKSTART
+VITE_THUNDERID_RESOURCE=https://localhost:8090/mcp
+VITE_THUNDERID_SIGN_IN_FLOW_ID=019f0b10-0000-7000-8000-000000000021
+```
+
+Then wrap the app in `<ThunderIDProvider />`:
+
+```jsx title="src/main.jsx"
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { ThunderIDProvider } from '@thunderid/react'
+import App from './App.jsx'
+import './index.css'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <ThunderIDProvider
+      clientId={import.meta.env.VITE_THUNDERID_CLIENT_ID}
+      baseUrl={import.meta.env.VITE_THUNDERID_BASE_URL}
+      scopes={['openid', 'profile', 'email', 'roles', 'ou', 'org']}
+      signInOptions={{ resource: import.meta.env.VITE_THUNDERID_RESOURCE }}
+      preferences={{ user: { fetchUserProfile: false } }}
+    >
+      <App />
+    </ThunderIDProvider>
+  </StrictMode>
+)
+```
+
+| Parameter | Description |
+|---|---|
+| `scopes` | `ou` and `roles` put the company and the roles held there into the tokens. `org` asks for the permission a company admin needs. |
+| `signInOptions.resource` | `org` is a permission of the System resource server, so a sign-in names that resource server. |
+| `preferences.user.fetchUserProfile` | `false` reads the signed-in user from the ID token, which names the company the session signed in to. |
+
+## Show the Token
+
+Show the organization claims, roles, and scopes of the access token. They change with every switch, because a switch
+signs the user in to another company and replaces the tokens:
+
+```jsx title="src/components/TokenClaims.jsx"
+import { useEffect, useState } from 'react'
+import { useThunderID } from '@thunderid/react'
+
+const decodePayload = (token) => {
+  const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+  const bytes = Uint8Array.from(atob(payload), (char) => char.charCodeAt(0))
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
+export default function TokenClaims() {
+  const { currentOrganizationUnit, getAccessToken } = useThunderID()
+  const [claims, setClaims] = useState(null)
+
+  useEffect(() => {
+    getAccessToken()
+      .then((token) => setClaims(decodePayload(token)))
+      .catch(() => setClaims(null))
+  }, [getAccessToken, currentOrganizationUnit?.id])
+
+  if (!claims) {
+    return null
+  }
+
+  return (
+    <section>
+      <h2>Access token</h2>
+      <p>ouName <code>{claims.ouName}</code></p>
+      <p>ouHandle <code>{claims.ouHandle}</code></p>
+      <p>roles <code>{(claims.roles ?? []).join(', ') || 'none'}</code></p>
+      <p>scope <code>{claims.scope}</code></p>
+    </section>
+  )
+}
+```
+
+## Let Admins Plug In Their Identity Provider
+
+A company admin adds an OpenID Connect connection owned by the company with `createConnection`, then picks it as the
+company's value of the sign-in flow's `enterpriseIdp` variable with `FlowVariablesForm`. Both calls carry the admin's
+own token, so <ProductName /> applies them to the company the token names:
+
+```jsx title="src/components/EnterpriseSso.jsx"
+import { useState } from 'react'
+import { FlowVariablesForm, createConnection, useManagementRequestConfig, useThunderID } from '@thunderid/react'
+
+const FIELDS = [
+  'name',
+  'clientId',
+  'clientSecret',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+  'userInfoEndpoint',
+  'jwksEndpoint',
+  'issuer',
+]
+
+export default function EnterpriseSso({ flowId, ouId, ouName }) {
+  const { baseUrl } = useThunderID()
+  const requestConfig = useManagementRequestConfig('connections')
+  const [isAdding, setIsAdding] = useState(false)
+  const [version, setVersion] = useState(0)
+  const callbackUrl = `${baseUrl}/gate/callback`
+
+  const addConnection = async (event) => {
+    event.preventDefault()
+    await createConnection({
+      ...requestConfig,
+      type: 'oidc',
+      payload: {
+        ...Object.fromEntries(new FormData(event.currentTarget)),
+        ouId,
+        redirectUri: callbackUrl,
+        scopes: ['openid', 'profile', 'email'],
+      },
+    })
+    setIsAdding(false)
+    setVersion((current) => current + 1)
+  }
+
+  return (
+    <section>
+      <h2>Enterprise SSO</h2>
+      <p>Callback URL for your identity provider: {callbackUrl}</p>
+      {isAdding ? (
+        <form onSubmit={addConnection}>
+          {FIELDS.map((name) => (
+            <input key={name} name={name} placeholder={name} required />
+          ))}
+          <button type="submit">Add identity provider</button>
+        </form>
+      ) : (
+        <FlowVariablesForm
+          key={version}
+          flowId={flowId}
+          ouId={ouId}
+          ouName={ouName}
+          showScopeNotice
+          title="Enterprise SSO connection"
+          onCreateConnection={() => setIsAdding(true)}
+        />
+      )}
+    </section>
+  )
+}
+```
+
+## Put It Together
+
+Replace `src/App.jsx`. `<OrganizationUnitSwitcher />` lists the companies the user belongs to and switches the session
+to the one picked. Only a token that carries `org` shows the Enterprise SSO section. The page keeps Vite's starter
+stylesheets, `index.css` and `App.css`, and centers its content with their `#center` layout:
+
+```jsx title="src/App.jsx"
+import { useEffect } from 'react'
+import {
+  OrganizationUnitSwitcher,
+  SignInButton,
+  SignOutButton,
+  SignedIn,
+  SignedOut,
+  useGrantedPermissions,
+  useThunderID,
+} from '@thunderid/react'
+import EnterpriseSso from './components/EnterpriseSso.jsx'
+import TokenClaims from './components/TokenClaims.jsx'
+import './App.css'
+
+const resource = import.meta.env.VITE_THUNDERID_RESOURCE
+
+function Workspace() {
+  const { currentOrganizationUnit, user } = useThunderID()
+  const { can } = useGrantedPermissions()
+  const roles = Array.isArray(user?.roles) ? user.roles : []
+
+  return (
+    <>
+      <h1>{currentOrganizationUnit?.name}</h1>
+      <p>
+        Signed in as {user?.username} to <code>{currentOrganizationUnit?.handle}</code>. Your roles here:{' '}
+        {roles.join(', ') || 'none'}
+      </p>
+      <TokenClaims />
+      {can('org') && (
+        <EnterpriseSso
+          flowId={import.meta.env.VITE_THUNDERID_SIGN_IN_FLOW_ID}
+          ouId={currentOrganizationUnit?.id}
+          ouName={currentOrganizationUnit?.name}
+        />
+      )}
+    </>
+  )
+}
+
+export default function App() {
+  const { currentOrganizationUnit, isSignedIn, signIn } = useThunderID()
+
+  // Finishes a switch that returns with an authorization code while the previous session is still
+  // signed in. Remove it once the SDK finishes the switch itself.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (isSignedIn && params.has('code') && params.has('state')) {
+      signIn().catch(() => undefined)
+    }
+  }, [isSignedIn, signIn])
+
+  return (
+    <section id="center">
+      <SignedOut>
+        <h1>Sign in to your company</h1>
+        <p>New here? Choose Register your company on the sign-in page.</p>
+        <SignInButton>Sign in</SignInButton>
+      </SignedOut>
+      <SignedIn>
+        <OrganizationUnitSwitcher scope="siblings" switchOptions={{ resource }} />
+        <Workspace key={currentOrganizationUnit?.id} />
+        <SignOutButton>Sign out</SignOutButton>
+      </SignedIn>
+    </section>
+  )
+}
+```
+
+- `currentOrganizationUnit` holds the `id`, `handle`, and `name` of the company the session signed in to, read from
+  the ID token. Treat it as display data. Your APIs read the organization from the access token they receive.
+- `scope="siblings"` lists the current company and the other companies beneath the same platform organization.
+- A switch is a new sign-in, so `switchOptions` names the same resource server as the first one.
+- `useGrantedPermissions` reads the permissions once per session. Keying `Workspace` by the company loads them again
+  after a switch.
+- `@thunderid/react` 1.21.0 redeems a returning authorization code only when no session exists, so the effect in `App`
+  lets the SDK finish a switch that returns through a redirect.
+
+## Run and Try It
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open [https://localhost:5173](https://localhost:5173) and accept the development server's self-signed certificate.
+
+**A company with its own accounts.** Choose **Sign in**, then **Register your company**, then **My account belongs to
+this company**. Enter an account, then `Northstar Labs` with the handle `northstar`.
+
+:::tip Success
+You land in the app as Northstar Labs' `Admin`. The token's `ouHandle` is `northstar`, and its `scope` carries `org`,
+so the Enterprise SSO section shows.
+:::
+
+**Plug in the company's identity provider.** Register an OpenID Connect application in your identity provider with the
+callback URL the app shows. In **Enterprise SSO**, choose **Create a connection**, enter the application's details,
+select the connection, and save. Sign out, choose **Sign in with enterprise SSO**, and enter `northstar`: <ProductName />
+sends you to Northstar's identity provider, and a first-time employee joins Northstar as a `Member`.
+
+**One account across several companies.** Register `Initech` with **I work with several companies**. The account lives
+in the platform organization and is shared into Initech as its `Admin`. Then, as a platform administrator in the
+Console, add `Globex` and `Umbrella` as child organization units of `React B2B Quickstart`, open the account under
+**Users**, and on the **Affiliations** tab add Globex with the mandated role `Admin` and Umbrella with `Member`.
+
+:::tip Success
+The organization menu lists Initech, Globex, and Umbrella. Pick **Umbrella**: the page shows `Member`, the token has no
+`org`, and the Enterprise SSO section is gone, without a password prompt. Pick **Globex**, and you are its `Admin`.
+:::
+
+</Stepper>
+
+:::note Before you go to production
+The app runs entirely in the browser, and a company admin's token carries `org`, which manages everything in their
+company. Grant it only to people you trust with the whole company, or route management calls through a backend that
+holds the permission and checks each call. See [Let Organization Admins Manage Teams](../../use-cases/b2b/journeys/delegated-administration.mdx).
+:::
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Secure B2B SaaS Applications" href="../../../use-cases/b2b/overview" description="The organization model behind this quickstart, and each B2B journey in depth." cta="Use Case" />
+  <NextStepsCard title="See It in a Sample App" href="../../../use-cases/b2b/try-it-out" description="Run Wayfinder Enterprise, a full B2B app with team management and travel policies." cta="Sample App" />
+</NextSteps>
