@@ -80,6 +80,11 @@ func (p *organizationUnitProvider) CreateOrganizationUnit(
 	return toProviderOU(orgUnit), nil
 }
 
+// DeleteOrganizationUnit deletes the organization unit with the given ID.
+func (p *organizationUnitProvider) DeleteOrganizationUnit(ctx context.Context, id string) *tidcommon.ServiceError {
+	return p.ouService.DeleteOrganizationUnit(ctx, id)
+}
+
 // IsParent reports whether parentID is an ancestor of childID.
 func (p *organizationUnitProvider) IsParent(
 	ctx context.Context, parentID, childID string,

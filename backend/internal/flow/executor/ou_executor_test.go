@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -13,7 +14,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -221,6 +224,39 @@ func (suite *OUExecutorTestSuite) TestExecute_Success() {
 			assert.NotNil(suite.T(), result)
 			assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 			assert.Equal(suite.T(), tc.expectedOUID, result.RuntimeData[ouIDKey])
+			assert.Equal(suite.T(), tc.expectedOUID, result.EngineData[common.EngineDataKeyCompensationRef])
+			suite.mockOUService.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *OUExecutorTestSuite) TestCompensate() {
+	testCases := []struct {
+		name      string
+		deleteErr *tidcommon.ServiceError
+		expectErr bool
+	}{
+		{name: "Deletes the created OU"},
+		{name: "Delete fails", deleteErr: &tidcommon.InternalServerError, expectErr: true},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockOUService.On("DeleteOrganizationUnit", mock.MatchedBy(func(ctx context.Context) bool {
+				_, hasDeadline := ctx.Deadline()
+				return security.IsRuntimeContext(ctx) && ctx.Err() == nil && hasDeadline
+			}), testOUID).Return(tc.deleteErr)
+			canceledCtx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			err := suite.executor.Compensate(canceledCtx, testOUID)
+
+			if tc.expectErr {
+				suite.Error(err)
+			} else {
+				suite.NoError(err)
+			}
 			suite.mockOUService.AssertExpectations(suite.T())
 		})
 	}

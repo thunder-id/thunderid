@@ -4,22 +4,27 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
 	ouExecLoggerComponentName = "OUExecutor"
+	ouCompensationTimeout     = 10 * time.Second
 )
 
 // ouExecutor is responsible for creating organizational units (OUs) within the system.
@@ -31,7 +36,7 @@ type ouExecutor struct {
 	logger            *log.Logger
 }
 
-var _ providers.Executor = (*ouExecutor)(nil)
+var _ core.CompensatingExecutorInterface = (*ouExecutor)(nil)
 
 // newOUExecutor creates a new instance of OUExecutor with the given parameters.
 func newOUExecutor(
@@ -171,10 +176,23 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 
 	// Set the created OU ID in the runtime data for further use in the flow.
 	execResp.RuntimeData[ouIDKey] = createdOU.ID
+	execResp.EngineData = map[string]string{common.EngineDataKeyCompensationRef: createdOU.ID}
 
 	logger.Debug(ctx.Context, "Organization unit created successfully", log.String(ouIDKey, createdOU.ID))
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// Compensate deletes the organization unit the executor created, when the flow it was created in fails.
+// It runs with the server's authority and outlives a canceled request, since it undoes the flow's own create.
+func (o *ouExecutor) Compensate(ctx context.Context, ref string) error {
+	deleteCtx, cancel := context.WithTimeout(
+		security.WithRuntimeContext(context.WithoutCancel(ctx)), ouCompensationTimeout)
+	defer cancel()
+	if svcErr := o.ouService.DeleteOrganizationUnit(deleteCtx, ref); svcErr != nil {
+		return fmt.Errorf("failed to delete organization unit: %s", svcErr.Code)
+	}
+	return nil
 }
 
 // hasRequiredInputs checks the required inputs for OU creation. When the node generates the handle,

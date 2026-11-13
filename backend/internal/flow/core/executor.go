@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -13,6 +15,14 @@ import (
 const (
 	userAttributeUserID = "userID"
 )
+
+// CompensatingExecutorInterface is an executor that can undo what it created when the flow it ran in
+// ends in an error. The executor reports what it created with common.EngineDataKeyCompensationRef.
+type CompensatingExecutorInterface interface {
+	providers.Executor
+	// Compensate undoes the creation the executor reported under ref.
+	Compensate(ctx context.Context, ref string) error
+}
 
 // executor represents the basic implementation of an executor.
 type executor struct {

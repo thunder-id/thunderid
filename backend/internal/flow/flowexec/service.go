@@ -248,10 +248,10 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 			common.FlowErrorTypeEndUser, description, logger)
 	}
 
-	if isComplete(flowStep) {
+	if isComplete(flowStep) || engineCtx.compensated {
 		if !isNewFlow(executionID) {
 			if removeErr := s.removeContext(ctx, engineCtx.ExecutionID, logger); removeErr != nil {
-				logger.Error(ctx, "Failed to remove flow context after completion",
+				logger.Error(ctx, "Failed to remove flow context after the flow ended",
 					log.String(log.LoggerKeyExecutionID, engineCtx.ExecutionID), log.Error(removeErr))
 				return nil, &tidcommon.InternalServerError
 			}

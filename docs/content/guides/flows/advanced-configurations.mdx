@@ -1961,6 +1961,8 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 - Specified `parentOuId` does not exist
 - OU service error
 
+**When the flow fails later:** if a later node fails and the flow ends in an error, <ProductName /> attempts to delete the OU this node created, so the user can start again with the same name and handle. The user must start a new flow, since the failed one cannot be resumed. A failure that a node routes to its failure path does not end the flow, so the OU stays. The OU also stays when the user abandons the flow before it ends. Only the OU is undone: a user that Provisioning already created stays, and an OU that holds users, groups, or child OUs is not deleted. A failed deletion is logged, and you delete the OU manually.
+
 </details>
 
 #### Account Lifecycle

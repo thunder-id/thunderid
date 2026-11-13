@@ -379,6 +379,9 @@ const (
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
 	// concepts off the reusable engine contract.
 	RuntimeKeySSOSessionCleared = "ssoSessionCleared"
+	// EngineDataKeyCompensationRef is the ExecutorResponse EngineData key an executor sets to the
+	// reference of what it created, so the engine can have the executor undo it if the flow fails.
+	EngineDataKeyCompensationRef = "compensationRef"
 	// RuntimeKeyTokenFamilyID carries the token family id (tfid) minted once per login flow execution
 	// by the Session node. It is stamped onto the auth assertion, and from there onto the grant's
 	// access and refresh tokens, so revocation can target a whole family. It is deliberately excluded
