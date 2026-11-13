@@ -844,6 +844,22 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodDelete, path: "/users/user-1", wantPerm: p.UserDelete,
 		},
 		{
+			name:   "POST /users/me/passkeys/register/start self-service",
+			method: http.MethodPost, path: "/users/me/passkeys/register/start", wantPerm: "",
+		},
+		{
+			name:   "POST /users/me/passkeys/register/finish self-service",
+			method: http.MethodPost, path: "/users/me/passkeys/register/finish", wantPerm: "",
+		},
+		{
+			name:   "GET /users/me/passkeys self-service",
+			method: http.MethodGet, path: "/users/me/passkeys", wantPerm: "",
+		},
+		{
+			name:   "DELETE /users/me/passkeys/{id} self-service",
+			method: http.MethodDelete, path: "/users/me/passkeys/cred-1", wantPerm: "",
+		},
+		{
 			name:   "GET /register/passkey/start self-service",
 			method: http.MethodGet, path: "/register/passkey/start", wantPerm: "",
 		},
@@ -1280,8 +1296,9 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
 		"POST /users/me/update-credentials": true, "DELETE /users/me/agents/*": true,
 		"POST /users/me/agents/suspend": true, "POST /users/me/agents/*/suspend": true,
-		"POST /users/me/agents/*/unsuspend": true,
-		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"POST /users/me/agents/*/unsuspend":  true,
+		"POST /users/me/passkeys/register/*": true, "DELETE /users/me/passkeys/*": true,
+		"GET /register/passkey/**": true, "POST /register/passkey/**": true,
 		"* /mcp/**":       true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,

@@ -637,7 +637,8 @@ guides:
           `./gradlew signingReport` for a debug build). 2. Host that file at `https:///.well-known/assetlinks.json`,
           the domain must serve valid HTTPS (self-signed certs will not work). 3. Make sure the server''s passkey `rp.id`
           matches that same domain, the SDK''s `PasskeyClient` passes whatever `rp.id`/relying-party options the server
-          returns straight through to Credential Manager. 4. No `AndroidManifest.xml` change is required for this, unlike
+          returns straight through to Credential Manager. Also add the app''s `android:apk-key-hash:` origin to the
+          application''s `passkeyAllowedOrigins`, as described in the Passkeys key concepts page. 4. No `AndroidManifest.xml` change is required for this, unlike
           iOS''s Associated Domains entitlement, Digital Asset Links verification is purely a server-hosted file requirement
           and does not need an App Links intent filter (this sample doesn''t declare one). Exposing a local {{ProductName}}
           instance under a real, HTTPS-reachable domain (e.g. via a tunnel) is left to you, this sample only wires up

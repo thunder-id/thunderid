@@ -1710,6 +1710,10 @@ components:
             type: string
           description: Allowed origins for WebAuthn/passkey operations for this application. When set, overrides the server-level passkey allowed origins for flow-based passkey operations.
           example: ["https://myapp.example.com", "https://myapp-staging.example.com"]
+        passkeyRelyingPartyId:
+          type: string
+          description: The domain passkeys for this application belong to (the WebAuthn relying party ID), such as example.com. Self-service passkey registration accepts this domain even when no web origin is listed, which suits mobile-only apps, and uses it when the request names no relying party ID.
+          example: "example.com"
         loginConsent:
           type: object
           properties:
@@ -1873,6 +1877,10 @@ components:
             type: string
           description: Allowed origins for WebAuthn/passkey operations for this application. When set, overrides the server-level passkey allowed origins for flow-based passkey operations.
           example: ["https://myapp.example.com", "https://myapp-staging.example.com"]
+        passkeyRelyingPartyId:
+          type: string
+          description: The domain passkeys for this application belong to (the WebAuthn relying party ID), such as example.com. Self-service passkey registration accepts this domain even when no web origin is listed, which suits mobile-only apps, and uses it when the request names no relying party ID.
+          example: "example.com"
         loginConsent:
           type: object
           properties:
@@ -2019,6 +2027,10 @@ components:
             type: string
           description: Allowed origins for WebAuthn/passkey operations for this application. When set, overrides the server-level passkey allowed origins for flow-based passkey operations.
           example: ["https://myapp.example.com", "https://myapp-staging.example.com"]
+        passkeyRelyingPartyId:
+          type: string
+          description: The domain passkeys for this application belong to (the WebAuthn relying party ID), such as example.com. Self-service passkey registration accepts this domain even when no web origin is listed, which suits mobile-only apps, and uses it when the request names no relying party ID.
+          example: "example.com"
         loginConsent:
           type: object
           properties:

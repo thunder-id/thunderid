@@ -1910,6 +1910,18 @@ func (suite *ServiceTestSuite) TestValidateApplication_InvalidURLs() {
 		{"InvalidLogoURL", func(a *model.ApplicationDTO) { a.LogoURL = "://invalid" }, &ErrorInvalidLogoURL},
 		{"InvalidTosURI", func(a *model.ApplicationDTO) { a.TosURI = "not-a-valid-uri" }, &ErrorInvalidTosURI},
 		{"InvalidPolicyURI", func(a *model.ApplicationDTO) { a.PolicyURI = "not-a-valid-uri" }, &ErrorInvalidPolicyURI},
+		{"PasskeyRelyingPartyIDWithScheme", func(a *model.ApplicationDTO) {
+			a.PasskeyRelyingPartyID = "https://example.com"
+		}, &ErrorInvalidPasskeyRelyingPartyID},
+		{"PasskeyRelyingPartyIDWithPort", func(a *model.ApplicationDTO) {
+			a.PasskeyRelyingPartyID = "example.com:8443"
+		}, &ErrorInvalidPasskeyRelyingPartyID},
+		{"PasskeyRelyingPartyIDWithPath", func(a *model.ApplicationDTO) {
+			a.PasskeyRelyingPartyID = "example.com/login"
+		}, &ErrorInvalidPasskeyRelyingPartyID},
+		{"PasskeyRelyingPartyIDUppercase", func(a *model.ApplicationDTO) {
+			a.PasskeyRelyingPartyID = "Example.com"
+		}, &ErrorInvalidPasskeyRelyingPartyID},
 	}
 
 	for _, tc := range cases {
@@ -6537,5 +6549,28 @@ func (suite *ServiceTestSuite) TestFlowValidations_RequireTheApplicationActionIn
 				}
 			})
 		}
+	}
+}
+
+func (suite *ServiceTestSuite) TestIsValidPasskeyRelyingPartyID() {
+	cases := []struct {
+		id    string
+		valid bool
+	}{
+		{"", true},
+		{"example.com", true},
+		{"login.example.com", true},
+		{"localhost", true},
+		{"https://example.com", false},
+		{"example.com:443", false},
+		{"example.com/", false},
+		{"user@example.com", false},
+		{"Example.com", false},
+		{"exa mple.com", false},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.id, func() {
+			assert.Equal(suite.T(), tc.valid, isValidPasskeyRelyingPartyID(tc.id))
+		})
 	}
 }
