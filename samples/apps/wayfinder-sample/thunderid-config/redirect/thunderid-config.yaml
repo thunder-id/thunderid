@@ -7,6 +7,8 @@ ouHandle: default
 allowSelfRegistration: true
 systemAttributes:
   display: username
+  primaryEmail: email
+  primaryMobile: mobile_number
 schema:
   {
     "username":
@@ -25,18 +27,22 @@ schema:
       },
     "email":
       {
-        "type": "string",
+        "type": "email",
         "displayName": "Email",
         "required": true,
         "unique": true,
-        "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
       },
     "given_name":
       { "type": "string", "displayName": "First Name", "required": false },
     "family_name":
       { "type": "string", "displayName": "Last Name", "required": false },
     "mobile_number":
-      { "type": "string", "displayName": "Mobile Number", "required": false },
+      {
+        "type": "mobile",
+        "displayName": "Mobile Number",
+        "required": false,
+        "regex": "^\\+[1-9]\\d{1,14}$",
+      },
     "full_name":
       { "type": "string", "displayName": "Full Name", "required": false },
     "member_id":
@@ -54,6 +60,7 @@ ouHandle: default
 allowSelfRegistration: false
 systemAttributes:
   display: username
+  primaryEmail: email
 schema:
   {
     "username":
@@ -72,11 +79,10 @@ schema:
       },
     "email":
       {
-        "type": "string",
+        "type": "email",
         "displayName": "Email",
         "required": true,
         "unique": true,
-        "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
       },
     "displayName":
       { "type": "string", "displayName": "Display Name", "required": false },
