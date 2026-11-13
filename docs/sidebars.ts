@@ -245,6 +245,19 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Credential Recovery',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'use-cases/credential-recovery/administrator-requested-reset',
+              label: 'Administrator-Requested Reset',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Managed Deployments',
           collapsible: true,
           collapsed: true,
