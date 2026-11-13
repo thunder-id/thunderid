@@ -251,3 +251,44 @@ func keysNotIn(keys []string, set map[string]struct{}) []string {
 	}
 	return absent
 }
+
+// deployedIdentity is what a document is marked by, read without decoding it as its type: its id, or its
+// name for a document that has none, as managedID does for an outcome.
+type deployedIdentity struct {
+	ID   string `yaml:"id"`
+	Name string `yaml:"name"`
+}
+
+// skipDeployed reports a document a control plane already deployed here as skipped, for an import that asked
+// to leave such resources alone. A document it cannot place, or a failed read of the marks, is not skipped:
+// the service writing it then decides, as it does for any other import.
+func (s *importService) skipDeployed(
+	ctx context.Context, request *ImportRequest, options *ImportOptions, doc parsedDocument,
+) (ImportItemOutcome, bool) {
+	if s.managed == nil || request.Managed || options == nil || !options.SkipManaged {
+		return ImportItemOutcome{}, false
+	}
+	var identity deployedIdentity
+	if err := doc.Node.Decode(&identity); err != nil {
+		return ImportItemOutcome{}, false
+	}
+	key := identity.ID
+	if key == "" {
+		key = identity.Name
+	}
+	if key == "" {
+		return ImportItemOutcome{}, false
+	}
+	deployed, err := s.managed.IsManaged(ctx, key, doc.ResourceType)
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the resource",
+			log.String("resourceType", doc.ResourceType), log.String("resourceID", key), log.Error(err))
+		return ImportItemOutcome{}, false
+	}
+	if !deployed {
+		return ImportItemOutcome{}, false
+	}
+	outcome := successOutcome(doc.ResourceType, identity.ID, identity.Name, operationSkip)
+	outcome.Message = "A control plane deployed this resource; it was left as deployed"
+	return outcome, true
+}
