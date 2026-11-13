@@ -128,6 +128,8 @@ var defaultMessages = map[string]string{
 	"error.agentservice.userinfo_unsupported_encryption_enc_description": "userinfo content-encryption algorithm is not supported",
 	"error.agentservice.userinfo_unsupported_response_type_description": "userinfo responseType is not supported",
 	"error.agentservice.userinfo_unsupported_signing_alg_description": "userinfo signing algorithm is not supported",
+	"error.ambiguous_permissions": "Ambiguous permissions",
+	"error.ambiguous_permissions_description": "The requested permissions are defined on more than one resource server",
 	"error.applicationservice.ambiguous_attestation_config": "Attestation configuration must set exactly one platform",
 	"error.applicationservice.ambiguous_attestation_config_description": "An application's attestation configuration may configure only one platform (android or apple) at a time",
 	"error.applicationservice.application_already_exists": "Application already exists",

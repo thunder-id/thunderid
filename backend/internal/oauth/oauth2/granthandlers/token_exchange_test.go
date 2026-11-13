@@ -82,6 +82,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	// Explicit resource parameter resolves to an RS whose identifier equals the resource URI; an
 	// empty identifier resolves to the configured default resource server, as the default-aware
 	// provider does.
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			if identifier == "" {
@@ -2467,6 +2469,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 	// Fresh resource mock so the default-resolution stub from SetupTest is not used; resolving the
 	// empty identifier yields a client error (no default RS configured), mapped to invalid_target.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	h := &tokenExchangeGrantHandler{

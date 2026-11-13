@@ -36,6 +36,8 @@ func createTestAuthzExecutor(t *testing.T,
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock,
 	mockAuthnProvider *managermock.AuthnProviderManagerMock) *authorizationExecutor {
 	mockResource := resourcemock.NewResourceServiceInterfaceMock(t)
+	mockResource.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	mockResource.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
@@ -222,6 +224,71 @@ func TestAuthorizationExecutor_Execute_DropsPermissionsWhenNoResourceServerBindi
 	mockAuthzService.AssertNotCalled(t, "EvaluateAccessBatch", mock.Anything, mock.Anything)
 }
 
+func TestAuthorizationExecutor_Execute_ResolvesResourceServerByPermissionsWhenNoIdentifier(t *testing.T) {
+	mockAuthzService := new(authzmock.AuthorizationProviderMock)
+	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	mockResource := resourcemock.NewResourceServiceInterfaceMock(t)
+	mockResource.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
+		Return(&providers.ResourceServer{ID: "rs-by-perm"}, nil)
+	executor := createTestAuthzExecutorWithResource(
+		t, mockAuthzService, mockEntityProvider, mockAuthnProvider, mockResource)
+
+	authUser := newAuthzAuthenticatedAuthUser()
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: map[string]string{requestedPermissionsKey: "read"},
+	}
+
+	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", testUser123ID).Return([]providers.EntityGroup{}, nil)
+	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
+		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
+			return len(req.Evaluations) == 1 && req.Evaluations[0].ResourceServer.ID == "rs-by-perm"
+		})).Return(&providers.AccessEvaluationsResponse{
+		Evaluations: []providers.AccessEvaluationResponse{{Decision: true}},
+	}, nil)
+
+	resp, err := executor.Execute(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+	assert.Equal(t, "read", resp.RuntimeData[authorizedPermissionsKey])
+	mockAuthzService.AssertExpectations(t)
+}
+
+func TestAuthorizationExecutor_Execute_DropsPermissionsWhenPermissionsAreAmbiguous(t *testing.T) {
+	mockAuthzService := new(authzmock.AuthorizationProviderMock)
+	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	mockResource := resourcemock.NewResourceServiceInterfaceMock(t)
+	mockResource.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
+		Return(nil, &tidcommon.ErrorAmbiguousPermissions)
+	executor := createTestAuthzExecutorWithResource(
+		t, mockAuthzService, mockEntityProvider, mockAuthnProvider, mockResource)
+
+	authUser := newAuthzAuthenticatedAuthUser()
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: map[string]string{requestedPermissionsKey: "read"},
+	}
+
+	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+
+	resp, err := executor.Execute(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+	assert.Empty(t, resp.RuntimeData[authorizedPermissionsKey])
+	mockAuthzService.AssertNotCalled(t, "EvaluateAccessBatch", mock.Anything, mock.Anything)
+}
+
 func TestAuthorizationExecutor_Execute_DropsPermissionsWhenResourceServiceUnavailable(t *testing.T) {
 	// The embedded engine may construct the executor without a resource server service. A
 	// permission-bearing request that carries a resource server identifier must fail closed (drop the
@@ -306,6 +373,8 @@ func TestAuthorizationExecutor_Execute_DefaultResourceServerFallback(t *testing.
 	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
 	// A default-aware provider resolves the empty identifier to the configured default resource server.
 	mockResource := resourcemock.NewResourceServiceInterfaceMock(t)
+	mockResource.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	mockResource.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "rs-default"}, nil)
 

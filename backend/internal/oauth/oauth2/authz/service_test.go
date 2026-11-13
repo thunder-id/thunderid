@@ -140,6 +140,8 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 	// Default resolution path: permission-bearing requests without an explicit resource resolve the
 	// configured default resource server via the empty identifier. Declared optional so tests that
 	// never reach flow initiation (or that exercise resource-binding specifics) are unaffected.
+	suite.mockResourceService.EXPECT().GetResourceServerByPermissions(mock.Anything, "", mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://rs-default.example.com"}, nil).Maybe()
 	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-default", mock.Anything).
@@ -425,6 +427,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_No
 	// No default resource server configured; resolving the empty identifier fails, so the
 	// permission-bearing request cannot bind and is rejected with invalid_target.
 	rs := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rs.EXPECT().GetResourceServerByPermissions(mock.Anything, "", mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	rs.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 

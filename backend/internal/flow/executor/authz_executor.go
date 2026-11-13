@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -106,7 +107,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	// resource server. Permission evaluation must be scoped to a resource server, so when none can be
 	// resolved the requested permission scopes are dropped rather than evaluated unscoped (which could
 	// authorize a permission the user only holds on a different resource server).
-	resourceServerID := a.resolveResourceServerID(ctx)
+	resourceServerID := a.resolveResourceServerID(ctx, requestedPerms)
 	if resourceServerID == "" {
 		logger.Debug(ctx.Context,
 			"No resource server bound to the request; dropping requested permission scopes",
@@ -163,10 +164,11 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 // scopes are evaluated against. The binding is communicated as a resource server identifier: the OAuth
 // layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
 // authorization endpoint) may supply it as an input. The identifier is resolved to its internal ID
-// through the provider; an empty identifier asks a default-aware provider to resolve the deployment's
-// configured default resource server. Returns "" when none can be resolved (unknown identifier, no
-// default configured, or no resource provider available, for example the embedded engine).
-func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
+// through the provider. When no identifier is present, the resource server is derived from the requested
+// permissions, falling back to the deployment's configured default resource server. Returns "" when none
+// can be resolved (unknown identifier, ambiguous permissions, no default configured, or no resource
+// provider available, for example the embedded engine).
+func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext, requestedPerms []string) string {
 	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
 	if identifier == "" {
 		identifier = ctx.UserInputs[common.RuntimeKeyResourceServerIdentifier]
@@ -176,8 +178,8 @@ func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeConte
 			"No resource server service available; dropping requested permission scopes")
 		return ""
 	}
-	rs, svcErr := a.resourceService.GetResourceServerByIdentifier(ctx.Context, identifier)
-	if svcErr != nil {
+	rs, svcErr := resource.ResolveBoundResourceServer(ctx.Context, a.resourceService, identifier, requestedPerms)
+	if svcErr != nil || rs == nil {
 		a.logger.Debug(ctx.Context,
 			"Resource server did not resolve; dropping requested permission scopes",
 			log.String("identifier", identifier))
