@@ -124,7 +124,7 @@ The `components` array is the only field the runtime acts on. Any other fields i
 | `DYNAMIC_INPUT_PLACEHOLDER` | Marks where dynamically derived inputs (those arriving via `ForwardedData`, not declared in the node's prompts) should be inserted. |
 | Any other type | Treated as a structural or display component (e.g. a text label). Kept as-is; its children are recursively trimmed. |
 
-**Note**: `DYNAMIC_INPUT_PLACEHOLDER` is only valid for a PROMPT node reached via a Provisioning node's `onIncomplete` edge.
+**Note**: `DYNAMIC_INPUT_PLACEHOLDER` is only valid for a PROMPT node reached via the `onIncomplete` edge of a Provisioning node, or of a `CredentialSetter` node that sets the credential of an administrator-initiated reset.
 
 Each component is identified by an `id` field and optionally a `ref` field. When both are present, `ref` takes priority for matching against prompt inputs.
 
@@ -381,7 +381,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Validate and Plan Suspension** | Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. | Administration flows only |
 | **Suspend Identity** | Suspends the account that Validate and Plan Suspension planned. | Administration flows only. Validate and Plan Suspension must have run. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) |
 | **Unsuspend Identity** | Lifts a suspension. A user is left locked until recovery or an unlock. | Administration flows only |
-| **Unlock Identity** | Clears every lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. | In a recovery flow, Set Credentials must have run |
+| **Unlock Identity** | Clears every lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. In an administrator-initiated flow, releases that account only when it is the user the flow was started for. | In a recovery or administrator-initiated flow, Set Credentials must have run |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | - |
 | **Check Intents** | Runs the processors of the requested authorization details before User Consent. | User authenticated |
@@ -593,6 +593,16 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
   "onSuccess": "recovery_complete"
 }
 ```
+
+**Credential reset modes:** in an administrator-initiated flow, this executor also runs a credential reset that an administrator starts and the user completes from an emailed link, as `default-admin-user-credential-reset-flow` does. `validate` and `invalidate` run only in administrator-initiated flows:
+
+| Mode | What it does |
+|---|---|
+| `validate` | Checks, changing nothing, that the administrator may reset the credential the `credential` input names for the user the flow was started for, and that the user is not suspended. Once it passes, **Send Email** reads the address from the user's stored profile, from the attribute its email input names: `email` by default, or another such as `workEmail`, and not from the request. A constant value on that input is used instead, so give it none. Place it before the link is generated, so a refused reset sends nothing. |
+| `invalidate` | Removes the stored credential, revoking the user's tokens and ending their sessions. It runs only after the link was sent, so place it right after **Send Email**, with no View between them. If it fails, the link that was sent stops working (`FET-1140`). A reset that reaches it with no delivered link fails with `FET-1139`, which only a best-effort **Send Email** can cause. |
+| `set` (default) | In an administrator-initiated flow, sets only the credential the reset removed. Before it asks for anything, it fails, as an invalid link does, when the user's credentials changed after the reset started, such as by a later reset or a forgot password recovery, and refuses a suspended user. A changed credential fails with `FET-1073`. It reads the value only from a request after the one that opened the link, and asks for one masked input named after the credential, labelled with its display name, so point its **On Incomplete** at a View with a dynamic input placeholder. |
+
+Only string credentials can be reset this way; `validate` refuses a number credential.
 
 </details>
 
@@ -1970,7 +1980,7 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 
 #### Account Lifecycle
 
-These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) and [Let Users Recover From a Lock](../../account-protection/configure-account-lockout#let-users-recover-from-a-lock).
+These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow or an administrator-initiated credential reset. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) and [Let Users Recover From a Lock](../../account-protection/configure-account-lockout#let-users-recover-from-a-lock).
 
 <details>
 <summary>Validate and Plan Suspension</summary>
@@ -2010,10 +2020,10 @@ One executor, `IdentityGovernanceExecutor`, applies one lifecycle operation, sel
 | `unsuspend` | **Unsuspend Identity** | Lifts a suspension. A user receives a permanent account-wide lock, even if automatic locking is disabled. An agent keeps any automatic lock still in force. |
 | `unlock` | **Unlock Identity** | Clears all locks and their history, including the lock left after a user is unsuspended. It does not lift a suspension. |
 
-**When to use:** In the administration flows that suspend, unsuspend, or unlock an account. In a recovery flow, use `unlock` right after **Set Credentials**. Flow validation rejects a `suspend` or `unsuspend` node outside an administration flow, and the flow builder offers only `unlock` there.
+**When to use:** In the administration flows that suspend, unsuspend, or unlock an account. In a recovery flow or an administrator-initiated credential reset, use `unlock` right after **Set Credentials**, as `default-admin-user-credential-reset-flow` does. Flow validation rejects a `suspend` or `unsuspend` node outside an administration flow, and the flow builder offers only `unlock` there.
 
 **Input Configuration:**
-- `subject` (required in administration flows): the ID of the user, agent, or application to unsuspend, or of the user or agent to unlock. The node asks for it when it is missing. In `suspend` mode the account comes from **Validate and Plan Suspension**. In a recovery flow, the account is the one whose credential the flow set, and the input is ignored.
+- `subject` (required in administration flows): the ID of the user, agent, or application to unsuspend, or of the user or agent to unlock. The node asks for it when it is missing. In `suspend` mode the account comes from **Validate and Plan Suspension**. In a recovery flow, the account is the one whose credential the flow set, and the input is ignored. In an administrator-initiated flow, it is that account only when it is the user the flow was started for; otherwise nothing is released.
 - `operatorNote` (optional): a note of at most 100 characters recorded with a suspension and returned on management reads. A suspension with a longer note fails. Other modes accept and ignore it.
 
 **Example:**
@@ -2817,7 +2827,7 @@ The following rules are enforced for each executor node:
 
 **Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field, the executor's default mode is used; an executor that supports modes but has no default, such as `IdentityGovernanceExecutor` or `AttributeVerificationExecutor`, fails validation. When the executor does not restrict modes, no check is performed.
 
-**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration and recovery flows, but accepts `suspend` and `unsuspend` only in administration flows.
+**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration, recovery, and administrator-initiated flows, but accepts `suspend` and `unsuspend` only in administration flows. `CredentialSetter` accepts `validate` and `invalidate` only in administrator-initiated flows.
 
 **Companion executors validation**: Some executors must appear together with another executor, in a given mode, in any flow type. A flow with an `AttributeVerificationExecutor` node must contain one in `prepare` mode and one in `record` mode, and a flow with `SessionRevocationExecutor` must contain `CriteriaRevocationExecutor` in `revoke` mode. A flow without the companion is rejected with an error that names the missing executor and mode.
 

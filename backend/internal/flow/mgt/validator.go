@@ -300,14 +300,19 @@ var companionExecutors = map[string][]companionExecutor{
 	},
 }
 
-// modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
-// governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
+// modeFlowTypes limits an executor mode to fewer flow types than the executor supports. The credential setter
+// runs a credential reset only in an administrator-initiated flow. Identity governance suspends and unsuspends
+// only in an administration flow; a recovery flow runs only unlock.
 // The access change validator plans a role permission change only in a system flow. The role executor
 // selects roles only in an invitation flow, and assigns them there or in a sign-up flow. The sharing executor
 // authorizes a share only in an invitation flow.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	executormeta.ExecutorNameAccessChangeValidator: {
 		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeSystem},
+	},
+	executormeta.ExecutorNameCredentialSetter: {
+		executormeta.ExecutorModeValidate:   {providers.FlowTypeAdminInitiated},
+		executormeta.ExecutorModeInvalidate: {providers.FlowTypeAdminInitiated},
 	},
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},

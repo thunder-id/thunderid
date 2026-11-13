@@ -413,6 +413,15 @@ const (
 	// RuntimeKeyDeliveredRecipients holds, on shared runtime data, the JSON list of distinct recipients
 	// sent to since an earlier node cleared it.
 	RuntimeKeyDeliveredRecipients = "deliveredRecipients"
+	// RuntimeKeyResetCredential holds the credential an administrator-initiated reset invalidates and the
+	// user replaces, such as password. The user is asked for one input named after it.
+	RuntimeKeyResetCredential = "resetCredential" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetCredentialMarker holds the credential marker the reset's invalidation wrote. A later
+	// change to the user's credentials moves the marker, which voids the reset.
+	RuntimeKeyResetCredentialMarker = "resetCredentialMarker" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetCredentialRequested marks that the reset's set step asked the user for the new credential,
+	// in the request that opened the link. The value is read only from a later request.
+	RuntimeKeyResetCredentialRequested = "resetCredentialRequested" //nolint:gosec // a runtime data key
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's

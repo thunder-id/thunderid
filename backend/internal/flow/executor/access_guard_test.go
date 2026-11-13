@@ -211,8 +211,11 @@ func (s *AccessGuardTestSuite) TestAccessGuardRecordsTheLogin() {
 	newAccessGuard(governance).recordLogin(context.Background(), "u1")
 }
 
+// A recovery, registration or administrator-initiated challenge is checked at the recovery plane, where a lock
+// gives way.
 func (s *AccessGuardTestSuite) TestAccessGuardChecksRecoveryAndRegistrationDispatchAtTheRecoveryPlane() {
-	for _, flowType := range []providers.FlowType{providers.FlowTypeRecovery, providers.FlowTypeRegistration} {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeRecovery, providers.FlowTypeRegistration,
+		providers.FlowTypeAdminInitiated} {
 		governance := expectAccess(s.T(), "u1", providers.AccessPlaneRecovery, providers.AuthenticationMethodOTP,
 			providers.AccessDecision{Admitted: true}, nil)
 
