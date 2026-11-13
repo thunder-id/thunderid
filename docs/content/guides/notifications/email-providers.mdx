@@ -154,7 +154,7 @@ Each **Send Email** step (`EmailExecutor`) sends through the provider named in i
 }
 ```
 
-The flow designer does not have a sender field for email steps, so set `senderId` in the flow definition. Use the Flow Management API (`/flows`) or a declarative flow file.
+In the flow designer, select the provider in the **Email provider** field of the **Send Email** step. In a flow definition, set `senderId` through the Flow Management API (`/flows`) or a declarative flow file.
 
 The executor schema lists `senderId` as optional, because the built-in flows include email steps before any provider exists. A step still needs it to send email:
 

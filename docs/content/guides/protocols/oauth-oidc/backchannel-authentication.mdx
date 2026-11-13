@@ -28,7 +28,7 @@ The flow proceeds in three phases:
 **Phase 1: Initiation**
 
 1. The client sends `POST /oauth2/bc-authorize` with a user hint (for example, `login_hint`), the requested scopes, and an optional `resource` that binds the request to a single resource server.
-2. <ProductName /> validates the request and sends a notification to the user's authentication device.
+2. <ProductName /> validates the request and runs the client's sign-in flow. The flow finds the user from the hint and notifies them, for example by email with an approval link. See [Set Up User Notification](#set-up-user-notification).
 3. <ProductName /> returns an `auth_req_id`, a polling interval, and an expiry time.
 
 **Phase 2: User Authentication**
@@ -59,6 +59,7 @@ The flow proceeds in three phases:
 | Scope requirement | Must include `openid` |
 | Resource binding (RFC 8707) | An optional `resource` binds the request to one resource server at initiation. When a permission scope is requested without `resource`, the configured `defaultResourceServer` applies; with no default, the request is rejected with `invalid_target`. The access token's `aud` is the bound resource server identifier, and its permissions are limited to that server. OIDC-only requests without `resource` use the application's `token.accessToken.defaultAudience`, falling back to `client_id`. A `resource` supplied when polling must match the binding |
 | Authorization details (RFC 9396) | Optional `authorization_details`, validated before the user is notified. The user's sign-in flow must run the consent step, and the consent prompt is always shown. The token response to the poll carries the approved details, and the polling request may narrow them. See [Rich Authorization Requests](../rich-authorization-requests#backchannel-authentication-ciba) |
+| User notification | Sent by the sign-in flow assigned to the client, not by the endpoint. See [Set Up User Notification](#set-up-user-notification) |
 | `binding_message` | Optional; maximum 256 printable characters; <ProductName /> generates a default message when omitted |
 | Token issuance | Access token always issued; ID token issued when `openid` is in the scope; refresh token issued when `refresh_token` grant is configured on the client |
 | Actor claim | The access token carries an `act` claim naming the client when that client is an agent, or an application with `includeActClaim` enabled. See [Actor on the Issued Token](#actor-on-the-issued-token) |
@@ -96,9 +97,84 @@ Content-Type: application/json
 </TabItem>
 </Tabs>
 
+## Set Up User Notification
+
+The backchannel authentication endpoint does not contact the user itself. It starts the sign-in flow assigned to the client and passes the hint to it as the `login_hint` input. That flow must find the user and send them a way to approve the request. The Console provides a **CIBA Email Notification** flow template for this:
+
+| Template step | Behavior |
+|---|---|
+| Identify the user (`IdentifyingExecutor`) | Finds the one user whose `username` attribute matches `login_hint`. See [Match the Login Hint to a User](#match-the-login-hint-to-a-user). |
+| Generate the link (`InviteExecutor`, `generate` mode) | Creates the approval link for this request. |
+| Send the email (`EmailExecutor`) | Renders the `ciba-notification` email template and sends it to the user's `email` attribute through the step's email provider. |
+| Verify the link and sign in | When the user opens the link, the flow checks it and asks for the user's password. After the user approves, the next poll returns tokens. |
+
+Complete the following steps in order.
+
+### Configure an Email Provider
+
+Create an email provider connection, such as an SMTP server, in the Console under **Connections**, or through the Connections API. See [Configure an Email Provider](../../../notifications/email-providers).
+
+### Review the Notification Template
+
+The flow sends the built-in `ciba-notification` email template, which shows the request's `binding_message` and an approval link. To change its wording or branding, edit **CIBA Authentication Notification Email** under **Customize** → **Notifications** → **Email templates**. See [Notification Templates](../../../notifications/templates).
+
+A flow finds its template by handle. The Console derives a new template's handle from its display name. To send a template you created, select it in the **Email template** field of the flow's **Send Email** step. Keep the `{{ctx(inviteLink)}}` placeholder in a custom template, because the link is the only way the user can approve the request.
+
+### Create the Notification Flow
+
+1. In the Console, navigate to **Flows** → **Create new flow**.
+2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**.
+3. Select **Sign-in** as the flow type and click **Continue**.
+4. Select the **CIBA Email Notification** template.
+5. Enter a name for the flow and click **Create**.
+6. Select the **Send Email** step. Under **Email provider**, select the provider you created.
+7. Click **Save**.
+
+### Match the Login Hint to a User
+
+The template's `identify_user` step sets `loginHintAttribute` to `username`. Set it to the attribute your clients send:
+
+| Client sends | `loginHintAttribute` |
+|---|---|
+| `login_hint` with a username | `username` (template default) |
+| `login_hint` with an email address | `email` |
+| `id_token_hint` | `userID`, because <ProductName /> passes the ID token's `sub` claim to the flow as the hint |
+
+The flow designer does not show this property. Change it in the flow definition through `PUT /flows/{flowId}` or a declarative flow file:
+
+```json
+{
+  "id": "identify_user",
+  "type": "TASK_EXECUTION",
+  "properties": {
+    "loginHintAttribute": "email"
+  },
+  "executor": {
+    "name": "IdentifyingExecutor",
+    "inputs": [
+      { "identifier": "login_hint", "type": "TEXT_INPUT", "required": true }
+    ]
+  },
+  "onSuccess": "generate_invite"
+}
+```
+
+When no user, or more than one user, matches the hint, `POST /oauth2/bc-authorize` returns `unknown_user_id`.
+
+### Assign the Flow to the Client
+
+1. Open the client under **Applications** or **Agents** in the Console.
+2. Open the **Flows** tab.
+3. Under **Sign-in flow**, select the flow you created.
+4. Click **Save**.
+
+A client has one sign-in flow, which serves both its CIBA requests and its browser sign-ins. Register a separate client for CIBA when the existing client also signs users in through the browser.
+
 ## Run the Flow
 
 ### Step 1: Initiate Backchannel Authentication
+
+This example sends an email address as `login_hint`, so the client's flow must set `loginHintAttribute` to `email`. See [Match the Login Hint to a User](#match-the-login-hint-to-a-user).
 
 ```bash
 curl -X POST https://{{productSlug}}.example.com/oauth2/bc-authorize \
@@ -193,4 +269,6 @@ When the client also holds the `refresh_token` grant, the refresh token records 
 - [OpenID Connect](../openid-connect), add `openid` to the scope to receive an ID token
 - [Server Metadata](../server-metadata), the `backchannel_authentication_endpoint` field in the OIDC discovery document
 - [Claims & Scopes](../claims-and-scopes), configure which claims appear in the issued tokens
+- [Configure an Email Provider](../../../notifications/email-providers), connect the mail server that delivers the approval email
+- [Notification Templates](../../../notifications/templates), customize the `ciba-notification` template
 - [Rich Authorization Requests](../rich-authorization-requests), request `authorization_details` on the backchannel request
