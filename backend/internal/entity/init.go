@@ -9,13 +9,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the entity service.
 // The entity store is always composite: a DB store backed by an in-memory file store.
 // Declarative resources are loaded on demand by consumer packages (e.g. user, application)
-// based on their own store mode configuration.
+// based on their own store mode configuration. bus is required: the service publishes the audit event of
+// every verification a write clears on it.
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	hashService cryptolib.HashServiceInterface,
@@ -23,14 +25,18 @@ func Initialize(
 	ouService ou.OrganizationUnitServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
+	bus eventbus.EventBusInterface,
 ) (EntityServiceInterface, error) {
+	if bus == nil {
+		return nil, errNilEventBus
+	}
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, err
 	}
 
 	svc := newEntityService(store, newEntityRuntimeDBStore(), hashService, entityTypeService, ouService,
-		transactioner, sharingService, observabilitySvc)
+		transactioner, sharingService, observabilitySvc, bus)
 	return svc, nil
 }
 

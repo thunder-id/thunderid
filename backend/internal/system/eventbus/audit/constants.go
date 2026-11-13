@@ -44,6 +44,12 @@ const (
 	ActionRevert Action = "revert"
 	// ActionEnroll registers a new credential, such as a passkey, for an identity.
 	ActionEnroll Action = "enroll"
+	// ActionRequest asks for a challenge that proves an attribute, such as a contact.
+	ActionRequest Action = "request"
+	// ActionVerify records an attribute, such as a contact, as proven.
+	ActionVerify Action = "verify"
+	// ActionInvalidate withdraws a recorded proof of an attribute.
+	ActionInvalidate Action = "invalidate"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

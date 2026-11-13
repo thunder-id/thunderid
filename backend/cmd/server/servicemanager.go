@@ -222,14 +222,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize entity service
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
-		sharingService, observabilitySvc)
+		sharingService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	// Initialize entity provider
 	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
-	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
-		observabilitySvc, ouAuthzService)
+	attributeVerificationService, err := attributeverification.Initialize(entityService, entityTypeService,
+		observabilitySvc, ouAuthzService, auditBus)
+	fatalOnError(ctx, logger, err, "Failed to initialize AttributeVerificationService")
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=

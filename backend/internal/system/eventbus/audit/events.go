@@ -34,6 +34,15 @@ const (
 	// EventUserCredentialUpdate names an attempt to set credentials of a user. It never carries a
 	// credential or its type.
 	EventUserCredentialUpdate = "user.credential.update" //nolint:gosec // an event name, not a credential
+	// EventUserVerificationRequest names an attempt to pin a contact attribute of a user before a challenge.
+	// It names the attribute, never its value.
+	EventUserVerificationRequest = "user.verification.request"
+	// EventUserVerificationVerify names an attempt to record a contact attribute of a user as verified. It
+	// names the attribute, never its value.
+	EventUserVerificationVerify = "user.verification.verify"
+	// EventUserVerificationInvalidate names the clearing of a recorded verification of a contact attribute
+	// of a user by a change to it. It names the attribute, never its value.
+	EventUserVerificationInvalidate = "user.verification.invalidate"
 	// EventUserSharingPolicyCreate names an attempt to create a sharing policy of a user.
 	EventUserSharingPolicyCreate = "user.sharing_policy.create"
 	// EventUserSharingPolicyUpdate names an attempt to change a sharing policy of a user.
@@ -238,6 +247,10 @@ var principalTargetTypes = map[string]string{
 // DetailGrantType is the detail key of the grant type a token was requested with.
 const DetailGrantType = "grant_type"
 
+// DetailAttribute is the detail key of the name of the attribute a verification event is about, never its
+// value.
+const DetailAttribute = "attribute"
+
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
 
@@ -260,6 +273,10 @@ var auditedEvents = map[string][]string{
 
 	EventUserCredentialEnroll: nil,
 	EventUserCredentialUpdate: nil,
+
+	EventUserVerificationRequest:    {DetailAttribute},
+	EventUserVerificationVerify:     {DetailAttribute},
+	EventUserVerificationInvalidate: {DetailAttribute},
 
 	EventUserSharingPolicyCreate: nil,
 	EventUserSharingPolicyUpdate: nil,

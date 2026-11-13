@@ -661,6 +661,8 @@ type scopedManager struct {
 	ouID             string
 	resourceServerID string
 	client           *http.Client
+	// token is the manager's access token, for /flow/execute, to which client sends none.
+	token string
 }
 
 // createScopedManager creates a manager in an organization unit of its own, named by name, who holds
@@ -702,5 +704,6 @@ func (ts *AuditLogTestSuite) createScopedManager(name string, handles, permissio
 	ts.Require().NotEmpty(token.AccessToken)
 	return scopedManager{
 		id: managerID, ouID: ownOU, resourceServerID: rsID, client: testutils.GetHTTPClientWithToken(token.AccessToken),
+		token: token.AccessToken,
 	}
 }

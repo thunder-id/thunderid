@@ -54,7 +54,7 @@ func (s *ServiceTestSuite) SetupTest() {
 		Run(func(args mock.Arguments) { published = append(published, args.Get(1).(*providers.Event)) }).Maybe()
 	authorizer := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authorizer.EXPECT().IsActionAllowed(mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
-	s.svc = newAttributeVerificationService(s.entities, contactSchema(s.T()), obs, authorizer)
+	s.svc = newAttributeVerificationService(s.entities, contactSchema(s.T()), obs, authorizer, discardingBus{})
 	s.ctx = context.Background()
 	s.testErr = errors.New("store error")
 }

@@ -21,6 +21,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -189,6 +191,7 @@ type entityService struct {
 	sharedTypes             map[providers.EntityCategory]sharing.ResourceType
 	transactioner           providers.Transactioner
 	observability           providers.ObservabilityProvider
+	bus                     eventbus.EventBusInterface
 	logger                  *log.Logger
 	groupMembershipProvider GroupMembershipProvider
 }
@@ -209,6 +212,7 @@ func newEntityService(
 	transactioner providers.Transactioner,
 	sharingService sharing.SharingServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
+	bus eventbus.EventBusInterface,
 ) EntityServiceInterface {
 	return &entityService{
 		store:             store,
@@ -220,6 +224,7 @@ func newEntityService(
 		sharedTypes:       map[providers.EntityCategory]sharing.ResourceType{},
 		transactioner:     transactioner,
 		observability:     observabilitySvc,
+		bus:               bus,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EntityService")),
 	}
 }
@@ -2243,16 +2248,32 @@ func (s *entityService) governedRuntimeData(ctx context.Context,
 	return record, nil
 }
 
-// publishClearedVerifications publishes an event for each verification a committed write cleared.
+// publishClearedVerifications publishes an audit event and an observability event for each verification a
+// committed write cleared.
 func (s *entityService) publishClearedVerifications(ctx context.Context, entityID string,
 	cleared []clearedVerification) {
-	if len(cleared) == 0 || s.observability == nil || !s.observability.IsEnabled() {
-		return
+	observe := s.observability != nil && s.observability.IsEnabled()
+	for _, c := range cleared {
+		s.publishVerificationInvalidatedAudit(ctx, entityID, c)
+		if observe {
+			s.observability.PublishEvent(ctx, s.newVerificationInvalidatedEvent(ctx, entityID, c))
+		}
+	}
+}
+
+// publishVerificationInvalidatedAudit publishes the audit event of a write that cleared a recorded
+// verification. It names the attribute, never its value or why it was cleared. A runtime flow may carry any
+// bearer token sent to a public path, so its actor is set explicitly to anonymous.
+func (s *entityService) publishVerificationInvalidatedAudit(ctx context.Context, entityID string,
+	cleared clearedVerification) {
+	user := audit.Ref{Type: audit.TargetTypeUser, ID: entityID}
+	payload := audit.ChangePayload(ctx, user, audit.ActionInvalidate, nil).
+		WithDetails(map[string]string{audit.DetailAttribute: cleared.attribute})
+	if security.IsRuntimeContext(ctx) {
+		payload = payload.WithActor(audit.Actor{Type: audit.ActorTypeAnonymous})
 	}
 
-	for _, c := range cleared {
-		s.observability.PublishEvent(ctx, s.newVerificationInvalidatedEvent(ctx, entityID, c))
-	}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, audit.EventUserVerificationInvalidate).With(payload))
 }
 
 // newVerificationInvalidatedEvent describes a write that cleared a recorded verification. It names the
