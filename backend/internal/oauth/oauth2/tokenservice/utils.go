@@ -345,7 +345,7 @@ func buildClaimsFromScopes(
 		return claims
 	}
 
-	// For each scope, get the claims it releases: the app's mapping, or the standard OIDC set
+	// For each scope, get the claims the app maps it to
 	for _, scope := range scopes {
 		// Add claims if they're in user attributes and allowed in config
 		for _, claim := range oauth2utils.ResolveScopeClaims(scope, scopeClaimsMapping) {

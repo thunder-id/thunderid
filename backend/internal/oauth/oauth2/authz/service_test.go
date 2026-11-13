@@ -643,7 +643,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_OI
 	assert.Empty(suite.T(), captured.RuntimeData[flowcm.RuntimeKeyResourceServerIdentifier])
 }
 
-func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_NarrowsOIDCClaimsByScopeClaims() {
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_DropsUnmappedStandardScopes() {
 	app := suite.testApp()
 	app.ScopeClaims = map[string][]string{"profile": {"name"}}
 	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
@@ -673,8 +673,9 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Na
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), result)
-	// email stays OIDC on its standard claims; the mapping only narrows profile.
-	assert.Equal(suite.T(), []string{"openid", "email", "profile"}, captured.OAuthParameters.StandardScopes)
+	// email is a standard scope the app does not map, so it is dropped.
+	assert.Equal(suite.T(), []string{"openid", "profile"}, captured.OAuthParameters.StandardScopes)
+	assert.Empty(suite.T(), captured.OAuthParameters.PermissionScopes)
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_InsecureRedirectURI() {

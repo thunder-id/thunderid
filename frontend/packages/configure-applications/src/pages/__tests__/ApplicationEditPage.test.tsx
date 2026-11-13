@@ -5,7 +5,7 @@ import type {UseQueryResult, UseMutationResult} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {useGetFlows} from '@thunderid/configure-flows';
 import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
-import {render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils';
+import {act, render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils';
 import {useState} from 'react';
 import {useNavigate} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -403,6 +403,7 @@ describe('ApplicationEditPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOrganizationAccess.hasChanges = false;
 
     // Default mock implementations
     mockGetTemplateMetadata.mockReturnValue({
@@ -3037,6 +3038,108 @@ describe('ApplicationEditPage', () => {
       renderComponent();
 
       expect(mockNavigate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Scope-to-claims changes', () => {
+    const withScopeClaims = (scopeClaims: Record<string, string[]>): Application => ({
+      ...mockApplication,
+      inboundAuthConfig: [{type: 'oauth2', config: {...mockApplication.inboundAuthConfig![0].config, scopeClaims}}],
+    });
+
+    const changeScopeClaims = (scopeClaims: Record<string, string[]>) => {
+      const props = vi.mocked(EditTokenSettingsTabs).mock.calls.at(-1)?.[0] as {
+        onFieldChange: (field: keyof Application, value: unknown) => void;
+      };
+      act(() => {
+        props.onFieldChange('inboundAuthConfig', withScopeClaims(scopeClaims).inboundAuthConfig);
+      });
+    };
+
+    it('shows the save bar when a scope is added with no attributes', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: withScopeClaims({email: ['email']}),
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+      renderComponent();
+      await mountSectionTab(user, 'Token', 'edit-token-settings');
+
+      changeScopeClaims({email: ['email'], profile: []});
+
+      expect(await screen.findByRole('button', {name: 'Save Changes'})).toBeEnabled();
+    });
+
+    it('shows the save bar when a scope with no attributes is removed', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: withScopeClaims({address: [], email: ['email']}),
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+      renderComponent();
+      await mountSectionTab(user, 'Token', 'edit-token-settings');
+
+      changeScopeClaims({email: ['email']});
+
+      expect(await screen.findByRole('button', {name: 'Save Changes'})).toBeEnabled();
+    });
+
+    it('saves an empty scope list as sent', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: withScopeClaims({email: ['email']}),
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+      renderComponent();
+      await mountSectionTab(user, 'Token', 'edit-token-settings');
+
+      changeScopeClaims({email: ['email'], profile: []});
+      await user.click(await screen.findByRole('button', {name: 'Save Changes'}));
+
+      await waitFor(() => expect(mockUpdateApplicationMutateAsync).toHaveBeenCalled());
+      const updateRequest = mockUpdateApplicationMutateAsync.mock.calls.at(-1)?.[0] as {data: Application} | undefined;
+      expect(updateRequest?.data.inboundAuthConfig?.[0].config.scopeClaims).toEqual({email: ['email'], profile: []});
+    });
+
+    it('saves a removed standard scope without it', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: withScopeClaims({email: ['email'], profile: ['given_name']}),
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+      renderComponent();
+      await mountSectionTab(user, 'Token', 'edit-token-settings');
+
+      changeScopeClaims({email: ['email']});
+      await user.click(await screen.findByRole('button', {name: 'Save Changes'}));
+
+      await waitFor(() => expect(mockUpdateApplicationMutateAsync).toHaveBeenCalled());
+      const updateRequest = mockUpdateApplicationMutateAsync.mock.calls.at(-1)?.[0] as {data: Application} | undefined;
+      expect(updateRequest?.data.inboundAuthConfig?.[0].config.scopeClaims).toEqual({email: ['email']});
+    });
+
+    it('shows no save bar when the scopes are unchanged', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: withScopeClaims({email: ['email'], profile: []}),
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+      renderComponent();
+      await mountSectionTab(user, 'Token', 'edit-token-settings');
+
+      changeScopeClaims({email: ['email'], profile: []});
+
+      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
     });
   });
 });
