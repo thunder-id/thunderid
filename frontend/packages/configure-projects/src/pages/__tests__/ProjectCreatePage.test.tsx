@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {renderWithProviders, screen, userEvent, waitFor} from '@thunderid/test-utils';
+import {act, renderWithProviders, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {Project} from '../../models/project';
 import type {CreateProjectRequest} from '../../models/requests';
@@ -158,5 +158,91 @@ describe('ProjectCreatePage', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  const failWith = (status: number, data: unknown) =>
+    mockMutate.mockImplementation((_request, options) =>
+      options.onError?.(
+        Object.assign(new Error(`Request failed with status code ${status}`), {response: {status, data}}),
+      ),
+    );
+
+  const submit = async (): Promise<void> => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectCreatePage />);
+
+    await user.type(screen.getByRole('textbox', {name: /Name/}), 'Shop');
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Create'})).toBeEnabled());
+    await user.click(screen.getByRole('button', {name: 'Create'}));
+  };
+
+  const TAKEN = 'A project with the handle "shop" already exists. Choose a different handle.';
+
+  it('shows a handle the project API reports as taken in the page alert', async () => {
+    failWith(409, {
+      code: 'PRJ-1012',
+      message: {key: 'error.projectservice.handle_conflict', defaultValue: 'Project handle already exists'},
+      description: {
+        key: 'error.projectservice.handle_conflict_description',
+        defaultValue: 'Supply a handle that no other project uses',
+      },
+    });
+    await submit();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(TAKEN);
+    expect(screen.queryByText(/Supply a handle/)).not.toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('takes a conflict without an error code as a taken handle', async () => {
+    failWith(409, {
+      error: 'conflict: creating project shop: {"code":"CONFLICT","error":"Project already exists"}',
+    });
+    await submit();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(TAKEN);
+    expect(screen.queryByText(/creating project/)).not.toBeInTheDocument();
+  });
+
+  it('shows the generic message for a conflict with another error code', async () => {
+    failWith(409, {
+      code: 'PRJ-1006',
+      message: {key: 'error.projectservice.project_id_conflict', defaultValue: 'Project ID already exists'},
+      description: {
+        key: 'error.projectservice.project_id_conflict_description',
+        defaultValue: 'Omit the ID to have one generated, or supply an ID that no other project uses',
+      },
+    });
+    await submit();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to create the project. Please try again.');
+    expect(screen.queryByText(/Omit the ID/)).not.toBeInTheDocument();
+  });
+
+  it('names the submitted handle when the handle was edited while the create was pending', async () => {
+    let fail: ((error: Error) => void) | undefined;
+    mockMutate.mockImplementation((_request, options) => {
+      fail = options.onError;
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectCreatePage />);
+
+    await user.type(screen.getByRole('textbox', {name: /Name/}), 'Shop');
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Create'})).toBeEnabled());
+    await user.click(screen.getByRole('button', {name: 'Create'}));
+    await user.type(screen.getByRole('textbox', {name: /Handle/}), '-new');
+    act(() => fail?.(Object.assign(new Error('Conflict'), {response: {status: 409, data: {code: 'PRJ-1012'}}})));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(TAKEN);
+  });
+
+  it('clears the taken handle message when the form changes', async () => {
+    failWith(409, {code: 'PRJ-1012'});
+    await submit();
+    expect(await screen.findByRole('alert')).toHaveTextContent(TAKEN);
+
+    await userEvent.setup().type(screen.getByRole('textbox', {name: /Handle/}), '-new');
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

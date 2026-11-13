@@ -4,7 +4,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import {DocumentTitle, FullScreenCreationWizardLayout, NameSuggestion} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {generateHandle} from '@thunderid/utils';
+import {generateHandle, getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useMemo, useRef, useState, type ReactNode} from 'react';
 import {Controller, useForm} from 'react-hook-form';
@@ -15,12 +15,28 @@ import useCreateProject from '../api/useCreateProject';
 import useProjectRoutes from '../hooks/useProjectRoutes';
 import useProjectSelection from '../hooks/useProjectSelection';
 import type {CreateProjectRequest} from '../models/requests';
-import getProjectErrorMessage from '../utils/getProjectErrorMessage';
 
 /** Limits the project API applies (`api/project.yaml`). */
 const NAME_MAX_LENGTH = 100;
 const HANDLE_MAX_LENGTH = 100;
 const DESCRIPTION_MAX_LENGTH = 255;
+
+/** The project API's code for a handle another project already uses. */
+const HANDLE_CONFLICT_ERROR_CODE = 'PRJ-1012';
+
+/**
+ * Whether a create was refused because the handle is taken. The project API's code decides when the
+ * response carries one. A service in front of the project API may answer in its own shape, without a
+ * code; then a conflict status is the handle's, as the form never sends an ID.
+ */
+function isHandleConflict(error: Error): boolean {
+  const response = (error as {response?: {status?: number; data?: {code?: unknown}}}).response;
+  const code = response?.data?.code;
+  if (typeof code === 'string' && code) {
+    return code === HANDLE_CONFLICT_ERROR_CODE;
+  }
+  return response?.status === 409;
+}
 
 const createFormSchema = (t: (key: string, options?: Record<string, unknown>) => string) =>
   z.object({
@@ -131,8 +147,14 @@ export default function ProjectCreatePage(): ReactNode {
         selectProject(project.handle, routes.applications.list());
       },
       onError: (err: Error) => {
+        // The message names the handle that was sent, so it stays true if the handle is edited meanwhile.
         setError(
-          getProjectErrorMessage(err, t, 'projects:create.error', 'Failed to create the project. Please try again.'),
+          isHandleConflict(err)
+            ? t('projects:create.handle.taken', {
+                handle: request.handle,
+                defaultValue: 'A project with the handle "{{handle}}" already exists. Choose a different handle.',
+              })
+            : getErrorMessage(err, t, 'projects:create.error', 'Failed to create the project. Please try again.'),
         );
       },
     });
