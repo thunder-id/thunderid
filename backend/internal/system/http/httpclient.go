@@ -155,11 +155,13 @@ var ErrPrivateAddress = errors.New("refused a private address")
 
 // ssrfSafeDialContext dials through the SSRF-safe dialer with a 10-second connect timeout.
 func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return (&dialer{timeout: 10 * time.Second, rejectPrivate: true}).DialContext(ctx, network, addr)
+	return newDialer(10*time.Second, true).DialContext(ctx, network, addr)
 }
 
-// dialer opens network connections bounded by timeout. With rejectPrivate it resolves the target
-// hostname and validates every returned IP against privateIPRanges before dialing. Connecting to the
+// dialer opens network connections bounded by timeout. It resolves the target hostname and connects
+// to the returned IPs in turn. With rejectPrivate it first validates every returned IP against
+// privateIPRanges; without it the dial is the same, only the check is skipped, so a deployment that
+// allows private addresses runs the same dial path as one that refuses them. Connecting to the
 // validated IPs directly pins the connection and prevents DNS rebinding attacks, so the address
 // checked is the address connected to. TLS hostname verification is unaffected: http.Transport derives
 // ServerName from the request URL (not addr) when TLSClientConfig.ServerName is empty, so the
@@ -167,10 +169,15 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 type dialer struct {
 	timeout       time.Duration
 	rejectPrivate bool
-	// resolver and conns, when set, replace the system resolver and a plain net.Dialer for the guarded
-	// dial. Only tests set them.
-	resolver ipResolverInterface
-	conns    connDialerInterface
+	resolver      ipResolverInterface
+	conns         connDialerInterface
+}
+
+// newDialer creates a dialer bounded by timeout that resolves through the system resolver and connects
+// with a plain net.Dialer. With rejectPrivate it refuses hosts that resolve to a private address.
+func newDialer(timeout time.Duration, rejectPrivate bool) *dialer {
+	return &dialer{timeout: timeout, rejectPrivate: rejectPrivate, resolver: net.DefaultResolver,
+		conns: &net.Dialer{}}
 }
 
 // ipResolverInterface resolves a host to its IP addresses, as net.Resolver does.
@@ -186,24 +193,11 @@ type connDialerInterface interface {
 // DialContext connects to addr on the named network. timeout bounds the whole dial, the resolution and
 // every connection attempt together, as it does for the standard dialer; zero leaves it unbounded.
 func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	netDialer := &net.Dialer{Timeout: d.timeout}
-	if !d.rejectPrivate {
-		return netDialer.DialContext(ctx, network, addr)
-	}
 	if d.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, d.timeout)
 		defer cancel()
 	}
-	var resolver ipResolverInterface = net.DefaultResolver
-	if d.resolver != nil {
-		resolver = d.resolver
-	}
-	var conns connDialerInterface = &net.Dialer{}
-	if d.conns != nil {
-		conns = d.conns
-	}
-
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		// addr has no port (unlikely from http.Transport, but handle defensively)
@@ -211,27 +205,22 @@ func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 		port = "443"
 	}
 
-	ipAddrs, err := resolver.LookupIPAddr(ctx, host)
+	ipAddrs, err := d.resolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, ia := range ipAddrs {
-		if ia.IP.IsUnspecified() {
-			return nil, fmt.Errorf("host %q resolves to an unspecified address %s: %w", host, ia.IP, ErrPrivateAddress)
-		}
-		for _, block := range privateIPRanges {
-			if block.Contains(ia.IP) {
-				return nil, fmt.Errorf("host %q resolves to a private address %s: %w", host, ia.IP, ErrPrivateAddress)
-			}
+	if d.rejectPrivate {
+		if err := refusePrivate(host, ipAddrs); err != nil {
+			return nil, err
 		}
 	}
 	if len(ipAddrs) == 0 {
 		return nil, fmt.Errorf("host %q resolved to no usable addresses", host)
 	}
 
-	// Every address was validated above, so trying them in turn, as the standard dialer does, keeps a
-	// host reachable when its first address is not (an IPv6 address on an IPv4-only network). Like the
+	// Every address is one the dialer may reach, so trying them in turn, as the standard dialer does,
+	// keeps a host reachable when its first address is not (an IPv6 address on an IPv4-only network). Like the
 	// standard dialer, each attempt gets a share of the time left, so an address that drops connection
 	// attempts cannot use up the whole deadline before a reachable one is tried.
 	var dialErr error
@@ -240,7 +229,7 @@ func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 		if deadline, ok := ctx.Deadline(); ok {
 			attemptCtx, cancel = context.WithDeadline(ctx, attemptDeadline(time.Now(), deadline, len(ipAddrs)-i))
 		}
-		conn, err := conns.DialContext(attemptCtx, network, net.JoinHostPort(ia.IP.String(), port))
+		conn, err := d.conns.DialContext(attemptCtx, network, net.JoinHostPort(ia.IP.String(), port))
 		cancel()
 		if err == nil {
 			return conn, nil
@@ -251,6 +240,22 @@ func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 		}
 	}
 	return nil, dialErr
+}
+
+// refusePrivate returns an error naming the first of host's addresses that is unspecified or in
+// privateIPRanges, and nil when none is.
+func refusePrivate(host string, ipAddrs []net.IPAddr) error {
+	for _, ia := range ipAddrs {
+		if ia.IP.IsUnspecified() {
+			return fmt.Errorf("host %q resolves to an unspecified address %s: %w", host, ia.IP, ErrPrivateAddress)
+		}
+		for _, block := range privateIPRanges {
+			if block.Contains(ia.IP) {
+				return fmt.Errorf("host %q resolves to a private address %s: %w", host, ia.IP, ErrPrivateAddress)
+			}
+		}
+	}
+	return nil
 }
 
 // minAttemptTime is the least share of the remaining time a connection attempt gets when more

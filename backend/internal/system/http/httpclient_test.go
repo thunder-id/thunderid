@@ -508,6 +508,39 @@ func (suite *HTTPClientTestSuite) TestGuardedDial_NoTimeoutAddsNoDeadline() {
 	suite.Error(err)
 }
 
+// A dialer that allows private addresses runs the same dial, resolving and connecting to the resolved
+// address, and only skips the check: a private address is reached, and the attempt keeps its deadline.
+func (suite *HTTPClientTestSuite) TestUnguardedDial_ReachesPrivateAddressesThroughTheSameDial() {
+	resolver := newIpResolverInterfaceMock(suite.T())
+	resolver.EXPECT().LookupIPAddr(mock.Anything, "internal.test").
+		Return([]net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil).Once()
+	conn, peer := net.Pipe()
+	defer func() { _ = peer.Close() }()
+	conns := newConnDialerInterfaceMock(suite.T())
+	conns.EXPECT().DialContext(mock.Anything, "tcp", "10.0.0.5:8080").
+		Run(func(ctx context.Context, _, _ string) {
+			_, ok := ctx.Deadline()
+			suite.True(ok, "the attempt ran without the dial's deadline")
+		}).
+		Return(conn, nil).Once()
+	d := &dialer{timeout: time.Minute, resolver: resolver, conns: conns}
+
+	got, err := d.DialContext(context.Background(), "tcp", "internal.test:8080")
+
+	suite.Require().NoError(err)
+	suite.Equal(conn, got)
+}
+
+// A dialer is built with the system resolver and a plain net.Dialer, whichever the guard says.
+func (suite *HTTPClientTestSuite) TestNewDialer_UsesTheSystemResolver() {
+	for _, rejectPrivate := range []bool{true, false} {
+		d := newDialer(time.Second, rejectPrivate)
+		suite.Equal(net.DefaultResolver, d.resolver)
+		suite.IsType(&net.Dialer{}, d.conns)
+		suite.Equal(rejectPrivate, d.rejectPrivate)
+	}
+}
+
 // Each attempt gets an equal share of the time left, at least minAttemptTime, never past the deadline,
 // and the last address gets all of it.
 func (suite *HTTPClientTestSuite) TestAttemptDeadline() {

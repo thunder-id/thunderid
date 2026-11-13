@@ -65,7 +65,7 @@ func (p *outboundClientProvider) NewHTTPClientWithoutRedirects(timeout time.Dura
 
 // NewDialer returns a dialer whose connection attempts are bounded by the given timeout.
 func (p *outboundClientProvider) NewDialer(timeout time.Duration) DialerInterface {
-	return &dialer{timeout: timeout, rejectPrivate: p.rejectPrivate}
+	return newDialer(timeout, p.rejectPrivate)
 }
 
 // transport returns a transport that dials through the provider's dialer.
