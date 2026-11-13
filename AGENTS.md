@@ -44,6 +44,8 @@ The `.agent/skills/` entries above are internal guidance for **developing** Thun
 - Always use `ThunderID` (or the appropriate template placeholder for the file type). Never use the bare word `thunder`, `Thunder`, or `THUNDER` as a short form of the product name.
 - PRs that introduce bare `thunder`/`Thunder`/`THUNDER` (not part of `thunderid`, `ThunderID`, or `THUNDERID`) must not be merged until corrected.
 - Exceptions: import paths/package names (e.g., `@thunderid/...`) and code identifiers where `thunder` is a structural prefix immediately followed by `id` in any casing are allowed.
+- User-facing UI text does not name the product at all: console and gate strings, i18n values, `t()` fallbacks, and `alt`/`aria-label`/`title` attributes read it from the runtime brand config (`config.brand.product_name`) so a deployment can rebrand. See [frontend/AGENTS.md](frontend/AGENTS.md#product-name).
+- Backend text a client, agent, or user reads (MCP tool and schema descriptions, response bodies, notifications) reads it from `server.product_name`. See [.agent/skills/backend/idiom.md](.agent/skills/backend/idiom.md#user-facing-text).
 
 ## Product Positioning
 

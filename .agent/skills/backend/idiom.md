@@ -15,6 +15,15 @@
 
 User-facing text (notification copy, labels, date formats) lives in templates or i18n resources, never in Go strings, so it can be localized and edited.
 
+Never write `ThunderID` in text a client, an agent, or a user reads: MCP tool and prompt descriptions, `jsonschema` struct tags, response bodies, and notifications. Deployments rebrand through `server.product_name`, so read the name from it:
+
+```go
+productName := config.GetServerRuntime().Config.Server.ProductName
+description := fmt.Sprintf("Create an application that signs users in through the %s-hosted login page.", productName)
+```
+
+A struct tag is fixed at compile time, so reword it to leave the name out. License headers, comments, identifiers, SDK names (`@thunderid/react`, `ThunderIDProvider`), test fixtures, and the default `product_name` in `cmd/server/config/default.json` are exempt.
+
 ## Naming
 
 - Every new exported name says what it is for, read without context.

@@ -34,6 +34,7 @@ Apply each file of the `backend` skill to the added code:
 - [ ] `errors.md`: error constants in `error_constants.go`, codes in ascending order and unused elsewhere, `{{param(name)}}` placeholders, a description that adds context.
 - [ ] `logging.md`: logger on the struct, no logger name constant, no new Info logs for routine operations, no client error or executor error logs, no PII.
 - [ ] `idiom.md`: typed constants, header names from `internal/system/constants`, no hand-rolled helper the language or `internal/system/utils` already has, no unaccepted lint suppressions, minimal comments.
+- [ ] No `ThunderID` in text a client, agent, or user reads, such as MCP tool and schema descriptions (`idiom.md`, User-Facing Text).
 - [ ] `resource.md` and `config.md` checklists, when the change adds a resource or a config key.
 - [ ] Query IDs in `store_constants.go` are in ascending order with the new one at the end (`db` skill).
 
@@ -50,6 +51,7 @@ Apply each file of the `backend` skill to the added code:
 ### Frontend and Docs
 
 - [ ] Frontend changes follow `frontend/AGENTS.md`.
+- [ ] No `ThunderID` in user-facing frontend text, including i18n locale values and `t()` fallbacks (`frontend/AGENTS.md`, Product Name).
 - [ ] Documentation changes pass the `docs` skill's `review.md`.
 
 ## Step 3: Validate
