@@ -15,6 +15,7 @@ import (
 
 type ReactSDKToolsTestSuite struct {
 	suite.Suite
+	tools *reactSDKTools
 }
 
 func TestReactSDKToolsTestSuite(t *testing.T) {
@@ -22,7 +23,7 @@ func TestReactSDKToolsTestSuite(t *testing.T) {
 }
 
 func (suite *ReactSDKToolsTestSuite) SetupTest() {
-
+	suite.tools = &reactSDKTools{productName: "Acme IAM"}
 }
 
 func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK() {
@@ -30,7 +31,7 @@ func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK() {
 		ServerURL: "https://thunder.example.com",
 	}
 
-	result, output, err := integrateReactSDK(context.Background(), nil, input)
+	result, output, err := suite.tools.integrateReactSDK(context.Background(), nil, input)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -42,7 +43,7 @@ func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK_Defaults() {
 	// Empty input to trigger defaults
 	input := integrateReactSDKInput{}
 
-	result, output, err := integrateReactSDK(context.Background(), nil, input)
+	result, output, err := suite.tools.integrateReactSDK(context.Background(), nil, input)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -52,11 +53,19 @@ func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK_Defaults() {
 }
 
 func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK_NamesToolsWithoutPrefix() {
-	_, output, err := integrateReactSDK(context.Background(), nil, integrateReactSDKInput{})
+	_, output, err := suite.tools.integrateReactSDK(context.Background(), nil, integrateReactSDKInput{})
 
 	assert.NoError(suite.T(), err)
 	assert.NotContains(suite.T(), output.Instructions, "thunderid_")
 	assert.Contains(suite.T(), output.Instructions, "`update_application`")
+}
+
+func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK_NamesConfiguredProduct() {
+	_, output, err := suite.tools.integrateReactSDK(context.Background(), nil, integrateReactSDKInput{})
+
+	assert.NoError(suite.T(), err)
+	assert.Contains(suite.T(), output.Instructions, "# Acme IAM Authentication – React Integration Instructions")
+	assert.NotContains(suite.T(), output.Instructions, productNamePlaceholder)
 }
 
 func (suite *ReactSDKToolsTestSuite) TestRegisterTools() {
@@ -65,7 +74,7 @@ func (suite *ReactSDKToolsTestSuite) TestRegisterTools() {
 		Version: "1.0.0",
 	}, nil)
 
-	RegisterTools(server)
+	RegisterTools(server, "Acme IAM")
 
 	toolsField := reflect.ValueOf(server).Elem().FieldByName("tools")
 	if !toolsField.IsValid() {

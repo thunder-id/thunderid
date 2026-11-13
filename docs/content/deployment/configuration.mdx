@@ -857,7 +857,7 @@ Exports events as OpenTelemetry spans to an OTLP-compatible backend such as Jaeg
 | `observability.output.opentelemetry.enabled` | `false` | If `true`, exports observability events as OpenTelemetry spans |
 | `observability.output.opentelemetry.exporter_type` | `otlp` | Exporter type: `otlp` (gRPC, for production) or `stdout` (for debugging) |
 | `observability.output.opentelemetry.otlp_endpoint` | `""` | OTLP gRPC endpoint, for example `localhost:4317`. Required when `exporter_type` is `otlp`. |
-| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans, for example `thunderid-iam` |
+| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans. When empty, it is derived from `server.product_name`: lowercased, with each run of characters other than letters and digits replaced by a hyphen, and an `-iam` suffix. For example, `Acme Identity` gives `acme-identity-iam`. |
 | `observability.output.opentelemetry.service_version` | `""` | Service version included in span resource attributes, for example `1.0.0` |
 | `observability.output.opentelemetry.environment` | `""` | Deployment environment included in span resource attributes, for example `production` |
 | `observability.output.opentelemetry.sample_rate` | `1.0` | Fraction of traces to sample. `1.0` samples all traces; `0.5` samples half. |

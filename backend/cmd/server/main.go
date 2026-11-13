@@ -147,13 +147,13 @@ func main() {
 
 	serverURL := config.GetServerURL(&cfg.Server)
 	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
-	logger.Info(ctx, "ThunderID Server URL", log.String("url", serverURL))
-	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
+	logger.Info(ctx, cfg.Server.ProductName+" Server URL", log.String("url", serverURL))
+	logger.Info(ctx, cfg.Server.ProductName+" Console URL", log.String("url", consoleURL))
 
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info(ctx, "ThunderID Server started",
+		logger.Info(ctx, cfg.Server.ProductName+" Server started",
 			log.String("mode", string(config.GetServerMode())), log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
@@ -206,7 +206,7 @@ func initRevocationCache(ctx context.Context, logger *log.Logger,
 func getThunderHome(ctx context.Context, logger *log.Logger) string {
 	// Parse project directory from command line arguments.
 	projectHome := ""
-	projectHomeFlag := flag.String("serverHome", "", "Path to ThunderID home directory")
+	projectHomeFlag := flag.String("serverHome", "", "Path to the server home directory")
 	flag.Parse()
 
 	if *projectHomeFlag != "" {
