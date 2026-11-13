@@ -78,8 +78,9 @@ type AuthorizationDetailMgtServiceInterface interface {
 	// ListAllAuthorizationDetailTypes lists every registered type.
 	ListAllAuthorizationDetailTypes(ctx context.Context) ([]providers.AuthorizationDetailType,
 		*tidcommon.ServiceError)
-	// ValidateAuthorizationDetailType checks a type's definition and processor credential as create and update
-	// do, without saving it. The credential is checked against the stored type when one has the type's id.
+	// ValidateAuthorizationDetailType checks a type's definition, project and processor credential as create and
+	// update do, without saving it. The project and the credential are checked against the stored type when one has
+	// the type's id.
 	ValidateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) *tidcommon.ServiceError
 	// IsAuthorizationDetailTypeDeclarative reports whether a type is defined in declarative configuration.
 	IsAuthorizationDetailTypeDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
@@ -131,10 +132,7 @@ func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx contex
 	if svcErr := validateTypeDefinition(t); svcErr != nil {
 		return nil, svcErr
 	}
-	if t.ProjectID == "" && s.projectRequired {
-		return nil, &ErrorProjectRequired
-	}
-	if svcErr := s.validateProject(ctx, t.ProjectID); svcErr != nil {
+	if svcErr := s.checkProject(ctx, t.ProjectID, nil); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := setProcessorAuthentication(&t, nil); svcErr != nil {
@@ -330,12 +328,11 @@ func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx contex
 	}
 	// An update that names no project keeps the type's project, and the project is checked only when the type
 	// moves to another one.
+	if svcErr := s.checkProject(ctx, t.ProjectID, existing); svcErr != nil {
+		return nil, svcErr
+	}
 	if t.ProjectID == "" {
 		t.ProjectID = existing.ProjectID
-	} else if t.ProjectID != existing.ProjectID {
-		if svcErr := s.validateProject(ctx, t.ProjectID); svcErr != nil {
-			return nil, svcErr
-		}
 	}
 	if svcErr := setProcessorAuthentication(&t, existing.Processor); svcErr != nil {
 		return nil, svcErr
@@ -380,6 +377,20 @@ func (s *authorizationDetailMgtService) updateMissedError(ctx context.Context, i
 	return &ErrorTypeChanged
 }
 
+// checkProject checks the project a type is written with. A new type, given no existing one, needs a project where one
+// is required, and the project it names has to exist. A stored type keeps its project when it names none, and is
+// checked only when it moves to another project.
+func (s *authorizationDetailMgtService) checkProject(ctx context.Context, projectID string,
+	existing *providers.AuthorizationDetailType) *tidcommon.ServiceError {
+	if existing != nil && (projectID == "" || projectID == existing.ProjectID) {
+		return nil
+	}
+	if existing == nil && projectID == "" && s.projectRequired {
+		return &ErrorProjectRequired
+	}
+	return s.validateProject(ctx, projectID)
+}
+
 // validateProject checks the project a type names. A deployment that serves no projects, such as a data plane,
 // cannot check it and keeps the project ID as given so that imported configuration retains it, but refuses one
 // longer than the column holds.
@@ -419,27 +430,33 @@ func (s *authorizationDetailMgtService) checkWriteAccess(ctx context.Context,
 	return nil
 }
 
-// ValidateAuthorizationDetailType checks a type's definition and processor credential as create and update do,
-// without saving it. The credential is checked against the stored type when one has the type's id.
+// ValidateAuthorizationDetailType checks a type's definition, processor credential and project as create and update
+// do, without saving it. The project and the credential are checked against the stored type when one has the type's
+// id.
 func (s *authorizationDetailMgtService) ValidateAuthorizationDetailType(ctx context.Context,
 	t providers.AuthorizationDetailType) *tidcommon.ServiceError {
 	if svcErr := validateTypeDefinition(t); svcErr != nil {
 		return svcErr
 	}
-	if t.Processor == nil {
-		return nil
-	}
-	var stored *providers.AuthorizationDetailProcessor
+	var existing *providers.AuthorizationDetailType
 	if t.ID != "" {
-		existing, svcErr := s.GetAuthorizationDetailType(ctx, t.ID)
+		found, svcErr := s.GetAuthorizationDetailType(ctx, t.ID)
 		if svcErr != nil && svcErr.Code != ErrorTypeNotFound.Code {
 			return svcErr
 		}
-		if existing != nil {
-			stored = existing.Processor
-		}
+		existing = found
 	}
-	return setProcessorAuthentication(&t, stored)
+	var stored *providers.AuthorizationDetailProcessor
+	if existing != nil {
+		stored = existing.Processor
+	}
+	if svcErr := setProcessorAuthentication(&t, stored); svcErr != nil {
+		return svcErr
+	}
+	// The project is checked as the write would: a new type needs a project that exists where one is required, and
+	// a stored type only when it moves to another one. It is checked last, so a dry-run import can take a project
+	// the same import creates as there.
+	return s.checkProject(ctx, t.ProjectID, existing)
 }
 
 // DeleteAuthorizationDetailType deletes a type. Deleting a type that does not exist succeeds.

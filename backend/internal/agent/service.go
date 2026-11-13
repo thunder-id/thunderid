@@ -46,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 // AgentServiceInterface defines the operations exposed by the agent service.
@@ -121,6 +122,9 @@ type agentService struct {
 	// managed says which agents a control plane deployed, which stay read only here. Nil where nothing is
 	// deployed from one.
 	managed managedresource.StoreInterface
+	// keepsReferences is set on a control plane, which keeps a value reference where an owner's value
+	// belongs.
+	keepsReferences bool
 }
 
 // artifactLifetimeResolver reports how long an artifact issued to the given OAuth client can remain valid, so a
@@ -232,15 +236,6 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		if svcErr := s.checkPersonalAgentOwner(ctx, owner); svcErr != nil {
 			return nil, svcErr
 		}
-		// A suspended owner's personal agents are suspended with them, so none is created for one.
-		hold, svcErr := s.governance.AccessHold(ctx, owner.ID)
-		if svcErr != nil {
-			s.logger.Error(ctx, "Failed to check the owner's suspension", log.String("errorCode", svcErr.Code))
-			return nil, &tidcommon.InternalServerError
-		}
-		if hold == providers.AccessRefusalReasonSuspended {
-			return nil, &ErrorOwnerSuspended
-		}
 	} else if owner == nil {
 		var svcErr *tidcommon.ServiceError
 		if owner, svcErr = s.callerAsOwner(ctx); svcErr != nil {
@@ -273,7 +268,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		return nil, &tidcommon.InternalServerError
 	}
 
-	authFlowID, regFlowID := agent.AuthFlowID, agent.RegistrationFlowID
+	authFlowID, deviceGrantFlowID, regFlowID := agent.AuthFlowID, agent.DeviceGrantFlowID, agent.RegistrationFlowID
 	assertion, loginConsent := agent.Assertion, agent.LoginConsent
 	var inboundConfigs []providers.InboundAuthConfigWithSecret
 
@@ -284,6 +279,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 			return nil, svcErr
 		}
 		authFlowID = resolvedClient.AuthFlowID
+		deviceGrantFlowID = resolvedClient.DeviceGrantFlowID
 		regFlowID = resolvedClient.RegistrationFlowID
 		assertion = resolvedClient.Assertion
 		loginConsent = resolvedClient.LoginConsent
@@ -300,12 +296,13 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		authFlowID, regFlowID, agent.IsRegistrationFlowEnabled,
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
 		agent.AllowedUserTypes, agent.AllowedAgentTypes, inboundConfigs)
+	resp.DeviceGrantFlowID = deviceGrantFlowID
 	resp.OUID = agent.OUID
 	resp.ProjectID = agent.ProjectID
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
 	resp.Kind = agent.Kind
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp, agent.Attributes)
+	s.captureValues(ctx, resp, agent.Attributes, true)
 	s.publishLifespanSet(ctx, agentID, validUntil)
 	return resp, nil
 }
@@ -555,7 +552,7 @@ func (s *agentService) updateOwnedAgent(ctx context.Context, ownerID, agentID st
 		InboundAuthConfig:     full.InboundAuthConfig,
 	}
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp, req.Attributes)
+	s.captureValues(ctx, resp, req.Attributes, false)
 	return resp, nil
 }
 
@@ -1172,6 +1169,11 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	currentSysAttrs := readSystemAttributes(existing.SystemAttributes)
 	currentOwner, currentClientID := currentSysAttrs.Owner, currentSysAttrs.ClientID
 
+	owner, svcErr := s.resolveUpdateOwner(ctx, req.Owner, currentOwner, currentSysAttrs.Kind)
+	if svcErr != nil {
+		return fail(svcErr)
+	}
+
 	normalizeLoginConsent(req.LoginConsent)
 
 	grantedConfigs, svcErr := resolveGrantTypes(req.InboundAuthConfig, req.Delegated, currentSysAttrs.Kind)
@@ -1193,11 +1195,6 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 
 	clientID, clientSecret, svcErr := s.resolveOAuthCredentials(
 		ctx, req.InboundAuthConfig, currentClientID, existingOAuthMethod)
-	if svcErr != nil {
-		return fail(svcErr)
-	}
-
-	owner, svcErr := s.resolveUpdateOwner(ctx, req.Owner, currentOwner, currentSysAttrs.Kind)
 	if svcErr != nil {
 		return fail(svcErr)
 	}
@@ -1271,6 +1268,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	}
 
 	authFlowID := resolvedClient.AuthFlowID
+	deviceGrantFlowID := resolvedClient.DeviceGrantFlowID
 	regFlowID := resolvedClient.RegistrationFlowID
 	assertion := resolvedClient.Assertion
 	loginConsent := resolvedClient.LoginConsent
@@ -1287,6 +1285,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
+	resp.DeviceGrantFlowID = deviceGrantFlowID
 	resp.OUID = ouID
 	resp.ProjectID = projectID
 	access := s.governance.ReadEntityAccess(ctx, *updated)
@@ -1295,13 +1294,21 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	resp.ValidUntil, resp.Lifespan = lifespanView(currentValidUntil, now)
 	resp.Kind = currentSysAttrs.Kind
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp, req.Attributes)
+	s.captureValues(ctx, resp, req.Attributes, !sameOwner(owner, currentOwner))
 	return resp, nil
 }
 
 // UpdateAgentCredentials sets the given credentials of an agent, each a plaintext value of a credential
 // the agent's type declares, and keeps the ones not given as they are.
 func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID string,
+	credentials json.RawMessage) *tidcommon.ServiceError {
+	svcErr := s.updateAgentCredentials(ctx, agentID, credentials)
+	s.publishAgentEvent(ctx, audit.EventAgentCredentialUpdate, audit.ActionUpdate, agentID, svcErr)
+	return svcErr
+}
+
+// updateAgentCredentials sets the given credentials of an agent without publishing its audit event.
+func (s *agentService) updateAgentCredentials(ctx context.Context, agentID string,
 	credentials json.RawMessage) *tidcommon.ServiceError {
 	if agentID == "" {
 		return &ErrorMissingAgentID
@@ -1424,7 +1431,7 @@ func (s *agentService) regenerateAgentSecret(ctx context.Context, agentID string
 			Type:        providers.OAuthInboundAuthType,
 			OAuthConfig: oauthProfileToComplete(clientID, oauth),
 		}}, clientID, clientSecret),
-	}, nil)
+	}, nil, false)
 	return clientSecret, nil
 }
 
@@ -1920,7 +1927,7 @@ func (s *agentService) validatePlacedAgent(ctx context.Context, agent *providers
 	if svcErr := validateLogoURL(agent.LogoURL); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
-	owner, svcErr := normalizeOwner(agent.Owner)
+	owner, svcErr := normalizeOwner(agent.Owner, s.keepsReferences)
 	if svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
@@ -1987,6 +1994,7 @@ func (s *agentService) validatePlacedAgent(ctx context.Context, agent *providers
 	client := buildInboundClientRecord("", agent.AuthFlowID, agent.RegistrationFlowID,
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
 		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
+	client.DeviceGrantFlowID = agent.DeviceGrantFlowID
 
 	if needsInboundClient(agent) {
 		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
@@ -2213,16 +2221,15 @@ func (s *agentService) resolveUpdateOUID(
 	return ouID, projectID, nil
 }
 
-// resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
-// existing one — and checks that a local owner exists when the owner is changing. A personal agent's new
-// owner must be a local user.
+// resolveUpdateOwner picks the effective owner for an update, either the requested owner or the existing one,
+// and checks that a local owner exists when the owner is changing. A personal agent's owner never changes.
 func (s *agentService) resolveUpdateOwner(
 	ctx context.Context, requestedOwner, currentOwner *providers.AgentOwner, kind providers.AgentKind,
 ) (*providers.AgentOwner, *tidcommon.ServiceError) {
 	if requestedOwner == nil {
 		return currentOwner, nil
 	}
-	owner, svcErr := normalizeOwner(requestedOwner)
+	owner, svcErr := normalizeOwner(requestedOwner, s.keepsReferences)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -2230,20 +2237,19 @@ func (s *agentService) resolveUpdateOwner(
 		return owner, nil
 	}
 	if kind == providers.AgentKindPersonalAssistant {
-		svcErr = s.checkPersonalAgentOwner(ctx, owner)
-	} else {
-		svcErr = s.checkOwner(ctx, owner)
+		return nil, &ErrorPersonalAgentOwnerImmutable
 	}
-	if svcErr != nil {
+	if svcErr := s.checkOwner(ctx, owner); svcErr != nil {
 		return nil, svcErr
 	}
 	return owner, nil
 }
 
 // checkOwner checks that a local owner exists in this deployment. An external owner is managed in another
-// identity system, so it is stored as given and never looked up.
+// identity system, so it is stored as given and never looked up, and so is an owner whose ID is a
+// reference a control plane keeps.
 func (s *agentService) checkOwner(ctx context.Context, owner *providers.AgentOwner) *tidcommon.ServiceError {
-	if !owner.Local() {
+	if !owner.Local() || (s.keepsReferences && isVariableReference(owner.ID)) {
 		return nil
 	}
 	_, svcErr := s.validateOwnerExists(ctx, owner.ID)
@@ -2252,7 +2258,13 @@ func (s *agentService) checkOwner(ctx context.Context, owner *providers.AgentOwn
 
 // normalizeOwner checks an agent owner and returns a copy that states its ID type and whether it is
 // local. A nil owner stays nil.
-func normalizeOwner(owner *providers.AgentOwner) (*providers.AgentOwner, *tidcommon.ServiceError) {
+//
+// Where references are kept, any of the owner's values may instead be a variable reference, for each
+// deployment to resolve. A value given as itself is still checked, and a check that relates two values
+// applies only where both are given. A secret reference is refused anywhere: a credential is never an
+// owner, and an export would carry it where a secret may not stand.
+func normalizeOwner(owner *providers.AgentOwner, keepsReferences bool) (*providers.AgentOwner,
+	*tidcommon.ServiceError) {
 	if owner == nil {
 		return nil, nil
 	}
@@ -2261,12 +2273,31 @@ func normalizeOwner(owner *providers.AgentOwner) (*providers.AgentOwner, *tidcom
 	if idType == "" {
 		idType = providers.AgentOwnerIDTypeUUID
 	}
-	local := owner.Local()
-	if id == "" || utf8.RuneCountInString(id) > maxOwnerIDLength || !slices.Contains(ownerIDTypes, idType) ||
-		(local && idType != providers.AgentOwnerIDTypeUUID) || !ownerIDMatchesType(id, idType) {
+	locality := localityOf(owner)
+	idRef := keepsReferences && isVariableReference(id)
+	typeRef := keepsReferences && isVariableReference(string(idType))
+	localityRef := keepsReferences && isVariableReference(string(locality))
+	local, stated := locality.Bool()
+	if isSecretReference(id) || isSecretReference(string(idType)) || isSecretReference(string(locality)) {
 		return nil, &ErrorInvalidOwner
 	}
-	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: &local}, nil
+	if id == "" || utf8.RuneCountInString(id) > maxOwnerIDLength ||
+		(!typeRef && !slices.Contains(ownerIDTypes, idType)) || (!localityRef && !stated) ||
+		(!typeRef && local && idType != providers.AgentOwnerIDTypeUUID) ||
+		(!idRef && !typeRef && !ownerIDMatchesType(id, idType)) {
+		return nil, &ErrorInvalidOwner
+	}
+	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: locality}, nil
+}
+
+// isVariableReference reports whether a value is wholly a reference to a variable a deployment holds.
+func isVariableReference(value string) bool {
+	return valueref.IsWellFormedReference(value) && !valueref.IsSecretReference(value)
+}
+
+// isSecretReference reports whether a value is wholly a reference to a secret a deployment holds.
+func isSecretReference(value string) bool {
+	return valueref.IsWellFormedReference(value) && valueref.IsSecretReference(value)
 }
 
 // ownerIDMatchesType reports whether an owner ID has the form its ID type needs. An email is a bare
@@ -2304,22 +2335,29 @@ func (s *agentService) callerAsOwner(ctx context.Context) (*providers.AgentOwner
 			local = false
 		}
 	}
-	return &providers.AgentOwner{ID: subject, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}, nil
+	return &providers.AgentOwner{ID: subject, IDType: providers.AgentOwnerIDTypeUUID,
+		IsLocal: providers.AgentOwnerLocalityOf(local)}, nil
 }
 
-// checkPersonalAgentOwner checks that a personal agent's owner is a local user, the only owner who can sign in
-// for it.
+// checkPersonalAgentOwner checks that a personal agent's owner is a user, the only owner who can sign in for it,
+// and is not suspended. A suspended owner's personal agents are suspended with them, so none is created for one.
+// The owner must already be validated as present and local, as validatePlacedAgent does.
 func (s *agentService) checkPersonalAgentOwner(
 	ctx context.Context, owner *providers.AgentOwner) *tidcommon.ServiceError {
-	if owner == nil || !owner.Local() {
-		return &ErrorInvalidOwner
-	}
 	ownerEntity, svcErr := s.validateOwnerExists(ctx, owner.ID)
 	if svcErr != nil {
 		return svcErr
 	}
 	if ownerEntity.Category != providers.EntityCategoryUser {
 		return &ErrorOwnerNotFound
+	}
+	hold, svcErr := s.governance.AccessHold(ctx, owner.ID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check the owner's suspension", log.String("errorCode", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	if hold == providers.AccessRefusalReasonSuspended {
+		return &ErrorOwnerSuspended
 	}
 	return nil
 }
@@ -2337,7 +2375,15 @@ func sameOwner(a, b *providers.AgentOwner) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return a.ID == b.ID && a.IDType == b.IDType && a.Local() == b.Local()
+	return a.ID == b.ID && a.IDType == b.IDType && localityOf(a) == localityOf(b)
+}
+
+// localityOf returns an owner's locality, which reads as local when the owner does not state one.
+func localityOf(owner *providers.AgentOwner) providers.AgentOwnerLocality {
+	if owner.IsLocal == "" {
+		return providers.AgentOwnerLocal
+	}
+	return owner.IsLocal
 }
 
 // ownerGovernanceContext marks a governance call as the owner's. It runs with the runtime context, since
@@ -2521,6 +2567,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 	client := buildInboundClientRecord(agentID, agent.AuthFlowID, agent.RegistrationFlowID,
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
 		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
+	client.DeviceGrantFlowID = agent.DeviceGrantFlowID
 	setLogoProperty(&client, agent.LogoURL)
 
 	seedClientSubTypeAttribute(agent.InboundAuthConfig)
@@ -2570,6 +2617,8 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 	profile := providers.InboundAuthProfile{
 		AuthFlowID:             req.AuthFlowID,
 		AuthFlowHandle:         req.AuthFlowHandle,
+		DeviceGrantFlowID:      req.DeviceGrantFlowID,
+		DeviceGrantFlowHandle:  req.DeviceGrantFlowHandle,
 		RegistrationFlowID:     req.RegistrationFlowID,
 		RegistrationFlowHandle: req.RegistrationFlowHandle,
 	}
@@ -2585,6 +2634,7 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 	client := buildInboundClientRecord(agentID, profile.AuthFlowID, profile.RegistrationFlowID,
 		req.IsRegistrationFlowEnabled, req.ThemeID, req.LayoutID, req.Assertion,
 		req.LoginConsent, req.AllowedUserTypes, req.AllowedAgentTypes, nil)
+	client.DeviceGrantFlowID = profile.DeviceGrantFlowID
 	setLogoProperty(&client, req.LogoURL)
 	oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
 	hasSecret := clientSecret != ""
@@ -2647,6 +2697,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 	}
 
 	resp.AuthFlowID = inbound.AuthFlowID
+	resp.DeviceGrantFlowID = inbound.DeviceGrantFlowID
 	resp.RegistrationFlowID = inbound.RegistrationFlowID
 	resp.IsRegistrationFlowEnabled = inbound.IsRegistrationFlowEnabled
 	resp.ThemeID = inbound.ThemeID
@@ -2846,6 +2897,7 @@ func needsInboundClient(agent *providers.Agent) bool {
 		return false
 	}
 	return agent.AuthFlowID != "" ||
+		agent.DeviceGrantFlowID != "" ||
 		agent.RegistrationFlowID != "" ||
 		agent.IsRegistrationFlowEnabled ||
 		agent.ThemeID != "" ||
@@ -2864,6 +2916,8 @@ func updateNeedsInboundClient(req *model.UpdateAgentRequest) bool {
 	}
 	return req.AuthFlowID != "" ||
 		req.AuthFlowHandle != "" ||
+		req.DeviceGrantFlowID != "" ||
+		req.DeviceGrantFlowHandle != "" ||
 		req.RegistrationFlowID != "" ||
 		req.RegistrationFlowHandle != "" ||
 		req.IsRegistrationFlowEnabled ||
@@ -3586,9 +3640,21 @@ func translateIDTokenValidationError(err error) *tidcommon.ServiceError {
 
 // translateInboundClientFKError maps foreign-key reference errors to agent-service errors.
 func translateInboundClientFKError(err error) *tidcommon.ServiceError {
+	var flowMismatch *inboundclient.FlowMismatchError
+	if errors.As(err, &flowMismatch) {
+		return ErrorAgentFlowMismatch.WithParams(map[string]string{
+			"sourceFlowType": strings.ToLower(string(flowMismatch.SourceFlowType)),
+			"flowType":       strings.ToLower(string(flowMismatch.FlowType)),
+		})
+	}
+
 	switch {
 	case errors.Is(err, inboundclient.ErrFKInvalidAuthFlow):
 		return &ErrorInvalidAuthFlowID
+	case errors.Is(err, inboundclient.ErrFKInvalidDeviceGrantFlow):
+		return &ErrorInvalidDeviceGrantFlowID
+	case errors.Is(err, inboundclient.ErrFKDeviceGrantFlowRequired):
+		return &ErrorDeviceGrantFlowRequired
 	case errors.Is(err, inboundclient.ErrFKInvalidRegistrationFlow):
 		return &ErrorInvalidRegistrationFlowID
 	case errors.Is(err, inboundclient.ErrFKFlowDefinitionRetrievalFailed):

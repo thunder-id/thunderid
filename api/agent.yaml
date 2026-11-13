@@ -424,6 +424,36 @@ paths:
                     description:
                       key: "error.agentservice.missing_delegation_grant_type_description"
                       defaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}"
+                device-grant-flow-required:
+                  summary: Device Code is enabled without a Device Grant flow
+                  value:
+                    code: "AGT-1065"
+                    message:
+                      key: "error.agentservice.device_grant_flow_required"
+                      defaultValue: "Device Grant flow is required"
+                    description:
+                      key: "error.agentservice.device_grant_flow_required_description"
+                      defaultValue: "Assign a Device Grant flow before enabling the Device Code grant type"
+                invalid-device-grant-flow:
+                  summary: The assigned flow is invalid
+                  value:
+                    code: "AGT-1066"
+                    message:
+                      key: "error.agentservice.invalid_device_grant_flow_id"
+                      defaultValue: "Invalid Device Grant flow ID"
+                    description:
+                      key: "error.agentservice.invalid_device_grant_flow_id_description"
+                      defaultValue: "The assigned flow must be a valid Device Grant flow"
+                conflicting-flow-references:
+                  summary: A configured flow invokes a different flow than the agent assignment
+                  value:
+                    code: "AGT-1067"
+                    message:
+                      key: "error.agentservice.agent_flow_mismatch"
+                      defaultValue: "Conflicting flow references"
+                    description:
+                      key: "error.agentservice.agent_flow_mismatch_description"
+                      defaultValue: "The {{param(sourceFlowType)}} flow references a different {{param(flowType)}} flow than the one configured on the agent. Both must point to the same {{param(flowType)}} flow."
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -902,6 +932,9 @@ paths:
         otherwise the request is rejected with `AGT-1053`. As on create, the caller also needs permission
         to view the agent type (`system:agenttype:view`), and an agent type that does not exist, or that the
         caller cannot read, is rejected with `AGT-1054`.
+
+        A personal agent keeps the owner it was registered for. Leave `owner` out, or send the current owner;
+        a different owner is rejected with `AGT-1064`.
       parameters:
         - in: path
           name: id
@@ -1098,6 +1131,36 @@ paths:
                     description:
                       key: "error.agentservice.invalid_redirect_uri_description"
                       defaultValue: "One or more redirect URIs are not valid"
+                device-grant-flow-required:
+                  summary: Device Code is enabled without a Device Grant flow
+                  value:
+                    code: "AGT-1065"
+                    message:
+                      key: "error.agentservice.device_grant_flow_required"
+                      defaultValue: "Device Grant flow is required"
+                    description:
+                      key: "error.agentservice.device_grant_flow_required_description"
+                      defaultValue: "Assign a Device Grant flow before enabling the Device Code grant type"
+                invalid-device-grant-flow:
+                  summary: The assigned flow is invalid
+                  value:
+                    code: "AGT-1066"
+                    message:
+                      key: "error.agentservice.invalid_device_grant_flow_id"
+                      defaultValue: "Invalid Device Grant flow ID"
+                    description:
+                      key: "error.agentservice.invalid_device_grant_flow_id_description"
+                      defaultValue: "The assigned flow must be a valid Device Grant flow"
+                conflicting-flow-references:
+                  summary: A configured flow invokes a different flow than the agent assignment
+                  value:
+                    code: "AGT-1067"
+                    message:
+                      key: "error.agentservice.agent_flow_mismatch"
+                      defaultValue: "Conflicting flow references"
+                    description:
+                      key: "error.agentservice.agent_flow_mismatch_description"
+                      defaultValue: "The {{param(sourceFlowType)}} flow references a different {{param(flowType)}} flow than the one configured on the agent. Both must point to the same {{param(flowType)}} flow."
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -1348,6 +1411,16 @@ paths:
                     description:
                       key: "error.agentservice.invalid_user_attribute_description"
                       defaultValue: "One or more user attributes are not valid for the configured allowed user types"
+                personal-agent-owner-immutable:
+                  summary: The update names a different owner for a personal agent
+                  value:
+                    code: "AGT-1064"
+                    message:
+                      key: "error.agentservice.personal_agent_owner_immutable"
+                      defaultValue: "Owner cannot be changed"
+                    description:
+                      key: "error.agentservice.personal_agent_owner_immutable_description"
+                      defaultValue: "A personal agent keeps the owner it was registered for"
 
         "403":
           description: >
@@ -2388,6 +2461,10 @@ components:
             Auth flow to use when users authenticate against this agent. When omitted and
             other inbound auth fields are present, the system default auth flow is used.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           description: Registration flow for this agent.
@@ -2427,7 +2504,7 @@ components:
             OAuth/OIDC configuration for the agent. Providing this also creates an inbound client row (inbound auth profile fields are not required to be explicitly set).
 
             The `client_credentials` grant type is always granted: it is added when missing, and is the default when no grant types are given. A public client, which has no secret, is not given it. All other requested grant types are accepted as given. When `delegated` is `true`, an OAuth configuration is created if none is given, and the grant types are checked:
-            - When any grant type beyond `client_credentials` is given, at least one of `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` must be among them.
+            - When any grant type beyond `client_credentials` is given, at least one of `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` must be among them.
             - When none beyond `client_credentials` is given, `authorization_code` and `refresh_token` are added, with the `code` response type and PKCE required.
 
     UpdateAgentRequest:
@@ -2469,7 +2546,7 @@ components:
         owner:
           allOf:
             - $ref: '#/components/schemas/AgentOwner'
-          description: Admins can transfer ownership by setting a different owner. Omit it to keep the current owner.
+          description: Admins can transfer ownership by setting a different owner, except for a personal agent, which keeps the owner it was registered for. Omit it to keep the current owner.
         delegated:
           type: boolean
           default: false
@@ -2494,6 +2571,10 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2598,6 +2679,11 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          readOnly: true
+          description: Device Grant flow assigned to this agent.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2701,6 +2787,11 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          readOnly: true
+          description: Device Grant flow assigned to this agent.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -3087,6 +3178,7 @@ components:
               - "client_credentials"
               - "refresh_token"
               - "urn:openid:params:grant-type:ciba"
+              - "urn:ietf:params:oauth:grant-type:device_code"
               - "urn:ietf:params:oauth:grant-type:token-exchange"
               - "urn:ietf:params:oauth:grant-type:jwt-bearer"
           description: >-
@@ -3630,6 +3722,11 @@ components:
       description: |
         Who is accountable for the agent. A local owner is an entity of this deployment and must exist.
         Any other owner is managed in another identity system and is stored as given, without a lookup.
+
+        On a control plane, which keeps configuration as references, any of the three values may be a
+        variable reference such as `var:AGENT__<id>__IS_LOCAL`, kept as given for each gateway to resolve
+        when a version is applied to it. Such an owner is never looked up. No value may be a secret
+        reference (`sec:`).
       required:
         - id
       properties:
@@ -3638,19 +3735,35 @@ components:
           maxLength: 256
           description: |
             The owner's ID, of the kind `idType` names: a bare email address for `email`, and an E.164
-            number such as `+94771234567` for `mobile`.
+            number such as `+94771234567` for `mobile`. On a control plane, a variable reference.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
         idType:
-          type: string
-          enum: [uuid, email, mobile]
+          anyOf:
+            - type: string
+              enum: [uuid, email, mobile]
+            - $ref: '#/components/schemas/OwnerValueReference'
           default: uuid
-          description: What the ID holds. A local owner is always identified by `uuid`.
+          description: |
+            What the ID holds. A local owner is always identified by `uuid`. On a control plane, a
+            variable reference.
           example: "uuid"
         isLocal:
-          type: boolean
+          anyOf:
+            - type: boolean
+            - $ref: '#/components/schemas/OwnerValueReference'
           default: true
-          description: Whether the owner is an entity of this deployment.
+          description: |
+            Whether the owner is an entity of this deployment. A boolean, or on a control plane, a
+            variable reference; it is text only when it is itself a reference.
           example: true
+
+    OwnerValueReference:
+      type: string
+      pattern: '^var:[A-Z_][A-Z0-9_]*$'
+      description: |
+        A reference to a variable each gateway holds, kept by a control plane in place of an owner's
+        value and resolved by the gateway a version is applied to.
+      example: "var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__IS_LOCAL"
 
     Lifespan:
       type: object

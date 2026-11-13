@@ -270,6 +270,9 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 				return nil, &tidcommon.InternalServerError
 			}
 		}
+		if flowStep.Status == providers.FlowStatusIncomplete {
+			flowStep.ExpiresAt = engineCtx.expiresAt
+		}
 	}
 
 	return &flowStep, nil
@@ -1141,6 +1144,7 @@ func (s *flowExecService) storeContext(ctx context.Context, engineCtx *EngineCon
 	if expirySeconds <= 0 {
 		expirySeconds = s.getFlowExpirySeconds(ctx, engineCtx.FlowType)
 	}
+	engineCtx.expiresAt = time.Now().Add(time.Duration(expirySeconds) * time.Second)
 
 	encryptedEngineCtx, err := s.encryptEngineContext(ctx, engineCtx)
 	if err != nil {

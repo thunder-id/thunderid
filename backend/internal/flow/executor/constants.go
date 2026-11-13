@@ -217,8 +217,6 @@ const (
 
 // Executor property keys
 const (
-	propertyKeyAssignGroup           = "assignGroup"
-	propertyKeyAssignRole            = "assignRole"
 	propertyKeySeedGroupsFromMapping = "seedGroupsFromMapping"
 	propertyKeySeedRolesFromMapping  = "seedRolesFromMapping"
 	// propertyKeyDelegated sets whether a provisioned agent acts on behalf of a signed-in user when the

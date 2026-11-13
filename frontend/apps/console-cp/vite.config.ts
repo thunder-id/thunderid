@@ -59,6 +59,11 @@ const DEV_GATE_URL = process.env.THUNDERID_DEV_GATE_URL?.trim();
 // for the dev server; production builds receive an empty string.
 const DEV_TRUSTED_ISSUER_URL = process.env.THUNDERID_DEV_TRUSTED_ISSUER_URL?.trim();
 
+// Dev Administrator role, from THUNDERID_DEV_ADMINISTRATOR_ROLE_ID (unset by default, which keeps
+// config.js's). Injected into __DEV_ADMINISTRATOR_ROLE_ID__ only for the dev server; production
+// builds receive an empty string.
+const DEV_ADMINISTRATOR_ROLE_ID = process.env.THUNDERID_DEV_ADMINISTRATOR_ROLE_ID?.trim();
+
 // https://vite.dev/config/
 export default defineConfig(({command}) => ({
   base: BASE_URL,
@@ -107,6 +112,7 @@ export default defineConfig(({command}) => ({
       command === 'serve' ? (DEV_GATE_URL && DEV_GATE_URL.length > 0 ? DEV_GATE_URL : 'https://localhost:5190') : '',
     ),
     __DEV_TRUSTED_ISSUER_URL__: JSON.stringify(command === 'serve' ? (DEV_TRUSTED_ISSUER_URL ?? '') : ''),
+    __DEV_ADMINISTRATOR_ROLE_ID__: JSON.stringify(command === 'serve' ? (DEV_ADMINISTRATOR_ROLE_ID ?? '') : ''),
   },
   plugins: [
     linkWorkspaceSource(),

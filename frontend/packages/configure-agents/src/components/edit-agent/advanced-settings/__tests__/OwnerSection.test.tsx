@@ -92,6 +92,23 @@ describe('OwnerSection', () => {
     expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
   });
 
+  it('locks the owner of a personal agent and says why', () => {
+    render(
+      <OwnerSection
+        agent={{...mockAgent, kind: 'personal-assistant'}}
+        editedAgent={{}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('radio', {name: 'Internal'})).toBeDisabled();
+    expect(screen.getByRole('radio', {name: 'External'})).toBeDisabled();
+    expect(
+      screen.getByText('The user this personal agent acts for. It keeps the owner it was registered for.'),
+    ).toBeInTheDocument();
+  });
+
   it('opens an external owner on External with its type and ID, ready to change', () => {
     render(
       <OwnerSection

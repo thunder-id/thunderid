@@ -697,6 +697,19 @@ function prepare_cp_frontend_for_packaging() {
         shopt -s dotglob
         cp -r "$FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist/"* "$DIST_DIR/$CP_PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
         shopt -u dotglob
+
+        # The Control Plane console gives the administrators it creates the bootstrap's Administrator role.
+        local cp_console_config="$DIST_DIR/$CP_PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR/config.js"
+        awk '
+            /^};$/ {
+                print "  administrators: {"
+                print "    role_ids: [\"01900000-0000-7000-8000-000000000050\"],"
+                print "  },"
+            }
+            { print }
+        ' "$cp_console_config" > "$cp_console_config.tmp"
+        mv "$cp_console_config.tmp" "$cp_console_config"
+        assert_patched "$cp_console_config" "01900000-0000-7000-8000-000000000050"
     else
         echo "Warning: Control Plane console build output not found at $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist"
     fi
@@ -952,6 +965,11 @@ function stage_quickstart_pack() {
     sed -i.bak "s/client_id: 'CONSOLE'/client_id: 'ADMIN_CONSOLE'/" "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js"
     rm -f "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
 
+    # The Control Plane's console gives the administrators it creates the Administrator role, which
+    # rename_quickstart_service_desk_admin above moved to the Service Desk Administrator role's ID.
+    sed -i.bak "s/01900000-0000-7000-8000-000000000050/01900000-0000-7000-8000-0000000000f5/" "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js"
+    rm -f "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
+
     # auth-dp runs on its own port, distinct from the managed dp it shares a generated
     # certificate and signing keys with (see quickstart/setup.sh). Patched into this copy of
     # deployment.yaml only — the checked-in source at backend/cmd/server/deployment.yaml is never
@@ -1038,6 +1056,7 @@ function stage_quickstart_pack() {
     assert_patched "$dp_dir/deployment.yaml" "  security:"
     assert_patched "$cp_dir/deployment.yaml" "issuer: \"https://localhost:$QUICKSTART_AUTH_DP_PORT\""
     assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "trusted_issuer"
+    assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "01900000-0000-7000-8000-0000000000f5"
     assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "  gate_client: {"
     assert_patched "$cp_dir/config/resources/server_configs/csp.yaml" "https://localhost:$QUICKSTART_AUTH_DP_PORT"
 
@@ -1720,6 +1739,7 @@ function run_quickstart() {
     fi
     if [ "$run_cp" = "true" ]; then
         THUNDERID_DEV_SERVER_URL="$cp_url" THUNDERID_DEV_TRUSTED_ISSUER_URL="$auth_dp_url" \
+            THUNDERID_DEV_ADMINISTRATOR_ROLE_ID=01900000-0000-7000-8000-0000000000f5 \
             pnpm --filter "@thunderid/console-cp" dev &
         DEV_PIDS+=($!)
     fi

@@ -176,6 +176,7 @@ func (suite *DelegationTestSuite) TestDelegatedAgentNeedsAGrantThatLetsItActForA
 			suite.Require().NotNil(svcErr)
 			suite.Equal(ErrorMissingDelegationGrantType.Code, svcErr.Code)
 			suite.Equal("authorization_code, urn:openid:params:grant-type:ciba, "+
+				"urn:ietf:params:oauth:grant-type:device_code, "+
 				"urn:ietf:params:oauth:grant-type:token-exchange, urn:ietf:params:oauth:grant-type:jwt-bearer",
 				svcErr.ErrorDescription.Params["grantTypes"])
 		})

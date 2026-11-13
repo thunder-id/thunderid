@@ -128,20 +128,6 @@ func (ts *ProjectAPITestSuite) TestUpdateResourceServerWithProject() {
 		ts.resourceServerIDs(ts.listResourceServers("?limit=100&projectId="+url.QueryEscape(second.ID))))
 }
 
-// A resource server stays editable after its project is deleted: an update that changes neither the project
-// nor the organization unit does not check the project again.
-func (ts *ProjectAPITestSuite) TestUpdateResourceServerOfDeletedProject() {
-	gone := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Gone"}`, ts.handle("rs-gone")))
-	rs := ts.createResourceServer(ts.resourceServerBody("gone", `"projectId":%q`, gone.ID))
-	status, body := ts.do(http.MethodDelete, "/projects/"+gone.ID, "")
-	ts.Require().Equal(http.StatusNoContent, status, body)
-
-	updated := ts.updateResourceServer(rs.ID, ts.resourceServerBody("gone", `"description":"still editable"`))
-
-	ts.Equal(gone.ID, updated.ProjectID)
-	ts.Equal(defaultOUID, updated.OUID)
-}
-
 // An organization-level resource server moves into a project when an update names one.
 func (ts *ProjectAPITestSuite) TestUpdateMovesResourceServerIntoProject() {
 	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Target"}`, ts.handle("rs-into")))
@@ -195,6 +181,21 @@ func (ts *ProjectAPITestSuite) TestExportedResourceServerKeepsItsProject() {
 	var imported projectResourceServer
 	ts.Require().Equal(http.StatusOK, ts.getJSON("/resource-servers/"+rs.ID, &imported))
 	ts.Equal(created.ID, imported.ProjectID)
+}
+
+// A project that still has a resource server is not deleted until the resource server is gone.
+func (ts *ProjectAPITestSuite) TestDeleteProjectWithResourceServerIsRefused() {
+	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Busy"}`, ts.handle("rs-busy")))
+	rs := ts.createResourceServer(ts.resourceServerBody("busy", `"projectId":%q`, created.ID))
+
+	status, body := ts.do(http.MethodDelete, "/projects/"+created.ID, "")
+	ts.Equal(http.StatusConflict, status, body)
+	ts.Equal("PRJ-1013", codeOf(ts.T(), body))
+
+	status, body = ts.do(http.MethodDelete, "/resource-servers/"+rs.ID, "")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	status, body = ts.do(http.MethodDelete, "/projects/"+created.ID, "")
+	ts.Equal(http.StatusNoContent, status, body)
 }
 
 // resourceServerBody builds a resource server request with a unique name and identifier, with the given

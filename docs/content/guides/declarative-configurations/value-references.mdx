@@ -118,12 +118,18 @@ import, or, when it names the variable it is stored under, resolve without end.
 A control plane keeps configuration as references and holds no values, so an import there leaves
 references as they are. They are resolved by the deployment the configuration is applied to.
 
+An agent's owner given by references is kept the same way. Each of its `id`, `idType`, and
+`isLocal` may be a `var:` reference, and a value given as itself beside one is still checked. The
+control plane never looks up such an owner, and returns it with the references as written, so its
+`isLocal` is text there. See [Agent Owners](../resource-export.mdx#agent-owners).
+
 ## Values Captured on a Control Plane
 
 A control plane writes the values its references name to its first gateway as you
 create and change resources, so the gateway holds them when a configuration version is applied to it. Each
-value is stored under the name the export refers to it by: a client ID or a resource server's
-identifier among the gateway's variables, a client secret or a password among its secrets. A list,
+value is stored under the name the export refers to it by: a client ID, an agent's owner, or a
+resource server's identifier among the gateway's variables, a client secret or a password among its
+secrets. A list,
 such as an application's redirect URIs, is stored among the variables as the JSON list of its items,
 which is what its reference expands from.
 
@@ -161,9 +167,36 @@ Capture follows these rules:
   reported as missing in the same way.
 - **Replaces what is there.** A value is set whether or not the gateway already holds that name, so
   writing a resource again replaces the value the gateway held under its name.
+- **An agent's owner only when the write sets it.** The owner is captured when an agent is created,
+  and when an update changes the owner. An update that leaves the owner as it was captures none, so
+  an owner set on the first gateway for that agent stays until the owner is changed on the control
+  plane.
 - **Values, never references.** A value that is itself a reference, or a list holding one among its
   items, is not captured. The export keeps those as they are, so the gateway holds nothing under the
   name, and a reference stored as a value would never resolve.
+
+### Variables Filled on Start
+
+A value is captured only when a resource is written, so a resource written before one of its fields
+was exported as a reference has no value for that field on the gateway. When a control plane starts,
+it writes to its first gateway each variable its applications, agents, and resource servers refer to
+that the gateway does not hold, with the value the control plane holds.
+
+- **Missing values only.** A value the gateway holds is never replaced, and neither is one a write
+  has already put on its way, so restarting the control plane changes nothing the gateway already has.
+- **Variables only.** A secret is never filled, because the control plane holds only its hash.
+- **First gateway only.** Like a captured value, a filled value goes only to the first gateway.
+- **Waits for the gateway.** A gateway that does not answer is asked again, waiting longer each
+  time, as many times as a captured value is sent. A gateway that refuses the lookup is not asked
+  again.
+
+#### Upgrading to Owner References
+
+A control plane that exports an agent's owner as references, after upgrading from one that did not,
+fills the first gateway as above. Every other gateway still lacks the owner values of the agents
+written before the upgrade, so the next version applied to it is refused until they are set. The dry
+run, and the console's deploy dialog, list each one. An older data plane cannot read an owner resolved
+from references, so upgrade data planes before their control plane.
 
 ### Limits
 

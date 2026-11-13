@@ -72,7 +72,7 @@ func (f *fakeOUService) DeleteOrganizationUnit(context.Context, string) *tidcomm
 
 func (f *fakeRoleService) DeleteRole(_ context.Context, id string) *tidcommon.ServiceError {
 	f.deleted = append(f.deleted, id)
-	return nil
+	return f.deleteErr
 }
 
 func (f *fakeGroupService) DeleteGroup(context.Context, string) *tidcommon.ServiceError { return nil }
@@ -407,6 +407,16 @@ func TestOrderDeletionsByDependencies_RemovesATemplateBetweenItsFlowAndItsOrgani
 		resourceTypeNotificationTemplate,
 		resourceTypeOrganizationUnit,
 	}, got)
+}
+
+func TestOrderDeletionsByDependencies_RemovesAnAuthorizationDetailTypeBeforeItsProject(t *testing.T) {
+	ordered := orderDeletionsByDependencies([]ResourceDeletion{
+		{ResourceType: resourceTypeProject, ID: "project"},
+		{ResourceType: resourceTypeAuthorizationDetailType, ID: "type"},
+	})
+
+	assert.Equal(t, resourceTypeAuthorizationDetailType, ordered[0].ResourceType)
+	assert.Equal(t, resourceTypeProject, ordered[1].ResourceType)
 }
 
 func TestOrderDeletionsByDependencies_TakesMembersOffFirst(t *testing.T) {

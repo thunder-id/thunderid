@@ -227,14 +227,12 @@ func (noopDepRegistry) ValidateReferenceUpdate(
 
 // localOwner returns a local owner identified by the given ID.
 func localOwner(id string) *providers.AgentOwner {
-	local := true
-	return &providers.AgentOwner{ID: id, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}
+	return &providers.AgentOwner{ID: id, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: providers.AgentOwnerLocal}
 }
 
 // externalOwner returns an owner managed in another identity system.
 func externalOwner(id string, idType providers.AgentOwnerIDType) *providers.AgentOwner {
-	local := false
-	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: &local}
+	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: providers.AgentOwnerExternal}
 }
 
 // storedOwner returns an owner the way the systemAttributes blob holds it.
@@ -1840,8 +1838,69 @@ func (suite *AgentServiceTestSuite) TestNormalizeOwner() {
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
-			got, svcErr := normalizeOwner(tc.owner)
+			got, svcErr := normalizeOwner(tc.owner, false)
 			if tc.wantErr {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(ErrorInvalidOwner.Code, svcErr.Code)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.want, got)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestNormalizeOwner_References() {
+	const (
+		idRef       = "var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__ID"
+		idTypeRef   = providers.AgentOwnerIDType("var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__ID_TYPE")
+		localityRef = providers.AgentOwnerLocality("var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__IS_LOCAL")
+	)
+	allRefs := &providers.AgentOwner{ID: idRef, IDType: idTypeRef, IsLocal: localityRef}
+	cases := []struct {
+		name            string
+		owner           *providers.AgentOwner
+		keepsReferences bool
+		want            *providers.AgentOwner
+	}{
+		{name: "every value a reference is kept", owner: allRefs, keepsReferences: true, want: allRefs},
+		{name: "a referenced locality with a given email is kept",
+			owner: &providers.AgentOwner{ID: "a@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+				IsLocal: localityRef}, keepsReferences: true,
+			want: &providers.AgentOwner{ID: "a@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+				IsLocal: localityRef}},
+		{name: "a referenced id of a local owner is kept",
+			owner: &providers.AgentOwner{ID: idRef}, keepsReferences: true,
+			want: &providers.AgentOwner{ID: idRef, IDType: providers.AgentOwnerIDTypeUUID,
+				IsLocal: providers.AgentOwnerLocal}},
+		{name: "a referenced id type with a given local owner is kept",
+			owner: &providers.AgentOwner{ID: "user-1", IDType: idTypeRef,
+				IsLocal: providers.AgentOwnerLocal}, keepsReferences: true,
+			want: &providers.AgentOwner{ID: "user-1", IDType: idTypeRef,
+				IsLocal: providers.AgentOwnerLocal}},
+		{name: "a given value beside a reference is still checked",
+			owner: &providers.AgentOwner{ID: "not-an-email", IDType: providers.AgentOwnerIDTypeEmail,
+				IsLocal: localityRef}, keepsReferences: true},
+		{name: "a local owner by email beside a referenced id is refused",
+			owner: &providers.AgentOwner{ID: idRef, IDType: providers.AgentOwnerIDTypeEmail,
+				IsLocal: providers.AgentOwnerLocal}, keepsReferences: true},
+		{name: "a secret reference is not kept",
+			owner: &providers.AgentOwner{ID: "user-1", IsLocal: "sec:AGENT__X__IS_LOCAL"}, keepsReferences: true},
+		{name: "an owner ID that is a secret reference is refused where references are kept",
+			owner: externalOwner("sec:API_KEY", providers.AgentOwnerIDTypeUUID), keepsReferences: true},
+		{name: "an owner ID that is a secret reference is refused where references are not kept",
+			owner: externalOwner("sec:API_KEY", providers.AgentOwnerIDTypeUUID)},
+		{name: "an ID type that is a secret reference is refused",
+			owner: &providers.AgentOwner{ID: "user-1", IDType: "sec:AGENT__X__ID_TYPE"}, keepsReferences: true},
+		{name: "a referenced locality is refused where references are not kept",
+			owner: &providers.AgentOwner{ID: "user-1", IsLocal: localityRef}},
+		{name: "a referenced id type is refused where references are not kept",
+			owner: &providers.AgentOwner{ID: "user-1", IDType: idTypeRef}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			got, svcErr := normalizeOwner(tc.owner, tc.keepsReferences)
+			if tc.want == nil {
 				suite.Require().NotNil(svcErr)
 				suite.Equal(ErrorInvalidOwner.Code, svcErr.Code)
 				return
@@ -1870,6 +1929,56 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_ExternalOwner_StoredWithoutL
 	mockEntity.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, owner.ID)
 	suite.Require().NotNil(stored)
 	suite.Equal(owner, readSystemAttributes(stored.SystemAttributes).Owner)
+}
+
+// On a control plane, an owner given by references is stored as given and never looked up, so its
+// export refers to the values each deployment holds.
+func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerByReferenceKeptWhereReferencesAreKept() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.keepsReferences = true
+	owner := &providers.AgentOwner{ID: "var:AGENT__A__ID", IDType: "var:AGENT__A__ID_TYPE",
+		IsLocal: "var:AGENT__A__IS_LOCAL"}
+	var stored *providers.Entity
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { stored = args.Get(1).(*providers.Entity) }).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Owner: owner,
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal(owner, resp.Owner)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, owner.ID)
+	suite.Require().NotNil(stored)
+	suite.Equal(owner, readSystemAttributes(stored.SystemAttributes).Owner)
+}
+
+// A referenced ID of a local owner is not looked up either: no user here is named by it.
+func (suite *AgentServiceTestSuite) TestCreateAgent_LocalOwnerByReferencedIDNotLookedUp() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.keepsReferences = true
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	_, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Owner: localOwner("var:AGENT__A__ID"),
+	})
+	suite.Require().Nil(svcErr)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, "var:AGENT__A__ID")
+}
+
+// Where references are not kept, a referenced locality is not a value the owner can be stored with.
+func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerByReferenceRefusedWhereReferencesAreNotKept() {
+	svc, _, _, _, _ := suite.setupService()
+
+	_, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID,
+		Owner: &providers.AgentOwner{ID: "user-1", IsLocal: "var:AGENT__A__IS_LOCAL"},
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorInvalidOwner.Code, svcErr.Code)
 }
 
 // An external uuid owner is stored as given, even when its ID is also an entity of this deployment: it
@@ -2092,31 +2201,56 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_CarriesKindForward() {
 	assert.Equal(suite.T(), providers.AgentKind("future-kind"), resp.Kind)
 }
 
-// A personal agent's owner can only change to another local user.
-func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerRefusals() {
-	for name, tc := range map[string]struct {
-		owner    *providers.AgentOwner
-		wantCode string
-	}{
-		"external owner": {owner: externalOwner("user-2", providers.AgentOwnerIDTypeUUID),
-			wantCode: ErrorInvalidOwner.Code},
-		"owner is an agent": {owner: localOwner("agent-2"), wantCode: ErrorOwnerNotFound.Code},
+// An update naming any other owner for a personal agent is refused before anything else is read or written.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerCannotChange() {
+	for name, owner := range map[string]*providers.AgentOwner{
+		"another local user": localOwner("user-2"),
+		"external owner":     externalOwner("user-2", providers.AgentOwnerIDTypeUUID),
+		"owner is an agent":  localOwner("agent-2"),
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, mockInbound, _, _ := suite.setupService()
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(withKind(
+				buildAgentEntityFixture(testAgentName, "", "owner-1", ""), providers.AgentKindPersonalAssistant), nil)
+
+			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+				Type: testAgentType, Owner: owner,
+			})
+			assert.Nil(suite.T(), resp)
+			suite.Require().NotNil(svcErr)
+			assert.Equal(suite.T(), ErrorPersonalAgentOwnerImmutable.Code, svcErr.Code)
+			mockEntity.AssertNumberOfCalls(suite.T(), "GetEntityProfile", 1)
+			mockInbound.AssertNotCalled(suite.T(), "GetOAuthProfileByEntityID", mock.Anything, mock.Anything)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// An update that leaves the owner out, or sends the current owner, keeps the personal agent's owner.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentKeepsItsOwner() {
+	for name, owner := range map[string]*providers.AgentOwner{
+		"owner left out": nil,
+		"same owner":     {ID: "owner-1"},
 	} {
 		suite.Run(name, func() {
 			svc, mockEntity, _, _, _ := suite.setupService()
 			clearMockCalls(mockEntity, "GetEntityProfile")
 			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(withKind(
 				buildAgentEntityFixture(testAgentName, "", "owner-1", ""), providers.AgentKindPersonalAssistant), nil)
-			mockEntity.On("GetEntityProfile", mock.Anything, "agent-2").
-				Return(&providers.Entity{ID: "agent-2", Category: providers.EntityCategoryAgent}, nil).Maybe()
+			var storedOwner *providers.AgentOwner
+			clearMockCalls(mockEntity, "UpdateEntity")
+			mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.MatchedBy(func(e *providers.Entity) bool {
+				storedOwner = readSystemAttributes(e.SystemAttributes).Owner
+				return true
+			})).Return(&providers.Entity{}, nil)
 
 			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-				Type: testAgentType, Owner: tc.owner,
+				Type: testAgentType, Owner: owner,
 			})
-			assert.Nil(suite.T(), resp)
-			suite.Require().NotNil(svcErr)
-			assert.Equal(suite.T(), tc.wantCode, svcErr.Code)
-			mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+			suite.Require().Nil(svcErr)
+			suite.Require().NotNil(resp)
+			assert.Equal(suite.T(), localOwner("owner-1"), storedOwner)
 		})
 	}
 }
@@ -2244,6 +2378,22 @@ func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_InvalidGrant
 	svcErr := svc.translateInboundClientError(context.Background(), inboundclient.ErrOAuthInvalidGrantType)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorInvalidGrantType.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_FlowMismatch() {
+	svc, _, _, _, _ := suite.setupService()
+	err := &inboundclient.FlowMismatchError{
+		SourceFlowType: providers.FlowTypeDeviceGrant,
+		FlowType:       providers.FlowTypeAuthentication,
+	}
+
+	svcErr := svc.translateInboundClientError(context.Background(), err)
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentFlowMismatch.Code, svcErr.Code)
+	assert.Equal(suite.T(), tidcommon.ClientErrorType, svcErr.Type)
+	assert.Equal(suite.T(), "device_grant", svcErr.ErrorDescription.Params["sourceFlowType"])
+	assert.Equal(suite.T(), "authentication", svcErr.ErrorDescription.Params["flowType"])
 }
 
 func (suite *AgentServiceTestSuite) TestTranslateInboundClientError_Unknown() {

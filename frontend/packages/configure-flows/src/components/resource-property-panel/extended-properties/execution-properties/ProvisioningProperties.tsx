@@ -1,7 +1,9 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {IdMultiSelect, type IdMultiSelectOption} from '@thunderid/components';
 import {
+  Alert,
   Checkbox,
   FormControlLabel,
   FormHelperText,
@@ -16,13 +18,50 @@ import {useTranslation} from 'react-i18next';
 import {PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import {clampToInteger} from './utils';
+import {clampToInteger, parseCommaSeparated} from './utils';
 import VariableBinding from './VariableBinding';
 import {BOOLEAN_VARIABLES, NUMBER_VARIABLES, TEXT_VARIABLES} from './variableBindingTypes';
+import useGetAllGroups from '../../../../api/useGetAllGroups';
+import useGetAllRoles from '../../../../api/useGetAllRoles';
 import type {StepData} from '../../../../models/steps';
 
+/**
+ * Turns groups or roles into picker options. Names are unique only within an organization unit, so a name that more than
+ * one resource has is shown with the handle of its organization unit to tell them apart.
+ *
+ * @param resources - The groups or roles to offer.
+ * @returns The options, stored by ID and shown by name.
+ */
+const toOptions = (resources: {id: string; name: string; ouHandle?: string}[] = []): IdMultiSelectOption[] => {
+  const nameCounts = new Map<string, number>();
+  resources.forEach(({name}) => nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1));
+
+  return resources.map(({id, name, ouHandle}) => ({
+    id,
+    name: (nameCounts.get(name) ?? 0) > 1 && ouHandle ? `${name} (${ouHandle})` : name,
+  }));
+};
+
+/**
+ * Properties of a Provisioning step: where the new user is created, which attributes it is prompted for, and the
+ * groups and roles it is assigned, picked by name from those that exist.
+ *
+ * @param props - Props injected to the component.
+ * @returns The ProvisioningProperties component.
+ */
 function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
+  const groupsQuery = useGetAllGroups();
+  const rolesQuery = useGetAllRoles();
+
+  const groupOptions: IdMultiSelectOption[] = useMemo(() => toOptions(groupsQuery.data), [groupsQuery.data]);
+
+  const roleOptions: IdMultiSelectOption[] = useMemo(() => toOptions(rolesQuery.data), [rolesQuery.data]);
+
+  const unavailableLabel = useCallback(
+    (id: string): string => t('flows:core.executions.provisioning.unavailable', 'Unavailable: {{id}}', {id}),
+    [t],
+  );
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
@@ -191,19 +230,37 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         onChange={onChange}
         propertyKey="assignGroup"
         accepts={TEXT_VARIABLES}
-        label={t('flows:core.executions.provisioning.assignGroup.label')}
+        showLabel
+        htmlFor="assign-group"
+        label={t('flows:core.executions.provisioning.assignGroup.label', 'Assign group')}
       >
-        {({commit, label, value: stored}) => (
-          <DraftTextField
-            labelPlacement="top"
-            label={label}
-            id="assign-group"
-            value={(stored as string) || ''}
-            onCommit={commit}
-            placeholder={t('flows:core.executions.provisioning.assignGroup.placeholder')}
-            fullWidth
-            size="small"
-          />
+        {({commit, value: stored}) => (
+          <>
+            <IdMultiSelect
+              id="assign-group"
+              value={parseCommaSeparated(typeof stored === 'string' ? stored : '')}
+              onChange={(ids) => commit(ids.join(','))}
+              options={groupOptions}
+              loading={groupsQuery.isLoading}
+              error={groupsQuery.error}
+              onRetry={() => void groupsQuery.refetch()}
+              placeholder={t('flows:core.executions.provisioning.assignGroup.placeholder', 'Select groups to assign')}
+              noOptionsText={t('flows:core.executions.provisioning.assignGroup.noOptions', 'No groups found')}
+              unavailableLabel={unavailableLabel}
+              errorFallback={{
+                key: 'flows:core.executions.provisioning.assignGroup.loadError',
+                defaultValue: 'Failed to load groups.',
+              }}
+            />
+            {groupsQuery.isSuccess && groupOptions.length === 0 && (
+              <Alert severity="warning" sx={{mt: 1}}>
+                {t(
+                  'flows:core.executions.provisioning.assignGroup.noneExist',
+                  'No groups exist. Create one, then select it here.',
+                )}
+              </Alert>
+            )}
+          </>
         )}
       </VariableBinding>
 
@@ -212,19 +269,37 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         onChange={onChange}
         propertyKey="assignRole"
         accepts={TEXT_VARIABLES}
-        label={t('flows:core.executions.provisioning.assignRole.label')}
+        showLabel
+        htmlFor="assign-role"
+        label={t('flows:core.executions.provisioning.assignRole.label', 'Assign role')}
       >
-        {({commit, label, value: stored}) => (
-          <DraftTextField
-            labelPlacement="top"
-            label={label}
-            id="assign-role"
-            value={(stored as string) || ''}
-            onCommit={commit}
-            placeholder={t('flows:core.executions.provisioning.assignRole.placeholder')}
-            fullWidth
-            size="small"
-          />
+        {({commit, value: stored}) => (
+          <>
+            <IdMultiSelect
+              id="assign-role"
+              value={parseCommaSeparated(typeof stored === 'string' ? stored : '')}
+              onChange={(ids) => commit(ids.join(','))}
+              options={roleOptions}
+              loading={rolesQuery.isLoading}
+              error={rolesQuery.error}
+              onRetry={() => void rolesQuery.refetch()}
+              placeholder={t('flows:core.executions.provisioning.assignRole.placeholder', 'Select roles to assign')}
+              noOptionsText={t('flows:core.executions.provisioning.assignRole.noOptions', 'No roles found')}
+              unavailableLabel={unavailableLabel}
+              errorFallback={{
+                key: 'flows:core.executions.provisioning.assignRole.loadError',
+                defaultValue: 'Failed to load roles.',
+              }}
+            />
+            {rolesQuery.isSuccess && roleOptions.length === 0 && (
+              <Alert severity="warning" sx={{mt: 1}}>
+                {t(
+                  'flows:core.executions.provisioning.assignRole.noneExist',
+                  'No roles exist. Create one, then select it here.',
+                )}
+              </Alert>
+            )}
+          </>
         )}
       </VariableBinding>
 

@@ -25,9 +25,8 @@ const (
 
 // testAgentOwner returns the local owner the tests provision agents with.
 func testAgentOwner() *providers.AgentOwner {
-	local := true
 	return &providers.AgentOwner{
-		ID: testAgentOwnerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local,
+		ID: testAgentOwnerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: providers.AgentOwnerLocal,
 	}
 }
 

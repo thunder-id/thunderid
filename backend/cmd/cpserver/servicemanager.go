@@ -212,6 +212,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, valueCapture,
 		projectService, auditBus, ouAuthzService, resource.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
+	projectService.AddResourceCheck(resourceService.ProjectHasResourceServers)
 	exporters = append(exporters, resourceExporter)
 
 	// Initialize authorization details type management.
@@ -282,6 +283,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService, auditBus, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
+	projectService.AddResourceCheck(roleService.ProjectHasRoles)
 	// The control plane runs no flows, so the role and group tools write removals directly.
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, false)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, false)
@@ -350,7 +352,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
-		false, sharingService, auditBus, projectService, ouAuthzService)
+		groupService, roleService, false, sharingService, auditBus, projectService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 	projectService.AddResourceCheck(flowMgtService.ProjectHasFlows)
 
@@ -389,7 +391,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, sharingService,
 		inboundClientService, ouService, roleService, resourceService, flowMgtService, ouAuthzService,
 		governanceService, valueCapture, entityTypeService, dbprovider.GetDBProvider(), observabilitySvc,
-		projectService, auditBus, nil, nil)
+		projectService, auditBus, nil, nil, agent.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 	// The control plane creates agents directly. The data plane creates them through its agent

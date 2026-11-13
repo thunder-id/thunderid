@@ -103,4 +103,10 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   //   edit_pipeline_url: 'https://platform.example.com/projects/{project}/pipeline',
   //   manage_environments_url: 'https://platform.example.com/environments',
   // },
+
+  // Optional, Control Plane console only: the roles a user added outside any project is given. A packaged
+  // Control Plane sets it to the bootstrap's Administrator role.
+  // administrators: {
+  //   role_ids: ['01900000-0000-7000-8000-000000000050'],
+  // },
 };

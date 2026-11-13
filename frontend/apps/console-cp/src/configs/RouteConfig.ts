@@ -33,6 +33,8 @@ export interface ConsoleRoutePaths {
   settings: {
     list: () => string;
   };
+  /** The Control Plane's own users, its administrators, outside any project. */
+  administrators: UserRoutePaths['users'];
 }
 
 /**
@@ -81,6 +83,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
 export const ROUTE_SEGMENTS = {
   organizationUnits: 'organization-units',
   users: 'users',
+  administrators: 'administrators',
   userTypes: 'user-types',
   agentTypes: 'agent-types',
   agents: 'agents',
@@ -120,6 +123,11 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.users}`,
     detail: (userId) => `/${ROUTE_SEGMENTS.users}/${userId}`,
     add: () => `/${ROUTE_SEGMENTS.users}/add`,
+  },
+  administrators: {
+    list: () => `/${ROUTE_SEGMENTS.administrators}`,
+    detail: (userId) => `/${ROUTE_SEGMENTS.administrators}/${userId}`,
+    add: () => `/${ROUTE_SEGMENTS.administrators}/add`,
   },
   userTypes: {
     list: () => `/${ROUTE_SEGMENTS.userTypes}`,

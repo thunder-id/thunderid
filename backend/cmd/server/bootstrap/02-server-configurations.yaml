@@ -22,6 +22,8 @@ value:
     defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
+  adminAttributeVerificationFlow:
+    defaultHandle: default-admin-attribute-verification-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:

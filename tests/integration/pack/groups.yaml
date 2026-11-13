@@ -1,0 +1,14 @@
+# Pack test groups.
+#
+# Each group runs against a quickstart pack of its own, three planes on ports of its own, and the
+# groups run at the same time. The suites of a group run one after another. Every package not listed
+# here runs in the default group. Same format as ../groups.yaml; groups are balanced by run time, so
+# move packages between them when one runs long.
+groups:
+  - name: p1
+    packages:
+      - pack/oauth
+
+  - name: p2
+    packages:
+      - pack/propagation

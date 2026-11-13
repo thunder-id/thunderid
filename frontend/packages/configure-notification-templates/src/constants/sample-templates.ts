@@ -137,6 +137,36 @@ const OTP_EMAIL_BODY = `<!DOCTYPE html>
 </html>
 `;
 
+const SELF_EMAIL_VERIFICATION_EMAIL_BODY = `<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+  <h2>Verify your email address</h2>
+  <p>Select the button below to open the verification page, then select <strong>Verify email address</strong> to confirm that this address belongs to you.</p>
+  <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+    background-color: #3a87ed; color: #fff; text-decoration: none;
+    border-radius: 4px;">Open verification page</a></p>
+  <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+  <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+  <p>If you did not ask for this, you can ignore this email.</p>
+</body>
+</html>
+`;
+
+const ADMIN_INITIATED_EMAIL_VERIFICATION_EMAIL_BODY = `<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+  <h2>Verify your email address</h2>
+  <p>An administrator asked you to verify this email address. Open the link below and select <strong>Verify email address</strong>:</p>
+  <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+    background-color: #3a87ed; color: #fff; text-decoration: none;
+    border-radius: 4px;">Verify email address</a></p>
+  <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+  <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+  <p>If you did not expect this request, you can ignore this email. The address stays unverified.</p>
+</body>
+</html>
+`;
+
 /**
  * Hardcoded sample templates, mirroring the backend bootstrap defaults (per channel + handle). Keep
  * the {{ctx(...)}} keys aligned with the runtime executor keys so a sample resolves on send.
@@ -197,6 +227,28 @@ export const SAMPLE_TEMPLATES: readonly SampleNotificationTemplate[] = [
     },
     subject: 'Your verification code',
     body: OTP_EMAIL_BODY,
+    colorScheme: 'light',
+  },
+  {
+    id: 'email-self-email-verification',
+    channel: 'email',
+    display: {
+      label: 'Self Email Verification',
+      description: 'Sent when a user asks to verify their own email address.',
+    },
+    subject: 'Verify your email address',
+    body: SELF_EMAIL_VERIFICATION_EMAIL_BODY,
+    colorScheme: 'light',
+  },
+  {
+    id: 'email-admin-initiated-email-verification',
+    channel: 'email',
+    display: {
+      label: 'Administrator Initiated Email Verification',
+      description: 'Sent when an administrator asks a user to verify their email address.',
+    },
+    subject: 'Verify your email address',
+    body: ADMIN_INITIATED_EMAIL_VERIFICATION_EMAIL_BODY,
     colorScheme: 'light',
   },
   // ── SMS ────────────────────────────────────────────────────────────────

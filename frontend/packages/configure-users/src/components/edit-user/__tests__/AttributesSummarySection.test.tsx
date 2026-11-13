@@ -178,10 +178,15 @@ describe('AttributesSummarySection', () => {
       expect(within(entry('username')).queryByText(/Verified|Unverified/)).not.toBeInTheDocument();
     });
 
-    it('offers no Verify action', () => {
-      render(<AttributesSummarySection user={contactUser} />);
+    it('offers no verification link, which lives on the Attributes tab', () => {
+      mockUseGetUserType.mockReturnValue({
+        data: {id: 'schema-1', handle: 'employee', displayName: 'Employee', schema: {workEmail: {type: 'email'}}},
+        isLoading: false,
+      });
+      render(<AttributesSummarySection user={{...contactUser, attributes: {workEmail: 'alex@work.example.com'}}} />);
 
-      expect(screen.queryByRole('button', {name: /Verify/})).not.toBeInTheDocument();
+      expect(within(entry('workEmail')).getByText('Unverified')).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /^Send verification link/})).not.toBeInTheDocument();
     });
 
     it('shows no status for a read-only user', () => {

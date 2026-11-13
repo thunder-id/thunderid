@@ -1,0 +1,75 @@
+---
+displayed_sidebar: null
+title: useFlowVariables()
+docType: reference
+description: React hook that loads the variables a flow shares with an organization unit and the values the unit has set, and saves the unit's overrides.
+---
+
+# `useFlowVariables()`
+
+The `useFlowVariables` hook loads the variables a flow declares for an organization unit, the values the unit has set, and what the unit may do with each variable. It also saves the unit's overrides. It is the data layer behind [`<FlowVariablesForm />`](../../components/flow-variables-form), so use it to build the form with your own UI.
+
+## Usage
+
+```jsx title="src/FlowVariables.jsx" showLineNumbers
+import { useFlowVariables, BaseFlowVariables } from '@thunderid/react'
+
+function FlowVariables({ flowId, ouId }) {
+  const { connections, definitions, overlay, overrides, isLoaded, isSaving, save, saveError, error } =
+    useFlowVariables({ flowId, ouId })
+
+  if (!isLoaded && !error) return <p>Loading...</p>
+  if (error) return <p>Could not load the variables.</p>
+
+  return (
+    <BaseFlowVariables
+      variables={definitions}
+      connections={connections}
+      overlay={overlay}
+      initialValues={overrides}
+      isSubmitting={isSaving}
+      error={saveError?.message ?? null}
+      onSubmit={(values, changed) => save(changed)}
+    />
+  )
+}
+```
+
+:::note
+The hook must be used inside a component rendered within `ThunderIDProvider`. The access token of the signed-in user needs the permissions the server requires to read and update the flow's variables.
+:::
+
+The hook keeps the data it loaded while it fetches for a new `flowId` or `ouId`, so the previous values can stay on screen and be saved against the new flow. Render the component that calls the hook with a `key` of both identifiers, for example `<FlowVariables key={ouId + ':' + flowId} flowId={flowId} ouId={ouId} />`, so it starts clean when either changes.
+
+## Options
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `flowId` | `string \| undefined` | | Identifier of the flow. No request is sent until it is set. |
+| `ouId` | `string \| undefined` | | The organization unit whose overrides are read and saved. No request is sent until it is set. |
+| `enabled` | `boolean` | `true` | Set to `false` to skip fetching. |
+| `fetcher` | `(url: string, config: RequestInit) => Promise<Response>` | See [Fetcher Resolution](../management-hooks#fetcher-resolution) | Transport for this hook only. |
+| `onSaved` | `(values: FlowVariableValues) => void` | | Called with the saved overrides after a successful save. |
+
+## Return Values
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `definitions` | `FlowVariableDefinition[]` | The variables the flow declares for the organization unit. |
+| `overrides` | `FlowVariableValues` | The values the unit has set. A variable the unit has not set is absent, and its default applies. |
+| `overlay` | `ResolvedOverlay \| undefined` | What the unit may do with each variable: set its own value, or only see the owner's. |
+| `connections` | `ConnectionInstance[]` | The connections a `CONNECTION_SELECT` variable can take: the ones the unit owns and the ones shared into it. Empty until loaded, and when no variable needs them. |
+| `flow` | `ManagedFlowDefinition \| undefined` | The flow as the unit sees it. |
+| `isLoaded` | `boolean` | `true` once the variables, the unit's values, and its rules have all arrived. Build the form after this, because a form built earlier is reset when the values land. |
+| `isLoading` | `boolean` | `true` while any request is in flight. |
+| `isSaving` | `boolean` | `true` while a save is in flight. |
+| `error` | `Error \| null` | Why the variables could not be loaded. |
+| `save` | `(values: FlowVariableValues) => Promise<FlowVariables \| undefined>` | Replaces the unit's overrides. A variable left out returns to its default. Never rejects, so read `saveError` to handle a failure. |
+| `saveError` | `Error \| null` | Why the last save failed. |
+
+A successful save refetches the unit's values. The hook requests the connections only when the flow declares a `CONNECTION_SELECT` variable.
+
+## Related
+
+- [`<FlowVariablesForm />`](../../components/flow-variables-form) renders the form for you.
+- [Flow variable helpers](../../../../javascript/apis/flow-variables) in `@thunderid/javascript` define the types and rules the hook returns.

@@ -145,6 +145,25 @@ func (s *DependenciesTestSuite) TestAFlowNeedsTheTemplatesItsNodesName() {
 	s.Empty(needs["flow/flow-2"], "a template the bundle does not hold was needed")
 }
 
+// A flow needs every group and role a provisioning node assigns, whether the node names one or several separated by
+// commas: the data plane refuses a flow that assigns one it lacks.
+func (s *DependenciesTestSuite) TestAFlowNeedsEveryGroupAndRoleItsNodeAssigns() {
+	needs := needsOf(parseBundle(joinBundle([]string{
+		"resource_type: group\nid: grp-1\nname: One",
+		"resource_type: group\nid: grp-2\nname: Two",
+		"resource_type: role\nid: role-1\nname: One\nouId: ou-1",
+		"resource_type: role\nid: role-2\nname: Two\nouId: ou-1",
+		"resource_type: role\nid: role-3\nname: Three\nouId: ou-1",
+		"resource_type: flow\nid: flow-1\nname: f\nnodes:\n  - id: n-1\n    properties:\n" +
+			"      assignGroup: \"grp-1, grp-2\"\n      assignRole: role-1,role-2 ,\n",
+		"resource_type: flow\nid: flow-2\nname: g\nnodes:\n  - id: n-1\n    properties:\n" +
+			"      assignRole: role-3\n      assignGroup: \"{{ctx(groupID)}},grp-2\"",
+	})))
+
+	s.Equal([]string{"group/grp-1", "group/grp-2", "role/role-1", "role/role-2"}, needs["flow/flow-1"])
+	s.Equal([]string{"group/grp-2", "role/role-3"}, needs["flow/flow-2"])
+}
+
 // A selection is widened to what it needs that the gateway lacks, through what those need in turn;
 // a dependency the gateway holds as it is stays out.
 func (s *DependenciesTestSuite) TestASelectionIsWidenedToWhatItNeeds() {

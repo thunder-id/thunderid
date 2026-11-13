@@ -2042,6 +2042,8 @@ value:
     defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
+  adminAttributeVerificationFlow:
+    defaultHandle: default-admin-attribute-verification-flow
   roleDeletionFlow:
     defaultHandle: default-role-deletion-flow
   rolePermissionRemovalFlow:

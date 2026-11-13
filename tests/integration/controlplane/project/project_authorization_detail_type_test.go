@@ -102,6 +102,50 @@ func (ts *ProjectAPITestSuite) TestExportedAuthorizationDetailTypeKeepsItsProjec
 	ts.Contains(exported.Resources, "projectId: "+shop.ID)
 }
 
+// An import that brings a new project with its authorization details type creates the project first, whichever comes
+// first in the file, and its dry run reports the type as the import creates it.
+func (ts *ProjectAPITestSuite) TestImportedProjectAndItsAuthorizationDetailType() {
+	projectID := "019a0000-0000-7000-8000-0000000002a1"
+	typeID := "adt-imp-" + ts.suffix
+	ts.do(http.MethodDelete, authorizationDetailTypesPath+"/"+typeID, "")
+	ts.do(http.MethodDelete, "/projects/"+projectID, "")
+	ts.projects = append(ts.projects, projectID)
+	ts.authorizationDetailTypes = append(ts.authorizationDetailTypes, typeID)
+	typeDoc := fmt.Sprintf("resource_type: authorization_detail_type\nid: %s\ntype: %s\nname: Imported intent\n"+
+		"projectId: %s\nschema: '{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"}}}'\n",
+		typeID, "https://types.example.com/"+ts.handle("adt-imported"), projectID)
+	projectDoc := fmt.Sprintf("resource_type: project\nid: %s\nhandle: %s\ndisplayName: Imported\n", projectID,
+		ts.handle("adt-imported-project"))
+
+	dryRun := ts.importWith(typeDoc+"---\n"+projectDoc, true, true)
+	ts.Require().Equal(0, dryRun.Summary.Failed, dryRun.Results)
+	ts.Equal(http.StatusNotFound, ts.getJSON(authorizationDetailTypesPath+"/"+typeID, nil), "a dry run writes nothing")
+
+	ts.importContent(typeDoc + "---\n" + projectDoc)
+	var imported projectAuthorizationDetailType
+	ts.Require().Equal(http.StatusOK, ts.getJSON(authorizationDetailTypesPath+"/"+typeID, &imported))
+	ts.Equal(projectID, imported.ProjectID)
+}
+
+// A dry run of an import refuses an authorization details type without a project, or in a project that does not
+// exist, as the import itself does.
+func (ts *ProjectAPITestSuite) TestDryRunChecksTheProjectOfAnAuthorizationDetailType() {
+	doc := func(project string) string {
+		return fmt.Sprintf("resource_type: authorization_detail_type\nid: %s\ntype: %s\nname: Dry run\n%s"+
+			"schema: '{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"}}}'\n",
+			"adt-dry-"+ts.suffix, "https://types.example.com/"+ts.handle("adt-dry"), project)
+	}
+	for code, content := range map[string]string{
+		"RAR-1031": doc(""),
+		"RAR-1032": doc("projectId: 019a0000-0000-7000-8000-00000000dead\n"),
+	} {
+		outcome := ts.importWith(content, true, true)
+		ts.Require().Len(outcome.Results, 1)
+		ts.Equal("failed", outcome.Results[0].Status, outcome.Results[0].Message)
+		ts.Equal(code, outcome.Results[0].Code)
+	}
+}
+
 // authorizationDetailTypeBody builds an authorization details type request, in the given project when one is
 // named.
 func (ts *ProjectAPITestSuite) authorizationDetailTypeBody(name, projectID string) string {

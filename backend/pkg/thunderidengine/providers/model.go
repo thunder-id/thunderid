@@ -843,18 +843,106 @@ const (
 	AgentOwnerIDTypeMobile AgentOwnerIDType = "mobile"
 )
 
+// AgentOwnerLocality says whether an agent owner is an entity of this deployment. It holds "true" or
+// "false", or, on a control plane, which keeps configuration as references, a reference to the value
+// each deployment holds. It is written as a boolean, and as text only while it holds a reference.
+type AgentOwnerLocality string
+
+const (
+	// AgentOwnerLocal is an owner that is an entity of this deployment.
+	AgentOwnerLocal AgentOwnerLocality = "true"
+	// AgentOwnerExternal is an owner managed in another identity system.
+	AgentOwnerExternal AgentOwnerLocality = "false"
+)
+
+// AgentOwnerLocalityOf returns the locality a boolean states.
+func AgentOwnerLocalityOf(local bool) AgentOwnerLocality {
+	if local {
+		return AgentOwnerLocal
+	}
+	return AgentOwnerExternal
+}
+
+// Bool returns whether the locality is local, and whether it states one at all. An empty locality
+// reads as local; a reference states none.
+func (l AgentOwnerLocality) Bool() (local, stated bool) {
+	switch l {
+	case "", AgentOwnerLocal:
+		return true, true
+	case AgentOwnerExternal:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+// MarshalJSON writes a stated locality as a boolean and a reference as text.
+func (l AgentOwnerLocality) MarshalJSON() ([]byte, error) {
+	if local, stated := l.Bool(); stated {
+		return json.Marshal(local)
+	}
+	return json.Marshal(string(l))
+}
+
+// UnmarshalJSON reads a boolean, or text, which is how a reference arrives. A null leaves the
+// locality unstated.
+func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+	var local bool
+	if json.Unmarshal(data, &local) == nil {
+		*l = AgentOwnerLocalityOf(local)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	*l = AgentOwnerLocality(text)
+	return nil
+}
+
+// MarshalYAML writes a stated locality as a boolean and a reference as text.
+func (l AgentOwnerLocality) MarshalYAML() (interface{}, error) {
+	if local, stated := l.Bool(); stated {
+		return local, nil
+	}
+	return string(l), nil
+}
+
+// UnmarshalYAML reads a boolean, or text: a reference, or the "true" or "false" a resolved reference
+// becomes, since a resolved value is always text.
+func (l *AgentOwnerLocality) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode {
+		return fmt.Errorf("line %d: isLocal must be true, false or a reference", node.Line)
+	}
+	if node.Tag == "!!bool" {
+		var local bool
+		if err := node.Decode(&local); err != nil {
+			return err
+		}
+		*l = AgentOwnerLocalityOf(local)
+		return nil
+	}
+	*l = AgentOwnerLocality(node.Value)
+	return nil
+}
+
 // AgentOwner names who is accountable for an agent. A local owner is an entity of this deployment;
 // any other owner is managed in another identity system and is recorded as given.
 type AgentOwner struct {
 	ID     string           `json:"id"               yaml:"id"`
 	IDType AgentOwnerIDType `json:"idType,omitempty" yaml:"idType,omitempty"`
-	// IsLocal is nil when the owner does not say, which reads as local.
-	IsLocal *bool `json:"isLocal,omitempty" yaml:"isLocal,omitempty"`
+	// IsLocal is empty when the owner does not say, which reads as local.
+	IsLocal AgentOwnerLocality `json:"isLocal,omitempty" yaml:"isLocal,omitempty"`
 }
 
-// Local reports whether the owner is an entity of this deployment.
+// Local reports whether the owner is an entity of this deployment. An owner whose locality is a
+// reference is not, as no deployment is named by it yet.
 func (o *AgentOwner) Local() bool {
-	return o.IsLocal == nil || *o.IsLocal
+	local, _ := o.IsLocal.Bool()
+	return local
 }
 
 // Agent is the service-level model for agent create operations.

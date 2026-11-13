@@ -75,6 +75,27 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_CapturesTheGeneratedSecret()
 		agent.InboundAuthConfig[0].OAuthConfig.ClientSecret)
 }
 
+// A created agent is captured with its owner and kind, so the export's owner values reach the gateway.
+func (suite *AgentServiceTestSuite) TestCreateAgent_CapturesTheOwner() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "name")
+	owner := externalOwner("alice@example.com", providers.AgentOwnerIDTypeEmail)
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	_, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Owner: owner, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+	})
+	suite.Require().Nil(svcErr)
+
+	agent := capturer.captured(suite)
+	assert.Equal(suite.T(), owner, agent.Owner)
+	assert.Empty(suite.T(), agent.Kind)
+}
+
 // An updated agent is captured as the update returns it.
 func (suite *AgentServiceTestSuite) TestUpdateAgent_CapturesTheUpdatedAgent() {
 	svc, mockEntity, _, _, _ := suite.setupService()
@@ -95,6 +116,45 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_CapturesTheUpdatedAgent() {
 	assert.Equal(suite.T(), testAgentName, agent.Display)
 }
 
+// An update that leaves the owner as it was captures no owner, so the owner a gateway was given for the
+// agent is not replaced by this deployment's.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_SameOwnerIsNotCaptured() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "name")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "current-owner", ""), nil)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+		Owner: localOwner("current-owner"),
+	})
+	suite.Require().Nil(svcErr)
+
+	assert.Nil(suite.T(), capturer.captured(suite).Owner)
+}
+
+// An update that changes the owner captures it, so the first gateway is given the new owner.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ChangedOwnerIsCaptured() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "name")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "current-owner", ""), nil)
+	owner := externalOwner("alice@example.com", providers.AgentOwnerIDTypeEmail)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`), Owner: owner,
+	})
+	suite.Require().Nil(svcErr)
+
+	assert.Equal(suite.T(), owner, capturer.captured(suite).Owner)
+}
+
 // An agent whose type has no display attribute is captured under its ID, the name its export uses.
 func (suite *AgentServiceTestSuite) TestCapture_FallsBackToTheIDWithoutADisplayAttribute() {
 	svc, _, _, _, _ := suite.setupService()
@@ -104,7 +164,7 @@ func (suite *AgentServiceTestSuite) TestCapture_FallsBackToTheIDWithoutADisplayA
 
 	svc.captureValues(context.Background(), &model.AgentCompleteResponse{
 		ID: testAgentID, Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
-	}, nil)
+	}, nil, false)
 
 	assert.Equal(suite.T(), testAgentID, capturer.captured(suite).Display)
 }
@@ -126,7 +186,7 @@ func (suite *AgentServiceTestSuite) TestCaptureWithoutACapturerDoesNothing() {
 	svc, _, _, _, _ := suite.setupService()
 
 	assert.NotPanics(suite.T(), func() {
-		svc.captureValues(context.Background(), &model.AgentCompleteResponse{ID: testAgentID}, nil)
+		svc.captureValues(context.Background(), &model.AgentCompleteResponse{ID: testAgentID}, nil, false)
 	})
 }
 
@@ -208,7 +268,7 @@ func (suite *AgentServiceTestSuite) TestCapture_CredentialLookupFailureStillCapt
 			Type:        providers.OAuthInboundAuthType,
 			OAuthConfig: &providers.OAuthConfigWithSecret{ClientID: "cid", ClientSecret: "csecret"},
 		}},
-	}, json.RawMessage(`{"name":"test-agent","password":"s3cret"}`))
+	}, json.RawMessage(`{"name":"test-agent","password":"s3cret"}`), false)
 
 	agent := capturer.captured(suite)
 	assert.Nil(suite.T(), agent.Credentials)

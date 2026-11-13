@@ -563,6 +563,7 @@ const translations = {
     'categories.configure': 'Configure',
     'categories.customize': 'Customize',
     'categories.system': 'System',
+    'categories.organization': 'Organization',
     'categories.administration': 'Administration',
     'categories.identitySetup': 'Identity setup',
     'categories.shared': 'Shared by all projects',
@@ -591,7 +592,6 @@ const translations = {
     'pages.organizationSettings': 'Organization settings',
     'pages.users': 'Users',
     'pages.administrators': 'Administrators',
-    'pages.administratorsHint': 'People who manage your gateways',
     'pages.userTypes': 'User types',
     'pages.agentTypes': 'Agent types',
     'pages.organizationUnits': 'Organization units',
@@ -719,6 +719,9 @@ const translations = {
     'createUser.subtitle': 'Add a new user to your organization',
 
     // Add form (native creation, no onboarding flow)
+    'addForm.administratorRolesError':
+      'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
+    'addForm.retryRoles': 'Try again',
     'addForm.creating': 'Creating...',
     'addForm.noUserTypes': 'No user types are defined yet. Create one before adding a user.',
     'addForm.organizationUnit': 'Organization unit',
@@ -755,6 +758,15 @@ const translations = {
     'verification.verified': 'Verified',
     'verification.unverified': 'Unverified',
     'verification.verifiedAt': 'Verified on {{date}}',
+    'verification.verify': 'Verify',
+    'verification.send': 'Send verification link',
+    'verification.sent': 'Verification link sent to {{destination}}.',
+    'verification.sentGeneric': 'Verification link sent.',
+    'verification.sendError': 'Could not send the verification link. Please try again.',
+    'verification.sendFor': 'Send verification link for {{attribute}}',
+    'verification.sendSuspended': 'Unsuspend the user to send a verification link.',
+    'verification.sendExpired': "This user's account has expired, so a verification link cannot be sent.",
+    'verification.saveToVerify': 'Save to verify',
 
     // Update credentials
     'updateCredentials.button': 'Update credentials',
@@ -763,6 +775,9 @@ const translations = {
     'updateCredentials.error': 'Failed to update credentials. Please try again.',
 
     // Backend error code translations (per user service error envelope).
+    // Raised by the verification flow; scoped here so other flows keep their own copy.
+    'errors.FET-1038': 'Email provider is not configured.',
+    'errors.FET-1114': 'This user is suspended. Unsuspend the user and try again.',
     'errors.USR-1003': 'This user no longer exists. It may have already been deleted.',
     'errors.USR-1005': 'The organization unit for this user no longer exists. Refresh and try again.',
     'errors.USR-1014': 'A user with the same unique attribute value already exists.',
@@ -1294,6 +1309,9 @@ const translations = {
     'edit.page.validation.missingRedirectUri': 'add a redirect URI',
     'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
     'edit.page.validation.missingCertificate': 'add a certificate',
+    'edit.page.validation.loadingDeviceGrantFlow': 'wait for the default Device Grant flow to load',
+    'edit.page.validation.deviceGrantFlowQueryFailed': 'retry loading the Device Grant flow list',
+    'edit.page.validation.missingDeviceGrantFlow': 'select a Device Grant flow',
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.invalidIdentityAssertions': 'fix the identity assertions (ID-JAG) settings',
     'edit.page.validation.tokenSettings': 'fix the token settings',
@@ -1317,6 +1335,8 @@ const translations = {
     'edit.general.labels.ownerId': 'Owner ID',
     'edit.general.sections.owner.title': 'Owner',
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
+    'edit.general.sections.owner.personalDescription':
+      'The user this personal agent acts for. It keeps the owner it was registered for.',
     'edit.general.owner.empty': 'No owner assigned',
     'edit.general.labels.externalOwner': 'External owner ({{idType}})',
     'owner.label': 'Owner',
@@ -1552,6 +1572,11 @@ const translations = {
     'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
     'errors.AGT-1046': 'The lifespan end must be in the future.',
     'errors.AGT-1053': "The organization unit must be the agent type's organization unit or one of its descendants.",
+    'errors.AGT-1060': 'The request needs a user access token.',
+    'errors.AGT-1061': "A token issued to a client acting for the user cannot manage the user's agents.",
+    'errors.AGT-1065': 'Assign a Device Grant flow before enabling the Device Code grant type.',
+    'errors.AGT-1066': 'The assigned flow must be a valid Device Grant flow.',
+    'errors.AGT-1067': 'The configured flow references do not match.',
   },
 
   // ============================================================================
@@ -1699,6 +1724,13 @@ const translations = {
       'Select the flow that handles account recovery for applications under this organization unit.',
     'edit.flows.recoveryFlow.alert':
       'To modify the selected flow, <0>open the flow builder</0>. To create a new flow, visit the <1>Flows page</1>.',
+    'edit.flows.labels.deviceGrantFlow': 'Device authorization flow',
+    'edit.flows.labels.deviceGrantFlow.description': 'Choose the flow used to authorize devices for this {{entity}}.',
+    'edit.flows.deviceGrantFlow.defaultAssigned':
+      'The default Device Grant flow is selected and will be saved for this {{entity}}. It verifies the device code and calls this {{entity}}’s Authentication flow. You can select a different flow below.',
+    'edit.flows.deviceGrantFlow.placeholder': 'Select a Device Grant flow',
+    'edit.flows.deviceGrantFlow.hint':
+      'This flow verifies the device code and calls this {{entity}}’s Authentication flow.',
     'edit.flows.labels.signOutFlow': 'Sign out flow',
     'edit.flows.signOutFlow.description':
       'Choose the default flow that handles user sign-out and session termination for applications under this organization unit.',
@@ -2799,6 +2831,13 @@ const translations = {
     signUpSuccess: 'Account created successfully',
     passwordResetSent: 'Password reset link sent to your email',
     passwordResetSuccess: 'Password reset successfully',
+    'flowExpired.title': 'Session expired',
+    'flowExpired.description': 'Please go back to {{application}} and try again.',
+    'flowExpired.redirecting': 'Taking you back to {{application}} in {{seconds}}s.',
+    'flowExpired.backToApplication': 'Back to <name>{{application}}</name> now',
+    'flowExpired.returnToApplication': 'Back to <name>{{application}}</name>',
+    'flowExpired.theApplication': 'the application',
+    'flowExpired.restarted': 'Your session expired, so we started again.',
   },
 
   // ============================================================================
@@ -4635,10 +4674,17 @@ const translations = {
     'core.executions.provisioning.maxPerPrompt.placeholder': '0',
     'core.executions.provisioning.maxPerPrompt.hint':
       'Number of dynamic inputs to show per prompt when connected to this provisioning executor.',
+    'core.executions.provisioning.unavailable': 'Unavailable: {{id}}',
     'core.executions.provisioning.assignGroup.label': 'Assign group',
-    'core.executions.provisioning.assignGroup.placeholder': 'Comma-separated group IDs to assign',
+    'core.executions.provisioning.assignGroup.placeholder': 'Select groups to assign',
+    'core.executions.provisioning.assignGroup.noOptions': 'No groups found',
+    'core.executions.provisioning.assignGroup.noneExist': 'No groups exist. Create one, then select it here.',
+    'core.executions.provisioning.assignGroup.loadError': 'Failed to load groups.',
     'core.executions.provisioning.assignRole.label': 'Assign role',
-    'core.executions.provisioning.assignRole.placeholder': 'Comma-separated role IDs to assign',
+    'core.executions.provisioning.assignRole.placeholder': 'Select roles to assign',
+    'core.executions.provisioning.assignRole.noOptions': 'No roles found',
+    'core.executions.provisioning.assignRole.noneExist': 'No roles exist. Create one, then select it here.',
+    'core.executions.provisioning.assignRole.loadError': 'Failed to load roles.',
     'core.executions.provisioning.seedGroupsFromMapping.label': 'Seed groups from authorization mapping',
     'core.executions.provisioning.seedGroupsFromMapping.hint':
       "Assign groups the connection's authorization mapping resolved for this subject.",
@@ -5356,6 +5402,10 @@ const translations = {
     'errors.FLM-1027': 'The organization unit for this flow does not exist.',
     'errors.FLM-1028': 'The organization unit of a flow cannot be changed once the flow is created.',
     'errors.FLM-1029': 'A flow needs an organization unit.',
+    'errors.FLM-1049':
+      'Provisioning step {{nodeID}} assigns groups that do not exist: {{groupIDs}}. Remove them from Assign group, then save again.',
+    'errors.FLM-1050':
+      'Provisioning step {{nodeID}} assigns roles that do not exist: {{roleIDs}}. Remove them from Assign role, then save again.',
   },
 
   // ============================================================================
