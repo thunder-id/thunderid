@@ -7,14 +7,11 @@ persona: app
 description: Build a React B2B app where companies sign up as organizations, switch between them, and plug in their own identity provider, with @thunderid/react.
 ---
 
-import {ArrowLeftRight, Building2, Clock, FileCode, Hexagon, KeyRound, Package} from '@wso2/oxygen-ui-icons-react';
+import {ArrowLeftRight, Boxes, Building2, Clock, FileCode, Hexagon, KeyRound, LogIn, Package, Server} from '@wso2/oxygen-ui-icons-react';
 
 # React Quickstart
 
-Use this guide to build a React application for a business-to-business (B2B) product with `@thunderid/react`. Each
-company that signs up becomes its own organization in <ProductName />. People sign in to one company at a time, their
-tokens name that company and the roles they hold there, and a company admin plugs in the company's own identity
-provider.
+Use this guide to build a React application for a business-to-business (B2B) product with `@thunderid/react`.
 
 <SdkQuickstartDownload packageId="react" sample="quickstarts/react-b2b" icon={<ReactLogo size={22} />} />
 
@@ -22,14 +19,17 @@ provider.
 
 ## What You Will Learn
 
-<TutorialHeroItem icon={<Building2 />}>Let a company sign up as its own organization, with its first admin</TutorialHeroItem>
-<TutorialHeroItem icon={<ArrowLeftRight />}>Read the organization and roles from the token, and switch organizations</TutorialHeroItem>
-<TutorialHeroItem icon={<KeyRound />}>Let a company admin plug in the company's identity provider</TutorialHeroItem>
+<TutorialHeroItem icon={<Boxes />}>Create a new React app using Vite</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/react</code> package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Build with <ProductName /> prebuilt components</TutorialHeroItem>
+<TutorialHeroItem icon={<Building2 />}>Let companies register as organizations with an organization sign-up flow</TutorialHeroItem>
+<TutorialHeroItem icon={<ArrowLeftRight />}>Switch between organizations</TutorialHeroItem>
+<TutorialHeroItem icon={<KeyRound />}>Let each company bring its own enterprise identity provider</TutorialHeroItem>
 
 ## Prerequisites
 
 <TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
-<TutorialHeroItem icon={<Hexagon />}>Node.js 20 or later</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js 20.19+ or 22.12+</TutorialHeroItem>
 <TutorialHeroItem icon={<Package />}>npm</TutorialHeroItem>
 <TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
 
@@ -45,9 +45,8 @@ Start a local <ProductName /> instance:
 
 ## Import the B2B Resources
 
-A B2B application needs more than an application: a platform organization that every company joins, an account type,
-two roles, a sign-up flow that creates the company, and a sign-in flow that lands in one company. The sample ships them
-as two files you import.
+The sample ships the B2B resources as one file: an account type, two roles, the sign-up and sign-in flows, and the
+application. They go into the Default organization unit, and every company that signs up becomes its child.
 
 1. Copy the resources:
 
@@ -56,54 +55,38 @@ as two files you import.
     ```
 
 2. Sign in to the Control Plane console at `https://localhost:8095/console`.
-3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
-   file, choose **Continue**, and once the import test passes, choose **Import configuration**.
-4. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
-   configuration file and `thunderid-config/thunderid.env` as the environment variables file. Choose **Continue**, then
-   **Import configuration**.
-5. Add `https://localhost:5173` to the CORS allowed origins (**Settings → CORS**), so the browser lets the app call
-   <ProductName />.
+3. Import the resources:
+    1. Choose **Import / Export**, then **Import**.
+    2. Upload `thunderid-config.yaml` as the configuration file.
+    3. Upload `thunderid.env` as the environment variables file.
+    4. Choose **Continue**, then **Import configuration**.
+4. Clear the project selection, choose **Configurations** in the sidebar, then **CORS**. Choose **Add origin**, enter
+   `http://localhost:5173`, and choose **Save changes**, so the browser lets the application call <ProductName />.
 
-The second file places every resource in the organization unit the first one creates, so import the first one on its
-own.
-
-The import creates a root organization unit, and only the Control Plane creates one, so import there. Imported straight
-into a Data Plane, it is refused.
+:::note Deploy to the Data Plane
+The Control Plane deploys the imported resources to the Data Plane. If **Auto deploy** is off, open the Default
+project's **Deployment pipeline** and choose **Deploy**.
+:::
 
 | Resource | Name | What it does |
 |---|---|---|
-| Organization unit | React B2B Quickstart | The platform organization, a root organization unit in the Default project. Every company that signs up becomes its child. |
-| User type | React B2B User | The account schema, owned by the platform organization, so every company can use it |
-| Role | Admin | Grants the `org` permission, which manages the organization a token names. Shared with every company. |
-| Role | Member | Grants no permission. Shared with every company. |
+| User type | React B2B User | The account schema, usable in every company |
+| Server config | `defaultResourceServer` | Makes the System resource server the default for authorization requests that name no resource. |
+| Role | React B2B Admin | Grants the `org` permission, which manages the organization a token names. The role is shared with every company. |
+| Role | React B2B Member | Grants no permission. The role is shared with every company. |
 | Flow | React B2B Quickstart Company Sign-up | Creates the company and its first admin, with the account inside the company or shared into it |
 | Flow | React B2B Quickstart Sign-in | Password, enterprise single sign-on (SSO), or company sign-up. Keeps an SSO session, and lets each company set its own `enterpriseIdp`. |
-| Application | React B2B Quickstart | Client ID `REACT_B2B_QUICKSTART`, redirecting to `https://localhost:5173`. Shared with every company. |
+| Application | React B2B Quickstart | Client ID `REACT_B2B_QUICKSTART`, redirecting to `http://localhost:5173`. Has the token exchange grant, so a switch can exchange the device secret. The application is shared with every company. |
 
 ## Create a React App
 
-Create the app with Vite, and add the SDK and Vite's HTTPS plugin:
+Create the app with Vite, and add the SDK:
 
 ```bash
 npm create vite@latest react-b2b -- --template react
 cd react-b2b
 npm install
 npm install @thunderid/react
-npm install -D @vitejs/plugin-basic-ssl
-```
-
-Serve the app over HTTPS, like <ProductName />. The two are then the same site, so a switch to another company can reuse
-the <ProductName /> sign-in in a hidden frame instead of leaving the page:
-
-```js title="vite.config.js"
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import basicSsl from '@vitejs/plugin-basic-ssl'
-
-export default defineConfig({
-  plugins: [react(), basicSsl()],
-  server: { port: 5173, strictPort: true },
-})
 ```
 
 ## Add `ThunderIDProvider`
@@ -131,7 +114,7 @@ createRoot(document.getElementById('root')).render(
     <ThunderIDProvider
       clientId={import.meta.env.VITE_THUNDERID_CLIENT_ID}
       baseUrl={import.meta.env.VITE_THUNDERID_BASE_URL}
-      scopes={['openid', 'profile', 'email', 'roles', 'ou', 'org']}
+      scopes={['openid', 'profile', 'email', 'roles', 'ou', 'org', 'device_sso']}
       signInOptions={{ resource: import.meta.env.VITE_THUNDERID_RESOURCE }}
       preferences={{ user: { fetchUserProfile: false } }}
     >
@@ -143,7 +126,7 @@ createRoot(document.getElementById('root')).render(
 
 | Parameter | Description |
 |---|---|
-| `scopes` | `ou` and `roles` put the company and the roles held there into the tokens. `org` asks for the permission a company admin needs. |
+| `scopes` | `ou` and `roles` put the company and the roles held there into the tokens. `org` asks for the permission a company admin needs. `device_sso` returns a device secret, which a switch exchanges for another company's tokens without leaving the page. |
 | `signInOptions.resource` | `org` is a permission of the System resource server, so a sign-in names that resource server. |
 | `preferences.user.fetchUserProfile` | `false` reads the signed-in user from the ID token, which names the company the session signed in to. |
 
@@ -213,23 +196,29 @@ export default function EnterpriseSso({ flowId, ouId, ouName }) {
   const { baseUrl } = useThunderID()
   const requestConfig = useManagementRequestConfig('connections')
   const [isAdding, setIsAdding] = useState(false)
+  const [error, setError] = useState(null)
   const [version, setVersion] = useState(0)
   const callbackUrl = `${baseUrl}/gate/callback`
 
   const addConnection = async (event) => {
     event.preventDefault()
-    await createConnection({
-      ...requestConfig,
-      type: 'oidc',
-      payload: {
-        ...Object.fromEntries(new FormData(event.currentTarget)),
-        ouId,
-        redirectUri: callbackUrl,
-        scopes: ['openid', 'profile', 'email'],
-      },
-    })
-    setIsAdding(false)
-    setVersion((current) => current + 1)
+    setError(null)
+    try {
+      await createConnection({
+        ...requestConfig,
+        type: 'oidc',
+        payload: {
+          ...Object.fromEntries(new FormData(event.currentTarget)),
+          ouId,
+          redirectUri: callbackUrl,
+          scopes: ['openid', 'profile', 'email'],
+        },
+      })
+      setIsAdding(false)
+      setVersion((current) => current + 1)
+    } catch (err) {
+      setError(err.message ?? 'Could not add the identity provider.')
+    }
   }
 
   return (
@@ -238,6 +227,7 @@ export default function EnterpriseSso({ flowId, ouId, ouName }) {
       <p>Callback URL for your identity provider: {callbackUrl}</p>
       {isAdding ? (
         <form onSubmit={addConnection}>
+          {error && <p>{error}</p>}
           {FIELDS.map((name) => (
             <input key={name} name={name} placeholder={name} required />
           ))}
@@ -262,11 +252,9 @@ export default function EnterpriseSso({ flowId, ouId, ouName }) {
 ## Put It Together
 
 Replace `src/App.jsx`. `<OrganizationUnitSwitcher />` lists the companies the user belongs to and switches the session
-to the one picked. Only a token that carries `org` shows the Enterprise SSO section. The page keeps Vite's starter
-stylesheets, `index.css` and `App.css`, and centers its content with their `#center` layout:
+to the one picked. Only a token that carries `org` shows the Enterprise SSO section:
 
 ```jsx title="src/App.jsx"
-import { useEffect } from 'react'
 import {
   OrganizationUnitSwitcher,
   SignInButton,
@@ -307,16 +295,7 @@ function Workspace() {
 }
 
 export default function App() {
-  const { currentOrganizationUnit, isSignedIn, signIn } = useThunderID()
-
-  // Finishes a switch that returns with an authorization code while the previous session is still
-  // signed in. Remove it once the SDK finishes the switch itself.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (isSignedIn && params.has('code') && params.has('state')) {
-      signIn().catch(() => undefined)
-    }
-  }, [isSignedIn, signIn])
+  const { currentOrganizationUnit } = useThunderID()
 
   return (
     <section id="center">
@@ -337,12 +316,12 @@ export default function App() {
 
 - `currentOrganizationUnit` holds the `id`, `handle`, and `name` of the company the session signed in to, read from
   the ID token. Treat it as display data. Your APIs read the organization from the access token they receive.
-- `scope="siblings"` lists the current company and the other companies beneath the same platform organization.
-- A switch is a new sign-in, so `switchOptions` names the same resource server as the first one.
+- `scope="siblings"` lists the current company and the other companies beneath the same parent organization unit.
+- A switch exchanges the device secret at the other company's token endpoint, so the page stays where it is. When the
+  exchange needs the user, the SDK falls back to a redirect, which is a new sign-in, so `switchOptions` names the same
+  resource server as the first one.
 - `useGrantedPermissions` reads the permissions once per session. Keying `Workspace` by the company loads them again
   after a switch.
-- `@thunderid/react` 1.21.0 redeems a returning authorization code only when no session exists, so the effect in `App`
-  lets the SDK finish a switch that returns through a redirect.
 
 ## Run and Try It
 
@@ -352,38 +331,101 @@ Start the development server:
 npm run dev
 ```
 
-Open [https://localhost:5173](https://localhost:5173) and accept the development server's self-signed certificate.
+Open [http://localhost:5173](http://localhost:5173).
 
-**A company with its own accounts.** Choose **Sign in**, then **Register your company**, then **My account belongs to
-this company**. Enter an account, then `Northstar Labs` with the handle `northstar`.
+**A company with its own accounts.**
+
+1. Choose **Sign in**, then **Register your company**.
+2. Choose **My account belongs to this company**.
+3. Enter an account, then `Northstar Labs` with the handle `northstar`.
 
 :::tip Success
-You land in the app as Northstar Labs' `Admin`. The token's `ouHandle` is `northstar`, and its `scope` carries `org`,
-so the Enterprise SSO section shows.
+You land in the app as Northstar Labs' `React B2B Admin`. The token's `ouHandle` is `northstar`.
+Its `scope` carries `org`, so the Enterprise SSO section shows.
 :::
 
-**Plug in the company's identity provider.** Register an OpenID Connect application in your identity provider with the
-callback URL the app shows. In **Enterprise SSO**, choose **Create a connection**, enter the application's details,
-select the connection, and save. Sign out, choose **Sign in with enterprise SSO**, and enter `northstar`: <ProductName />
-sends you to Northstar's identity provider, and a first-time employee joins Northstar as a `Member`.
+**Plug in the company's identity provider.**
 
-**One account across several companies.** Register `Initech` with **I work with several companies**. The account lives
-in the platform organization and is shared into Initech as its `Admin`. Then, as a platform administrator in the
-Console, add `Globex` and `Umbrella` as child organization units of `React B2B Quickstart`, open the account under
-**Users**, and on the **Affiliations** tab add Globex with the mandated role `Admin` and Umbrella with `Member`.
+1. In your identity provider, register an OpenID Connect application with the callback URL the app shows.
+2. In **Enterprise SSO**, choose **Create a connection** and enter the application's details.
+3. Select the connection and save.
+4. Sign out, choose **Sign in with enterprise SSO**, and enter `northstar`.
 
 :::tip Success
-The organization menu lists Initech, Globex, and Umbrella. Pick **Umbrella**: the page shows `Member`, the token has no
-`org`, and the Enterprise SSO section is gone, without a password prompt. Pick **Globex**, and you are its `Admin`.
+<ProductName /> sends you to Northstar's identity provider.
+A first-time employee joins Northstar as a `React B2B Member`.
+:::
+
+**One account across several companies.** Someone who works with several companies signs up with an account at the
+platform level:
+
+1. Sign out, choose **Sign in**, then **Register your company**.
+2. Choose **I work with several companies**.
+3. Enter an account, then `Initech` with the handle `initech`.
+
+:::tip Success
+The sign-up flow creates the account at the platform level, in the Default organization unit, and creates Initech.
+It then associates the account with Initech as its `React B2B Admin`, so you land in the app signed in to Initech.
+:::
+
+Until the sample can invite a platform-level account into another company, create one in the Console and affiliate
+it with the companies, to try switching between them:
+
+1. In the Control Plane console, open **Users** and choose **Add user**.
+2. Select the user type **React B2B User**. It places the account in the Default organization unit.
+3. Enter a username, such as `react-consultant`, an email and a password. Choose **Create user**.
+4. Open the account and select the **Affiliations** tab.
+5. Choose **Default and chosen organization units**, keep **All child organization units**, and choose **Save**.
+
+:::note Deploy to the Data Plane
+The account and its affiliations reach the Data Plane when the Control Plane deploys them. If **Auto deploy** is
+off, open the Default project's **Deployment pipeline** and choose **Deploy** before you sign in.
+:::
+
+:::tip Success
+Sign out of the app and sign in with the account. <ProductName /> asks which company to sign in to, by handle.
+Pick `northstar`, then pick **Initech** in the organization menu.
+The page switches to Initech without leaving the app or asking for the password.
+The account holds no role in either company, so the token's `roles` is empty.
 :::
 
 </Stepper>
 
-:::note Before you go to production
-The app runs entirely in the browser, and a company admin's token carries `org`, which manages everything in their
-company. Grant it only to people you trust with the whole company, or route management calls through a backend that
-holds the permission and checks each call. See [Let Organization Admins Manage Teams](../../use-cases/b2b/journeys/delegated-administration.mdx).
+:::note Grant `org` with care
+A company admin's token carries `org`, which manages everything in their company. Grant it only to people you trust
+with the whole company, or route management calls through a backend that holds the permission and checks each call.
+See [Let Organization Admins Manage Teams](../../use-cases/b2b/journeys/delegated-administration.mdx).
 :::
+
+<ProductionOptions
+  id="before-you-go-to-production"
+  eyebrow="Before you go to production"
+  title="Need single logout or safer storage for tokens and the device secret?"
+  intro={<p>This quickstart runs entirely in the browser, so the SDK keeps your <strong>tokens and the device secret in browser storage</strong>, where any script on the page can read them. <strong>The device secret is the bigger risk.</strong> Until the single sign-on session ends, whoever holds it can get tokens for every company the user belongs to, without the user. The app also can't support single logout: if users sign in to this app and another app through single sign-on, signing out of the other app leaves them signed in here until their tokens stop working. If either matters for your app, pick one of these setups.</p>}
+>
+  <ProductionOption
+    title="Build with Next.js"
+    icon={<NextLogo size={20} />}
+    badge="Recommended"
+    recommended
+    points={['Tokens in an HttpOnly cookie that scripts cannot read', 'Single logout through back-channel logout']}
+    links={[{label: 'Next.js B2B Quickstart', href: '../nextjs'}]}
+  >
+    Still React, with a server side. The Next.js SDK signs users in on the server and receives back-channel logout.
+  </ProductionOption>
+  <ProductionOption
+    title="Add a Backend for Frontend (BFF)"
+    icon={<Server size={18} />}
+    badge="Can't migrate?"
+    points={['No rewrite of your React code', 'Single logout through the BFF']}
+    links={[
+      {label: 'React and Express BFF sample', href: 'https://github.com/thunder-id/samples/tree/main/patterns/react-express-bff'},
+      {label: 'How to set up a BFF', href: '/sdks-and-tools/react/guides/backend-for-frontend'},
+    ]}
+  >
+    Keep this React app and add a small server that signs users in and holds the tokens. The refresh token and the device secret stay on the server, and the browser gets an `HttpOnly` session cookie.
+  </ProductionOption>
+</ProductionOptions>
 
 ## What's Next
 

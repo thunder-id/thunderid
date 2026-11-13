@@ -161,6 +161,11 @@ curl -X POST https://localhost:8090/users/<user-id>/sharing-policies \
   }'
 ```
 
+An OU keeps one sharing policy per user. When the account already has one, for example from a sign-up that shared it
+into the company, the `POST` fails with `409` and `USR-1031`. Read the policy with `GET /users/<user-id>/sharing-policies`,
+then replace it with `PUT /users/<user-id>/sharing-policies/<policy-id>`: send its current `version`, and list every unit
+the account keeps along with the new ones.
+
 A roles rule is accepted only on a unit listed under `childUnits` in `selected` mode with `reach: unit`. See [Mandate Roles on a Shared User](../../../guides/users/manage-users.mdx#mandate-roles-on-a-shared-user) for every rule and error.
 
 Once the person belongs to more than one company, their sign-in lands in one company at a time. See [Switch Organizations](./switch-organizations.mdx).
