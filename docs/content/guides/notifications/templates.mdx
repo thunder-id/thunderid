@@ -38,7 +38,7 @@ By default a template is a database row you edit freely through the Console and 
 
 ## Templates in Projects
 
-On the control plane, every notification template belongs to a project.
+On the control plane, every notification template belongs to a project. To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 - **Create**: set `projectId` in the request body of `POST /notification-templates/{channel}/templates`. Without `ouId`, the template goes into the system organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. A request without `projectId` fails with `NTM-1031`, a project that does not exist fails with `NTM-1029`, and any other organization unit fails with `NTM-1030`.
 - **List**: `GET /notification-templates/{channel}/templates?projectId=<project-id>` returns the templates of the project. A project that does not exist returns an empty list.

@@ -1,0 +1,67 @@
+---
+title: Projects
+docType: concept
+sidebar_position: 7
+description: Understand how a project groups applications, agents, flows, and the rest of a product's identity configuration on the control plane, and how it relates to organization units.
+---
+
+# Projects
+
+A project is a named group of identity configuration on the control plane. It holds the applications, agents, flows, branding, and other resources that serve one product or team, so you manage, list, and deploy them together, apart from the configuration of other projects.
+
+## How It Works
+
+### Where Projects Exist
+
+Only the control plane serves projects. It authors configuration and deploys it to the gateways it administers, the data planes that serve your users. A data plane, such as the all-in-one server, has no projects and no `/projects` API.
+
+A resource deployed from the control plane keeps the `projectId` it was authored with. The resource APIs on a data plane keep a `projectId` without checking it, so configuration imported from a control plane keeps its project. A `project` document in an import to a data plane is skipped and reported as not imported.
+
+### What a Project Holds
+
+Each project has an ID, a `handle` that is unique across the control plane and cannot change, a `displayName`, and an optional `description`.
+
+A resource joins a project through its `projectId`. On the control plane, some resource types always belong to a project, and others can belong to a project or be shared by all projects:
+
+| Belongs to | Resources |
+|---|---|
+| Always a project | Applications, agents, flows, themes, layouts, notification templates, credential configurations, presentation definitions, and every organization unit other than the system organization unit. |
+| A project, or shared by all projects | Users, groups, roles, and resource servers. |
+| Shared by all projects | Connections, user types, agent types, translations, and server configuration. |
+
+A user, group, role, or resource server created without a `projectId` belongs to no project, so these resources created before projects existed stay outside every project. The Console lists such groups, roles, and resource servers under **Shared by all projects**. Which organization units can use one still follows its organization unit and sharing policy. For the rules of each resource type, see its guide, for example [Scope Applications to a Project](../guides/applications/manage-applications.mdx#scope-applications-to-a-project).
+
+### The Default Project
+
+The control plane creates a project named **Default**, with the handle `default`, during setup. The built-in flows, themes, the **Centered** layout, and the built-in notification templates belong to it. Configuration that every project uses, such as the built-in templates that flows find by handle, stays in the **Default** project, so deploy it to a gateway before the projects that depend on it.
+
+### Projects and Organization Units
+
+Every project includes the system organization unit, the organization unit with the handle `default` that belongs to no project. A project can also own organization units: root organization units and children of the system organization unit, together with their descendants. These model the organizations your product serves, such as the business customers of a B2B application.
+
+Any other resource in a project that has an organization unit, such as an application, user, or flow, is placed in the system organization unit or in one of the project's own organization units. Themes and layouts have no organization unit. A resource created without an organization unit goes to the system organization unit. A request that places a project's resource in an organization unit of another project, or of no project, is refused. See [Organization Units in Projects](../guides/organization-units/manage-organization-units.mdx#organization-units-in-projects).
+
+All projects share the system organization unit, so names that are unique per organization unit are unique across projects there. A role or group in the system organization unit cannot take the name of another project's role or group in it.
+
+### What a Project Does Not Change
+
+A project groups configuration for management and deployment only. Sign-in, credentials, tokens, role assignments, and group membership work the same whatever project a resource belongs to. A resource server is found by its `identifier`, and a flow finds a notification template by its handle, across every project.
+
+Sharing works between organization units, not projects. A project's lists show only the resources that carry its project ID, so a resource shared into one of its organization units from another project does not appear in them. See [Resource Sharing Across Organization Units](./resource-sharing.mdx).
+
+### Deploying a Project
+
+The control plane can compare, deploy, sync, and roll back one project at a time. A deploy scoped to a project sends its own resources and what they need, and never sends another project's own resources. See [Deploy One Project](../guides/declarative-configurations/configuration-versions.mdx#deploy-one-project).
+
+## When to Use This
+
+- **One product or team per project**: keep the applications, agents, and flows of each product in its own project, so they are listed and deployed apart from those of other products. A project is not an access boundary: the project and resource permissions apply to every project.
+- **One release pipeline per project**: deploy, promote, and roll back each project through its gateways on its own schedule. A deploy can also carry shared changes, and a project's resource that other projects use, such as a notification template of the **Default** project, changes for them too.
+- **A single product**: keep everything in the **Default** project. A deployment that does not need separation does not need more than one project.
+
+## Related
+
+- [Manage Projects](../guides/projects/manage-projects.mdx)
+- [Manage Organization Units](../guides/organization-units/manage-organization-units.mdx)
+- [Resource Sharing Across Organization Units](./resource-sharing.mdx)
+- [Apply Configuration Versions to Gateways](../guides/declarative-configurations/configuration-versions.mdx)

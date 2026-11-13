@@ -386,7 +386,7 @@ A token that holds `system` manages every OU in the deployment. A control plane 
 
 ## Organization Units in Projects
 
-On the control plane, every OU except the system OU belongs to a project. The system OU, with the handle `default`, is shared by every project and belongs to none.
+On the control plane, every OU except the system OU belongs to a project. The system OU, with the handle `default`, is shared by every project and belongs to none. To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 - **Create**: set `projectId` in the request body of `POST /organization-units`. A request without `projectId` fails with `OU-1023`, and a project that does not exist fails with `OU-1022`.
 - **Parent**: an OU in a project is a root OU, a child of the system OU, or a child of another OU in the same project. A parent in another project fails with `OU-1024`.

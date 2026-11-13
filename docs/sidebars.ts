@@ -810,6 +810,19 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Projects',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'guides/projects/manage-projects',
+              label: 'Manage Projects',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Organization Units',
           collapsed: true,
           collapsible: true,
@@ -1230,6 +1243,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'key-concepts/resource-sharing',
           label: 'Resource Sharing',
+        },
+        {
+          type: 'doc',
+          id: 'key-concepts/projects',
+          label: 'Projects',
         },
         {
           type: 'category',
