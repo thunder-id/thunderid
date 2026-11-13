@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -221,7 +223,58 @@ func (suite *OUExecutorTestSuite) TestExecute_Success() {
 			assert.NotNil(suite.T(), result)
 			assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 			assert.Equal(suite.T(), tc.expectedOUID, result.RuntimeData[ouIDKey])
+			assert.Equal(suite.T(), []providers.RollbackAction{{Action: ouRollbackActionCreate, Ref: tc.expectedOUID}},
+				result.RollbackActions)
 			suite.mockOUService.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// deletingOUProvider is an organization unit provider that can also delete organization units.
+type deletingOUProvider struct {
+	*ouprovidermock.OrganizationUnitProviderMock
+	*ouprovidermock.OrganizationUnitDeleterMock
+}
+
+func (suite *OUExecutorTestSuite) TestRollback() {
+	testCases := []struct {
+		name         string
+		action       string
+		cannotDelete bool
+		expectDelete bool
+		deleteErr    *tidcommon.ServiceError
+		expectErr    bool
+	}{
+		{name: "Deletes the created OU", action: ouRollbackActionCreate, expectDelete: true},
+		{name: "Delete fails", action: ouRollbackActionCreate, expectDelete: true,
+			deleteErr: &tidcommon.InternalServerError, expectErr: true},
+		{name: "Unsupported action", action: "update", expectErr: true},
+		{name: "Provider cannot delete", action: ouRollbackActionCreate, cannotDelete: true, expectErr: true},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			deleter := ouprovidermock.NewOrganizationUnitDeleterMock(suite.T())
+			if tc.expectDelete {
+				deleter.On("DeleteOrganizationUnit", mock.MatchedBy(func(ctx context.Context) bool {
+					_, hasDeadline := ctx.Deadline()
+					return security.IsRuntimeContext(ctx) && ctx.Err() == nil && hasDeadline
+				}), testOUID).Return(tc.deleteErr)
+			}
+			if !tc.cannotDelete {
+				suite.executor.ouService = deletingOUProvider{suite.mockOUService, deleter}
+			}
+			canceledCtx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			err := suite.executor.Rollback(canceledCtx, providers.RollbackAction{Action: tc.action, Ref: testOUID})
+
+			if tc.expectErr {
+				suite.Error(err)
+			} else {
+				suite.NoError(err)
+			}
 		})
 	}
 }

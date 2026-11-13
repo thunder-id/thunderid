@@ -4,7 +4,9 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"maps"
 	"testing"
 
@@ -557,13 +559,14 @@ func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponseWithNilMaps() {
 func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponsePreservesExecutorData() {
 	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false).(*taskExecutionNode)
 	execResp := &providers.ExecutorResponse{
-		Status:         providers.ExecComplete,
-		Error:          &tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "TEST_FAILURE"}},
-		Inputs:         []providers.Input{{Identifier: "email", Required: true}},
-		AdditionalData: map[string]string{"key1": "value1"},
-		RedirectURL:    "https://example.com",
-		RuntimeData:    map[string]string{"runtime": "data"},
-		Assertion:      "assertion-token",
+		Status:          providers.ExecComplete,
+		Error:           &tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "TEST_FAILURE"}},
+		Inputs:          []providers.Input{{Identifier: "email", Required: true}},
+		AdditionalData:  map[string]string{"key1": "value1"},
+		RedirectURL:     "https://example.com",
+		RuntimeData:     map[string]string{"runtime": "data"},
+		Assertion:       "assertion-token",
+		RollbackActions: []providers.RollbackAction{{Action: "create", Ref: "ou-1"}},
 	}
 
 	nodeResp := node.buildNodeResponse(execResp)
@@ -576,6 +579,7 @@ func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponsePreservesExecutorData(
 	s.Equal("https://example.com", nodeResp.RedirectURL)
 	s.Equal("data", nodeResp.RuntimeData["runtime"])
 	s.Equal("assertion-token", nodeResp.Assertion)
+	s.Equal(execResp.RollbackActions, nodeResp.RollbackActions)
 }
 
 func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureStoresFailureReason() {
@@ -1354,4 +1358,52 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteConstantIsWrittenAgainOnReentryA
 	s.Require().Len(seen, 2)
 	s.Equal("en-US", seen[0]["locale"])
 	s.Equal("en-US", seen[1]["locale"])
+}
+
+func (s *TaskExecutionNodeTestSuite) TestRollback() {
+	action := providers.RollbackAction{Action: "create", Ref: "ou-1"}
+	testCases := []struct {
+		name     string
+		executor func() providers.Executor
+		wantErr  bool
+	}{
+		{
+			name: "Executor undoes the change",
+			executor: func() providers.Executor {
+				exec := NewExecutorInterfaceMock(s.T())
+				exec.On("Rollback", mock.Anything, action).Return(nil).Once()
+				return exec
+			},
+		},
+		{
+			name: "Executor fails to undo the change",
+			executor: func() providers.Executor {
+				exec := NewExecutorInterfaceMock(s.T())
+				exec.On("Rollback", mock.Anything, action).Return(errors.New("delete failed")).Once()
+				return exec
+			},
+			wantErr: true,
+		},
+		{
+			name:     "No executor",
+			executor: func() providers.Executor { return nil },
+			wantErr:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			node := newTaskExecutionNode("ou_creation", nil, false, false).(*taskExecutionNode)
+			node.SetExecutorName("OUExecutor")
+			node.executor = tc.executor()
+
+			err := node.Rollback(context.Background(), action)
+
+			if tc.wantErr {
+				s.Error(err)
+			} else {
+				s.NoError(err)
+			}
+		})
+	}
 }

@@ -192,6 +192,8 @@ type NodeResponse struct {
 	// EngineData carries executor output the engine consumes internally; never serialized to the client.
 	EngineData       map[string]string `json:"-"`
 	CallTargetFlowID string            `json:"callTargetFlowId,omitempty"`
+	// RollbackActions are the changes the executor reported, to undo if the flow ends in an error.
+	RollbackActions []providers.RollbackAction `json:"-"`
 }
 
 // InterceptorResponse represents the response from an interceptor execution

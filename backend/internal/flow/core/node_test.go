@@ -4,6 +4,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -27,6 +28,12 @@ func (s *NodeTestSuite) TestExecuteBaseNodeReturnsError() {
 
 	s.NotNil(err)
 	s.Nil(resp)
+}
+
+func (s *NodeTestSuite) TestRollbackBaseNodeDoesNothing() {
+	node := newPromptNode("prompt-1", nil, false, false)
+
+	s.NoError(node.Rollback(context.Background(), providers.RollbackAction{Action: "create", Ref: "ou-1"}))
 }
 
 func (s *NodeTestSuite) TestStartAndFinalFlags() {

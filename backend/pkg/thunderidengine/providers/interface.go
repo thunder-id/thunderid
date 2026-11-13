@@ -320,6 +320,18 @@ type Executor interface {
 	GetRequiredInputs(ctx *NodeContext) []Input
 	GetExecutionPolicy(mode string) *ExecutionPolicy
 	GetMeta() *ExecutorMeta
+	// Rollback undoes one change the executor reported in ExecutorResponse.RollbackActions. The task execution node
+	// that ran the executor calls it when the flow ends in an error.
+	Rollback(ctx context.Context, action RollbackAction) error
+}
+
+// OrganizationUnitDeleter is an OrganizationUnitProvider that can delete an organization unit. The OU Creation
+// executor uses it to delete the OU a flow created when the flow ends in an error. With a provider that does not
+// implement it, the OU stays and the engine logs an error.
+type OrganizationUnitDeleter interface {
+	// DeleteOrganizationUnit deletes the organization unit with the given ID, and refuses one that other
+	// resources still depend on.
+	DeleteOrganizationUnit(ctx context.Context, id string) *common.ServiceError
 }
 
 // ObservabilityProvider defines the interface for the observability provider.

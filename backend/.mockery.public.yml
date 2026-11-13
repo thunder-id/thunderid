@@ -749,6 +749,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: ouprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      OrganizationUnitDeleter:
+        config:
+          dir: tests/mocks/ouprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: ouprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
       DesignProvider:
         config:
           dir: tests/mocks/designprovidermock
