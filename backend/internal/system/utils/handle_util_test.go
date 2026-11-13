@@ -104,3 +104,29 @@ func (suite *HandleUtilTestSuite) TestGenerateHandle_MaxLength() {
 	suite.Equal(strings.Repeat("a", 99), handle)
 	suite.True(IsValidHandle(handle))
 }
+
+func (suite *HandleUtilTestSuite) TestAddRandomHandleSuffix() {
+	testCases := []struct {
+		name     string
+		handle   string
+		expected string
+	}{
+		{name: "Short handle", handle: "test-handle", expected: `^test-handle-[1-9][0-9]{2}$`},
+		{name: "Handle at max length", handle: strings.Repeat("a", 100), expected: `^a{96}-[1-9][0-9]{2}$`},
+		{
+			name:     "Shortened handle ending in a separator",
+			handle:   strings.Repeat("a", 95) + "-bcde",
+			expected: `^a{95}-[1-9][0-9]{2}$`,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, err := AddRandomHandleSuffix(tc.handle)
+
+			suite.NoError(err)
+			suite.Regexp(tc.expected, result)
+			suite.True(IsValidHandle(result))
+		})
+	}
+}

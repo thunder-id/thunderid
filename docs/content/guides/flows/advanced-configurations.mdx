@@ -1935,7 +1935,7 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
 | `parentOuId` | Parent OU ID | No | - | Controls where the new OU is created. A valid UUID creates the OU as a child of that parent; `""` (empty string) creates at root level; omitted falls back to the default OU resolved by User Type Resolver. |
-| `generateOuHandle` | Generate handle from name | No | `false` | When `true` and the user leaves `ouHandle` empty, the executor creates the handle from `ouName`. It drops accents, lowercases letters, and replaces every run of other characters with a hyphen, so `Northstar Logistics` becomes `northstar-logistics`. A handle the user enters is used as is. Keep an optional `ouHandle` field in the prompt so the user can enter a handle when the generated one is taken. |
+| `generateOuHandle` | Generate handle from name | No | `false` | When `true` and the user leaves `ouHandle` empty, the executor creates the handle from `ouName`. It drops accents, lowercases letters, and replaces every run of other characters with a hyphen, so `Northstar Logistics` becomes `northstar-logistics`. If the generated handle is taken, the executor adds a random three-digit suffix, such as `northstar-logistics-372`. A handle the user enters is used as is. Keep an optional `ouHandle` field in the prompt so the user can enter a handle if the suffixed one is also taken. |
 
 **Example:**
 
@@ -1956,7 +1956,7 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 
 **Failure conditions:**
 - An OU with the same name already exists at the target parent: re-prompts the user to change the name
-- An OU with the same handle already exists: re-prompts the user to change the handle
+- An OU with the same handle already exists, for a handle the user entered or a suffixed handle that is also taken: re-prompts the user to change the handle
 - With `generateOuHandle`, the name has no letters or numbers to build a handle from: re-prompts the user to enter a handle
 - Specified `parentOuId` does not exist
 - OU service error

@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"regexp"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -469,7 +470,7 @@ func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_UserInputRequired
 			expectedError:  &ErrOUHandleNotGenerated,
 		},
 		{
-			name:               "Generated handle already exists",
+			name:               "Generated and suffixed handles already exist",
 			userInputs:         map[string]string{userInputOuName: "Engineering"},
 			expectedInputs:     []string{userInputOuName, userInputOuHandle},
 			expectedError:      &ErrOUHandleConflict,
@@ -508,9 +509,82 @@ func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_UserInputRequired
 				suite.Require().NotNil(result.Error)
 				suite.Equal(tc.expectedError.Code, result.Error.Code)
 			}
-			if !tc.expectCreateCalled {
+			if tc.expectCreateCalled {
+				suite.mockOUService.AssertNumberOfCalls(suite.T(), "CreateOrganizationUnit", 2)
+			} else {
 				suite.mockOUService.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything, mock.Anything)
 			}
+		})
+	}
+}
+
+func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_AddsSuffixWhenTaken() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeRegistration,
+		UserInputs:     map[string]string{userInputOuName: "Engineering"},
+		RuntimeData:    map[string]string{},
+		NodeProperties: map[string]interface{}{propertyKeyGenerateOUHandle: true},
+	}
+	suite.mockOUService.On("CreateOrganizationUnit", mock.Anything,
+		providers.OrganizationUnitRequestWithID{Name: "Engineering", Handle: "engineering"}).
+		Return(providers.OrganizationUnit{}, &providers.ErrorOrganizationUnitHandleConflict).Once()
+	suite.mockOUService.On("CreateOrganizationUnit", mock.Anything,
+		mock.MatchedBy(func(request providers.OrganizationUnitRequestWithID) bool {
+			return regexp.MustCompile(`^engineering-[1-9][0-9]{2}$`).MatchString(request.Handle)
+		})).
+		Return(providers.OrganizationUnit{ID: testOUID}, nil).Once()
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, result.Status)
+	suite.Equal(testOUID, result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertNumberOfCalls(suite.T(), "CreateOrganizationUnit", 2)
+}
+
+func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_ConflictNotRetried() {
+	testCases := []struct {
+		name          string
+		userInputs    map[string]string
+		createOUError *tidcommon.ServiceError
+		expectedError *tidcommon.ServiceError
+	}{
+		{
+			name:          "Name conflict is not retried",
+			userInputs:    map[string]string{userInputOuName: "Engineering"},
+			createOUError: &providers.ErrorOrganizationUnitNameConflict,
+			expectedError: &ErrOUNameConflict,
+		},
+		{
+			name:          "Handle the user entered is not retried",
+			userInputs:    map[string]string{userInputOuName: "Engineering", userInputOuHandle: "eng"},
+			createOUError: &providers.ErrorOrganizationUnitHandleConflict,
+			expectedError: &ErrOUHandleConflict,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-123",
+				FlowType:       providers.FlowTypeRegistration,
+				UserInputs:     tc.userInputs,
+				RuntimeData:    map[string]string{},
+				NodeProperties: map[string]interface{}{propertyKeyGenerateOUHandle: true},
+			}
+			suite.mockOUService.On("CreateOrganizationUnit", mock.Anything, mock.Anything).
+				Return(providers.OrganizationUnit{}, tc.createOUError)
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecUserInputRequired, result.Status)
+			suite.Require().NotNil(result.Error)
+			suite.Equal(tc.expectedError.Code, result.Error.Code)
+			suite.mockOUService.AssertNumberOfCalls(suite.T(), "CreateOrganizationUnit", 1)
 		})
 	}
 }

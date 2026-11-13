@@ -751,22 +751,36 @@ func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOUCreationDu
 
 func (ts *OURegistrationFlowTestSuite) TestRegistrationFlowWithGeneratedOUHandle() {
 	suffix := generateUniqueHandle("gen")
+	takenHandle := generateUniqueHandle("taken")
+	takenOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: takenHandle,
+		Name:   "Existing OU " + takenHandle,
+		Parent: &ts.basicFlowTestOUID,
+	})
+	ts.Require().NoError(err)
+	ts.createdOUs = append(ts.createdOUs, takenOUID)
+
 	testCases := []struct {
-		name           string
-		ouName         string
-		ouHandle       string
-		expectedHandle string
+		name                string
+		ouName              string
+		ouHandle            string
+		expectedHandleRegex string
 	}{
 		{
-			name:           "HandleGeneratedFromName",
-			ouName:         "Northstar Logistics " + suffix,
-			expectedHandle: "northstar-logistics-" + suffix,
+			name:                "HandleGeneratedFromName",
+			ouName:              "Northstar Logistics " + suffix,
+			expectedHandleRegex: "^northstar-logistics-" + suffix + "$",
 		},
 		{
-			name:           "ProvidedHandleKept",
-			ouName:         "Provided Handle OU " + suffix,
-			ouHandle:       "provided-" + suffix,
-			expectedHandle: "provided-" + suffix,
+			name:                "ProvidedHandleKept",
+			ouName:              "Provided Handle OU " + suffix,
+			ouHandle:            "provided-" + suffix,
+			expectedHandleRegex: "^provided-" + suffix + "$",
+		},
+		{
+			name:                "RandomSuffixAddedWhenGeneratedHandleTaken",
+			ouName:              takenHandle,
+			expectedHandleRegex: "^" + takenHandle + "-[1-9][0-9]{2}$",
 		},
 	}
 
@@ -803,31 +817,17 @@ func (ts *OURegistrationFlowTestSuite) TestRegistrationFlowWithGeneratedOUHandle
 			ou, err := testutils.GetOrganizationUnit(jwtClaims.OUID)
 			ts.Require().NoError(err)
 			ts.Require().Equal(tc.ouName, ou.Name)
-			ts.Require().Equal(tc.expectedHandle, ou.Handle)
+			ts.Require().Regexp(tc.expectedHandleRegex, ou.Handle)
 		})
 	}
 }
 
 func (ts *OURegistrationFlowTestSuite) TestRegistrationFlowWithGeneratedOUHandleError() {
-	existingHandle := generateUniqueHandle("taken-handle")
-	existingOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: existingHandle,
-		Name:   "Existing OU " + existingHandle,
-		Parent: &ts.basicFlowTestOUID,
-	})
-	ts.Require().NoError(err)
-	ts.createdOUs = append(ts.createdOUs, existingOUID)
-
 	testCases := []struct {
 		name                string
 		ouName              string
 		expectedErrorSubstr string
 	}{
-		{
-			name:                "GeneratedHandleTaken",
-			ouName:              existingHandle,
-			expectedErrorSubstr: "An organization unit with the same handle already exists",
-		},
 		{
 			name:                "NoHandleFromName",
 			ouName:              "株式会社",
