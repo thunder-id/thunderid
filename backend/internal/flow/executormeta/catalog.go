@@ -44,8 +44,11 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "failOnDeny"},
 		},
 	},
-	ExecutorNameCredentialSetter: {},
-	ExecutorNameCredentialsAuth:  {},
+	ExecutorNameCredentialSetter: {
+		DefaultMode:    ExecutorModeSet,
+		SupportedModes: []string{ExecutorModeSet, ExecutorModeValidate, ExecutorModeInvalidate},
+	},
+	ExecutorNameCredentialsAuth: {},
 	ExecutorNameDeviceCode: {
 		SupportedFlowTypes: []providers.FlowType{providers.FlowTypeDeviceGrant},
 	},
@@ -107,7 +110,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameIdentityGovernance: {
 		SupportedModes:     []string{ExecutorModeUnlock, ExecutorModeSuspend, ExecutorModeUnsuspend},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "RECOVERY"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "RECOVERY", "ADMIN_INITIATED"},
 	},
 	ExecutorNameInviteExecutor: {
 		SupportedModes: []string{"generate", "verify"},

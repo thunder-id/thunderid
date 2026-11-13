@@ -124,7 +124,7 @@ The `components` array is the only field the runtime acts on. Any other fields i
 | `DYNAMIC_INPUT_PLACEHOLDER` | Marks where dynamically derived inputs (those arriving via `ForwardedData`, not declared in the node's prompts) should be inserted. |
 | Any other type | Treated as a structural or display component (e.g. a text label). Kept as-is; its children are recursively trimmed. |
 
-**Note**: `DYNAMIC_INPUT_PLACEHOLDER` is only valid for a PROMPT node reached via a Provisioning node's `onIncomplete` edge.
+**Note**: `DYNAMIC_INPUT_PLACEHOLDER` is only valid for a PROMPT node reached via the `onIncomplete` edge of a Provisioning node, or of a `CredentialSetter` node that sets the credential of an administrator-initiated reset.
 
 Each component is identified by an `id` field and optionally a `ref` field. When both are present, `ref` takes priority for matching against prompt inputs.
 
@@ -593,6 +593,16 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
   "onSuccess": "recovery_complete"
 }
 ```
+
+**Credential reset modes:** in an administrator-initiated flow, this executor also runs a credential reset that an administrator starts and the user completes from an emailed link, as `default-admin-user-credential-reset-flow` does. `validate` and `invalidate` run only in administrator-initiated flows:
+
+| Mode | What it does |
+|---|---|
+| `validate` | Checks, changing nothing, that the administrator may reset the credential the `credential` input names for the user the flow was started for, and that the user is not suspended. It refuses a request that carries any input besides `subject` and its credential input, so **Send Email** reads the address from the user's stored profile, from the attribute its email input names: `email` by default, or another such as `workEmail`. Place it before the link is generated, so a refused reset sends nothing. |
+| `invalidate` | Removes the stored credential, revoking the user's tokens and ending their sessions. It runs only after the link was sent, so place it right after **Send Email**, with no View between them. If it fails, the link that was sent stops working. |
+| `set` (default) | In an administrator-initiated flow, sets only the credential the reset removed. Before it asks for anything, it fails, as an invalid link does, when the user's credentials changed after the reset started, such as by a later reset or a forgot password recovery, and refuses a suspended user. It asks for one masked input named after the credential, labelled with its display name, so point its **On Incomplete** at a View with a dynamic input placeholder. |
+
+Only string credentials can be reset this way; `validate` refuses a number credential.
 
 </details>
 
@@ -2812,7 +2822,7 @@ The following rules are enforced for each executor node:
 
 **Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field, the executor's default mode is used; an executor that supports modes but has no default, such as `IdentityGovernanceExecutor` or `AttributeVerificationExecutor`, fails validation. When the executor does not restrict modes, no check is performed.
 
-**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration and recovery flows, but accepts `suspend` and `unsuspend` only in administration flows.
+**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration, recovery, and administrator-initiated flows, but accepts `suspend` and `unsuspend` only in administration flows. `CredentialSetter` accepts `validate` and `invalidate` only in administrator-initiated flows.
 
 **Companion executors validation**: Some executors must appear together with another executor, in a given mode, in any flow type. A flow with an `AttributeVerificationExecutor` node must contain one in `prepare` mode and one in `record` mode, and a flow with `SessionRevocationExecutor` must contain `CriteriaRevocationExecutor` in `revoke` mode. A flow without the companion is rejected with an error that names the missing executor and mode.
 

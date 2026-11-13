@@ -45,6 +45,7 @@ type entityStoreInterface interface {
 		creds json.RawMessage) error
 	DeleteEntity(ctx context.Context, id string) error
 	LockEntity(ctx context.Context, id string) (providers.Entity, error)
+	LockEntityWithCredentials(ctx context.Context, id string) (*entityWithCredentials, error)
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
@@ -564,19 +565,37 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 // LockEntity holds the entity's write lock until the surrounding transaction ends and returns the
 // entity as read under that lock.
 func (es *entityDBStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	if err := es.lockEntity(ctx, id); err != nil {
+		return providers.Entity{}, err
+	}
+	return es.GetEntity(ctx, id)
+}
+
+// LockEntityWithCredentials holds the entity's write lock as LockEntity does and returns the entity and
+// its credentials as read under that lock.
+func (es *entityDBStore) LockEntityWithCredentials(ctx context.Context, id string) (
+	*entityWithCredentials, error) {
+	if err := es.lockEntity(ctx, id); err != nil {
+		return nil, err
+	}
+	return es.GetEntityWithCredentials(ctx, id)
+}
+
+// lockEntity takes the entity's write lock for the rest of the surrounding transaction.
+func (es *entityDBStore) lockEntity(ctx context.Context, id string) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
-		return providers.Entity{}, fmt.Errorf("failed to get database client: %w", err)
+		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryLockEntity, id, es.scope(ctx))
 	if err != nil {
-		return providers.Entity{}, fmt.Errorf("failed to execute query: %w", err)
+		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	if rowsAffected == 0 {
-		return providers.Entity{}, ErrEntityNotFound
+		return ErrEntityNotFound
 	}
-	return es.GetEntity(ctx, id)
+	return nil
 }
 
 // ResolveLinkedAccounts returns the entities linked to a subject at a connection from the identifier

@@ -41,8 +41,9 @@ type FlowTypeConfig struct {
 // handles and context TTLs. A zero ExpirySeconds falls back to the built-in default for that type.
 // The lifecycle entries name the suspend, unsuspend and unlock administration flows. Applications
 // never lock, so have no unlock. AdminAttributeVerificationFlow names the administrator-initiated flow
-// the Console starts to send a user a verification link. DefaultReturnURL is where a sign-in page sends
-// the user when it has no flow to continue and no application URL to return to.
+// the Console starts to send a user a verification link, and AdminUserCredentialResetFlow the one that resets a
+// user's credential. DefaultReturnURL is where a sign-in page sends the user when it has no flow to continue
+// and no application URL to return to.
 type FlowSectionConfig struct {
 	DefaultReturnURL string `json:"defaultReturnUrl,omitempty"`
 
@@ -56,6 +57,7 @@ type FlowSectionConfig struct {
 	AgentOnboardingFlow FlowTypeConfig `json:"agentOnboardingFlow"`
 
 	AdminAttributeVerificationFlow FlowTypeConfig `json:"adminAttributeVerificationFlow"`
+	AdminUserCredentialResetFlow   FlowTypeConfig `json:"adminUserCredentialResetFlow"`
 
 	UserUnlockFlow           FlowTypeConfig `json:"userUnlockFlow"`
 	UserSuspendFlow          FlowTypeConfig `json:"userSuspendFlow"`

@@ -127,6 +127,12 @@ func (f *entityFileBasedStore) LockEntity(ctx context.Context, id string) (provi
 	return providers.Entity{}, errors.New("LockEntity is not supported in file-based store")
 }
 
+// LockEntityWithCredentials is not supported in file-based store.
+func (f *entityFileBasedStore) LockEntityWithCredentials(ctx context.Context,
+	id string) (*entityWithCredentials, error) {
+	return nil, errors.New("LockEntityWithCredentials is not supported in file-based store")
+}
+
 // ResolveLinkedAccounts finds the declarative entities linked to a subject at a connection.
 func (f *entityFileBasedStore) ResolveLinkedAccounts(ctx context.Context,
 	idpID, sub string) ([]string, error) {

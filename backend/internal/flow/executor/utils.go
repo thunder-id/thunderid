@@ -535,11 +535,11 @@ func verificationClaimContacts(ctx context.Context, entityTypeService entitytype
 }
 
 // dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
-// way at the recovery plane, so recovery and registration challenges still go out; every other flow
-// is checked at the dispatch plane.
+// way at the recovery plane, so recovery, registration and administrator-initiated challenges still go out;
+// every other flow is checked at the dispatch plane.
 func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
 	switch flowType {
-	case providers.FlowTypeRecovery, providers.FlowTypeRegistration:
+	case providers.FlowTypeRecovery, providers.FlowTypeRegistration, providers.FlowTypeAdminInitiated:
 		return providers.AccessPlaneRecovery
 	default:
 		return providers.AccessPlaneDispatch
@@ -693,4 +693,48 @@ func orderByDisplayOrder(inputs []providers.Input, attrs []entitytype.AttributeI
 			return 0
 		}
 	})
+}
+
+// withForwardedInputs forwards the inputs a response asks for, so the prompt its node continues to renders them.
+func withForwardedInputs(execResp *providers.ExecutorResponse) *providers.ExecutorResponse {
+	if execResp.Status != providers.ExecUserInputRequired || len(execResp.Inputs) == 0 {
+		return execResp
+	}
+	execResp.ForwardedData = map[string]any{common.ForwardedDataKeyInputs: execResp.Inputs}
+	return execResp
+}
+
+// resetCredentialInput returns the masked input for the string credential of that name. The user service refuses
+// to remove any other kind, so a reset never reaches the set step for one.
+func resetCredentialInput(attributes []entitytypemodel.AttributeInfo, credential string) (providers.Input, bool) {
+	for _, attribute := range attributes {
+		if attribute.Attribute != credential || !attribute.Credential ||
+			attribute.Type != entitytypemodel.TypeString {
+			continue
+		}
+		return providers.Input{Identifier: credential, Type: providers.InputTypePassword, Required: true,
+			DisplayName: cmp.Or(attribute.DisplayName, credential)}, true
+	}
+	return providers.Input{}, false
+}
+
+// newCredentialResetResponse returns an empty response for a credential reset mode.
+func newCredentialResetResponse() *providers.ExecutorResponse {
+	return &providers.ExecutorResponse{AdditionalData: map[string]string{}, RuntimeData: map[string]string{}}
+}
+
+// resetFailed fails the response with svcErr.
+func resetFailed(execResp *providers.ExecutorResponse,
+	svcErr *tidcommon.ServiceError) *providers.ExecutorResponse {
+	execResp.Status = providers.ExecFailure
+	execResp.Error = svcErr
+	return execResp
+}
+
+// voidedReset fails the response with svcErr and clears the stored link token, so a link that was sent
+// cannot be verified.
+func voidedReset(execResp *providers.ExecutorResponse,
+	svcErr *tidcommon.ServiceError) *providers.ExecutorResponse {
+	execResp.RuntimeData[common.RuntimeKeyStoredInviteToken] = ""
+	return resetFailed(execResp, svcErr)
 }
