@@ -29,7 +29,7 @@ A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *re
 
 The actual values come from the authenticated user's attributes. Claims are omitted when the user has no value for them. `email_verified` and the other `_verified` claims follow [Verified Contact Claims](#verified-contact-claims).
 
-These defaults are written into a client's `scopeClaims` mapping at creation when it declares no mapping of its own, and they remain the fallback at runtime: a standard scope the mapping does not define still returns the claims listed above. Edit an entry to change what the scope returns, or map it to an empty list to stop it returning anything.
+These defaults are written into a client's `scopeClaims` mapping at creation when it declares no mapping of its own. Edit an entry to change what the scope returns, or remove it to stop the client granting the scope.
 
 `openid` is the exception: it carries no user attributes of its own, its `sub` comes from the token subject, and it is always granted. It needs no mapping entry.
 
@@ -90,17 +90,16 @@ Each application can define its own scope-to-claim bundles. Asking for the scope
 |---|---|
 | Replaces the standard mapping | Yes, `profile` here returns only the three listed claims, not the full OIDC `profile` set |
 | Custom scope names | Allowed, `roles` here is an application-defined scope |
-| Standard scope not in `scopeClaims` | Granted on its standard claims, the built-in mapping is the fallback |
-| Custom scope not in `scopeClaims` | Not granted, there is no fallback to inherit |
+| Scope not in `scopeClaims` | Not granted, standard or custom |
 | Bypasses resource-server filtering | Yes, see "Filtering rules" below |
 
-**A standard scope cannot be switched off by removing it.** Deleting `profile` from the mapping returns it to the standard claim set, it does not stop the client granting it. To stop a standard scope releasing anything, map it to an empty list (`"profile": []`), which is honored as sent.
+**Removing a scope switches it off.** To keep a scope while it releases nothing, map it to an empty list (`"profile": []`).
 
-**Create and update differ.** On create, omitting `scopeClaims` seeds the standard scopes, while sending one stores exactly what you sent, so `{"profile": [...]}` yields a client whose stored mapping is only `profile`. On update the mapping is replaced by what you send, and omitting the field clears it. In both cases the standard scopes remain available at runtime through the fallback.
+**Create and update differ.** On create, omitting `scopeClaims` seeds the standard scopes, while sending one stores exactly what you sent, so `{"profile": [...]}` yields a client whose stored mapping is only `profile`. On update the mapping is replaced by what you send, and omitting the field clears it.
 
-**Declarative resource files are never seeded.** A client loaded from a file under the declarative resources directory is stored exactly as written, so its mapping stays empty until you declare one. The runtime fallback still applies, so the standard scopes work as documented above; declare a mapping only where you want to narrow one.
+**Declarative resource files are never seeded.** A client loaded from a file under the declarative resources directory is stored exactly as written, so it grants only the scopes its `scopeClaims` declares.
 
-**Attribute lists follow the mapping.** On create, `token.idToken.userAttributes` is derived from the mapping only when you omit it; send a list and it is stored as sent. `userInfo.userAttributes` inherits the ID token list when you omit it, so both end up covering the mapping by default. The list is a second gate: a claim reaches a token only when the scope releases it **and** the list allows it. So a client created with a narrow mapping has a correspondingly narrow list, and the standard claims a fallback scope resolves to are filtered out until you add them to the list. In the Console, mapping an attribute to a scope adds it to both lists for you; the lists themselves sit under **Token Attributes (Advanced)**, where they exist for attributes you want reachable through the `claims` request parameter without tying them to a scope.
+**Attribute lists follow the mapping.** On create, `token.idToken.userAttributes` is derived from the mapping only when you omit it; send a list and it is stored as sent. `userInfo.userAttributes` inherits the ID token list when you omit it, so both end up covering the mapping by default. The list is a second gate: a claim reaches a token only when the scope releases it **and** the list allows it. So a client created with a narrow mapping has a correspondingly narrow list. In the Console, mapping an attribute to a scope adds it to both lists for you; the lists themselves sit under **Token Attributes (Advanced)**, where they exist for attributes you want reachable through the `claims` request parameter without tying them to a scope.
 
 ## `claims` Request Parameter
 

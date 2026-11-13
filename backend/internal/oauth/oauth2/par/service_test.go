@@ -415,7 +415,7 @@ func (s *ServiceTestSuite) TestHandlePAR_NoResourceWithDefaultSucceedsAtPush() {
 	assert.Empty(s.T(), captured.OAuthParameters.Resources)
 }
 
-func (s *ServiceTestSuite) TestHandlePAR_NarrowsOIDCClaimsByScopeClaims() {
+func (s *ServiceTestSuite) TestHandlePAR_DropsUnmappedStandardScopes() {
 	store := newParStoreInterfaceMock(s.T())
 	var captured pushedAuthorizationRequest
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
@@ -433,8 +433,9 @@ func (s *ServiceTestSuite) TestHandlePAR_NarrowsOIDCClaimsByScopeClaims() {
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
-	// email stays OIDC on its standard claims; the mapping only narrows profile.
-	assert.Equal(s.T(), []string{"openid", "email", "profile"}, captured.OAuthParameters.StandardScopes)
+	// email is a standard scope the app does not map, so it is dropped.
+	assert.Equal(s.T(), []string{"openid", "profile"}, captured.OAuthParameters.StandardScopes)
+	assert.Empty(s.T(), captured.OAuthParameters.PermissionScopes)
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_AcrValuesPropagated() {

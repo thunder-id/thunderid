@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {Alert, Box, Typography} from '@wso2/oxygen-ui';
@@ -41,9 +41,9 @@ interface ScopeSectionProps {
   disabled?: boolean;
   /**
    * Whether only the scope names take effect, for an entity whose grants issue an access token
-   * alone (token exchange, JWT bearer). Those grants keep a listed custom scope as an OpenID
-   * Connect scope (a standard one is kept either way) but never add its mapped attributes, so the
-   * description says so and the hint about adding allowed user types is dropped. Defaults to false.
+   * alone (token exchange, JWT bearer). Those grants keep a listed scope as an OpenID Connect
+   * scope but never add its mapped attributes, so the description says so and the hint about
+   * adding allowed user types is dropped. Defaults to false.
    */
   scopesOnly?: boolean;
 }

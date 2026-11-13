@@ -195,8 +195,10 @@ func GenerateAuthorizationCode() (string, error) {
 }
 
 // SeparateOIDCAndNonOIDCScopes separates the given scopes into OIDC and non-OIDC scopes.
-// A scope is OIDC if it is a standard OIDC scope or the app's scope-to-claims mapping defines it.
-// Anything else is a permission scope for the resource servers.
+// A scope is OIDC if it is openid or device_sso, or if the app's scope-to-claims mapping defines
+// it, so a standard scope and a custom one are treated alike. A standard scope the app does not map
+// is dropped, since the app has not configured it. Anything else is a permission scope for the
+// resource servers.
 func SeparateOIDCAndNonOIDCScopes(scopes string, scopeClaimsMapping map[string][]string) ([]string, []string) {
 	scopeSlice := utils.ParseStringArray(scopes, " ")
 	var oidcScopes []string
@@ -205,27 +207,20 @@ func SeparateOIDCAndNonOIDCScopes(scopes string, scopeClaimsMapping map[string][
 	for _, scp := range scopeSlice {
 		_, isMapped := scopeClaimsMapping[scp]
 		_, isStandard := constants.StandardOIDCScopes[scp]
-		if isMapped || isStandard {
+		switch {
+		case isMapped || scp == constants.ScopeOpenID || scp == constants.ScopeDeviceSSO:
 			oidcScopes = append(oidcScopes, scp)
-		} else {
+		case !isStandard:
 			nonOidcScopes = append(nonOidcScopes, scp)
 		}
 	}
 	return oidcScopes, nonOidcScopes
 }
 
-// ResolveScopeClaims returns the claims a scope releases. The app's mapping wins where it defines
-// the scope, so mapping it to a shorter list narrows what it releases; a standard OIDC scope the
-// app leaves unmapped falls back to its standard claims. Returns nil for an unmapped custom scope,
-// which therefore releases nothing.
+// ResolveScopeClaims returns the claims a scope releases: the ones the app's mapping lists for it,
+// or nil when the app does not map the scope.
 func ResolveScopeClaims(scope string, scopeClaimsMapping map[string][]string) []string {
-	if claims, ok := scopeClaimsMapping[scope]; ok {
-		return claims
-	}
-	if standard, ok := constants.StandardOIDCScopes[scope]; ok {
-		return standard.Claims
-	}
-	return nil
+	return scopeClaimsMapping[scope]
 }
 
 // DefaultScopeClaims returns the standard OIDC scope-to-claims mapping a client starts with when

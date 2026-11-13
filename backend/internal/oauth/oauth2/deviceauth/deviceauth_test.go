@@ -226,9 +226,10 @@ func (s *DeviceAuthTestSuite) TestCreateResolvesScopesAndResourceBinding() {
 	resourceService.EXPECT().ValidatePermissions(mock.Anything, "resource-server-1",
 		[]string{"booking:read", "booking:delete"}).Return([]string{"booking:delete"}, nil)
 	client := &providers.OAuthClient{
-		ID:         "application-1",
-		ClientID:   "device-client",
-		GrantTypes: []providers.GrantType{providers.GrantTypeDeviceCode},
+		ID:          "application-1",
+		ClientID:    "device-client",
+		GrantTypes:  []providers.GrantType{providers.GrantTypeDeviceCode},
+		ScopeClaims: map[string][]string{"profile": {"name"}},
 	}
 	service := newDeviceAuthServiceForApplication(s.T(), store, resourceService,
 		testhelpers.OAuthConfig(), client.ID)
