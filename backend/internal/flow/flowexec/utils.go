@@ -4,6 +4,9 @@
 package flowexec
 
 import (
+	"context"
+	"time"
+
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -25,4 +28,13 @@ func actsForCaller(flowType providers.FlowType) bool {
 // admin's steps and the server's authority on the invitee's, and its role step records the admin itself.
 func recordsAuthority(flowType providers.FlowType) bool {
 	return actsForCaller(flowType) && flowType != providers.FlowTypeInvitation
+}
+
+// ssoHandleTTL is how long an SSO handle issued now stays usable: as long as the session it names can
+// last. It is zero without SSO sessions, where no handle is issued.
+func ssoHandleTTL(ctx context.Context, sessions ssoSessionLifetime) time.Duration {
+	if sessions == nil {
+		return 0
+	}
+	return sessions.AbsoluteTimeout(ctx)
 }

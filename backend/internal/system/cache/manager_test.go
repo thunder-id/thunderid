@@ -193,6 +193,47 @@ func (suite *CacheManagerTestSuite) TestGetCache() {
 	assert.NotSame(t, cache1, cache3, "Different cache names should create different caches")
 }
 
+func (suite *CacheManagerTestSuite) TestGetCacheWithTTL() {
+	t := suite.T()
+
+	ttlConfig := config.Config{
+		Cache: engineconfig.CacheConfig{
+			Type: "inmemory",
+			Size: 10,
+			TTL:  3600,
+			Properties: []engineconfig.CacheProperty{
+				{Name: "configuredTTLCache", TTL: 120},
+			},
+		},
+	}
+	config.ResetServerRuntime()
+	assert.NoError(t, config.InitializeServerRuntime("/test/thunderid/home", &ttlConfig))
+	manager := Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
+
+	defaulted := GetCacheWithTTL[string](manager, "defaultTTLCache", 30*time.Second)
+	assert.Equal(t, 30*time.Second, inMemoryTTL(t, defaulted), "the caller's TTL applies when none is configured")
+
+	configured := GetCacheWithTTL[string](manager, "configuredTTLCache", 30*time.Second)
+	assert.Equal(t, 120*time.Second, inMemoryTTL(t, configured), "a configured TTL wins over the caller's")
+
+	plain := GetCache[string](manager, "plainCache")
+	assert.Equal(t, time.Hour, inMemoryTTL(t, plain), "without either, the cache-wide TTL applies")
+}
+
+// inMemoryTTL returns how long the in-memory cache behind c keeps an entry.
+func inMemoryTTL(t *testing.T, c CacheInterface[string]) time.Duration {
+	t.Helper()
+	wrapper, ok := c.(*Cache[string])
+	if !ok {
+		t.Fatalf("unexpected cache type %T", c)
+	}
+	impl, ok := wrapper.cacheImpl.(*inMemoryCache[string])
+	if !ok {
+		t.Fatalf("unexpected cache implementation %T", wrapper.cacheImpl)
+	}
+	return impl.ttl
+}
+
 func (suite *CacheManagerTestSuite) TestGetCacheMultipleTypes() {
 	t := suite.T()
 
@@ -357,7 +398,7 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	cache1 := newCache[string](
 		Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"),
-		"testDisabledCache",
+		"testDisabledCache", 0,
 	)
 	assert.NotNil(t, cache1)
 	assert.False(t, cache1.IsEnabled())
@@ -380,7 +421,7 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	cache2 := newCache[string](
 		Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"),
-		"testSpecificDisabledCache",
+		"testSpecificDisabledCache", 0,
 	)
 	assert.NotNil(t, cache2)
 	assert.False(t, cache2.IsEnabled())
@@ -403,7 +444,8 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 	err = config.InitializeServerRuntime("/test/thunderid/home", &inMemConfig)
 	assert.NoError(t, err)
 
-	cache3 := newCache[string](Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), "testInMemCache")
+	cache3 := newCache[string](Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"),
+		"testInMemCache", 0)
 	assert.NotNil(t, cache3)
 	assert.True(t, cache3.IsEnabled())
 
@@ -420,7 +462,7 @@ func (suite *CacheManagerTestSuite) TestNewCache() {
 
 	cache4 := newCache[string](
 		Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"),
-		"testUnknownTypeCache",
+		"testUnknownTypeCache", 0,
 	)
 	assert.NotNil(t, cache4)
 	assert.True(t, cache4.IsEnabled())

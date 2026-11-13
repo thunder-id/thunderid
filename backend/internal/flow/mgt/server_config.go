@@ -142,6 +142,16 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 	}
 }
 
+// Default returns nil: an unset flow type falls back to its built-in default when it is read.
+func (h *FlowConfigHandler) Default() any {
+	return nil
+}
+
+// IsLocked returns false: a declarative document is the baseline a write overrides.
+func (h *FlowConfigHandler) IsLocked(_ any) bool {
+	return false
+}
+
 // mergeFlowTypeConfig overlays the writable (db) layer onto the read-only (declarative) layer
 // for a single flow type.
 func mergeFlowTypeConfig(ro, wr flowconfig.FlowTypeConfig) flowconfig.FlowTypeConfig {

@@ -60,13 +60,20 @@ func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 	}
 	svc := &service{
 		store:            m.store,
-		resolver:         newResolver(m.store),
+		resolver:         newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:    m.tx,
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("test"),
-		timeouts:         DefaultTimeouts(),
+		timeouts:         defaultTimeouts(suite.T()),
 		logger:           log.GetLogger(),
 	}
 	return svc, m
+}
+
+// defaultTimeouts returns a timeouts source that reads the built-in defaults.
+func defaultTimeouts(t *testing.T) timeoutsSource {
+	source := newTimeoutsSourceMock(t)
+	source.EXPECT().current(mock.Anything).Return(DefaultTimeouts()).Maybe()
+	return source
 }
 
 // runTx makes the transaction mock execute the callback it is handed (commit-on-success semantics).
@@ -85,7 +92,7 @@ func liveStoreSession() *Session {
 func (suite *ServiceTestSuite) TestAbsoluteTimeout() {
 	svc, _ := suite.newService()
 
-	suite.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout())
+	suite.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout(context.Background()))
 }
 
 // --- Resolve ---
@@ -765,8 +772,9 @@ func (suite *ServiceTestSuite) TestRecordActivity_SlidesIdleUnderThrottle() {
 
 	suite.Require().NoError(svc.RecordActivity(context.Background(), "sess-1"))
 
-	suite.Equal(now.Add(svc.timeouts.Idle), idleAt, "idle deadline moves a full idle window past now")
-	suite.Equal(now.Add(-svc.timeouts.ActivityRefresh), cutoff, "writes are throttled by the refresh window")
+	suite.Equal(now.Add(DefaultTimeouts().Idle), idleAt, "idle deadline moves a full idle window past now")
+	suite.Equal(now.Add(-DefaultTimeouts().ActivityRefresh), cutoff,
+		"writes are throttled by the refresh window")
 }
 
 func (suite *ServiceTestSuite) TestRecordActivity_EmptySessionIDIsNoop() {
@@ -808,10 +816,10 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -866,10 +874,10 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeletesAllSessionsInOneTra
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -902,9 +910,9 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeleteFailureRollsBackBatc
 	}
 	svc := &service{
 		store:         m.store,
-		resolver:      newResolver(m.store),
+		resolver:      newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner: m.tx,
-		timeouts:      DefaultTimeouts(),
+		timeouts:      defaultTimeouts(suite.T()),
 		logger:        log.GetLogger(),
 	}
 
@@ -929,10 +937,10 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NoSessionsIsNoOp() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -1247,10 +1255,10 @@ func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks,
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 	return svc, m, revoker

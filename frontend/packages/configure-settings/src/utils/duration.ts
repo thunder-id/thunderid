@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {TFunction} from 'i18next';
+
 /**
  * The units a duration can be entered in.
  *
@@ -68,4 +70,47 @@ export function toSeconds(value: number, unit: DurationUnit): number {
     return 0;
   }
   return Math.round(value) * DurationUnitSeconds[unit];
+}
+
+/** Fallback copy for the dynamic keys, matching en-US. */
+const SHORT_UNIT_FALLBACKS: Record<string, string> = {
+  second: '{{count}} second',
+  seconds: '{{count}} seconds',
+  minute: '{{count}} minute',
+  minutes: '{{count}} minutes',
+  hour: '{{count}} hour',
+  hours: '{{count}} hours',
+  day: '{{count}} day',
+  days: '{{count}} days',
+};
+
+/** Units whose short form inflects, and the key suffix to use for one versus many. */
+const SHORT_UNIT_KEYS: Record<DurationUnit, {one: string; other: string}> = {
+  seconds: {one: 'second', other: 'seconds'},
+  minutes: {one: 'minute', other: 'minutes'},
+  hours: {one: 'hour', other: 'hours'},
+  days: {one: 'day', other: 'days'},
+};
+
+/**
+ * Formats a duration for reading in a sentence, as "5 minutes" or "1 day".
+ *
+ * Spelled out rather than abbreviated, because this reads inside a sentence rather than beside a
+ * field; the unit dropdowns keep their own labels. Singular and plural are separate keys chosen
+ * here rather than an i18next plural form, so a locale that inflects differently can say so.
+ *
+ * @param seconds - The duration
+ * @param t - Translate function
+ * @returns The compact label
+ *
+ * @public
+ */
+export function formatDurationShort(seconds: number, t: TFunction): string {
+  const parts: DurationParts = toDurationParts(seconds);
+  const keys = SHORT_UNIT_KEYS[parts.unit];
+  const suffix: string = parts.value === 1 ? keys.one : keys.other;
+  return t(`settings:units.short.${suffix}`, {
+    defaultValue: SHORT_UNIT_FALLBACKS[suffix],
+    count: parts.value,
+  });
 }

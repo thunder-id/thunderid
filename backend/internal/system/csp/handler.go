@@ -49,6 +49,16 @@ func (PolicyHandler) Merge(readOnly, writable any) any {
 	return merged
 }
 
+// Default returns nil: the section has no default.
+func (PolicyHandler) Default() any {
+	return nil
+}
+
+// IsLocked returns false: a declarative document is the baseline a write overrides.
+func (PolicyHandler) IsLocked(_ any) bool {
+	return false
+}
+
 // mergePaths overlays writable path policies onto read-only ones by prefix: a match replaces the
 // read-only entry; entries present in only one layer are kept. Returns nil when both are empty.
 func mergePaths(readOnly, writable []PathPolicy) []PathPolicy {

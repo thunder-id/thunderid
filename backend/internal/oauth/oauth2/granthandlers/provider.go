@@ -5,7 +5,6 @@ package granthandlers
 
 import (
 	"slices"
-	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/session"
@@ -54,7 +53,6 @@ func newGrantHandlerProvider(
 	enforcementService revocation.EnforcementServiceInterface,
 	governance providers.IdentityGovernanceProvider,
 	authzDetails providers.AuthorizationDetailProvider,
-	deviceSecretValidity time.Duration,
 	ssoSession session.Service,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
@@ -67,7 +65,7 @@ func newGrantHandlerProvider(
 	var codeGrant *authorizationCodeGrantHandler
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		codeGrant = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity,
+			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, ssoSession,
 			authzDetails)
 		grantProvider.authorizationCodeGrantHandler = codeGrant
 	}

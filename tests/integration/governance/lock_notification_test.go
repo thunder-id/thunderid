@@ -455,7 +455,7 @@ func (ts *LockNotificationTestSuite) TestADeclarativeSectionCanNameADeclarativeS
 
 	status, response := putSection(ts.T(), notificationSection, `{}`)
 	ts.Equal(http.StatusBadRequest, status, "a write over a declarative sender must be refused: %s", response)
-	ts.Contains(response, "SCF-1003", "a write over a declarative sender must be refused as an invalid value")
+	ts.Contains(response, "SCF-1003", "a write over a declarative sender must be refused as a locked section")
 }
 
 // With a mail server that cannot be reached, the lock forms, is enforced and is released

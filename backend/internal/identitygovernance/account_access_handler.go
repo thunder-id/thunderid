@@ -40,12 +40,8 @@ func (h accountAccessHandler) Decode(raw json.RawMessage) (any, error) {
 	return cfg, nil
 }
 
-// Validate refuses a write while a declarative document exists, then checks the incoming value on
-// its own and laid over the base. A nil readOnly means this is the declarative load.
-func (h accountAccessHandler) Validate(_ context.Context, incoming, readOnly, _ any) error {
-	if ro, ok := readOnly.(accountAccessValue); ok && !ro.isEmpty() {
-		return errDeclarativeAccountAccessLocked
-	}
+// Validate checks the incoming value on its own and laid over the base.
+func (h accountAccessHandler) Validate(_ context.Context, incoming, _, _ any) error {
 	cfg, ok := incoming.(accountAccessValue)
 	if !ok {
 		return fmt.Errorf("%s: unexpected config type %T", serverconfig.ConfigNameAccountAccess, incoming)
@@ -63,4 +59,15 @@ func (h accountAccessHandler) Merge(readOnly, writable any) any {
 	}
 	wr, _ := writable.(accountAccessValue)
 	return mergeAccountAccessValue(h.base, wr)
+}
+
+// Default returns nil: Merge lays the section over the deployment base itself.
+func (h accountAccessHandler) Default() any {
+	return nil
+}
+
+// IsLocked reports whether a declarative document sets the section.
+func (h accountAccessHandler) IsLocked(readOnly any) bool {
+	ro, ok := readOnly.(accountAccessValue)
+	return ok && !ro.isEmpty()
 }

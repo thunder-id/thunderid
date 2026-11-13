@@ -7,8 +7,8 @@ info:
     API to manage server-wide configuration that is mutable at runtime without a restart. Each
     configuration section is stored under a well-known name. A section is read as three layers:
     `readOnly` (declarative, fixed at boot), `writable` (runtime-mutable, set via `PUT`), and
-    `merged` (the effective value in use, derived from the other two). The concrete shape of a
-    section's value is section-specific.
+    `merged` (the effective value in use, derived from the other two and the section's default). The
+    concrete shape of a section's value is section-specific.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -80,8 +80,15 @@ paths:
       summary: Update a server configuration section
       description: |
         Replaces the writable layer of the named section with the request body. The value is validated
-        before any write; an invalid value is rejected and nothing is changed. The section is cleared
-        by setting it to an empty value. Returns the recomputed layers.
+        before any write; an invalid value is rejected and nothing is changed. A field the body leaves
+        out takes the value a declarative resource gives it, if any, or else its default, and the
+        section is cleared by setting it to an empty value. Returns the recomputed layers.
+
+        A declarative resource that sets a value makes the
+        `session`, `accountAccess`, `notification`, `defaultResourceServer` or `gateway` section
+        read-only (`SCF-1003`), while `flow`, `csp` and `cors` take a write over it. With
+        `server_config.store: declarative`, no section can be written (`SCF-1003`), and on a data
+        plane neither can one the control plane deployed (`SCF-1006`).
       operationId: updateServerConfigByName
       parameters:
         - $ref: '#/components/parameters/ConfigName'
@@ -239,8 +246,42 @@ components:
       description: >
         The value of a configuration section. Its concrete shape is section-specific and may be any
         valid JSON value (object, array, or scalar). See `AccountAccessConfig` for the shape of the
-        `accountAccess` section, `NotificationConfig` for the `notification` section and
-        `GatewaySettingsConfig` for the `gateway` section.
+        `accountAccess` section, `NotificationConfig` for the `notification` section,
+        `SessionConfig` for the `session` section and `GatewaySettingsConfig` for the `gateway`
+        section.
+
+    SessionConfig:
+      type: object
+      description: |
+        The value of the `session` section: how long an SSO session lasts. A change applies without a
+        restart: at once on the node that takes the write, and on other nodes once their cached copy of
+        the section expires (30 seconds by default). A shorter timeout also ends an existing session that
+        has gone past it, while a longer absolute timeout applies to sessions started after the change.
+        A field that is left out takes its default: 2 hours idle and 8 hours absolute.
+
+        An idle timeout set with an absolute one must not be longer than it. The idle timeout in effect
+        never outlasts the absolute one, so an absolute timeout set on its own also shortens the idle
+        timeout to match. That idle timeout must be longer than the deployment's activity refresh
+        interval (`session.activity_refresh_interval_seconds`, 60 seconds by default). A value that
+        breaks either rule, or a negative one, is rejected with `SCF-1003`.
+
+        A declarative `session` resource that sets a timeout makes the section read-only, so a `PUT`
+        is rejected with `SCF-1003`.
+      properties:
+        idleTimeoutSeconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            How long a session lasts without activity. A use of the session moves its deadline
+            forward, at most once per activity refresh interval.
+          example: 7200
+        absoluteTimeoutSeconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: How long a session lasts from sign-in, however active it is.
+          example: 28800
 
     GatewaySettingsConfig:
       type: object
@@ -511,8 +552,11 @@ components:
       description: |
         A configuration section as its three layers. `readOnly` is the declarative value fixed at boot,
         `writable` is the runtime-mutable value set via `PUT`, and `merged` is the effective value in
-        use — the merge of the other two. Every layer is always present; each value's shape is
-        section-specific.
+        use. All three are always present; each value's shape is section-specific.
+
+        For a section with a default, `merged` lays the configured value over the default field by
+        field: a field it sets wins, and one it leaves out keeps the default. A section a declarative
+        resource locks takes that resource as its configured value; otherwise the writable layer is.
       required:
         - readOnly
         - writable
@@ -527,7 +571,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/ServerConfigValue'
         merged:
-          description: Effective value in use — the merge of the readOnly and writable layers.
+          description: Effective value in use.
           allOf:
             - $ref: '#/components/schemas/ServerConfigValue'
 

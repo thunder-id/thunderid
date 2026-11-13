@@ -43,15 +43,24 @@ func (s *SettingsTestSuite) TestSettingsDecode() {
 	s.Error(err)
 }
 
-// A write is refused while a declarative document sets the section, and accepted otherwise.
+// A gateway section is accepted, and anything else is refused.
 func (s *SettingsTestSuite) TestSettingsValidate() {
 	h := NewSettingsConfigHandler()
-	incoming := settingsValue{AutoApply: boolPtr(true)}
 
-	s.NoError(h.Validate(context.Background(), incoming, settingsValue{}, settingsValue{}))
-	s.ErrorIs(h.Validate(context.Background(), incoming, settingsValue{AutoApply: boolPtr(false)}, nil),
-		errDeclarativeSettingsLocked)
+	s.NoError(h.Validate(context.Background(), settingsValue{AutoApply: boolPtr(true)}, settingsValue{},
+		settingsValue{}))
 	s.Error(h.Validate(context.Background(), "not a section", nil, nil))
+}
+
+// A declarative document that sets anything locks the section, and Merge lays the section over
+// gateway.auto_apply itself, so there is no separate default.
+func (s *SettingsTestSuite) TestSettingsIsLocked() {
+	h := NewSettingsConfigHandler()
+
+	s.True(h.IsLocked(settingsValue{AutoApply: boolPtr(false)}))
+	s.False(h.IsLocked(settingsValue{}))
+	s.False(h.IsLocked(nil))
+	s.Nil(h.Default())
 }
 
 // The effective value is the declarative document when there is one, else the stored one, each over

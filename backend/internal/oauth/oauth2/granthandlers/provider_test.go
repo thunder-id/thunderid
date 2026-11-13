@@ -77,7 +77,6 @@ func (suite *GrantHandlerProviderTestSuite) newProvider(cfg oauthconfig.Config) 
 		revocationmock.NewEnforcementServiceInterfaceMock(suite.T()),
 		nil,
 		nil,
-		0,
 		nil,
 		cfg,
 	)
@@ -101,7 +100,6 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 		revocationmock.NewEnforcementServiceInterfaceMock(suite.T()),
 		nil,
 		nil,
-		0,
 		nil,
 		testhelpers.OAuthConfig(),
 	)

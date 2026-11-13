@@ -35,21 +35,29 @@ func (*serverConfigHandler) Decode(raw json.RawMessage) (any, error) {
 	return cfg, nil
 }
 
-// Validate refuses a write over a declarative default sender.
-func (*serverConfigHandler) Validate(_ context.Context, _, readOnly, _ any) error {
-	if ro, ok := readOnly.(notificationconfig.NotificationSectionConfig); ok && ro.DefaultEmailSenderID != "" {
-		return errDeclarativeSenderLocked
-	}
+// Validate accepts any decoded value: the sender is resolved when it is used, not when it is set.
+func (*serverConfigHandler) Validate(_ context.Context, _, _, _ any) error {
 	return nil
 }
 
 // Merge returns the declarative layer when it names a sender, otherwise the writable layer.
-func (*serverConfigHandler) Merge(readOnly, writable any) any {
-	if ro, ok := readOnly.(notificationconfig.NotificationSectionConfig); ok && ro.DefaultEmailSenderID != "" {
-		return ro
+func (h *serverConfigHandler) Merge(readOnly, writable any) any {
+	if h.IsLocked(readOnly) {
+		return readOnly
 	}
 	if wr, ok := writable.(notificationconfig.NotificationSectionConfig); ok {
 		return wr
 	}
 	return notificationconfig.NotificationSectionConfig{}
+}
+
+// Default returns nil: the section has no default.
+func (*serverConfigHandler) Default() any {
+	return nil
+}
+
+// IsLocked reports whether a declarative document names the default sender.
+func (*serverConfigHandler) IsLocked(readOnly any) bool {
+	ro, ok := readOnly.(notificationconfig.NotificationSectionConfig)
+	return ok && ro.DefaultEmailSenderID != ""
 }

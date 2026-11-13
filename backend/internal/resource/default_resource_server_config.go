@@ -43,11 +43,8 @@ func (*DefaultResourceServerConfigHandler) Decode(raw json.RawMessage) (any, err
 }
 
 // Validate validates a default resource server configuration.
-func (h *DefaultResourceServerConfigHandler) Validate(ctx context.Context, incoming, readOnly, _ any) error {
+func (h *DefaultResourceServerConfigHandler) Validate(ctx context.Context, incoming, _, _ any) error {
 	cfg, _ := incoming.(DefaultResourceServerConfig)
-	if ro, ok := readOnly.(DefaultResourceServerConfig); ok && ro.ResourceServerID != "" {
-		return errDeclarativeDefaultLocked
-	}
 	if cfg.ResourceServerID == "" {
 		return nil
 	}
@@ -63,12 +60,23 @@ func (h *DefaultResourceServerConfigHandler) Validate(ctx context.Context, incom
 }
 
 // Merge combines read-only and writable default resource server configurations.
-func (*DefaultResourceServerConfigHandler) Merge(readOnly, writable any) any {
-	if ro, ok := readOnly.(DefaultResourceServerConfig); ok && ro.ResourceServerID != "" {
-		return ro
+func (h *DefaultResourceServerConfigHandler) Merge(readOnly, writable any) any {
+	if h.IsLocked(readOnly) {
+		return readOnly
 	}
 	if w, ok := writable.(DefaultResourceServerConfig); ok {
 		return w
 	}
 	return DefaultResourceServerConfig{}
+}
+
+// Default returns nil: the section has no default.
+func (*DefaultResourceServerConfigHandler) Default() any {
+	return nil
+}
+
+// IsLocked reports whether a declarative document names the default resource server.
+func (*DefaultResourceServerConfigHandler) IsLocked(readOnly any) bool {
+	ro, ok := readOnly.(DefaultResourceServerConfig)
+	return ok && ro.ResourceServerID != ""
 }

@@ -112,9 +112,7 @@ func (suite *InitTestSuite) TestInitialize_ReturnsTheNotificationSectionHandler(
 	_, err = configHandler.Decode(json.RawMessage(`{"defaultEmailSender":"file"}`))
 	suite.Error(err, "an unknown field must be refused")
 	writable := notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "db"}
-	suite.ErrorIs(configHandler.Validate(context.Background(), writable, declarative,
-		notificationconfig.NotificationSectionConfig{}),
-		errDeclarativeSenderLocked)
+	suite.True(configHandler.IsLocked(declarative))
 	suite.Equal(declarative, configHandler.Merge(declarative, writable))
 }
 

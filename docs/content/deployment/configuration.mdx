@@ -477,6 +477,8 @@ That means you can override only the fields you need. <ProductName /> continues 
 - `FlowGraphCache`
 - `ServerConfigByNameCache`
 
+`ServerConfigByNameCache` keeps an entry for 30 seconds unless a `cache.properties` entry sets its `ttl`, so a runtime server configuration change reaches every node within that time.
+
 :::note
 `FlowGraphCache` is always in-memory. It caches process-local flow graph Go objects during flow execution, not shared system-level cache data.
 :::
@@ -622,6 +624,14 @@ flow:
 ```
 
 For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
+
+## Session Configuration
+
+The SSO session timeouts are runtime settings in the `session` server-config section. See [Configure Session Lifetime](../../guides/flows/single-sign-on#configure-session-lifetime). The deployment sets the limit they must respect.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `session.activity_refresh_interval_seconds` | `60` | The shortest time, in seconds, between two writes of an SSO session's activity. Reusing a session within this time of the last write skips the write that moves its idle deadline. The idle timeout in the `session` section must be longer than this value. |
 
 ## User Configuration
 
@@ -1214,7 +1224,7 @@ Set it in either of these ways:
   ```
 
 :::note
-A declarative default takes precedence and locks the setting: while `defaultResourceServer.yaml` sets a value, runtime `PUT /server-config/defaultResourceServer` requests are rejected. Remove the declarative value to manage the default at runtime.
+A declarative default takes precedence and locks the setting: while `defaultResourceServer.yaml` sets a value, runtime `PUT /server-config/defaultResourceServer` requests are rejected with `SCF-1003`. Remove the declarative value to manage the default at runtime.
 :::
 
 ## Flow Defaults
@@ -1320,7 +1330,7 @@ Set it in either of these ways:
   ```
 
 :::note
-A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected. Remove the declarative value to manage the sender at runtime.
+A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected with `SCF-1003`. Remove the declarative value to manage the sender at runtime.
 :::
 
 ## Deploy Pipeline and Auto Apply
@@ -1390,7 +1400,7 @@ An auto apply is refused like any other apply, for example when the gateway lack
 The section is read on every capture. The node that takes the update applies it at once. With the default in-memory [cache](#cache-configuration), another node sees it once its cached copy of the section expires.
 
 :::note
-A declarative value takes precedence and locks the setting: while `gateway.yaml` sets `autoApply`, runtime `PUT /server-config/gateway` requests are rejected. Remove the declarative value to manage it at runtime.
+A declarative value takes precedence and locks the setting: while `gateway.yaml` sets `autoApply`, runtime `PUT /server-config/gateway` requests are rejected with `SCF-1003`. Remove the declarative value to manage it at runtime.
 :::
 
 ## Account Access
@@ -1451,12 +1461,12 @@ account_access:
 The effective policy is built from layers. The section is read each time it is needed, so a runtime update applies without a restart; a change to the base or to a declarative file applies after a restart:
 
 1. The base: the `account_access` block from `default.json` and `deployment.yaml`.
-2. A declarative document, when one exists, is laid over the base field by field. It locks the section: runtime writes are rejected until the declarative value is removed.
+2. A declarative document, when one exists, is laid over the base field by field. It locks the section: runtime writes are rejected with `SCF-1003` until the declarative value is removed.
 3. Otherwise the runtime value is laid over the base field by field.
 
 Within a category, a non-empty `lockDurationsSeconds` replaces the lower one. If the section cannot be read, the base applies.
 
-The node that receives a runtime update applies it immediately. With the default in-memory cache, other nodes keep their cached copy of the section until it expires, after `cache.ttl` (one hour by default). To apply updates on every node sooner, use the Redis cache, or set a shorter `ttl` for `ServerConfigByNameCache` in `cache.properties`. See [Cache Configuration](#cache-configuration).
+The node that receives a runtime update applies it immediately. With the default in-memory cache, other nodes keep their cached copy of the section until it expires, after 30 seconds unless `cache.properties` sets a `ttl` for `ServerConfigByNameCache`. To apply updates on every node at once, use the Redis cache. See [Cache Configuration](#cache-configuration).
 
 ### Configure the Policy
 
@@ -1529,7 +1539,8 @@ An invalid value is rejected with HTTP 400 and `SCF-1003` ("Invalid server confi
 - A negative `threshold` or seconds value, and a seconds value above the maximum.
 - A negative `maxConsecutiveFailures`, or one above `0` and below the policy's `threshold`.
 - An enabled policy, after it is laid over the base, that cannot form a lock: it needs a `threshold` of at least `1`, a `failureWindowSeconds`, and a non-empty `lockDurationsSeconds`. Set `enabled: false` to switch the policy off.
-- Any write while a declarative `accountAccess` document exists.
+
+A write while a declarative `accountAccess` document exists is refused with HTTP 400 and `SCF-1003`, since the document locks the section.
 
 The same rules check the base on its own at startup. An enabled policy in the `account_access` block of `default.json` and `deployment.yaml` must have its `threshold`, `failure_window_seconds`, and `lock_durations_seconds` without any later layer. An invalid base stops the server from starting.
 

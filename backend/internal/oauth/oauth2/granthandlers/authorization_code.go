@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -31,10 +32,10 @@ type authorizationCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
-	// deviceSecretValidity is how long a device secret stays usable, as long as an SSO session can last.
-	// It is zero when the deployment has no SSO session service, and then no device secret is returned.
-	deviceSecretValidity time.Duration
-	authzDetails         providers.AuthorizationDetailProvider
+	// ssoSession says how long a device secret stays usable: as long as an SSO session can last. It is
+	// nil when the deployment has no SSO session service, and then no device secret is returned.
+	ssoSession   session.Service
+	authzDetails providers.AuthorizationDetailProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -44,17 +45,17 @@ func newAuthorizationCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
-	deviceSecretValidity time.Duration,
+	ssoSession session.Service,
 	authzDetails providers.AuthorizationDetailProvider,
 ) *authorizationCodeGrantHandler {
 	return &authorizationCodeGrantHandler{
-		authzService:         authzService,
-		tokenBuilder:         tokenBuilder,
-		attributeCache:       attributeCache,
-		resourceService:      resourceService,
-		enforcementService:   enforcementService,
-		deviceSecretValidity: deviceSecretValidity,
-		authzDetails:         authzDetails,
+		authzService:       authzService,
+		tokenBuilder:       tokenBuilder,
+		attributeCache:     attributeCache,
+		resourceService:    resourceService,
+		enforcementService: enforcementService,
+		ssoSession:         ssoSession,
+		authzDetails:       authzDetails,
 	}
 }
 
@@ -292,7 +293,7 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 // exchange, since the code has already been spent.
 func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
 	oauthApp *providers.OAuthClient, logger *log.Logger) model.TokenDTO {
-	if h.deviceSecretValidity == 0 || len(authCode.SessionData) == 0 {
+	if h.ssoSession == nil || len(authCode.SessionData) == 0 {
 		return model.TokenDTO{}
 	}
 	token, err := h.tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
@@ -300,7 +301,7 @@ func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, a
 		SubjectID:   authCode.SubjectID,
 		SessionData: authCode.SessionData,
 		// Each session's own deadline is checked when it is exchanged.
-		ValidityPeriod: int64(h.deviceSecretValidity.Seconds()),
+		ValidityPeriod: int64(h.ssoSession.AbsoluteTimeout(ctx).Seconds()),
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to build the device secret", log.Error(err))

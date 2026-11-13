@@ -254,13 +254,6 @@ var (
 	}
 )
 
-// Sentinel errors for validating the "notification" server-config section.
-var (
-	// errDeclarativeSenderLocked is returned when a declarative default sender is overridden.
-	errDeclarativeSenderLocked = errors.New(
-		"default email sender is set declaratively and cannot be overridden")
-)
-
 // errNilEventBus is returned when the notification services are initialized without the event bus the
 // sender management service audits on.
 var errNilEventBus = errors.New("the notification sender management service needs an event bus")

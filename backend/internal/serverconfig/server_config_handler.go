@@ -21,6 +21,13 @@ type ServerConfigHandlerInterface interface {
 	// (declarative) and writable (db) layers are provided so a section can validate against existing
 	// state; both are nil when validating a declarative resource at load time.
 	Validate(ctx context.Context, incoming, readOnly, writable any) error
-	// Merge composes the readOnly and writable layers into the effective value.
+	// Merge composes the readOnly and writable layers into the section's configured value, which the
+	// service lays over Default.
 	Merge(readOnly, writable any) any
+	// Default returns the value a field takes when the configured value leaves it unset, or nil when the
+	// section has none. A field is laid over the default field by field, and an unset field keeps it.
+	Default() any
+	// IsLocked reports whether readOnly, the declarative layer, makes the section read-only. A locked
+	// section refuses every write.
+	IsLocked(readOnly any) bool
 }

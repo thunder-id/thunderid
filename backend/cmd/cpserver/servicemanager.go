@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
@@ -233,11 +234,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// is available.
 	flowConfigHandler := flowmgt.NewFlowConfigHandler()
 
-	// Server-wide configuration handlers. The "session" handler is omitted because SSO session
-	// lifetime is a data plane concern. The account access policy is authored here and exported.
+	// Server-wide configuration handlers. Every portable section is authored here and exported, the SSO
+	// session timeouts and the account access policy included, though this server runs neither.
+	flowConfig := flowconfig.FromServerRuntime()
 	serverConfigHandlers := map[serverconfig.ConfigName]serverconfig.ServerConfigHandlerInterface{
 		serverconfig.ConfigNameCORS:                  cors.OriginHandler{},
 		serverconfig.ConfigNameDefaultResourceServer: resource.NewDefaultResourceServerConfigHandler(resourceService),
+		serverconfig.ConfigNameSession:               flowsession.NewConfigHandler(flowConfig),
 		serverconfig.ConfigNameFlow:                  flowConfigHandler,
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
@@ -347,7 +350,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Flow MANAGEMENT: CRUD plus definition validation, with no execution behind it.
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowValidation(ctx, logger,
-		cacheManager, flowconfig.FromServerRuntime())
+		cacheManager, flowConfig)
 
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,

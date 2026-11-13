@@ -501,8 +501,11 @@ func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerC
 			continue
 		}
 		shown := ts.shown(applied, "server_config", section)
-		ts.Equal(ts.read("/server-config/" + section)["merged"], shown.Resource["merged"], section)
-		ts.Equal(shown.Resource["merged"], shown.Resource["writable"], "an import writes a section to its writable layer")
+		live := ts.read("/server-config/" + section)
+		ts.Equal(live["merged"], shown.Resource["merged"], section)
+		// An export carries the configured value, without the default under it, and the apply writes it
+		// to the writable layer.
+		ts.Equal(live["writable"], shown.Resource["writable"], "an import writes a section to its writable layer")
 		ts.Empty(shown.Parts, section)
 	}
 }

@@ -92,6 +92,7 @@ func TestServerConfigServiceAuditTestSuite(t *testing.T) {
 func (suite *ServerConfigServiceAuditTestSuite) SetupTest() {
 	suite.mockStore = newServerConfigStoreInterfaceMock(suite.T())
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
+	suite.mockHandler.EXPECT().IsLocked(mock.Anything).Return(false).Maybe()
 	suite.value = json.RawMessage(`{"allowedOrigins":["` + testAuditOrigin + `"]}`)
 }
 
@@ -262,7 +263,7 @@ func (suite *ServerConfigServiceAuditTestSuite) TestUpdateConfig_PublishesOneEve
 			}
 			bus, published := newRecordingBus(suite.T())
 			service := newServerConfigService(tc.store,
-				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, bus,
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: objectSection(suite.T(), nil)}, nil, bus,
 				allowingAuthz(suite.T()))
 
 			svcErr := service.UpdateConfig(adminContext(), tc.section, tc.updater)

@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"time"
 
-	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
@@ -19,10 +18,9 @@ type Config struct {
 	// SecureCookies marks SSO cookies Secure; it is derived from the deployment's HTTP-only setting and
 	// public URL scheme.
 	SecureCookies bool
-	// Session holds the SSO session lifetime configuration used for both server-side timeouts and the
-	// cookie lifetime. It is sourced from the server-config "session" section at the composition root,
-	// not the static server runtime, so FromServerRuntime leaves it zero for the caller to populate.
-	Session flowsession.Config
+	// SessionActivityRefresh is the shortest time between two writes of an SSO session's activity, from
+	// session.activity_refresh_interval_seconds.
+	SessionActivityRefresh time.Duration
 	// TokenLeeway is how long past exp a token is still accepted, from the deployment's JWT leeway.
 	TokenLeeway time.Duration
 }
@@ -67,7 +65,9 @@ func FromServerRuntime() Config {
 	return Config{
 		Flow:          runtime.Config.Flow,
 		SecureCookies: secureCookies(runtime.Config.Server),
-		TokenLeeway:   time.Duration(runtime.Config.JWT.Leeway) * time.Second,
+		SessionActivityRefresh: time.Duration(runtime.Config.Session.ActivityRefreshIntervalSeconds) *
+			time.Second,
+		TokenLeeway: time.Duration(runtime.Config.JWT.Leeway) * time.Second,
 	}
 }
 

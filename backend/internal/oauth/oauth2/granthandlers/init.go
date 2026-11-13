@@ -4,8 +4,6 @@
 package granthandlers
 
 import (
-	"time"
-
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -38,7 +36,6 @@ func Initialize(
 	enforcementService revocation.EnforcementServiceInterface,
 	governance providers.IdentityGovernanceProvider,
 	authzDetails providers.AuthorizationDetailProvider,
-	deviceSecretValidity time.Duration,
 	ssoSession session.Service,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
@@ -59,7 +56,6 @@ func Initialize(
 		enforcementService,
 		governance,
 		authzDetails,
-		deviceSecretValidity,
 		ssoSession,
 		cfg,
 	)

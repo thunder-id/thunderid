@@ -65,6 +65,9 @@ type serverConfigService struct {
 	// managed says which sections a control plane deployed, which a write through SetConfig leaves as they
 	// are. Nil where nothing is deployed from one.
 	managed managedresource.StoreInterface
+	// declarativeOnly says the server keeps server configuration only in declarative documents, so no
+	// section can be written.
+	declarativeOnly bool
 }
 
 // newServerConfigService creates a new instance of serverConfigService. Handlers are injected at
@@ -99,8 +102,8 @@ func (s *serverConfigService) ListConfigNames(_ context.Context) ([]ConfigName, 
 	return names, nil
 }
 
-// GetConfig resolves the readOnly (declarative), writable (db), and merged (effective) layers of a
-// section. The stored layers are decoded once and merged into the effective value.
+// GetConfig resolves a section's readOnly (declarative) and writable (db) layers and its effective
+// value, which lays them over the section's default.
 func (s *serverConfigService) GetConfig(ctx context.Context,
 	name ConfigName) (ServerConfigLayers, *common.ServiceError) {
 	handler, svcErr := s.handlerFor(ctx, name)
@@ -118,10 +121,17 @@ func (s *serverConfigService) GetConfig(ctx context.Context,
 	if svcErr != nil {
 		return ServerConfigLayers{}, svcErr
 	}
+	// Stored values were validated at write or load time, so a failure here is an internal error.
+	merged, err := effectiveValue(handler, readOnly, writable)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to lay the server config over its default",
+			log.String("name", string(name)), log.Error(err))
+		return ServerConfigLayers{}, &common.InternalServerError
+	}
 	return ServerConfigLayers{
 		ReadOnly: readOnly,
 		Writable: writable,
-		Merged:   handler.Merge(readOnly, writable),
+		Merged:   merged,
 	}, nil
 }
 
@@ -135,8 +145,8 @@ func (s *serverConfigService) GetWritableConfig(ctx context.Context, name string
 	return s.getConfigLayer(ctx, name, "writable")
 }
 
-// GetMergedConfig returns the merged (effective) value of a section, combining its read-only and writable
-// layers.
+// GetMergedConfig returns the effective value of a section: its configured value, composed from its
+// read-only and writable layers, over its default.
 func (s *serverConfigService) GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError) {
 	layers, svcErr := s.GetConfig(ctx, ConfigName(name))
 	if svcErr != nil {
@@ -228,6 +238,11 @@ func (s *serverConfigService) setConfig(ctx context.Context,
 	if svcErr != nil {
 		return svcErr
 	}
+	if s.isDeclarative(handler, readOnly) {
+		s.logger.Debug(ctx, "Config write refused: declarative documents set the section",
+			log.String("name", string(name)))
+		return &ErrorInvalidConfigValue
+	}
 
 	if err := handler.Validate(ctx, incoming, readOnly, writable); err != nil {
 		s.logger.Debug(ctx, "Config value validation failed", log.String("name", string(name)), log.Error(err))
@@ -270,6 +285,11 @@ func (s *serverConfigService) updateConfig(ctx context.Context, name ConfigName,
 		readOnly, writable, svcErr := s.decodeLayers(ctx, name, handler, rawLayers)
 		if svcErr != nil {
 			return svcErr
+		}
+		if s.isDeclarative(handler, readOnly) {
+			s.logger.Debug(ctx, "Config update refused: declarative documents set the section",
+				log.String("name", string(name)))
+			return &ErrorInvalidConfigValue
 		}
 		next, err := updater.Update(writable)
 		if err != nil {
@@ -352,6 +372,12 @@ func (s *serverConfigService) publishConfigWrite(ctx context.Context, name Confi
 		evt.WithData(event.DataKey.Error, svcErr.Code)
 	}
 	s.observability.PublishEvent(ctx, evt)
+}
+
+// isDeclarative reports whether declarative documents alone set the section: the server keeps server
+// configuration only in them, or the section's own document locks it.
+func (s *serverConfigService) isDeclarative(handler ServerConfigHandlerInterface, readOnly any) bool {
+	return s.declarativeOnly || handler.IsLocked(readOnly)
 }
 
 // decodeLayers decodes the stored readOnly and writable layers into typed values. A failure here is an
