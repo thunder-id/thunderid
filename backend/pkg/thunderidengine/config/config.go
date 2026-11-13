@@ -130,8 +130,8 @@ type SecurityConfig struct {
 // restricted on it, so the two always agree. A value of nothing but whitespace and control
 // characters counts as unset.
 func (c SecurityConfig) HasManagementAPIKey() bool {
-	return strings.IndexFunc(strings.TrimSpace(c.ManagementAPIKeyHash), func(r rune) bool {
-		return !unicode.IsControl(r) || r == '\n' || r == '\t'
+	return strings.IndexFunc(c.ManagementAPIKeyHash, func(r rune) bool {
+		return !unicode.IsControl(r) && !unicode.IsSpace(r)
 	}) >= 0
 }
 

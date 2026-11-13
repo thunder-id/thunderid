@@ -62,6 +62,9 @@ func TestHasManagementAPIKey(t *testing.T) {
 		"   ":              false,
 		"\x00\x01\x7f":     false,
 		" \x02 ":           false,
+		"\x00 \x01":        false,
+		"\x00\n\x01":       false,
+		"\t\n\r":           false,
 		"4955d93012fc5e2e": true,
 		" 4955d93012 ":     true,
 	} {
