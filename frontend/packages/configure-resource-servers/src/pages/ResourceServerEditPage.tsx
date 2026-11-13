@@ -8,7 +8,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useCapabilitiesContext, useProjectScope, useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useHiddenResources, useProjectScope, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -87,9 +87,12 @@ export default function ResourceServerEditPage(): JSX.Element {
   const {projectId} = useProjectScope();
   // Inside a project, a resource server of another project is not shown: the page returns to the list.
   const isOtherProject = Boolean(projectId && resourceServer && resourceServer.projectId !== projectId);
+  // A hidden resource server is not shown either: a deep link goes to the list instead.
+  const {isHiddenResourceServer} = useHiddenResources();
+  const isHidden = isHiddenResourceServer(resourceServer?.identifier);
   useEffect(() => {
-    if (isOtherProject) void navigate(routes.list(), {replace: true});
-  }, [isOtherProject, navigate, routes]);
+    if (isOtherProject || isHidden) void navigate(routes.list(), {replace: true});
+  }, [isOtherProject, isHidden, navigate, routes]);
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -199,7 +202,7 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const resourceTypeTitle = t('resourceServers:listing.title', 'Resource servers');
 
-  if (isLoading || isOtherProject) {
+  if (isLoading || isOtherProject || isHidden) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />

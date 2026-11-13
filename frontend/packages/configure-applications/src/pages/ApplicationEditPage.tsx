@@ -13,7 +13,7 @@ import {
 } from '@thunderid/components';
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useCapabilitiesContext, useConfig, useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig, useHiddenResources, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -116,9 +116,14 @@ export default function ApplicationEditPage() {
   // Another project's application is not shown in the selected one: a deep link, a stale tab or a
   // switch of project goes to the selected project's applications instead.
   const isOtherProject = Boolean(projectId && application && application.projectId !== projectId);
+  // A hidden application is not shown either: a deep link goes to the applications instead.
+  const {isHiddenApplication} = useHiddenResources();
+  const isHidden = isHiddenApplication(
+    application?.inboundAuthConfig?.find((auth) => auth.type === 'oauth2')?.config?.clientId,
+  );
   useEffect(() => {
-    if (isOtherProject) void navigate(routes.applications.list(), {replace: true});
-  }, [isOtherProject, navigate, routes]);
+    if (isOtherProject || isHidden) void navigate(routes.applications.list(), {replace: true});
+  }, [isOtherProject, isHidden, navigate, routes]);
   const updateApplication = useUpdateApplication();
   const handleStatusChanged = useCallback((): void => {
     void refetch();
@@ -310,7 +315,7 @@ export default function ApplicationEditPage() {
 
   const resourceTypeTitle = t('navigation:pages.applications', 'Applications');
 
-  if (isLoading || isOtherProject) {
+  if (isLoading || isOtherProject || isHidden) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />

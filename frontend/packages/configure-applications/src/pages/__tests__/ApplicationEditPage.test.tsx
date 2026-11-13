@@ -4,7 +4,7 @@
 import type {UseQueryResult, UseMutationResult} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {useGetFlows} from '@thunderid/configure-flows';
-import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, HiddenResourcesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils';
 import {useState} from 'react';
 import {useNavigate} from 'react-router';
@@ -472,6 +472,49 @@ describe('ApplicationEditPage', () => {
         <ProjectScopeProvider project={{id: 'project-a'}}>
           <ApplicationEditPage />
         </ProjectScopeProvider>,
+      );
+
+      expect(navigate).not.toHaveBeenCalledWith('/applications', {replace: true});
+    });
+  });
+
+  describe('Hidden applications', () => {
+    it('goes to the applications when the application is hidden by its client id', async () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      mockUseGetApplication.mockReturnValue({
+        data: mockApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      render(
+        <HiddenResourcesProvider hidden={{applicationClientIds: ['TEST-CLIENT-ID']}}>
+          <ApplicationEditPage />
+        </HiddenResourcesProvider>,
+      );
+
+      await waitFor(() => {
+        expect(navigate).toHaveBeenCalledWith('/applications', {replace: true});
+      });
+      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+    });
+
+    it('shows the application when another client id is hidden', () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      mockUseGetApplication.mockReturnValue({
+        data: mockApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      render(
+        <HiddenResourcesProvider hidden={{applicationClientIds: ['ADMIN_CONSOLE']}}>
+          <ApplicationEditPage />
+        </HiddenResourcesProvider>,
       );
 
       expect(navigate).not.toHaveBeenCalledWith('/applications', {replace: true});

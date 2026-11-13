@@ -3,7 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import {DeployStatusProvider} from '@thunderid/components';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -647,5 +647,38 @@ describe('ApplicationsList', () => {
     const chips = screen.getAllByTestId('resource-deploy-status');
     expect(chips[0]).toHaveTextContent('Not in Prod');
     chips.forEach((chip) => expect(chip).toHaveAttribute('tabindex', '-1'));
+  });
+  it('leaves a hidden application out of the list, matching its client id', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    render(
+      <HiddenResourcesProvider hidden={{applicationClientIds: ['CLIENT_ID_2']}}>
+        <ApplicationsList />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(screen.getByText('Test App 1')).toBeInTheDocument();
+    expect(screen.queryByText('Test App 2')).not.toBeInTheDocument();
+  });
+
+  it('lists every application when none is hidden', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    render(
+      <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['client_id_2']}}>
+        <ApplicationsList />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(screen.getByText('Test App 1')).toBeInTheDocument();
+    expect(screen.getByText('Test App 2')).toBeInTheDocument();
   });
 });

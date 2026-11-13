@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useHiddenResources} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -24,7 +25,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {Rocket, Send, X} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useState, type JSX, type ReactNode} from 'react';
+import {useCallback, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
@@ -137,6 +138,13 @@ export default function ApplyPanel({
   const project = useProjectScope();
   const scoped = project !== undefined && changes.some((change: Change) => change.section !== undefined);
   const active = useMemo(() => changes.filter((change: Change) => change.change !== 'unchanged'), [changes]);
+  // Hidden resources are left out of what the panel shows, but still go with the deploy as ticked.
+  const {isHiddenResource} = useHiddenResources();
+  const isShown = useCallback(
+    (change: Change): boolean => !isHiddenResource(change.resourceType, change.id),
+    [isHiddenResource],
+  );
+  const shown = useMemo(() => changes.filter(isShown), [changes, isShown]);
 
   // What starts unticked: with a retry, all but what it retries; otherwise what an earlier deploy left
   // out for the deploys after it.
@@ -397,8 +405,11 @@ export default function ApplyPanel({
   let submitLabel = t('applyPanel.submit', 'Deploy');
   if (confirmRemovals) submitLabel = t('applyPanel.submitConfirm', 'Deploy and remove {{count}}', {count: removals});
   else if (drawer && check.isSuccess) {
-    const count = active.filter((change: Change) => selected.has(change.key)).length;
-    if (count === 0) submitLabel = t('applyPanel.nothingToDeploy', 'Nothing to deploy');
+    const deployed = active.filter((change: Change) => selected.has(change.key));
+    const count = deployed.filter(isShown).length;
+    if (deployed.length === 0) submitLabel = t('applyPanel.nothingToDeploy', 'Nothing to deploy');
+    // Only hidden changes ticked still deploy, under the plain label.
+    else if (count === 0) submitLabel = t('applyPanel.submit', 'Deploy');
     else if (promote)
       submitLabel = t('applyPanel.promoteCount', 'Promote {{count}} changes to {{gateway}}', {count, gateway: envName});
     else
@@ -516,7 +527,7 @@ export default function ApplyPanel({
       {check.isSuccess &&
         (drawer || scoped ? (
           <DeployChanges
-            changes={changes}
+            changes={shown}
             selected={selected}
             onToggle={toggle}
             onToggleAll={toggleAll}
@@ -526,7 +537,7 @@ export default function ApplyPanel({
           />
         ) : (
           <ChangeList
-            changes={changes}
+            changes={shown}
             selected={selected}
             onToggle={toggle}
             onToggleAll={toggleAll}
