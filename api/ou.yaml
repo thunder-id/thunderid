@@ -1881,7 +1881,7 @@ components:
 
     OrganizationUnit:
       type: object
-      required: [id, handle, name, createdAt, updatedAt]
+      required: [id, handle, name, isReadOnly, createdAt, updatedAt]
       properties:
         isReadOnly:
           type: boolean
@@ -1953,6 +1953,10 @@ components:
           type: string
           format: uri
           description: "Cookie Policy URI"
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: "Whether the organization unit is immutable by clients."
         createdAt:
           type: string
           format: date-time

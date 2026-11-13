@@ -209,7 +209,7 @@ func (ous *organizationUnitService) withManaged(
 		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the organization unit",
 			log.String("id", ou.ID), log.Error(err))
 	}
-	ou.IsReadOnly = deployed
+	ou.IsReadOnly = ou.IsReadOnly || deployed
 	return ou, nil
 }
 
@@ -887,6 +887,7 @@ func (ous *organizationUnitService) GetOrganizationUnit(
 		logger.Error(ctx, "Failed to get organization unit", log.Error(err))
 		return OrganizationUnit{}, &tidcommon.InternalServerError
 	}
+	ou.IsReadOnly = ous.ouStore.IsOrganizationUnitDeclarative(ctx, ou.ID)
 
 	return ous.withManaged(ctx, ou)
 }
@@ -915,6 +916,8 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 	if svcErr := ous.checkOUAccess(ctx, security.ActionReadOU, ou.ID); svcErr != nil {
 		return OrganizationUnit{}, svcErr
 	}
+
+	ou.IsReadOnly = ous.ouStore.IsOrganizationUnitDeclarative(ctx, ou.ID)
 
 	return ous.withManaged(ctx, ou)
 }
