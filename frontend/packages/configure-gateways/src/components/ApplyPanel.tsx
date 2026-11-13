@@ -45,7 +45,7 @@ import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/api
 import {carriedWithProject, projectNeeds, sharedByDefault, sharedMissing} from '../utils/changeSummary';
 import {fromListText, toListText} from '../utils/listValue';
 import {fieldKey, missingFields, type MissingField, type RefusedFix} from '../utils/missingValues';
-import {withNeeded} from '../utils/needs';
+import {withNeeded, withReplaced} from '../utils/needs';
 
 export interface ApplyPanelProps {
   version: Version;
@@ -195,7 +195,7 @@ export default function ApplyPanel({
   );
   // What the ticked changes bring along, as the control plane widens the selection; shown ticked and
   // marked, not chosen by hand.
-  const required = useMemo(() => {
+  const brought = useMemo(() => {
     if (scoped) {
       // What the ticked resources need that the target lacks goes with them, locked. A check that names no
       // needs says only that the project needs it, so it goes whatever is ticked.
@@ -211,6 +211,8 @@ export default function ApplyPanel({
     }
     return includeNeeded ? withNeeded(ticked, changes) : new Map<string, string>();
   }, [active, includeNeeded, scoped, ticked, changes]);
+  // An addition always brings the removal of the resource it replaces.
+  const required = useMemo(() => withReplaced(ticked, brought, changes), [ticked, brought, changes]);
   const selected = useMemo(() => new Set([...ticked, ...required.keys()]), [ticked, required]);
   // The values the deploy lacks that a ticked change uses. A value only unticked changes use is not
   // asked for, nor one whose user the check does not name; a value no reference ties to a change is.

@@ -221,6 +221,9 @@ type Change struct {
 	Needs      []string `json:"needs,omitempty"`
 	Required   bool     `json:"required,omitempty"`
 	RequiredBy string   `json:"requiredBy,omitempty"`
+	// Replaces is, on an added change, the key of the removed resource of the same type and name that
+	// it replaces. An apply sending the addition also sends that removal, ahead of the documents.
+	Replaces string `json:"replaces,omitempty"`
 	// Section places the change in a diff or an apply scoped to a project: the project's own resources
 	// ("project"), what they need ("needed"), what belongs to no project ("shared"), or another
 	// project's own ("other"). Required then marks a needed change the gateway lacks or refused, which

@@ -3,7 +3,7 @@
 
 import {describe, expect, it} from 'vitest';
 import type {Change} from '../../models/deploy';
-import {withNeeded} from '../needs';
+import {withNeeded, withReplaced} from '../needs';
 
 const changes: Change[] = [
   {
@@ -44,5 +44,45 @@ describe('withNeeded', () => {
   it('follows no need of a removal, and needs nothing for a selection of none', () => {
     expect(withNeeded(new Set(['role/r-1']), changes).size).toBe(0);
     expect(withNeeded(new Set(), changes).size).toBe(0);
+  });
+});
+
+describe('withReplaced', () => {
+  const replacing: Change[] = [
+    {
+      key: 'resource_server/rs-new',
+      resourceType: 'resource_server',
+      change: 'added',
+      replaces: 'resource_server/rs-old',
+    },
+    {key: 'resource_server/rs-old', resourceType: 'resource_server', change: 'deleted'},
+    {key: 'flow/f-new', resourceType: 'flow', change: 'added', replaces: 'flow/f-gone'},
+  ];
+
+  it('brings the removal a selected or brought addition replaces, and keeps what was brought', () => {
+    expect([...withReplaced(new Set(['resource_server/rs-new']), new Map(), replacing)]).toEqual([
+      ['resource_server/rs-old', 'resource_server/rs-new'],
+    ]);
+    const brought = new Map([['resource_server/rs-new', 'application/app-1']]);
+    expect([...withReplaced(new Set(), brought, replacing)]).toEqual([
+      ['resource_server/rs-new', 'application/app-1'],
+      ['resource_server/rs-old', 'resource_server/rs-new'],
+    ]);
+  });
+
+  it('brings nothing for an addition left out, or one whose replaced removal is not offered', () => {
+    expect(withReplaced(new Set(), new Map(), replacing).size).toBe(0);
+    expect(withReplaced(new Set(['flow/f-new']), new Map(), replacing).size).toBe(0);
+  });
+
+  it.each([
+    ['held back', {heldBack: true}],
+    ['not run by the source', {sourceExcluded: true}],
+  ])('brings no replaced removal that is %s', (_, flag: Partial<Change>) => {
+    const held = replacing.map((change: Change) =>
+      change.key === 'resource_server/rs-old' ? {...change, ...flag} : change,
+    );
+
+    expect(withReplaced(new Set(['resource_server/rs-new']), new Map(), held).size).toBe(0);
   });
 });

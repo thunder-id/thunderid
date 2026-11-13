@@ -73,6 +73,19 @@ func chosen(diff *Diff, target *Version, selection *[]string,
 		} else if missing, heldBack := lacking(*selection, diff.Changes); len(missing) > 0 {
 			return shipment{}, dependenciesMissing(missing, heldBack)
 		}
+		// An addition goes with the removal of the resource it replaces, which the gateway would
+		// otherwise refuse it for while that one holds its name. A removal the gateway holds back stays
+		// out until a selection names it, so the addition is refused for the name meanwhile.
+		heldBack := map[string]bool{}
+		for _, change := range diff.Changes {
+			heldBack[change.Key] = change.HeldBack
+		}
+		for _, change := range diff.Changes {
+			if wanted[change.Key] && change.Replaces != "" && !wanted[change.Replaces] && !heldBack[change.Replaces] {
+				wanted[change.Replaces] = true
+				required[change.Replaces] = change.Key
+			}
+		}
 	}
 	take := func(change Change) bool { return selection == nil || wanted[change.Key] }
 

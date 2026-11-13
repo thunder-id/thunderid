@@ -123,6 +123,8 @@ export interface Change {
    */
   required?: boolean;
   requiredBy?: string;
+  /** On an addition, the key of the removed resource of the same type and name it replaces, which goes with it. */
+  replaces?: string;
   /** On a project's deploy check, where the change stands with the project. */
   section?: ChangeSection;
   /** On a project's deploy check, the other projects on the target that use this resource. */

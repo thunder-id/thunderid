@@ -816,9 +816,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	}
 
 	// A removal that an update in this apply frees goes after the update, once the gateway accepted it,
-	// and a removal goes before those of what it needs.
+	// and a removal goes before those of what it needs. The removal of a resource an addition replaces
+	// goes before the documents, with those of what names it.
 	heldDocuments := parseBundle(previous.Resources)
-	removals := orderedRemovals(sent.deletions, heldDocuments)
+	first, removals := replacedRemovals(orderedRemovals(sent.deletions, heldDocuments), heldDocuments,
+		replacedBy(diff))
 	now, after, awaiting := deferredRemovals(removals, heldDocuments, sentDocuments)
 	// Who a role or group document no longer lists is taken off it before any resource is removed.
 	now = append(memberRemovals(heldDocuments, sentDocuments), now...)
@@ -837,14 +839,14 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 			return nil, svcErr
 		}
 	}
-	stillHolds := func() bool { return s.mayStillSend(ctx, gw, target, token, prepared) == nil }
-	answer, wrote, plain, err := s.send(ctx, gw, key, &request, after, awaiting, stillHolds)
+	stillHolds := func() *tidcommon.ServiceError { return s.mayStillSend(ctx, gw, target, token, prepared) }
+	answer, wrote, plain, err := s.send(ctx, gw, key, &request, first, after, awaiting, stillHolds)
 	// Once the gateway may have written any of it, the version is kept as it is.
 	delivered = wrote || mayHaveWritten(err)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq), log.Error(err))
-		return nil, unreachable(err)
+		return nil, sendFailure(err)
 	}
 
 	result := applyResultOf(gw, dryRun, diff, answer, missing, changed)
@@ -970,29 +972,45 @@ func levelWith(master *Master, version *Version) appliedState {
 // accepted the update; one whose update was refused stays in place, and so does one the second import
 // failed for or answered unreadably, while the first import's outcomes are recorded. The second import is sent only
 // while stillHolds says the apply may still write the gateway, as the first was; otherwise those
-// removals stay in place for a later apply. A dry run sends everything at once, since nothing is
-// written. The request is left naming every removal sent.
+// removals stay in place for a later apply. The removals in first go in an import of their own before
+// the documents, since a gateway makes an import's removals after its documents and refuses a resource
+// while another holds its name; the documents follow only while stillHolds. A dry run sends everything
+// at once, since nothing is written. The request is left naming every removal sent.
 func (s *versionService) send(ctx context.Context, gw *Gateway, key string, request *gatewayImportRequest,
-	after []gatewayDeletion, awaiting map[string][]bundleResource, stillHolds func() bool) (
-	json.RawMessage, bool, bool, error) {
-	if request.Content == "" && len(request.Deletions) == 0 && len(after) == 0 {
+	first, after []gatewayDeletion, awaiting map[string][]bundleResource,
+	stillHolds func() *tidcommon.ServiceError) (json.RawMessage, bool, bool, error) {
+	if request.Content == "" && len(request.Deletions) == 0 && len(first) == 0 && len(after) == 0 {
 		return json.RawMessage(`{"results":[]}`), false, false, nil
 	}
 	if request.DryRun {
-		request.Deletions = append(request.Deletions, after...)
+		request.Deletions = append(append(append([]gatewayDeletion{}, first...), request.Deletions...), after...)
 		answer, plain, err := s.client.Import(ctx, gw, key, *request)
 		if err != nil {
 			return answer, false, plain, err
 		}
 		return rejectUnacceptedRemovals(answer, request.SharingRemovals), false, plain, nil
 	}
-	answer, plain, err := s.client.Import(ctx, gw, key, *request)
+	removedFirst, plain, err := s.removeFirst(ctx, gw, key, request.Options, first, stillHolds)
 	if err != nil {
 		return nil, mayHaveWritten(err), plain, err
 	}
+	answer, plain, err := s.client.Import(ctx, gw, key, *request)
+	if err != nil {
+		return nil, removedFirst != nil || mayHaveWritten(err), plain, err
+	}
 	answer = rejectUnacceptedRemovals(answer, request.SharingRemovals)
+	if removedFirst != nil {
+		merged, ok := mergeAnswers(removedFirst, answer)
+		if !ok {
+			s.logger.Warn(ctx, "The gateway's answer to the removals sent first could not be read, so they stay "+
+				"pending", log.String("gatewayID", gw.ID))
+		} else {
+			answer = merged
+			request.Deletions = append(append([]gatewayDeletion{}, first...), request.Deletions...)
+		}
+	}
 	released := releasedRemovals(after, awaiting, answer)
-	if len(released) == 0 || !stillHolds() {
+	if len(released) == 0 || stillHolds() != nil {
 		return answer, true, plain, nil
 	}
 	// The first import's outcomes stand whatever becomes of the second: what it wrote is recorded. The
@@ -1012,6 +1030,43 @@ func (s *versionService) send(ctx context.Context, gw *Gateway, key string, requ
 	}
 	request.Deletions = append(request.Deletions, released...)
 	return merged, true, plain, nil
+}
+
+// stoppedError is an apply that may no longer write the gateway after its first import, with why.
+type stoppedError struct {
+	cause *tidcommon.ServiceError
+}
+
+func (e *stoppedError) Error() string {
+	return "the apply stopped after its first import: " + e.cause.Code
+}
+
+// sendFailure is what an apply whose import failed answers: why it stopped after its first import, or
+// that the gateway could not be reached.
+func sendFailure(err error) *tidcommon.ServiceError {
+	var stopped *stoppedError
+	if errors.As(err, &stopped) {
+		return stopped.cause
+	}
+	return unreachable(err)
+}
+
+// removeFirst sends the removals that go before an apply's documents, in an import of their own, and
+// returns the gateway's answer, or none when there are none, and whether it took the plain import. An
+// apply that may no longer write the gateway stops there.
+func (s *versionService) removeFirst(ctx context.Context, gw *Gateway, key string, options gatewayImportOptions,
+	first []gatewayDeletion, stillHolds func() *tidcommon.ServiceError) (json.RawMessage, bool, error) {
+	if len(first) == 0 {
+		return nil, false, nil
+	}
+	answer, plain, err := s.client.Import(ctx, gw, key, gatewayImportRequest{Options: options, Deletions: first})
+	if err != nil {
+		return nil, plain, err
+	}
+	if svcErr := stillHolds(); svcErr != nil {
+		return nil, plain, &stoppedError{cause: svcErr}
+	}
+	return answer, plain, nil
 }
 
 // mayStillSend reports whether an apply may send its import now. A lease held longer than an apply
@@ -1305,11 +1360,14 @@ func (s *versionService) plan(ctx context.Context, gatewayID string,
 		return nil, nil, nil, svcErr
 	}
 	resources := parseBundle(target.Resources)
+	held := parseBundle(master.Resources)
 	diff := &Diff{FromMaster: master.Hash, ToVersion: target.Hash}
-	diff.Changes = markFailed(diffBundles(parseBundle(master.Resources), resources), master)
+	diff.Changes = markFailed(diffBundles(held, resources), master)
 	needs := needsOf(resources)
+	replaces := replacementsOf(held, resources)
 	for i := range diff.Changes {
 		diff.Changes[i].Needs = needs[diff.Changes[i].Key]
+		diff.Changes[i].Replaces = replaces[diff.Changes[i].Key]
 	}
 	diff.Summary = summarize(diff.Changes)
 	// A version captured before captures refused one may still refer to a secret from a field that

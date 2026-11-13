@@ -329,6 +329,101 @@ func orderedRemovals(deletions []gatewayDeletion, held []bundleResource) []gatew
 	return ordered
 }
 
+var (
+	ouIDField   = topLevelScalar("ouId")
+	parentField = topLevelScalar("parent")
+)
+
+// replacementsOf pairs a resource a version adds with the held one it replaces: one the version
+// removes, of the same type and name, in the same organization unit, project and parent, as when a
+// resource is deleted and created again under a new id. The gateway refuses the new one while the old
+// one holds the name. It returns the removed key by the added one. A name that two removals or two
+// additions share is left unpaired, since which one replaces which cannot be told.
+func replacementsOf(held, applied []bundleResource) map[string]string {
+	identity := func(resource bundleResource) string {
+		return strings.Join([]string{resource.Type, resource.Name, firstMatch(ouIDField, resource.Content),
+			firstMatch(projectIDField, resource.Content), firstMatch(parentField, resource.Content)}, "\x00")
+	}
+	heldKeys := make(map[string]bool, len(held))
+	for _, resource := range held {
+		heldKeys[resource.key()] = true
+	}
+	appliedKeys := make(map[string]bool, len(applied))
+	for _, resource := range applied {
+		appliedKeys[resource.key()] = true
+	}
+	removed, added := map[string][]string{}, map[string][]string{}
+	for _, resource := range held {
+		if resource.Name != "" && !appliedKeys[resource.key()] {
+			removed[identity(resource)] = append(removed[identity(resource)], resource.key())
+		}
+	}
+	for _, resource := range applied {
+		if resource.Name != "" && !heldKeys[resource.key()] {
+			added[identity(resource)] = append(added[identity(resource)], resource.key())
+		}
+	}
+	replaced := map[string]string{}
+	for name, keys := range added {
+		if len(keys) == 1 && len(removed[name]) == 1 {
+			replaced[keys[0]] = removed[name][0]
+		}
+	}
+	return replaced
+}
+
+// replacedBy returns the keys of the resources that the additions an apply sends replace.
+func replacedBy(diff *Diff) map[string]bool {
+	replaced := map[string]bool{}
+	for _, change := range diff.Changes {
+		if change.Selected && change.Replaces != "" {
+			replaced[change.Replaces] = true
+		}
+	}
+	return replaced
+}
+
+// replacedRemovals takes out of an apply's removals, in their order, those that go before its
+// documents: the removal of each resource an added one replaces, and the removal of every removed
+// resource that names one of those, which the gateway would otherwise refuse to remove first.
+func replacedRemovals(deletions []gatewayDeletion, held []bundleResource,
+	replaced map[string]bool) (first, rest []gatewayDeletion) {
+	if len(replaced) == 0 {
+		return nil, deletions
+	}
+	removing := make(map[string]bool, len(deletions))
+	for _, deletion := range deletions {
+		removing[deletion.ResourceType+"/"+deletion.ID] = true
+	}
+	going := map[string]bool{}
+	for key := range replaced {
+		going[key] = removing[key]
+	}
+	needs := needsOf(held)
+	for grew := true; grew; {
+		grew = false
+		for key := range removing {
+			if going[key] {
+				continue
+			}
+			for _, needed := range needs[key] {
+				if going[needed] {
+					going[key], grew = true, true
+					break
+				}
+			}
+		}
+	}
+	for _, deletion := range deletions {
+		if going[deletion.ResourceType+"/"+deletion.ID] {
+			first = append(first, deletion)
+			continue
+		}
+		rest = append(rest, deletion)
+	}
+	return first, rest
+}
+
 // deferredRemovals splits an apply's removals into those sent with its documents and those sent only
 // once the documents are written: a removal that a document the gateway keeps names, which this apply
 // updates to stop naming it, waits for that update, so a refused update leaves the resource in place.
