@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info:
+  title: One operation, several tools; one tool, several operations
+  version: "1.0"
+paths:
+  /apps:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: list_apps, tier: read}
+          - {name: missing_tool, tier: read}
+  /apps/search:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: list_apps, tier: read}
+          - {name: missing_tool, tier: read}
+  /apps/{id}:
+    put:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: search_apps, tier: write}
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: search_apps, tier: read}

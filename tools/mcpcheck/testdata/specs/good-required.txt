@@ -1,0 +1,30 @@
+# Connections Specification
+
+## Detailed design
+
+### API
+
+`GET /connections` lists connections.
+
+### MCP exposure
+
+Decision: required
+
+| Operation | Tool | Tier |
+|---|---|---|
+| GET /connections | thunderid_list_connections | read |
+| `POST /connections` | `thunderid_create_connection` | write |
+| GET /connections | thunderid_search_connections | read |
+| GET /connections/{id} | thunderid_list_connections | read |
+| PUT /connections/{id} | thunderid_save_connection | write |
+| POST /connections | thunderid_save_connection | write |
+| POST /connections/{id}/test | not exposed: runs a live request against the endpoint | |
+| POST /connections/{id}/rotate | not exposed: returns a credential | write |
+| DELETE /connections/{id} | deferred #1234 | destructive |
+| PUT /connections/{id} | deferred https://github.com/thunder-id/thunderid/issues/1235 | write |
+
+### UI
+
+| Operation | Tool | Tier |
+|---|---|---|
+| this table | is outside | the section |
