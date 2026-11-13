@@ -40,3 +40,17 @@ func (p *defaultUserMgtProvider) UpdateUserCredentials(
 ) *tidcommon.ServiceError {
 	return p.userSvc.UpdateUserCredentials(ctx, userID, credentials)
 }
+
+// ValidateRemoveUserCredential checks the invalidation through the user service, changing nothing.
+func (p *defaultUserMgtProvider) ValidateRemoveUserCredential(
+	ctx context.Context, userID, credentialType string,
+) *tidcommon.ServiceError {
+	return p.userSvc.ValidateRemoveUserCredential(ctx, userID, credentialType)
+}
+
+// RemoveUserCredential removes the user's credential through the user service.
+func (p *defaultUserMgtProvider) RemoveUserCredential(
+	ctx context.Context, userID, credentialType string,
+) (string, *tidcommon.ServiceError) {
+	return p.userSvc.RemoveUserCredential(ctx, userID, credentialType)
+}

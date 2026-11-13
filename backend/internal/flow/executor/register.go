@@ -350,7 +350,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
 				deps.FlowFactory, deps.EntityProvider, deps.UserMgtProvider, deps.AuthnProvider,
-				newAccessGuard(deps.IdentityGovernance)))
+				newAccessGuard(deps.IdentityGovernance), deps.EntityTypeService))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))

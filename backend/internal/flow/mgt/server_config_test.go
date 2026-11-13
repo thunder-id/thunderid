@@ -107,27 +107,37 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorRejectsUnknown(
 	s.Error(err)
 }
 
-// The attribute verification entry names an administrator-initiated flow, so its handle is checked
-// against that type, not ADMINISTRATION.
-func (s *FlowConfigHandlerTestSuite) TestValidate_AttributeVerificationFlowIsAdminInitiated() {
-	var gotHandle string
-	var gotType providers.FlowType
-	s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
-		gotHandle, gotType = handle, flowType
-		return flowType == providers.FlowTypeAdminInitiated
-	})
-	cfg := flowconfig.FlowSectionConfig{
-		AdminAttributeVerificationFlow: flowconfig.FlowTypeConfig{
-			DefaultHandle: "default-admin-attribute-verification-flow"},
+// The attribute verification and credential reset entries name administrator-initiated flows, so their
+// handles are checked against that type, not ADMINISTRATION.
+func (s *FlowConfigHandlerTestSuite) TestValidate_AdminInitiatedEntriesAreAdminInitiated() {
+	for _, test := range []struct {
+		key    string
+		handle string
+		cfg    flowconfig.FlowSectionConfig
+	}{
+		{"adminAttributeVerificationFlow", "default-admin-attribute-verification-flow",
+			flowconfig.FlowSectionConfig{AdminAttributeVerificationFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-attribute-verification-flow"}}},
+		{"adminCredentialResetFlow", "default-admin-credential-reset-flow",
+			flowconfig.FlowSectionConfig{AdminCredentialResetFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-credential-reset-flow"}}},
+	} {
+		s.Run(test.key, func() {
+			var gotHandle string
+			var gotType providers.FlowType
+			s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
+				gotHandle, gotType = handle, flowType
+				return flowType == providers.FlowTypeAdminInitiated
+			})
+
+			s.Require().NoError(s.handler.Validate(context.Background(), test.cfg, nil, nil))
+			s.Equal(test.handle, gotHandle)
+			s.Equal(providers.FlowTypeAdminInitiated, gotType)
+
+			s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool { return false })
+			s.ErrorContains(s.handler.Validate(context.Background(), test.cfg, nil, nil), test.key+".defaultHandle")
+		})
 	}
-
-	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
-	s.Equal("default-admin-attribute-verification-flow", gotHandle)
-	s.Equal(providers.FlowTypeAdminInitiated, gotType)
-
-	s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool { return false })
-	s.ErrorContains(s.handler.Validate(context.Background(), cfg, nil, nil),
-		"adminAttributeVerificationFlow.defaultHandle")
 }
 
 func (s *FlowConfigHandlerTestSuite) TestValidate_NoValidatorSkipsHandleCheck() {
@@ -276,6 +286,7 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 	return flowconfig.FlowSectionConfig{
 		SecretRegenerationFlow:         handle("secret-regeneration"),
 		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
+		AdminCredentialResetFlow:       handle("admin-credential-reset"),
 		UserUnlockFlow:                 handle("user-unlock"),
 		UserSuspendFlow:                handle("user-suspend"),
 		UserUnsuspendFlow:              handle("user-unsuspend"),

@@ -124,6 +124,13 @@ type UserMgtProvider interface {
 	// UpdateUserCredentials sets schema-defined credentials, such as a password, for an existing user.
 	// Errors from the user service are returned unchanged.
 	UpdateUserCredentials(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError
+	// ValidateRemoveUserCredential checks whether the caller may invalidate the user's credential of
+	// credentialType, changing nothing. Errors from the user service are returned unchanged.
+	ValidateRemoveUserCredential(ctx context.Context, userID, credentialType string) *common.ServiceError
+	// RemoveUserCredential removes the user's credential of credentialType, so its value no longer
+	// authenticates, and returns the credential marker the removal wrote. Errors from the user service are
+	// returned unchanged.
+	RemoveUserCredential(ctx context.Context, userID, credentialType string) (string, *common.ServiceError)
 }
 
 // PermissionProvider resolves the permissions an entity holds.

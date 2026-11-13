@@ -104,6 +104,9 @@ const (
 	ExecutorModeShare    = executormeta.ExecutorModeShare
 	ExecutorModePrepare  = executormeta.ExecutorModePrepare
 	ExecutorModeRecord   = executormeta.ExecutorModeRecord
+
+	ExecutorModeSet        = executormeta.ExecutorModeSet
+	ExecutorModeInvalidate = executormeta.ExecutorModeInvalidate
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node works on when no
@@ -128,6 +131,8 @@ const (
 	userInputState = "state"
 
 	userInputVerificationAttribute = "attribute"
+	userInputCredential            = "credential"
+	userInputSubject               = "subject"
 
 	userInputOuName            = "ouName"
 	userInputOuHandle          = "ouHandle"

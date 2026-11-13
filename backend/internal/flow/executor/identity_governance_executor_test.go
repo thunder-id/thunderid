@@ -463,13 +463,64 @@ func (s *IdentityGovernanceExecutorTestSuite) TestAnAdministrativeOperationKeeps
 
 func (s *IdentityGovernanceExecutorTestSuite) TestSuspendAndUnsuspendAreAdministrationOnly() {
 	for _, mode := range []string{ExecutorModeSuspend, ExecutorModeUnsuspend} {
-		ctx := recoveryUnlockContext("user-proven", "")
-		ctx.ExecutorMode = mode
+		for _, flowType := range []providers.FlowType{providers.FlowTypeRecovery, providers.FlowTypeAdminInitiated} {
+			ctx := recoveryUnlockContext("user-proven", "")
+			ctx.FlowType = flowType
+			ctx.ExecutorMode = mode
 
-		_, err := s.executor.Execute(ctx)
+			_, err := s.executor.Execute(ctx)
 
-		s.Error(err, "%s must not be reachable from a recovery flow", mode)
+			s.Error(err, "%s must not be reachable from a %s flow", mode, flowType)
+		}
 	}
 	s.governance.AssertNotCalled(s.T(), "Suspend", mock.Anything, mock.Anything, mock.Anything)
 	s.governance.AssertNotCalled(s.T(), "Unsuspend", mock.Anything, mock.Anything)
+}
+
+// An administrator-initiated flow releases the locks of the user it was started for, once that user proved
+// control, with runtime privilege, and ignores a subject input.
+func (s *IdentityGovernanceExecutorTestSuite) TestAnAdminInitiatedFlowUnlocksTheBoundSubject() {
+	var privileged bool
+	s.governance.EXPECT().Unlock(mock.Anything, "user-proven").
+		Run(func(callCtx context.Context, _ string) {
+			privileged = security.IsRuntimeContext(callCtx)
+		}).Return(nil).Once()
+	ctx := adminInitiatedUnlockContext("user-proven", "user-proven")
+	ctx.UserInputs[revocationInputSubject] = "someone-elses-account"
+
+	resp, err := s.executor.Execute(ctx)
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.Equal("user-proven", resp.RuntimeData[userAttributeUserID])
+	s.True(privileged, "the release must reach the authority with runtime privilege")
+}
+
+// Proof recorded for anyone but the user the flow was started for releases nothing.
+func (s *IdentityGovernanceExecutorTestSuite) TestAnAdminInitiatedUnlockNeedsProofForTheBoundSubject() {
+	for name, test := range map[string]struct {
+		proven, bound string
+	}{
+		"proof for another user": {proven: "user-other", bound: "user-proven"},
+		"no bound user":          {proven: "user-proven"},
+		"no proof":               {bound: "user-proven"},
+	} {
+		s.Run(name, func() {
+			resp, err := s.executor.Execute(adminInitiatedUnlockContext(test.proven, test.bound))
+
+			s.Require().NoError(err)
+			s.Equal(providers.ExecFailure, resp.Status)
+			s.Equal(ErrIdentityGovernanceFailed.Code, resp.Error.Code)
+			s.governance.AssertNotCalled(s.T(), "Unlock", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// adminInitiatedUnlockContext builds an administrator-initiated unlock node context with the proven subject and
+// the bound subject, each omitted when empty.
+func adminInitiatedUnlockContext(provenSubject, boundSubject string) *providers.NodeContext {
+	ctx := recoveryUnlockContext(provenSubject, "")
+	ctx.FlowType = providers.FlowTypeAdminInitiated
+	ctx.SetBoundSubject(boundSubject)
+	return ctx
 }

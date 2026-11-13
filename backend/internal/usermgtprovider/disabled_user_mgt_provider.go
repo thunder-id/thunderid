@@ -32,3 +32,17 @@ func (p *disabledUserMgtProvider) UpdateUserCredentials(
 ) *tidcommon.ServiceError {
 	return &ErrorUserManagementDisabled
 }
+
+// ValidateRemoveUserCredential rejects the invalidation, since the provider is disabled.
+func (p *disabledUserMgtProvider) ValidateRemoveUserCredential(
+	_ context.Context, _, _ string,
+) *tidcommon.ServiceError {
+	return &ErrorUserManagementDisabled
+}
+
+// RemoveUserCredential rejects the invalidation, since the provider is disabled.
+func (p *disabledUserMgtProvider) RemoveUserCredential(
+	_ context.Context, _, _ string,
+) (string, *tidcommon.ServiceError) {
+	return "", &ErrorUserManagementDisabled
+}

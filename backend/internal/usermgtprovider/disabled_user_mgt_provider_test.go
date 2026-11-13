@@ -46,3 +46,14 @@ func (suite *DisabledUserMgtProviderTestSuite) TestUpdateUserCredentialsIsReject
 	suite.NotNil(svcErr)
 	suite.Equal(ErrorUserManagementDisabled.Code, svcErr.Code)
 }
+
+func (suite *DisabledUserMgtProviderTestSuite) TestCredentialInvalidationIsRejected() {
+	svcErr := suite.provider.ValidateRemoveUserCredential(context.Background(), testUserID, "password")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorUserManagementDisabled.Code, svcErr.Code)
+
+	marker, svcErr := suite.provider.RemoveUserCredential(context.Background(), testUserID, "password")
+	suite.Empty(marker)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorUserManagementDisabled.Code, svcErr.Code)
+}

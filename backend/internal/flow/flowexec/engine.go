@@ -205,8 +205,10 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 			RequiredSubjectID: ctx.RequiredSubjectID,
 		})
 	}
-	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane.
-	if ctx.FlowType == providers.FlowTypeRecovery {
+	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane. So is an
+	// administrator-initiated flow, whose user recovers access through it, as in an administrator-started
+	// credential reset.
+	if ctx.FlowType == providers.FlowTypeRecovery || ctx.FlowType == providers.FlowTypeAdminInitiated {
 		nodeCtxContext = authnprovidercm.WithRecoveryProof(nodeCtxContext)
 	}
 	// A bounded flow carries its sign-in boundary the same way. It is read now so an ouId or a subject an

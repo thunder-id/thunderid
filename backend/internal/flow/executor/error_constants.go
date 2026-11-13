@@ -1844,6 +1844,52 @@ var (
 			DefaultValue: "A handle could not be created from the organization unit name. Enter a handle",
 		},
 	}
+
+	// ErrCredentialResetNotDelivered is returned when a credential is to be invalidated before its reset
+	// link was delivered.
+	ErrCredentialResetNotDelivered = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1139",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.credential_reset_not_delivered",
+			DefaultValue: "Reset link not delivered",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.credential_reset_not_delivered_desc",
+			DefaultValue: "The credential is invalidated only after its reset link is sent to the user",
+		},
+	}
+
+	// ErrCredentialInvalidationFailed is returned when a credential reset fails after its link was sent.
+	ErrCredentialInvalidationFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1140",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.credential_invalidation_failed",
+			DefaultValue: "Credential reset failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.credential_invalidation_failed_desc",
+			DefaultValue: "The current credential may already be removed, and the link sent to the user will not " +
+				"work. Start the reset again",
+		},
+	}
+
+	// ErrResetInputNotAllowed is returned when a credential reset request carries an input other than the user
+	// and the credential.
+	ErrResetInputNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1141",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.reset_input_not_allowed",
+			DefaultValue: "Input not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.reset_input_not_allowed_desc",
+			DefaultValue: "A credential reset accepts only the user and the credential, and uses the user's " +
+				"stored profile. Remove other inputs from the request",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

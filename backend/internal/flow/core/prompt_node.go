@@ -85,9 +85,14 @@ func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, 
 					log.String("errorCode", errResp.Code))
 			}
 			delete(ctx.RuntimeData, "failureReasonJSON")
-			// Clear this prompt's inputs and current action
+			// Clear this prompt's inputs, the ones forwarded to it, and current action
 			for _, input := range n.getAllInputs() {
 				delete(ctx.UserInputs, input.Identifier)
+			}
+			if forwarded, ok := ctx.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input); ok {
+				for _, input := range forwarded {
+					delete(ctx.UserInputs, input.Identifier)
+				}
 			}
 			ctx.CurrentAction = ""
 		}

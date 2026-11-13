@@ -212,6 +212,15 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user credential detail", EventUserCredentialUpdate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"credential_type": "password"}), errDetailNotAllowed},
+		{"a user credential update with a flow execution ID", EventUserCredentialUpdate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"flow_execution_id": "exec-1"}), errDetailNotAllowed},
+		{"a user credential invalidate", EventUserCredentialInvalidate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password"}), nil},
+		{"a user credential invalidate value", EventUserCredentialInvalidate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password", "value": "s3cr3t"}), errDetailNotAllowed},
 		{"a user credential enroll without a resolved user", EventUserCredentialEnroll,
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
 		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,
