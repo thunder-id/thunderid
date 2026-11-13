@@ -137,9 +137,13 @@ func (s *HTTPConnectionToolsTestSuite) TestRegisterMCPTools() {
 	s.Require().Contains(tools, "create_http_connection")
 	s.False(tools["create_http_connection"].Annotations.ReadOnlyHint)
 	s.False(tools["create_http_connection"].Annotations.IdempotentHint)
+	s.Require().NotNil(tools["create_http_connection"].Annotations.DestructiveHint)
+	s.False(*tools["create_http_connection"].Annotations.DestructiveHint)
 	s.Require().Contains(tools, "update_http_connection")
 	s.False(tools["update_http_connection"].Annotations.ReadOnlyHint)
 	s.True(tools["update_http_connection"].Annotations.IdempotentHint)
+	s.Require().NotNil(tools["update_http_connection"].Annotations.DestructiveHint)
+	s.True(*tools["update_http_connection"].Annotations.DestructiveHint)
 
 	var createSchema, updateSchema struct {
 		Required   []string                   `json:"required"`

@@ -80,8 +80,9 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 		Description: `Create a project. Its resources are created in the system organization unit, and one ` +
 			`naming another organization unit is refused. A handle already used by another project is refused.`,
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Create Project",
-			IdempotentHint: false,
+			Title:           "Create Project",
+			DestructiveHint: new(false),
+			IdempotentHint:  false,
 		},
 	}, tools.createProject)
 
@@ -90,8 +91,9 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 		Description: `Update the display name and description of a project (full replacement of both). ` +
 			`The handle cannot change.`,
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Update Project",
-			IdempotentHint: true,
+			Title:           "Update Project",
+			DestructiveHint: new(true),
+			IdempotentHint:  true,
 		},
 	}, tools.updateProject)
 }

@@ -20,6 +20,7 @@ func RegisterTools(server *mcp.Server) {
 			"with redirect-based OAuth 2.0/OIDC flow and server-side session management via middleware.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Integrate Next.js SDK",
+			ReadOnlyHint:   true,
 			IdempotentHint: true,
 		},
 	}, integrateNextJSSDK)

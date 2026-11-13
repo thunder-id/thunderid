@@ -153,7 +153,7 @@ func registerMCPTools(server *mcp.Server, tools *gatewayTools) {
 		Name: "capture_configuration_version",
 		Description: `Capture the configuration as it is now as a new version, to deploy to a gateway, as ` +
 			`POST /configuration-versions does. A configuration already captured is answered with its version.`,
-		Annotations: &mcp.ToolAnnotations{IdempotentHint: true},
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
 	}, tools.capture)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -228,7 +228,7 @@ func registerValueTools(server *mcp.Server, collection, kind string,
 		Description: fmt.Sprintf(`Set a %s on a gateway, creating it when the gateway does not hold it, as `+
 			`PUT /gateways/{id}/%s/{name} does. A deployed configuration takes it up when a version is deployed `+
 			`to the gateway again.%s`, kind, collection, setNote),
-		Annotations: &mcp.ToolAnnotations{IdempotentHint: true},
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
 	}, set)
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "delete_gateway_" + kind,

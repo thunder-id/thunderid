@@ -107,8 +107,9 @@ Use get_authorization_detail_type_by_id on an existing type to see a complete ex
 		OutputSchema: tool.GenerateSchema[AuthorizationDetailTypeResponse](
 			withSchemaObject("The JSON Schema 2020-12 of the type.")),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Create Authorization Detail Type",
-			IdempotentHint: false,
+			Title:           "Create Authorization Detail Type",
+			DestructiveHint: new(false),
+			IdempotentHint:  false,
 		},
 	}, rawTool(tools.createType, readOnlyFields...))
 
@@ -128,8 +129,9 @@ Use get_authorization_detail_type_by_id first to get the current definition, cha
 		OutputSchema: tool.GenerateSchema[AuthorizationDetailTypeResponse](
 			withSchemaObject("The JSON Schema 2020-12 of the type.")),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Update Authorization Detail Type",
-			IdempotentHint: true,
+			Title:           "Update Authorization Detail Type",
+			DestructiveHint: new(true),
+			IdempotentHint:  true,
 		},
 	}, rawTool(tools.updateType, "version", "isReadOnly"))
 }
