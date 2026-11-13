@@ -3107,3 +3107,35 @@ func (s *EntityTypeServiceTestSuite) TestValidateEntityValues_ReturnsErrors() {
 		})
 	}
 }
+
+func (s *EntityTypeServiceTestSuite) TestCategoryPermissionHelpers() {
+	cases := []struct {
+		category     TypeCategory
+		list         security.Action
+		create       security.Action
+		read         security.Action
+		update       security.Action
+		delete       security.Action
+		resourceType security.ResourceType
+	}{
+		{TypeCategoryUser, security.ActionListUserTypes, security.ActionCreateUserType,
+			security.ActionReadUserType, security.ActionUpdateUserType, security.ActionDeleteUserType,
+			security.ResourceTypeUserType},
+		{TypeCategoryAgent, security.ActionListAgentTypes, security.ActionCreateAgentType,
+			security.ActionReadAgentType, security.ActionUpdateAgentType, security.ActionDeleteAgentType,
+			security.ResourceTypeAgentType},
+		{TypeCategoryOU, security.ActionListOUTypes, security.ActionCreateOUType,
+			security.ActionReadOUType, security.ActionUpdateOUType, security.ActionDeleteOUType,
+			security.ResourceTypeOUType},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.category), func() {
+			s.Equal(tc.list, listActionForCategory(tc.category))
+			s.Equal(tc.create, createActionForCategory(tc.category))
+			s.Equal(tc.read, readActionForCategory(tc.category))
+			s.Equal(tc.update, updateActionForCategory(tc.category))
+			s.Equal(tc.delete, deleteActionForCategory(tc.category))
+			s.Equal(tc.resourceType, resourceTypeForCategory(tc.category))
+		})
+	}
+}

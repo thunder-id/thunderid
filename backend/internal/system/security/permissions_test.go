@@ -251,6 +251,13 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission() {
 		{name: "DeleteGroup", action: ActionDeleteGroup, wantPerm: p.GroupDelete},
 		{name: "ListGroups", action: ActionListGroups, wantPerm: p.GroupView},
 
+		// Organization unit type actions.
+		{name: "CreateOUType", action: ActionCreateOUType, wantPerm: p.OUTypeCreate},
+		{name: "ReadOUType", action: ActionReadOUType, wantPerm: p.OUTypeView},
+		{name: "UpdateOUType", action: ActionUpdateOUType, wantPerm: p.OUTypeUpdate},
+		{name: "DeleteOUType", action: ActionDeleteOUType, wantPerm: p.OUTypeDelete},
+		{name: "ListOUTypes", action: ActionListOUTypes, wantPerm: p.OUTypeView},
+
 		// Flow actions.
 		{name: "CreateFlow", action: ActionCreateFlow, wantPerm: p.FlowCreate},
 		{name: "ReadFlow", action: ActionReadFlow, wantPerm: p.FlowView},
@@ -395,6 +402,9 @@ func TestInitControlPlanePermissions_EmptyHandle(t *testing.T) {
 	assert.Equal(t, "system:usertype:view", p.UserTypeView)
 	assert.Equal(t, "system:agenttype", p.AgentType)
 	assert.Equal(t, "system:agenttype:view", p.AgentTypeView)
+	assert.Equal(t, "system:outype", p.OUType)
+	assert.Equal(t, "system:outype:view", p.OUTypeView)
+	assert.Equal(t, "system:outype:create", p.OUTypeCreate)
 }
 
 func TestInitControlPlanePermissions_NonEmptyHandle(t *testing.T) {
@@ -413,6 +423,8 @@ func TestInitControlPlanePermissions_NonEmptyHandle(t *testing.T) {
 	assert.Equal(t, "mgmt:system:usertype:view", p.UserTypeView)
 	assert.Equal(t, "mgmt:system:agenttype", p.AgentType)
 	assert.Equal(t, "mgmt:system:agenttype:view", p.AgentTypeView)
+	assert.Equal(t, "mgmt:system:outype", p.OUType)
+	assert.Equal(t, "mgmt:system:outype:view", p.OUTypeView)
 
 	// Restore default for other tests.
 	InitControlPlanePermissions("")
@@ -521,6 +533,22 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{name: "DELETE agent", method: http.MethodDelete, path: "/agents/a-1", wantPerm: p.AgentDelete},
 		{name: "PUT user type", method: http.MethodPut, path: "/user-types/t-1", wantPerm: p.UserTypeUpdate},
 		{name: "POST agent type", method: http.MethodPost, path: "/agent-types", wantPerm: p.AgentTypeCreate},
+		{
+			name:   "GET organization unit types",
+			method: http.MethodGet, path: "/organization-unit-types", wantPerm: p.OUTypeView,
+		},
+		{
+			name:   "POST organization unit type",
+			method: http.MethodPost, path: "/organization-unit-types", wantPerm: p.OUTypeCreate,
+		},
+		{
+			name:   "PUT organization unit type",
+			method: http.MethodPut, path: "/organization-unit-types/ot-1", wantPerm: p.OUTypeUpdate,
+		},
+		{
+			name:   "DELETE organization unit type",
+			method: http.MethodDelete, path: "/organization-unit-types/ot-1", wantPerm: p.OUTypeDelete,
+		},
 
 		// ---- Role APIs ----
 		{name: "GET /roles", method: http.MethodGet, path: "/roles", wantPerm: p.RoleView},
@@ -1335,6 +1363,7 @@ func TestResourceRoutesUseResourcePermissions(t *testing.T) {
 		{ResourceTypeAgent, []string{" /agents"}},
 		{ResourceTypeUserType, []string{" /user-types"}},
 		{ResourceTypeAgentType, []string{" /agent-types"}},
+		{ResourceTypeOUType, []string{" /organization-unit-types"}},
 		{ResourceTypeNotificationTemplate, []string{" /notification-templates"}},
 		{ResourceTypeApplication, []string{" /applications", " /cimd/"}},
 		{ResourceTypeRole, []string{" /roles"}},

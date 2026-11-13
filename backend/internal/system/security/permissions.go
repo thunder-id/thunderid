@@ -76,6 +76,8 @@ const (
 	ResourceTypeUserType ResourceType = "usertype"
 	// ResourceTypeAgentType identifies an agent-category entity type resource.
 	ResourceTypeAgentType ResourceType = "agenttype"
+	// ResourceTypeOUType identifies an organization-unit-category entity type resource.
+	ResourceTypeOUType ResourceType = "outype"
 	// ResourceTypeNotificationTemplate identifies a notification template resource.
 	ResourceTypeNotificationTemplate ResourceType = "notificationtemplate"
 	// ResourceTypeApplication identifies an application resource.
@@ -212,6 +214,17 @@ const (
 	ActionDeleteAgentType Action = "agenttype:delete"
 	// ActionListAgentTypes lists agent types.
 	ActionListAgentTypes Action = "agenttype:list"
+
+	// ActionCreateOUType creates a new organization unit type.
+	ActionCreateOUType Action = "outype:create"
+	// ActionReadOUType reads an organization unit type.
+	ActionReadOUType Action = "outype:read"
+	// ActionUpdateOUType updates an organization unit type.
+	ActionUpdateOUType Action = "outype:update"
+	// ActionDeleteOUType deletes an organization unit type.
+	ActionDeleteOUType Action = "outype:delete"
+	// ActionListOUTypes lists organization unit types.
+	ActionListOUTypes Action = "outype:list"
 
 	// ActionCreateNotificationTemplate creates a new notification template.
 	ActionCreateNotificationTemplate Action = "notificationtemplate:create"
@@ -388,6 +401,8 @@ type SystemPermissions struct {
 	UserTypeView               string
 	AgentType                  string
 	AgentTypeView              string
+	OUType                     string
+	OUTypeView                 string
 	NotificationTemplate       string
 	NotificationTemplateView   string
 	FlowView                   string
@@ -412,6 +427,9 @@ type SystemPermissions struct {
 	AgentTypeCreate            string
 	AgentTypeUpdate            string
 	AgentTypeDelete            string
+	OUTypeCreate               string
+	OUTypeUpdate               string
+	OUTypeDelete               string
 	NotificationTemplateCreate string
 	NotificationTemplateUpdate string
 	NotificationTemplateDelete string
@@ -528,6 +546,13 @@ func activatePermissions(p *SystemPermissions) {
 		ActionUpdateAgentType: p.AgentTypeUpdate,
 		ActionDeleteAgentType: p.AgentTypeDelete,
 		ActionListAgentTypes:  p.AgentTypeView,
+
+		// Organization unit type actions.
+		ActionCreateOUType: p.OUTypeCreate,
+		ActionReadOUType:   p.OUTypeView,
+		ActionUpdateOUType: p.OUTypeUpdate,
+		ActionDeleteOUType: p.OUTypeDelete,
+		ActionListOUTypes:  p.OUTypeView,
 
 		// Notification template actions.
 		ActionCreateNotificationTemplate: p.NotificationTemplateCreate,
@@ -709,6 +734,13 @@ func activatePermissions(p *SystemPermissions) {
 		{"GET /agent-types/**", p.AgentTypeView},
 		{"PUT /agent-types/**", p.AgentTypeUpdate},
 		{"DELETE /agent-types/**", p.AgentTypeDelete},
+
+		// Organization unit type APIs.
+		{"GET /organization-unit-types", p.OUTypeView},
+		{"POST /organization-unit-types", p.OUTypeCreate},
+		{"GET /organization-unit-types/**", p.OUTypeView},
+		{"PUT /organization-unit-types/**", p.OUTypeUpdate},
+		{"DELETE /organization-unit-types/**", p.OUTypeDelete},
 
 		// Flow APIs. Restoring a version, sharing policies, and flow variables are part of the flow they
 		// belong to, so changing one updates the flow. These rules are listed before the "**" rules.

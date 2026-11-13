@@ -61,3 +61,12 @@ func (s *ActionsTestSuite) TestRequiredActionsMatchTheCatalog() {
 		}
 	}
 }
+
+func (s *ActionsTestSuite) TestOUTypeRequiredActions() {
+	s.Equal(map[string][]security.Action{
+		"view":   {security.ActionReadOUType},
+		"create": {security.ActionCreateOUType, security.ActionReadOU},
+		"update": {security.ActionUpdateOUType},
+		"delete": {security.ActionDeleteOUType},
+	}, requiredActions[security.ResourceTypeOUType])
+}

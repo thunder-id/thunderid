@@ -14,6 +14,7 @@ var dataPlaneOrgCatalog = []catalogResource{
 	{ResourceTypeAgent, crudActions},
 	{ResourceTypeUserType, crudActions},
 	{ResourceTypeAgentType, crudActions},
+	{ResourceTypeOUType, crudActions},
 }
 
 // InitDataPlanePermissions activates the data plane's permissions. When handle is non-empty (e.g.
@@ -71,6 +72,11 @@ func InitDataPlanePermissions(handle string) {
 		AgentTypeCreate: orgChild(ResourceTypeAgentType, catalogActionCreate),
 		AgentTypeUpdate: orgChild(ResourceTypeAgentType, catalogActionUpdate),
 		AgentTypeDelete: orgChild(ResourceTypeAgentType, catalogActionDelete),
+		OUType:          orgChild(ResourceTypeOUType, ""),
+		OUTypeView:      orgChild(ResourceTypeOUType, catalogActionView),
+		OUTypeCreate:    orgChild(ResourceTypeOUType, catalogActionCreate),
+		OUTypeUpdate:    orgChild(ResourceTypeOUType, catalogActionUpdate),
+		OUTypeDelete:    orgChild(ResourceTypeOUType, catalogActionDelete),
 
 		NotificationTemplate:       org,
 		NotificationTemplateView:   org,
