@@ -40,6 +40,12 @@ func (suite *AttrRulesTestSuite) TestCandidatesForSubAttr_ProtocolOnlySubAttr_Re
 	require.Nil(t, CandidatesForSubAttr(fieldAddresses, "formatted"))
 }
 
+// TestCandidatesForField_PhoneNumbers tests that both phone_number and mobile_number back phoneNumbers.
+func (suite *AttrRulesTestSuite) TestCandidatesForField_PhoneNumbers() {
+	t := suite.T()
+	require.Equal(t, []string{"mobile_number", "phone_number"}, CandidatesForField(fieldPhoneNumbers))
+}
+
 // TestCandidatesForEnterpriseField tests Enterprise attribute candidate lookups.
 func (suite *AttrRulesTestSuite) TestCandidatesForEnterpriseField() {
 	t := suite.T()
@@ -67,6 +73,7 @@ func (suite *AttrRulesTestSuite) TestIsCoreCandidate() {
 	require.True(t, IsCoreCandidate("username"))
 	require.True(t, IsCoreCandidate("given_name"))
 	require.True(t, IsCoreCandidate("email"))
+	require.True(t, IsCoreCandidate("mobile_number"))
 	require.False(t, IsCoreCandidate("department"))
 	require.False(t, IsCoreCandidate("custom_attr"))
 }

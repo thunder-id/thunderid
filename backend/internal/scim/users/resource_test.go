@@ -124,6 +124,24 @@ func (suite *ResourceTestSuite) TestBuildSCIMUserResource() {
 	require.JSONEq(t, `{}`, string(scimUser.Attributes))
 }
 
+// TestBuildSCIMUserResource_MobileNumber_MovesToPhoneNumbers tests that a core type user's mobile_number is
+// returned in phoneNumbers and not repeated in the extension object.
+func (suite *ResourceTestSuite) TestBuildSCIMUserResource_MobileNumber_MovesToPhoneNumbers() {
+	t := suite.T()
+	u := providers.User{
+		ID:         "user123",
+		Type:       "Person",
+		Attributes: json.RawMessage(`{"mobile_number":"+94771234567","team":"blue"}`),
+	}
+
+	scimUser := buildSCIMUserResource(
+		context.Background(), *log.GetLogger(), u, testPersonExtensionURN, testAPIBaseURL, nil, true)
+
+	require.JSONEq(t, `[{"value":"+94771234567","primary":true}]`,
+		string(scimUser.CoreAttrs["phoneNumbers"]))
+	require.JSONEq(t, `{"team":"blue"}`, string(scimUser.Attributes))
+}
+
 // TestBuildSCIMUserResource_IncludeCoreAttrsFalse_OmitsCoreAttrs tests Build SCIM User Resource for Include
 // Core Attrs False Omits Core Attrs.
 func (suite *ResourceTestSuite) TestBuildSCIMUserResource_IncludeCoreAttrsFalse_OmitsCoreAttrs() {
