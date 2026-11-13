@@ -98,6 +98,8 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 
 	// Resolve any explicit resource identifier to an echo RS (ID == Identifier); an empty identifier
 	// resolves to the configured default resource server, as the default-aware provider does.
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			if identifier == "" {
@@ -163,6 +165,8 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 // stubDefaultResourceServer wires the resource mock so that a request carrying no resource (empty
 // identifier) resolves to the configured default resource server.
 func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer() {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			if identifier == "" {

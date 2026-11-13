@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -297,25 +298,41 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 ) ([]string, []string, *model.ErrorResponse) {
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
 
+	var rs *providers.ResourceServer
 	if len(record.Resources) == 0 {
-		if len(permissionScopes) > 0 {
+		if len(permissionScopes) == 0 {
+			return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil
+		}
+
+		// If the record is unbound but carries permission scopes, attempt to resolve a resource server
+		// from the scopes. If none can be resolved, reject the request with invalid_grant.
+		resolved, svcErr := h.resourceService.GetResourceServerByPermissions(ctx, "", permissionScopes)
+		if svcErr != nil {
+			h.logger.Error(ctx, "Failed to resolve resource server for stored CIBA permission scopes",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+			if svcErr.Type == tidcommon.ServerErrorType {
+				return nil, nil, &model.ErrorResponse{
+					Error:            constants.ErrorServerError,
+					ErrorDescription: "Failed to process token request",
+				}
+			}
 			return nil, nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidGrant,
 				ErrorDescription: "The authentication request is not bound to a resource server",
 			}
 		}
-		return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil
-	}
-
-	resourceIdentifier := record.Resources[0]
-	rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
-	if svcErr != nil {
-		h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
-			log.String("error", svcErr.ErrorDescription.DefaultValue))
-		return nil, nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to process token request",
+		rs = resolved
+	} else {
+		resolved, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, record.Resources[0])
+		if svcErr != nil {
+			h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+			return nil, nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to process token request",
+			}
 		}
+		rs = resolved
 	}
 
 	downscoped, dErr := resourceindicators.DownscopeToResourceServer(
@@ -327,5 +344,5 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 	scopes := make([]string, 0, len(oidcScopes)+len(downscoped))
 	scopes = append(scopes, oidcScopes...)
 	scopes = append(scopes, downscoped...)
-	return []string{resourceIdentifier}, scopes, nil
+	return []string{rs.Identifier}, scopes, nil
 }

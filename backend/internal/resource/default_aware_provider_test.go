@@ -125,6 +125,52 @@ func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_DefaultDeleted_P
 	assert.Same(suite.T(), svcErr, err)
 }
 
+// With a resource indicator or permissions the lookup is delegated and the server-config store is not read.
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_WithInputs_DelegatesToBase() {
+	rs := providers.ResourceServer{ID: "rs-1"}
+	suite.base.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).Return(&rs, nil)
+
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", []string{"read"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), &rs, resolved)
+}
+
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_WithIdentifier_DelegatesToBase() {
+	rs := providers.ResourceServer{ID: "rs-1"}
+	suite.base.On("GetResourceServerByPermissions", mock.Anything, "https://api.example.com", []string{"read"}).
+		Return(&rs, nil)
+
+	resolved, err := suite.subject.GetResourceServerByPermissions(
+		context.Background(), "https://api.example.com", []string{"read"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), &rs, resolved)
+}
+
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_NoInputs_ResolvesDefault() {
+	rs := providers.ResourceServer{ID: "rs-1"}
+	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
+		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
+	suite.base.On("GetResourceServer", mock.Anything, "rs-1").Return(&rs, nil)
+
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", nil)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), &rs, resolved)
+}
+
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_NoInputs_NoDefault_ReturnsClientError() {
+	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
+		Return(resource.DefaultResourceServerConfig{}, nil)
+
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", nil)
+
+	assert.Nil(suite.T(), resolved)
+	require.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), tidcommon.ClientErrorType, err.Type)
+}
+
 // GetResourceServer and ValidatePermissions are promoted from the embedded provider unchanged.
 func (suite *DefaultAwareProviderTestSuite) TestGetResourceServer_Delegates() {
 	rs := providers.ResourceServer{ID: "rs01"}

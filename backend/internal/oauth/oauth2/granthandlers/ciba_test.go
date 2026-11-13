@@ -475,11 +475,27 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundWithPermissionSco
 	record.State = ciba.CIBAStateAuthenticated
 	record.AuthorizedScopes = "openid read"
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockResource.EXPECT().GetResourceServerByPermissions(mock.Anything, "", []string{"read"}).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 
 	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
 	suite.Nil(resp)
 	suite.NotNil(errResp)
 	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundWithPermissionScopesLookupServerError() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthorizedScopes = "openid read"
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockResource.EXPECT().GetResourceServerByPermissions(mock.Anything, "", []string{"read"}).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"})
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(resp)
+	suite.NotNil(errResp)
+	suite.Equal(constants.ErrorServerError, errResp.Error)
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_PermissionScopesOutsideRSOmitted() {

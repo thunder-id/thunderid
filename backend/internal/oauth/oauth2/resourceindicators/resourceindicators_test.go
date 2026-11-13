@@ -117,7 +117,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Single
 		Return(&rs, nil)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{"https://api.example.com"})
+		[]string{"https://api.example.com"}, nil)
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), &rs, resolved)
@@ -125,7 +125,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Single
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_MultipleResources_ReturnsInvalidTarget() {
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{"https://a.example.com", "https://b.example.com"})
+		[]string{"https://a.example.com", "https://b.example.com"}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -138,7 +138,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Unknow
 		Return(nil, svcErr)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{"https://unknown.example.com"})
+		[]string{"https://unknown.example.com"}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -151,7 +151,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Lookup
 		Return(nil, svcErr)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{"https://api.example.com"})
+		[]string{"https://api.example.com"}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -166,7 +166,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoReso
 		Return(&rs, nil)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{})
+		[]string{}, nil)
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), &rs, resolved)
@@ -178,7 +178,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoReso
 		Return(nil, svcErr)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{})
+		[]string{}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -191,7 +191,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoReso
 		Return(nil, svcErr)
 
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{})
+		[]string{}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -199,7 +199,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NoReso
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NilResourceService_ReturnsInvalidTarget() {
-	resolved, err := ResolveTargetResourceServer(context.Background(), nil, []string{})
+	resolved, err := ResolveTargetResourceServer(context.Background(), nil, []string{}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -328,7 +328,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAndDownscope_UnknownIdentif
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_InvalidResourceURI_ReturnsInvalidTarget() {
 	resolved, err := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
-		[]string{"api.example.com/resource"})
+		[]string{"api.example.com/resource"}, nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.NotNil(suite.T(), err)
@@ -345,6 +345,8 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_NoResourceN
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_PermissionScopes_ResolvesDefault() {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
 
@@ -354,6 +356,31 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_PermissionS
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), rs)
 	assert.Equal(suite.T(), "rs-1", rs.ID)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_PermissionScopes_ResolvesByPermissions() {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
+		Return(&providers.ResourceServer{ID: "rs-perm", Identifier: "https://perm.example.com"}, nil)
+
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
+		nil, []string{"read"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "rs-perm", rs.ID)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "GetResourceServerByIdentifier", mock.Anything, "")
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_AmbiguousPermissions_ReturnsInvalidTarget() {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
+		Return(nil, &tidcommon.ErrorAmbiguousPermissions)
+
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
+		nil, []string{"read"})
+
+	assert.Nil(suite.T(), rs)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "GetResourceServerByIdentifier", mock.Anything, "")
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_ExplicitResourceNoPermissionScopes_Resolves() {

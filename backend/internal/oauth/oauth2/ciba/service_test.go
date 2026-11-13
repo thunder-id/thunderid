@@ -98,6 +98,8 @@ func (suite *CIBAServiceTestSuite) expectStoreAddSuccess() {
 // expectDefaultResourceServer stubs the resolver path for a request without an explicit resource:
 // the configured default resolves to the given RS and its permissions validate as requested.
 func (suite *CIBAServiceTestSuite) expectDefaultResourceServer(rsID, identifier string) {
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(mock.Anything, "", mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(&providers.ResourceServer{ID: rsID, Identifier: identifier}, nil)
 	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, rsID, mock.Anything).
@@ -354,6 +356,8 @@ func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceWithPermissionUse
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceNoDefaultRejects() {
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(mock.Anything, "", mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}).Maybe()
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 
