@@ -41,6 +41,7 @@ type listRolesMCPInput struct {
 	ResourceServer string `json:"resourceServer,omitempty" jsonschema:"Identifier of a resource server, an API or MCP server, such as https://api.example.com/orders or https://mcp.example.com/mcp. With permission, lists the roles that grant that permission on it."`
 	Permission     string `json:"permission,omitempty" jsonschema:"A permission on the resource server given in resourceServer, from list_resource_server_permissions"`
 	OUID           string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the roles it owns and then the ones shared with it"`
+	ProjectID      string `json:"projectId,omitempty" jsonschema:"ID of a project, from list_projects, to list only the roles in that project. With ouId, only the project's roles that organization unit owns."`
 	Limit          int    `json:"limit,omitempty" jsonschema:"Maximum number of roles to return, at most 100, and 30 when not given. Only without name, resourceServer and permission: a search returns every match."`
 	Offset         int    `json:"offset,omitempty" jsonschema:"Number of roles to skip. Only without name, resourceServer and permission."`
 }
@@ -67,10 +68,11 @@ type listResourceServerPermissionsMCPInput struct {
 //
 //nolint:lll
 type listResourceServersMCPInput struct {
-	Name   string `json:"name,omitempty" jsonschema:"Part of the resource server's name or identifier, in any case, such as orders"`
-	Type   string `json:"type,omitempty" jsonschema:"Kind of resource server to list: API, MCP (an MCP server) or CUSTOM"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of resource servers to return, at most 100, and 30 when not given. Only without name and type: a search returns every match."`
-	Offset int    `json:"offset,omitempty" jsonschema:"Number of resource servers to skip. Only without name and type."`
+	Name      string `json:"name,omitempty" jsonschema:"Part of the resource server's name or identifier, in any case, such as orders"`
+	Type      string `json:"type,omitempty" jsonschema:"Kind of resource server to list: API, MCP (an MCP server) or CUSTOM"`
+	ProjectID string `json:"projectId,omitempty" jsonschema:"ID of a project, from list_projects, to list only the resource servers in that project"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"Maximum number of resource servers to return, at most 100, and 30 when not given. Only without name and type: a search returns every match."`
+	Offset    int    `json:"offset,omitempty" jsonschema:"Number of resource servers to skip. Only without name and type."`
 }
 
 // resourceServerMCPItem is one resource server in a list.
@@ -80,6 +82,7 @@ type resourceServerMCPItem struct {
 	Type           string `json:"type"`
 	Description    string `json:"description,omitempty"`
 	OUID           string `json:"ouId"`
+	ProjectID      string `json:"projectId,omitempty"`
 }
 
 // resourceServerListMCPResponse is the list_resource_servers output.
@@ -100,7 +103,8 @@ type roleAssigneeMCPInput struct {
 type createRoleMCPInput struct {
 	Name           string                 `json:"name" jsonschema:"Name of the role, unique in its organization unit"`
 	Description    string                 `json:"description,omitempty" jsonschema:"What the role is for"`
-	OUID           string                 `json:"ouId,omitempty" jsonschema:"ID of the organization unit that owns the role. Defaults to the Default organization unit."`
+	OUID           string                 `json:"ouId,omitempty" jsonschema:"ID of the organization unit that owns the role. Defaults to the Default organization unit, or with projectId to the system organization unit."`
+	ProjectID      string                 `json:"projectId,omitempty" jsonschema:"ID of the project to create the role in, from list_projects. ouId must then be the system organization unit or one of the project's."`
 	ResourceServer string                 `json:"resourceServer,omitempty" jsonschema:"Identifier of the resource server the permissions are on, an API or MCP server, such as https://api.example.com/orders or https://mcp.example.com/mcp"`
 	Permissions    []string               `json:"permissions,omitempty" jsonschema:"Permissions on the resource server to grant, from list_resource_server_permissions"`
 	Assignees      []roleAssigneeMCPInput `json:"assignees,omitempty" jsonschema:"Users, apps, agents and groups to assign the role to when it is created"`
@@ -134,6 +138,7 @@ type roleMCPItem struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId"`
+	ProjectID   string `json:"projectId,omitempty"`
 	ReadOnly    bool   `json:"readOnly"`
 }
 
@@ -165,6 +170,7 @@ type roleMCPDetails struct {
 	Name         string                                 `json:"name"`
 	Description  string                                 `json:"description,omitempty"`
 	OUID         string                                 `json:"ouId"`
+	ProjectID    string                                 `json:"projectId,omitempty"`
 	ReadOnly     bool                                   `json:"readOnly"`
 	Permissions  []roleResourceServerPermissionsMCPItem `json:"permissions"`
 	Holders      *[]roleHolderMCPItem                   `json:"holders,omitempty"`
@@ -250,10 +256,11 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 			`list_resource_server_permissions returns them), ` +
 			`lists the roles that grant that permission, so you can reuse one instead of creating a ` +
 			`near-duplicate. name matches a role's exact name. ouId lists the roles an organization unit ` +
-			`owns, then the ones shared with it. name and ouId narrow a permission search. A search by name ` +
+			`owns, then the ones shared with it. projectId lists the roles in a project. name, ouId and ` +
+			`projectId narrow a permission search. A search by name ` +
 			`or permission returns every match. Without one, the roles are paged with limit and offset, and ` +
-			`totalResults counts them all. Returns each role's ID, name, organization unit and whether it ` +
-			`is read-only. Use get_role for what a role grants and who holds it.`,
+			`totalResults counts them all. Returns each role's ID, name, organization unit, project and ` +
+			`whether it is read-only. Use get_role for what a role grants and who holds it.`,
 		InputSchema: tool.GenerateSchema[listRolesMCPInput](),
 		Annotations: &mcp.ToolAnnotations{Title: "List Roles", ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, tools.listRoles)
@@ -275,11 +282,11 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 		Name: "list_resource_servers",
 		Description: `Find the resource servers whose permissions roles grant: the APIs and MCP servers this ` +
 			`server protects, such as "the orders API" or "our messaging MCP server". name matches part of a ` +
-			`resource server's name or identifier in any case, and type lists only APIs, MCP servers or custom ` +
-			`ones. Returns each one's identifier, which list_resource_server_permissions, list_roles, ` +
-			`create_role and update_role_permissions take, and its type. A search by name or type returns every ` +
-			`match. Without one, the resource servers are paged with limit and offset, and totalResults counts ` +
-			`them all.`,
+			`resource server's name or identifier in any case, type lists only APIs, MCP servers or custom ` +
+			`ones, and projectId lists only a project's resource servers. Returns each one's identifier, which ` +
+			`list_resource_server_permissions, list_roles, create_role and update_role_permissions take, its ` +
+			`type and its project. A search by name or type returns every match. Without one, the resource ` +
+			`servers are paged with limit and offset, and totalResults counts them all.`,
 		InputSchema: tool.GenerateSchema[listResourceServersMCPInput](
 			tool.WithEnum("", "type", resourceServerTypeNames())),
 		Annotations: &mcp.ToolAnnotations{
@@ -302,10 +309,12 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 		Name: "create_role",
 		Description: `Create a role that grants permissions on a resource server, an API or MCP server, and ` +
 			`optionally assign it right away. Permissions are strings from list_resource_server_permissions. ` +
-			`If a role in the organization unit already grants exactly these permissions, or has this name, ` +
+			`If a role in the organization unit and project already grants exactly these permissions, or one in ` +
+			`the organization unit has this name, ` +
 			`nothing is created and the error names that role, to grant with update_role_assignments instead. ` +
-			`Without ouId, the role goes in the Default ` +
-			`organization unit. Use update_role_assignments to grant it later.`,
+			`projectId creates the role in a project; find its ID with list_projects. Without ouId, the role ` +
+			`goes in the Default organization unit, or with projectId in the system organization unit, which ` +
+			`every project includes. Use update_role_assignments to grant it later.`,
 		InputSchema: tool.GenerateSchema[createRoleMCPInput](
 			tool.WithEnum("assignees", "type", assigneeTypes)),
 		Annotations: &mcp.ToolAnnotations{
@@ -387,6 +396,13 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 			}
 			roles = visible
 		}
+		if input.ProjectID != "" {
+			inProject, err := t.rolesInProject(ctx, input.ProjectID, roles)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to list roles: %w", err)
+			}
+			roles = inProject
+		}
 		return nil, roleListOf(len(roles), roles), nil
 	}
 
@@ -397,6 +413,13 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 	var filters map[string]interface{}
 	if input.OUID != "" {
 		filters = map[string]interface{}{filter.AttributeOUID: input.OUID}
+	}
+	if input.ProjectID != "" {
+		list, svcErr := t.roleService.GetRoleListByProject(ctx, input.ProjectID, limit, input.Offset, filters)
+		if svcErr != nil {
+			return nil, nil, fmt.Errorf("failed to list roles: %s", svcErr.ErrorDescription)
+		}
+		return nil, roleListOf(list.TotalResults, list.Roles), nil
 	}
 	list, svcErr := t.roleService.GetRoleList(ctx, limit, input.Offset, filters)
 	if svcErr != nil {
@@ -466,18 +489,51 @@ func (t *roleTools) rolesVisibleInOU(ctx context.Context, ouID string, roles []R
 	return kept, nil
 }
 
+// rolesInProject keeps the roles that are in the project, reading every page of the project's roles.
+func (t *roleTools) rolesInProject(ctx context.Context, projectID string, roles []Role) ([]Role, error) {
+	inProject := map[string]bool{}
+	for offset := 0; ; {
+		page, svcErr := t.roleService.GetRoleListByProject(ctx, projectID, serverconst.MaxPageSize, offset, nil)
+		if svcErr != nil {
+			return nil, errors.New(svcErr.ErrorDescription.String())
+		}
+		for _, r := range page.Roles {
+			inProject[r.ID] = true
+		}
+		offset += len(page.Roles)
+		if len(page.Roles) == 0 || offset >= page.TotalResults {
+			break
+		}
+	}
+	kept := []Role{}
+	for _, r := range roles {
+		if inProject[r.ID] {
+			r.ProjectID = projectID
+			kept = append(kept, r)
+		}
+	}
+	return kept, nil
+}
+
 // listResourceServers handles the list_resource_servers tool call. Without a name or a type, the resource
 // service pages the resource servers. The resource service has no search by name or type, so a search
 // reads every page, matches here, and returns every match.
 func (t *roleTools) listResourceServers(ctx context.Context, _ *mcp.CallToolRequest,
 	input listResourceServersMCPInput) (*mcp.CallToolResult, *resourceServerListMCPResponse, error) {
 	wanted := strings.ToLower(strings.TrimSpace(input.Name))
+	// A project's resource servers come from the project's own listing.
+	list := func(limit, offset int) (*resourcepkg.ResourceServerList, *tidcommon.ServiceError) {
+		if input.ProjectID != "" {
+			return t.resourceService.GetResourceServerListByProject(ctx, input.ProjectID, "", limit, offset)
+		}
+		return t.resourceService.GetResourceServerList(ctx, limit, offset)
+	}
 	if wanted == "" && input.Type == "" {
 		limit, err := pageLimit(input.Limit, input.Offset)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to list resource servers: %w", err)
 		}
-		page, svcErr := t.resourceService.GetResourceServerList(ctx, limit, input.Offset)
+		page, svcErr := list(limit, input.Offset)
 		if svcErr != nil {
 			return nil, nil, fmt.Errorf("failed to list resource servers: %s", svcErr.ErrorDescription)
 		}
@@ -494,7 +550,7 @@ func (t *roleTools) listResourceServers(ctx context.Context, _ *mcp.CallToolRequ
 
 	servers := []resourceServerMCPItem{}
 	for offset := 0; ; {
-		page, svcErr := t.resourceService.GetResourceServerList(ctx, serverconst.MaxPageSize, offset)
+		page, svcErr := list(serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, nil, fmt.Errorf("failed to list resource servers: %s", svcErr.ErrorDescription)
 		}
@@ -576,6 +632,15 @@ func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	}
 
 	ouID := input.OUID
+	if ouID == "" && input.ProjectID != "" {
+		// Every project includes the system organization unit, so a role in a project goes there.
+		systemOUID, svcErr := t.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return nil, nil, errors.New("failed to create role: the system organization unit wasn't found, " +
+				"so give ouId")
+		}
+		ouID = systemOUID
+	}
 	if ouID == "" {
 		ou, svcErr := t.ouService.GetOrganizationUnitByPath(ctx, defaultOUHandle)
 		if svcErr != nil {
@@ -585,7 +650,7 @@ func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		ouID = ou.ID
 	}
 	detail := RoleCreationDetail{Name: input.Name, Description: input.Description, OUID: ouID,
-		Assignments: assignmentsOf(input.Assignees)}
+		ProjectID: input.ProjectID, Assignments: assignmentsOf(input.Assignees)}
 	if input.ResourceServer != "" {
 		server, err := t.resourceServerByIdentifier(ctx, input.ResourceServer)
 		if err != nil {
@@ -593,14 +658,14 @@ func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		}
 		detail.Permissions = []ResourcePermissions{{ResourceServerID: server.ID, Permissions: input.Permissions}}
 		if !input.AllowDuplicate {
-			existing, err := t.roleGrantingExactly(ctx, ouID, server.ID, input.Permissions)
+			existing, err := t.roleGrantingExactly(ctx, ouID, input.ProjectID, server.ID, input.Permissions)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create role: %w", err)
 			}
 			if existing != nil {
-				return nil, nil, fmt.Errorf("no role was created: the role %q (%s) in this organization unit already "+
-					"grants exactly these permissions, so grant it with update_role_assignments, or set "+
-					"allowDuplicate to create another", existing.Name, existing.ID)
+				return nil, nil, fmt.Errorf("no role was created: the role %q (%s) in this organization unit "+
+					"and project already grants exactly these permissions, so grant it with "+
+					"update_role_assignments, or set allowDuplicate to create another", existing.Name, existing.ID)
 			}
 		}
 	}
@@ -623,10 +688,11 @@ func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	return nil, details, nil
 }
 
-// roleGrantingExactly returns a role in the organization unit whose permissions are exactly the given
-// ones on the given resource server, or nil when there is none.
-func (t *roleTools) roleGrantingExactly(ctx context.Context, ouID, serverID string, permissions []string) (
-	*RoleWithPermissions, error) {
+// roleGrantingExactly returns a role in the organization unit and project whose permissions are exactly
+// the given ones on the given resource server, or nil when there is none. An empty project ID matches the
+// roles in no project.
+func (t *roleTools) roleGrantingExactly(ctx context.Context, ouID, projectID, serverID string,
+	permissions []string) (*RoleWithPermissions, error) {
 	wanted := slices.Sorted(slices.Values(slices.Compact(slices.Sorted(slices.Values(permissions)))))
 	candidates, svcErr := t.roleService.GetRolesByPermission(ctx, serverID, wanted[0])
 	if svcErr != nil {
@@ -640,7 +706,8 @@ func (t *roleTools) roleGrantingExactly(ctx context.Context, ouID, serverID stri
 		if svcErr != nil {
 			return nil, errors.New(svcErr.ErrorDescription.String())
 		}
-		if len(role.Permissions) == 1 && role.Permissions[0].ResourceServerID == serverID &&
+		if role.ProjectID == projectID && len(role.Permissions) == 1 &&
+			role.Permissions[0].ResourceServerID == serverID &&
 			slices.Equal(slices.Sorted(slices.Values(role.Permissions[0].Permissions)), wanted) {
 			return role, nil
 		}
@@ -791,7 +858,8 @@ func (t *roleTools) describeRole(ctx context.Context, roleID, ouID string) (*rol
 	}
 
 	details := &roleMCPDetails{ID: role.ID, Name: role.Name, Description: role.Description, OUID: role.OUID,
-		ReadOnly: readOnly || !role.IsOwnedByOU, Permissions: []roleResourceServerPermissionsMCPItem{}}
+		ProjectID: role.ProjectID, ReadOnly: readOnly || !role.IsOwnedByOU,
+		Permissions: []roleResourceServerPermissionsMCPItem{}}
 	for _, granted := range role.Permissions {
 		item := roleResourceServerPermissionsMCPItem{ResourceServer: granted.ResourceServerID,
 			Permissions: slices.Sorted(slices.Values(granted.Permissions))}
@@ -808,7 +876,7 @@ func (t *roleTools) describeRole(ctx context.Context, roleID, ouID string) (*rol
 // resourceServerItemOf describes a resource server in a list.
 func resourceServerItemOf(server providers.ResourceServer) resourceServerMCPItem {
 	return resourceServerMCPItem{ResourceServer: server.Identifier, Name: server.Name, Type: typeOf(&server),
-		Description: server.Description, OUID: server.OUID}
+		Description: server.Description, OUID: server.OUID, ProjectID: server.ProjectID}
 }
 
 // typeOf returns a resource server's type. One without a type is a custom resource server, as the
@@ -853,7 +921,7 @@ func roleListOf(total int, roles []Role) *roleListMCPResponse {
 	items := make([]roleMCPItem, 0, len(roles))
 	for _, r := range roles {
 		items = append(items, roleMCPItem{ID: r.ID, Name: r.Name, Description: r.Description, OUID: r.OUID,
-			ReadOnly: r.IsReadOnly})
+			ProjectID: r.ProjectID, ReadOnly: r.IsReadOnly})
 	}
 	return &roleListMCPResponse{TotalResults: total, Roles: items}
 }

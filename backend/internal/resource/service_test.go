@@ -6310,3 +6310,32 @@ func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_UnrelatedReso
 	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListByOUID", mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything)
 }
+
+func (suite *ResourceServiceTestSuite) TestProjectHasResourceServers() {
+	for name, tc := range map[string]struct {
+		count    int
+		err      error
+		expected bool
+		svcErr   bool
+	}{
+		"resource servers":         {count: 2, expected: true},
+		"no resource servers":      {count: 0, expected: false},
+		"more than can be counted": {err: errResultLimitExceededInCompositeMode, expected: true},
+		"store failure":            {err: errors.New("db fail"), svcErr: true},
+	} {
+		suite.Run(name, func() {
+			suite.mockStore.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").
+				Return(tc.count, tc.err).Once()
+
+			has, svcErr := suite.service.ProjectHasResourceServers(context.Background(), testProjectID)
+
+			if tc.svcErr {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.expected, has)
+		})
+	}
+}

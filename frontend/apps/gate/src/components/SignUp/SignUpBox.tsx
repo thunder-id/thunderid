@@ -10,6 +10,7 @@ import {
   SignUp,
   useThunderID,
   type EmbeddedFlowComponent,
+  type FlowExpiryRedirect,
 } from '@thunderid/react';
 import {EMAIL_REGEX} from '@thunderid/utils';
 import {Box, Button, Alert, Typography, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
@@ -18,6 +19,7 @@ import {useRef, useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RouteConfig from '../../configs/RouteConfig';
+import FlowExpired from '../FlowExpired/FlowExpired';
 
 export default function SignUpBox(): JSX.Element {
   const navigate = useNavigate();
@@ -137,8 +139,29 @@ export default function SignUpBox(): JSX.Element {
       showLogo={!isDesignEnabled}
       logoDisplay={!isDesignEnabled ? {xs: 'flex', md: 'none'} : {display: 'none'}}
     >
-      <SignUp afterSignUpUrl={afterSignUpUrl}>
-        {({values, fieldErrors, error, touched, handleInputChange, handleSubmit, isLoading, components}: any) => {
+      <SignUp afterSignUpUrl={afterSignUpUrl} afterFlowExpiredUrl={appUrl}>
+        {({
+          values,
+          fieldErrors,
+          error,
+          touched,
+          handleInputChange,
+          handleSubmit,
+          isFlowExpired,
+          isFlowRestarted,
+          flowExpiryRedirect,
+          isLoading,
+          components,
+        }: any) => {
+          if (isFlowExpired) {
+            return (
+              <FlowExpired
+                applicationName={meta?.application?.name}
+                redirect={flowExpiryRedirect as FlowExpiryRedirect | null}
+              />
+            );
+          }
+
           const renderComponents = components as EmbeddedFlowComponent[] | undefined;
 
           if (!renderComponents) {
@@ -184,6 +207,11 @@ export default function SignUpBox(): JSX.Element {
 
           return (
             <>
+              {isFlowRestarted && (
+                <Alert severity="info" sx={{mb: 2}}>
+                  {t('auth:flowExpired.restarted', 'Your session expired, so we started again.')}
+                </Alert>
+              )}
               {error && (
                 <Alert severity="error" sx={{mb: 2}}>
                   <AlertTitle>{t('signup:errors.signup.failed.message')}</AlertTitle>

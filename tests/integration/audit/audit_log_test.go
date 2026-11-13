@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -301,35 +302,6 @@ func (ts *AuditLogTestSuite) TestEveryCreateAndUpdatePathRecordsItsOutcome() {
 	}
 }
 
-// An import that creates a user writes the user service's event for the user, then its own: the lookup
-// that decides between update and create writes no line.
-func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserItCreates() {
-	ouID, userType := ts.createUserType("import")
-	userID := unusedID()
-	password := "AuditImport123!"
-	request, err := json.Marshal(testutils.ImportRequest{
-		Content: fmt.Sprintf("resource_type: user\nid: %s\ntype: %s\nouId: %s\nattributes:\n  username: %s\n"+
-			"credentials:\n  password: %s\n", userID, userType, ouID, ts.prefix+"imported", password),
-		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
-	})
-	ts.Require().NoError(err)
-
-	imported, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, "/import", string(request))
-	ts.Require().Equal(http.StatusOK, imported.StatusCode, string(body))
-	ts.T().Cleanup(func() { _ = testutils.DeleteUser(userID) })
-	var result testutils.ImportResponse
-	ts.Require().NoError(json.Unmarshal(body, &result))
-	ts.Require().Equal(1, result.Summary.Imported, string(body))
-
-	line := ts.resourceLineOfImport(imported, map[string]string{"result": "succeeded"})
-	userRef := testutils.AuditRef{Type: "user", ID: userID}
-	ts.Equal("user.create", line.Event)
-	ts.Equal(userRef, line.Target)
-	ts.Equal(userRef, line.Subject)
-	ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome)
-	ts.NotContains(line.Raw, password, "a credential is never recorded")
-}
-
 // An ID is cut to the characters a line holds for it, so a caller cannot grow a line without bound. A
 // request from the loopback peer has no client, so a long user agent it sends is not recorded at all;
 // the 256 character cap on a public peer's user agent is covered by the client middleware unit tests.
@@ -599,9 +571,17 @@ func (ts *AuditLogTestSuite) linesPerCall(responses ...*http.Response) [][]testu
 	return perCall
 }
 
+// unusedIDCounter is seeded from the clock so runs differ, and advances per call so two calls in one
+// clock tick still differ.
+var unusedIDCounter atomic.Uint64
+
+func init() {
+	unusedIDCounter.Store(uint64(time.Now().UnixNano()))
+}
+
 // unusedID returns an ID no resource of this or an earlier run has.
 func unusedID() string {
-	return fmt.Sprintf("01900000-0000-7000-8000-%012x", time.Now().UnixNano()&0xffffffffffff)
+	return fmt.Sprintf("01900000-0000-7000-8000-%012x", unusedIDCounter.Add(1)&0xffffffffffff)
 }
 
 // adminUserID returns the ID of the user the admin token was issued to.

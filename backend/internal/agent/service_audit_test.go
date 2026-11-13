@@ -505,6 +505,89 @@ func (s *AgentServiceAuditTestSuite) TestRegenerateAgentSecret_PublishesOneEvent
 	}
 }
 
+// Setting an agent's credentials records the attempt on the agent, never the credential or its type.
+func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_PublishesOneEventPerAttempt() {
+	credentials := json.RawMessage(`{"password":"` + testAuditClientSecret + `"}`)
+	cases := []struct {
+		name    string
+		agentID string
+		arrange func()
+		outcome audit.Outcome
+	}{
+		{
+			name:    "the credentials are set",
+			agentID: testAgentID,
+			arrange: func() {
+				s.existing()
+				s.access(true)
+				s.entities.On("UpdateCredentials", mock.Anything, testAgentID, credentials).Return(nil).Once()
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name:    "the caller may not change the agent",
+			agentID: testAgentID,
+			arrange: func() {
+				s.existing()
+				s.access(false)
+			},
+			outcome: audit.OutcomeDenied("forbidden"),
+		},
+		{
+			name:    "the agent does not exist",
+			agentID: testAgentID,
+			arrange: func() {
+				s.entities.On("GetEntityProfile", mock.Anything, testAgentID).
+					Return((*providers.Entity)(nil), entity.ErrEntityNotFound).Once()
+			},
+			outcome: audit.OutcomeFailed("agt_1004"),
+		},
+		{
+			name:    "the agent's type does not declare the credential",
+			agentID: testAgentID,
+			arrange: func() {
+				s.existing()
+				s.access(true)
+				s.entities.On("UpdateCredentials", mock.Anything, testAgentID, credentials).
+					Return(entity.ErrInvalidCredential).Once()
+			},
+			outcome: audit.OutcomeFailed("agt_1016"),
+		},
+		{
+			name:    "no agent is named",
+			arrange: func() {},
+			outcome: audit.OutcomeFailed("agt_1008"),
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			published := s.record()
+			tc.arrange()
+
+			svcErr := s.service.UpdateAgentCredentials(adminContext(), tc.agentID, credentials)
+
+			s.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			events := published()
+			s.requireOnlyEvent(events, audit.EventAgentCredentialUpdate, audit.ActionUpdate, tc.agentID,
+				tc.outcome)
+			s.NotContains(fmt.Sprintf("%+v", events[0].payload), "password", "no credential type is recorded")
+		})
+	}
+}
+
+// A bus that cannot take the event never fails the change it describes.
+func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_SucceedsWhenTheBusRefusesTheEvent() {
+	failing := eventbusmock.NewEventBusInterfaceMock(s.T())
+	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Once()
+	s.service.bus = failing
+	s.existing()
+	s.access(true)
+	s.entities.On("UpdateCredentials", mock.Anything, testAgentID, mock.Anything).Return(nil).Once()
+
+	s.Nil(s.service.UpdateAgentCredentials(adminContext(), testAgentID,
+		json.RawMessage(`{"password":"`+testAuditClientSecret+`"}`)))
+}
+
 // A bus that cannot take the event never fails the change it describes.
 func (s *AgentServiceAuditTestSuite) TestDeleteAgent_SucceedsWhenTheBusRefusesTheEvent() {
 	failing := eventbusmock.NewEventBusInterfaceMock(s.T())

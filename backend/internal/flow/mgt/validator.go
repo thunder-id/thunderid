@@ -19,6 +19,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -54,6 +56,16 @@ type idpProvider interface {
 	GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, *tidcommon.ServiceError)
 }
 
+// groupProvider reads the groups a provisioning step assigns.
+type groupProvider interface {
+	GetGroupsByIDs(ctx context.Context, groupIDs []string) (map[string]*group.Group, *tidcommon.ServiceError)
+}
+
+// roleProvider reads the roles a provisioning step assigns.
+type roleProvider interface {
+	GetRolesByIDs(ctx context.Context, ids []string) (map[string]*role.Role, *tidcommon.ServiceError)
+}
+
 // flowValidator is responsible for validating flow definitions,
 // including metadata, structure, node configurations, and registry-dependent checks.
 type flowValidator struct {
@@ -63,6 +75,8 @@ type flowValidator struct {
 	graphBuilder           graphbuilder.GraphBuilderInterface
 	httpConnectionProvider httpConnectionProvider
 	idpProvider            idpProvider
+	groupProvider          groupProvider
+	roleProvider           roleProvider
 	logger                 *log.Logger
 }
 
@@ -74,6 +88,8 @@ func newFlowValidator(
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	connectionProvider httpConnectionProvider,
 	idpProvider idpProvider,
+	groupProvider groupProvider,
+	roleProvider roleProvider,
 ) *flowValidator {
 	return &flowValidator{
 		executorRegistry:       executorRegistry,
@@ -81,6 +97,8 @@ func newFlowValidator(
 		graphBuilder:           graphBuilder,
 		httpConnectionProvider: connectionProvider,
 		idpProvider:            idpProvider,
+		groupProvider:          groupProvider,
+		roleProvider:           roleProvider,
 		logger:                 log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowValidator")),
 	}
 }
@@ -156,6 +174,10 @@ func (v *flowValidator) validateFlow(ctx context.Context, flowDef *FlowDefinitio
 	}
 
 	if err := v.validateExtensionSteps(ctx, flowDef.Nodes); err != nil {
+		return err
+	}
+
+	if err := v.validateProvisioningSteps(ctx, flowDef.Nodes); err != nil {
 		return err
 	}
 
@@ -1829,6 +1851,87 @@ func (v *flowValidator) validateExtensionExecutor(
 		})
 	}
 	return &tidcommon.InternalServerError
+}
+
+// validateProvisioningSteps refuses a flow whose provisioning step assigns a group or role that does not exist. An ID
+// with a placeholder is resolved when the step runs, so it is not checked, but the plain IDs beside it are.
+func (v *flowValidator) validateProvisioningSteps(
+	ctx context.Context, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	for i := range nodes {
+		node := &nodes[i]
+		if node.Executor == nil || node.Executor.Name != executormeta.ExecutorNameProvisioning {
+			continue
+		}
+		missingGroupIDs, svcErr := v.missingGroups(ctx, assignedIDs(node.Properties, common.NodePropertyAssignGroup))
+		if svcErr != nil {
+			return svcErr
+		}
+		if len(missingGroupIDs) > 0 {
+			return ErrorProvisioningGroupNotFound.WithParams(map[string]string{
+				"nodeID":   node.ID,
+				"groupIDs": strings.Join(missingGroupIDs, ", "),
+			})
+		}
+		missingRoleIDs, svcErr := v.missingRoles(ctx, assignedIDs(node.Properties, common.NodePropertyAssignRole))
+		if svcErr != nil {
+			return svcErr
+		}
+		if len(missingRoleIDs) > 0 {
+			return ErrorProvisioningRoleNotFound.WithParams(map[string]string{
+				"nodeID":  node.ID,
+				"roleIDs": strings.Join(missingRoleIDs, ", "),
+			})
+		}
+	}
+	return nil
+}
+
+// assignedIDPlaceholderPattern matches a variable placeholder, such as {{var(groupId)}}, in a property value. It is
+// the only placeholder a node's properties resolve when the step runs.
+var assignedIDPlaceholderPattern = regexp.MustCompile(`\{\{\s*var\(.*?\)\s*\}\}`)
+
+// assignedIDs reads the comma-separated IDs a provisioning step property names. An ID that has a placeholder is
+// resolved when the step runs, so it names none, but the plain IDs beside it do. A value that is not a string names
+// none.
+func assignedIDs(properties map[string]any, key string) []string {
+	value, ok := properties[key].(string)
+	if !ok {
+		return nil
+	}
+	return slices.DeleteFunc(
+		utils.UniqueStrings(utils.ParseStringArray(assignedIDPlaceholderPattern.ReplaceAllString(value, "\x00"), ",")),
+		func(id string) bool { return id == "" || strings.Contains(id, "\x00") })
+}
+
+// missingGroups returns the group IDs that name no group.
+func (v *flowValidator) missingGroups(ctx context.Context, groupIDs []string) ([]string, *tidcommon.ServiceError) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	groups, svcErr := v.groupProvider.GetGroupsByIDs(ctx, groupIDs)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return slices.DeleteFunc(slices.Clone(groupIDs), func(id string) bool {
+		_, found := groups[id]
+		return found
+	}), nil
+}
+
+// missingRoles returns the role IDs that name no role.
+func (v *flowValidator) missingRoles(ctx context.Context, roleIDs []string) ([]string, *tidcommon.ServiceError) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	roles, svcErr := v.roleProvider.GetRolesByIDs(ctx, roleIDs)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return slices.DeleteFunc(slices.Clone(roleIDs), func(id string) bool {
+		_, found := roles[id]
+		return found
+	}), nil
 }
 
 // validateAccountLinkingExecutor checks that a linking node has an onIncomplete prompt whose

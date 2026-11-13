@@ -20,6 +20,7 @@ import (
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -339,8 +340,8 @@ func (s *importService) importRole(
 	}
 	req.OUID = resolvedOUID
 
-	// Assignments are added once the sharing policies are in place, since one may be made in an
-	// organization unit only a policy lets the role reach.
+	// Assignments are added by linkRoleAssignments, after the applications they may name, so a flow imported in
+	// between can name the role.
 	createReq := role.RoleCreationDetail{
 		ID:          req.ID,
 		Name:        req.Name,
@@ -383,9 +384,6 @@ func (s *importService) importRole(
 				updated.ID, updated.Name, updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
 				return *outcome
 			}
-			if assignErr := s.addRoleAssignments(ctx, updated.ID, req.Assignments); assignErr != nil {
-				return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate, assignErr)
-			}
 			return successOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate)
 		}
 
@@ -399,20 +397,12 @@ func (s *importService) importRole(
 		return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationCreate, svcErr)
 	}
 
-	// A policy names the role it governs, so the policies are replayed once the role exists, and the
-	// assignments after them. A refusal of either undoes the create, so a retry does not meet a
-	// half-imported role.
-	outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
-		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate)
-	if outcome == nil {
-		if assignErr := s.addRoleAssignments(ctx, created.ID, req.Assignments); assignErr != nil {
-			refused := serviceErrorOutcome(resourceTypeRole, created.ID, created.Name, operationCreate, assignErr)
-			outcome = &refused
-		}
-	}
-	if outcome != nil {
+	// A policy names the role it governs, so the policies are replayed once the role exists. A refusal undoes the
+	// create, so a retry does not meet a half-imported role.
+	if outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
+		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
 		if delErr := s.roleService.DeleteRole(ctx, created.ID); delErr != nil {
-			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies or assignments were refused",
+			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies were refused",
 				log.String("roleID", created.ID), log.String("code", delErr.Code))
 		}
 		return *outcome
@@ -517,14 +507,6 @@ func (s *importService) importGroup(
 			if updateErr != nil {
 				return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationUpdate, updateErr)
 			}
-			if len(raw.Members) > 0 {
-				if _, memberErr := s.groupService.AddGroupMembers(ctx, updated.ID, raw.Members); memberErr != nil {
-					return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
-				}
-			}
-			if memberErr := s.reconcileManagedMembers(ctx, updated.ID, raw.Members); memberErr != nil {
-				return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
-			}
 			return successOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate)
 		}
 		if !isNotFoundServiceError(svcErr) {
@@ -536,15 +518,38 @@ func (s *importService) importGroup(
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationCreate, svcErr)
 	}
+	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
+}
+
+// linkGroupMembers adds a group document's members and, in a managed import, reconciles them. It runs after the
+// applications, users and agents the members may name, which is why importGroup leaves them out.
+func (s *importService) linkGroupMembers(
+	ctx context.Context, doc parsedDocument, groupID string,
+) *tidcommon.ServiceError {
+	var raw struct {
+		Members []group.Member `yaml:"members,omitempty"`
+	}
+	if err := doc.Node.Decode(&raw); err != nil {
+		return &tidcommon.InternalServerError
+	}
 	if len(raw.Members) > 0 {
-		if _, memberErr := s.groupService.AddGroupMembers(ctx, grp.ID, raw.Members); memberErr != nil {
-			return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
+		if _, svcErr := s.groupService.AddGroupMembers(ctx, groupID, raw.Members); svcErr != nil {
+			return svcErr
 		}
 	}
-	if memberErr := s.reconcileManagedMembers(ctx, grp.ID, raw.Members); memberErr != nil {
-		return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
+	return s.reconcileManagedMembers(ctx, groupID, raw.Members)
+}
+
+// linkRoleAssignments adds a role document's assignments. It runs after the applications, users, agents and groups
+// the assignments may name, which is why importRole leaves them out.
+func (s *importService) linkRoleAssignments(
+	ctx context.Context, doc parsedDocument, roleID string,
+) *tidcommon.ServiceError {
+	var req roleDeclarativeYAML
+	if err := doc.Node.Decode(&req); err != nil {
+		return &tidcommon.InternalServerError
 	}
-	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
+	return s.addRoleAssignments(ctx, roleID, req.Assignments)
 }
 
 func (s *importService) importResourceServer(
@@ -781,6 +786,56 @@ func credentialsToWrite(credentials map[string]interface{}, update bool) (json.R
 	return encoded, nil
 }
 
+// withDeclaredCredentials moves the credentials the type declares into the attributes, so a create
+// that requires them finds them. The rest are returned to write after the create.
+func (s *importService) withDeclaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, typeHandle string,
+	attributes, credentials map[string]interface{},
+) (map[string]interface{}, map[string]interface{}) {
+	declared := s.declaredCredentials(ctx, category, typeHandle)
+	var withCredentials map[string]interface{}
+	remaining := make(map[string]interface{}, len(credentials))
+	for name, value := range credentials {
+		if text, ok := value.(string); !ok || text == "" || !declared[name] {
+			remaining[name] = value
+			continue
+		}
+		if withCredentials == nil {
+			withCredentials = make(map[string]interface{}, len(attributes)+len(credentials))
+			for attribute, attributeValue := range attributes {
+				withCredentials[attribute] = attributeValue
+			}
+		}
+		withCredentials[name] = value
+	}
+	if withCredentials == nil {
+		return attributes, credentials
+	}
+	return withCredentials, remaining
+}
+
+// declaredCredentials names the credentials a type declares, or none when the type cannot be read.
+func (s *importService) declaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, handle string,
+) map[string]bool {
+	if s.entityTypeService == nil || handle == "" {
+		return nil
+	}
+	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, category, handle)
+	if svcErr != nil || entityType == nil {
+		return nil
+	}
+	schema, err := entitytypemodel.CompileSchema(entityType.Schema)
+	if err != nil {
+		return nil
+	}
+	declared := make(map[string]bool)
+	for _, attribute := range schema.GetAttributes(entitytypemodel.AttributeFilter{AllowCredential: true}) {
+		declared[attribute.Attribute] = true
+	}
+	return declared
+}
+
 // credentialRollbackError reports a resource whose credentials could not be written after it was
 // created, and which could not be deleted again either.
 func credentialRollbackError(resourceType, resourceID string,
@@ -838,11 +893,6 @@ func (s *importService) importUser(
 		Attributes: attributesJSON,
 	}
 
-	credentialsJSON, err := credentialsToWrite(req.Credentials, false)
-	if err != nil {
-		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
-			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
-	}
 	// A credential the document names but carries no value for is left as the user has it: a stored
 	// credential is a hash that never leaves an export, so a server importing its own export, or one
 	// that fills the placeholder with nothing, has nothing new to set. A new user is different:
@@ -908,7 +958,21 @@ func (s *importService) importUser(
 		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 	}
 
-	created, svcErr := s.userService.CreateUser(ctx, userReq)
+	createAttributes, createCredentials := s.withDeclaredCredentials(
+		ctx, entitytype.TypeCategoryUser, req.Type, req.Attributes, req.Credentials)
+	createAttributesJSON, err := json.Marshal(createAttributes)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user attributes: %v", err)}
+	}
+	credentialsJSON, err := credentialsToWrite(createCredentials, false)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
+	}
+	createReq := *userReq
+	createReq.Attributes = createAttributesJSON
+	created, svcErr := s.userService.CreateUser(ctx, &createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationCreate, svcErr)
 	}
@@ -947,6 +1011,45 @@ func (s *importService) importUser(
 	}
 
 	return successOutcome(resourceTypeUser, created.ID, "", operationCreate)
+}
+
+// linkedDocument is a group or role document imported without its members or assignments, and the result its
+// outcome was recorded at.
+type linkedDocument struct {
+	doc         parsedDocument
+	resultIndex int
+}
+
+// needsLinking reports whether an imported document is a group or role whose members or assignments are still to be
+// added.
+func needsLinking(doc parsedDocument, outcome ImportItemOutcome, dryRun bool) bool {
+	return !dryRun && outcome.Status == statusSuccess &&
+		(doc.ResourceType == resourceTypeGroup || doc.ResourceType == resourceTypeRole)
+}
+
+// linkGroupsAndRoles adds the members of the imported groups and the assignments of the imported roles, returning
+// how many failed. A failure turns the outcome of the group or role into one but leaves the group or role in place,
+// since a flow imported meanwhile may already assign it. Importing again adds what was refused.
+func (s *importService) linkGroupsAndRoles(
+	ctx context.Context, links []linkedDocument, results []ImportItemOutcome,
+) int {
+	failed := 0
+	for _, link := range links {
+		outcome := results[link.resultIndex]
+		var svcErr *tidcommon.ServiceError
+		if link.doc.ResourceType == resourceTypeGroup {
+			svcErr = s.linkGroupMembers(ctx, link.doc, outcome.ResourceID)
+		} else {
+			svcErr = s.linkRoleAssignments(ctx, link.doc, outcome.ResourceID)
+		}
+		if svcErr == nil {
+			continue
+		}
+		results[link.resultIndex] = serviceErrorOutcome(
+			link.doc.ResourceType, outcome.ResourceID, outcome.ResourceName, outcome.Operation, svcErr)
+		failed++
+	}
+	return failed
 }
 
 // replayMandatingUserSharing replays the role-mandating user shares after the roles, returning how many failed.
@@ -1354,6 +1457,9 @@ func (s *importService) importAgent(
 	if mappedFlowID, ok := flowIDAliases[req.AuthFlowID]; ok {
 		req.AuthFlowID = mappedFlowID
 	}
+	if mappedFlowID, ok := flowIDAliases[req.DeviceGrantFlowID]; ok {
+		req.DeviceGrantFlowID = mappedFlowID
+	}
 	if mappedFlowID, ok := flowIDAliases[req.RegistrationFlowID]; ok {
 		req.RegistrationFlowID = mappedFlowID
 	}
@@ -1397,6 +1503,8 @@ func (s *importService) importAgent(
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			AuthFlowHandle:            req.AuthFlowHandle,
+			DeviceGrantFlowID:         req.DeviceGrantFlowID,
+			DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 			RegistrationFlowID:        req.RegistrationFlowID,
 			RegistrationFlowHandle:    req.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
@@ -1485,11 +1593,25 @@ func (s *importService) importAgent(
 		}
 	}
 
+	createAttributes, createCredentials := s.withDeclaredCredentials(
+		ctx, entitytype.TypeCategoryAgent, req.Type, req.Attributes, req.Credentials)
+	if len(createCredentials) < len(req.Credentials) {
+		raw, err := json.Marshal(createAttributes)
+		if err != nil {
+			return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+				Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent attributes: %v", err)}
+		}
+		createReq.Attributes = raw
+	}
+	if credentialsJSON, err = json.Marshal(createCredentials); err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
+	}
 	created, svcErr := s.agentService.CreateAgent(ctx, createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 	}
-	if len(req.Credentials) > 0 {
+	if len(createCredentials) > 0 {
 		if credErr := s.agentService.UpdateAgentCredentials(ctx, created.ID, credentialsJSON); credErr != nil {
 			if rollbackErr := s.agentService.DeleteAgent(ctx, created.ID); rollbackErr != nil {
 				return serviceErrorOutcome(resourceTypeAgent, created.ID, "", operationCreate,
@@ -1945,6 +2067,18 @@ func (s *importService) refuseReadOnlyType(ctx context.Context, id string) *tidc
 	return nil
 }
 
+// validateImportedType validates a type as the import would write it. The project is the last thing the
+// validation checks, so one the same dry run creates first is taken as there, as the real import finds it.
+func (s *importService) validateImportedType(ctx context.Context,
+	t providers.AuthorizationDetailType) *tidcommon.ServiceError {
+	svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, t)
+	if svcErr != nil && svcErr.Code == authzdetailmgt.ErrorInvalidProject.Code &&
+		plannedUnitsOf(ctx).hasProject(t.ProjectID) {
+		return nil
+	}
+	return svcErr
+}
+
 // dryRunAuthorizationDetailType predicts the outcome of importing a type, refusing it in the order the
 // real update or create would.
 func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *providers.AuthorizationDetailType,
@@ -1969,7 +2103,7 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
 				&authzdetailmgt.ErrorTypeValueImmutable)
 		}
-		if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, *t); svcErr != nil {
+		if svcErr := s.validateImportedType(ctx, *t); svcErr != nil {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
 		}
 		return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate)
@@ -1982,7 +2116,7 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 	// A create takes the credential as sent, so it is not checked against a stored type that holds the id.
 	candidate := *t
 	candidate.ID = ""
-	if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, candidate); svcErr != nil {
+	if svcErr := s.validateImportedType(ctx, candidate); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
 	}
 	byValue, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailTypeByValue(ctx, t.Type)

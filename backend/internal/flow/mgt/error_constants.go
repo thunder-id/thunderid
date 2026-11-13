@@ -627,6 +627,34 @@ var (
 			DefaultValue: "Set projectId to the project the flow belongs to",
 		},
 	}
+	// ErrorProvisioningGroupNotFound is returned when a provisioning step assigns a group that does not exist.
+	ErrorProvisioningGroupNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.provisioning_group_not_found",
+			DefaultValue: "Assigned group not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.provisioning_group_not_found_description",
+			DefaultValue: "Node '{{param(nodeID)}}' assigns groups that do not exist: {{param(groupIDs)}}. " +
+				"Remove them from assignGroup",
+		},
+	}
+	// ErrorProvisioningRoleNotFound is returned when a provisioning step assigns a role that does not exist.
+	ErrorProvisioningRoleNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.provisioning_role_not_found",
+			DefaultValue: "Assigned role not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.provisioning_role_not_found_description",
+			DefaultValue: "Node '{{param(nodeID)}}' assigns roles that do not exist: {{param(roleIDs)}}. " +
+				"Remove them from assignRole",
+		},
+	}
 )
 
 // Internal errors

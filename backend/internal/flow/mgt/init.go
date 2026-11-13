@@ -52,6 +52,8 @@ func Initialize(
 	connectionProvider httpConnectionProvider,
 	configHandler *FlowConfigHandler,
 	idpProvider idpProvider,
+	groupProvider groupProvider,
+	roleProvider roleProvider,
 	withSystemFlows bool,
 	sharingSvc sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
@@ -61,8 +63,8 @@ func Initialize(
 	if bus == nil {
 		return nil, nil, errNilEventBus
 	}
-	flowValidator := newFlowValidator(
-		executorRegistry, interceptorRegistry, graphBuilder, connectionProvider, idpProvider)
+	flowValidator := newFlowValidator(executorRegistry, interceptorRegistry, graphBuilder, connectionProvider,
+		idpProvider, groupProvider, roleProvider)
 	store, compositeStore, transactioner, err := initializeStore(cacheManager, flowValidator, ouSvc)
 	if err != nil {
 		return nil, nil, err

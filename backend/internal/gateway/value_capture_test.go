@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -18,6 +19,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/variablestore"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 type captureFixture struct {
@@ -30,7 +35,11 @@ type captureFixture struct {
 	// refuse makes the default gateway refuse each call; hangUp makes it drop each connection unanswered.
 	refuse bool
 	hangUp bool
-	mu     sync.Mutex
+	// hangUps makes the default gateway drop that many calls unanswered, then answer the rest.
+	hangUps int
+	// held are the variables a listing of the default gateway's store answers with.
+	held []string
+	mu   sync.Mutex
 }
 
 // newCaptureFixture builds a bound capture over two gateways served over TLS, gw-2 being the
@@ -54,7 +63,11 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 			f.mu.Lock()
 			*into = append(*into, storeCall{method: r.Method, path: r.URL.EscapedPath(),
 				key: r.Header.Get(constants.APIKeyHeaderName), body: string(raw)})
-			hangUp, refuse := f.hangUp, f.refuse
+			hangUp, refuse, held := f.hangUp, f.refuse, f.held
+			if f.hangUps > 0 {
+				f.hangUps--
+				hangUp = true
+			}
 			f.mu.Unlock()
 			switch {
 			case hangUp:
@@ -64,6 +77,13 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 			case refuse:
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"code":"VAR-1001"}`))
+			case r.Method == http.MethodGet:
+				listing := variablestore.VariableListResponse{Variables: []variablestore.Variable{}}
+				for _, name := range held {
+					listing.Variables = append(listing.Variables, variablestore.Variable{Name: name})
+				}
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(listing)
 			default:
 				w.WriteHeader(http.StatusCreated)
 				_, _ = w.Write([]byte(`{"name":"set"}`))
@@ -294,4 +314,188 @@ func TestACaptureGivesUpAfterItsAttempts(t *testing.T) {
 	f.settle(t)
 
 	assert.Equal(t, []string{"/variables/A", "/variables/A"}, f.paths())
+}
+
+// listedExporter lists resources of one type, each the ID it is read by, under rules that name the given
+// variables.
+type listedExporter struct {
+	fakeResourceExporter
+	ids       []string
+	variables []string
+	// readAsRuntime records whether every read was made as the system's own work.
+	readAsRuntime bool
+	// failing are the IDs whose read fails, each that many times before it succeeds; a negative count
+	// fails every time.
+	failing map[string]int
+}
+
+func (e *listedExporter) GetAllResourceIDs(context.Context) ([]string, *tidcommon.ServiceError) {
+	return e.ids, nil
+}
+
+func (e *listedExporter) GetResourceByID(ctx context.Context, id string) (interface{}, string,
+	*tidcommon.ServiceError) {
+	e.readAsRuntime = security.IsRuntimeContext(ctx)
+	if left, ok := e.failing[id]; ok && left != 0 {
+		e.failing[id] = left - 1
+		return nil, "", &tidcommon.InternalServerError
+	}
+	return id, id, nil
+}
+
+func (e *listedExporter) GetResourceRules() *declarativeresource.ResourceRules {
+	return &declarativeresource.ResourceRules{Variables: e.variables}
+}
+
+// Only the variables the first gateway lacks are written, each with the value the resource holds, so
+// a value the gateway holds is never replaced.
+func TestFillingWritesOnlyTheVariablesTheFirstGatewayLacks(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.variables = map[string]string{"AGENT__A1__ID": "jane@example.com", "AGENT__A1__IS_LOCAL": "false"}
+	f.held = []string{"AGENT__A1__ID"}
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1"}, variables: []string{"Owner.ID"}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+	f.settle(t)
+
+	assert.True(t, agents.readAsRuntime, "a resource was read as a caller rather than the system")
+	require.Len(t, f.exporter.valuesOf, 1)
+	assert.Equal(t, valuesRequest{resourceType: "agent", resource: "a1"}, f.exporter.valuesOf[0])
+	calls, others := f.received()
+	require.Len(t, calls, 2)
+	assert.Equal(t, http.MethodGet, calls[0].method)
+	assert.Equal(t, storeCall{method: http.MethodPut, path: "/variables/AGENT__A1__IS_LOCAL", key: "the-key",
+		body: `{"value":"false"}`}, calls[1])
+	assert.Empty(t, others)
+}
+
+// An exporter whose rules name no variable has nothing to fill, so its resources are not read and the
+// gateway is not asked.
+func TestFillingPassesOverExportersThatNameNoVariables(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.variables = map[string]string{"A": "1"}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{
+		&fakeResourceExporter{resourceType: "group"},
+		&listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "user"}, ids: []string{"u1"}},
+	})
+
+	assert.Empty(t, f.exporter.valuesOf)
+	assert.Empty(t, f.paths())
+}
+
+// A gateway that does not answer yet is asked again, and filled once it answers.
+func TestFillingWaitsForTheGateway(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 3
+	f.hangUps = 1
+	f.exporter.variables = map[string]string{"A": "1"}
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1"}, variables: []string{"Owner.ID"}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+	f.settle(t)
+
+	assert.Equal(t, []string{"/variables", "/variables", "/variables/A"}, f.paths())
+}
+
+// A gateway that never answers is given up on after as many tries as a captured value gets.
+func TestFillingGivesUpOnAGatewayThatNeverAnswers(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 2
+	f.hangUp = true
+	f.exporter.variables = map[string]string{"A": "1"}
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1"}, variables: []string{"Owner.ID"}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+	f.settle(t)
+
+	assert.Equal(t, []string{"/variables", "/variables"}, f.paths())
+}
+
+// A store that refuses the lookup is not asked again: a refusal does not change with time.
+func TestFillingStopsWhenTheGatewayRefuses(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 5
+	f.refuse = true
+	f.exporter.variables = map[string]string{"A": "1"}
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1"}, variables: []string{"Owner.ID"}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+
+	assert.Equal(t, []string{"/variables"}, f.paths())
+}
+
+// Without a first gateway there is nothing to fill, so no resource is read.
+func TestFillingWithoutAFirstGatewayReadsNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.gateways.gateways[1].IsDefault = false
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1"}, variables: []string{"Owner.ID"}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+
+	assert.False(t, agents.readAsRuntime, "a resource was read")
+	assert.Empty(t, f.exporter.valuesOf)
+	assert.Empty(t, f.paths())
+}
+
+// A value a write has already put on its way is newer than the one the fill read, so the fill keeps it.
+func TestFillingKeepsAValueAlreadyOnItsWay(t *testing.T) {
+	f := newCaptureFixture(t)
+	key := "gw-2/" + collectionVariables + "/A"
+	f.capture.pending[key] = &pendingValue{gatewayID: "gw-2", collection: collectionVariables, name: "A",
+		value: "new", running: true}
+
+	f.capture.enqueue(context.Background(), "gw-2", collectionVariables, map[string]string{"A": "old"}, false)
+
+	assert.Equal(t, "new", f.capture.pending[key].value)
+	assert.False(t, f.capture.pending[key].again)
+}
+
+// A value a write captured while a fill ran is newer than the fill's, even once its write has finished.
+func TestFillingKeepsAValueCapturedMeanwhile(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.fills = 1
+	f.capture.capturedDuringFill = map[string]bool{}
+
+	f.capture.enqueue(context.Background(), "gw-2", collectionVariables, map[string]string{"A": "new"}, true)
+	f.settle(t)
+	f.capture.enqueue(context.Background(), "gw-2", collectionVariables, map[string]string{"A": "old"}, false)
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.Len(t, calls, 1)
+	assert.Equal(t, `{"value":"new"}`, calls[0].body)
+}
+
+// A resource that could not be read is read again on the next try, and filled then.
+func TestFillingRetriesAResourceThatCouldNotBeRead(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 3
+	f.exporter.variables = map[string]string{"A": "1"}
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1"}, variables: []string{"Owner.ID"}, failing: map[string]int{"a1": 1}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+	f.settle(t)
+
+	assert.Equal(t, []string{"/variables", "/variables/A"}, f.paths())
+}
+
+// The resources that can be read are filled even when another never can be.
+func TestFillingFillsWhatItCanRead(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 2
+	f.exporter.variables = map[string]string{"A": "1"}
+	agents := &listedExporter{fakeResourceExporter: fakeResourceExporter{resourceType: "agent"},
+		ids: []string{"a1", "broken"}, variables: []string{"Owner.ID"}, failing: map[string]int{"broken": -1}}
+
+	f.capture.fillMissingVariables(context.Background(), []declarativeresource.ResourceExporter{agents})
+	f.settle(t)
+
+	assert.Contains(t, f.paths(), "/variables/A")
 }

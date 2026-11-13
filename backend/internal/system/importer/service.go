@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -533,8 +534,9 @@ func (s *importService) importResources(
 	failed := 0
 	flowIDAliases := make(map[string]string)
 	var mandating []userSharingReplay
+	var links []linkedDocument
 	if request.DryRun {
-		ctx = withPlannedUnits(ctx, &plannedUnits{byID: map[string]bool{}, byHandle: map[string]string{}})
+		ctx = withPlannedUnits(ctx, newPlannedUnits())
 	}
 
 	orderedDocs := orderDocumentsByDependencies(docs)
@@ -568,6 +570,9 @@ func (s *importService) importResources(
 			}
 		}
 		results = append(results, outcome)
+		if needsLinking(doc, outcome, request.DryRun) {
+			links = append(links, linkedDocument{doc: doc, resultIndex: len(results) - 1})
+		}
 		for i := pendingBefore; i < len(mandating); i++ {
 			mandating[i].resultIndex = len(results) - 1
 		}
@@ -589,8 +594,14 @@ func (s *importService) importResources(
 		}
 	}
 
-	// Users are imported before the roles their sharing policies may mandate, so those policies are replayed now,
-	// for every user imported, whatever failed after it.
+	// Groups and roles are imported before the flows that name them, and so before the applications, users and agents
+	// their members and assignments name. Those are added now.
+	unlinked := s.linkGroupsAndRoles(ctx, links, results)
+	imported -= unlinked
+	failed += unlinked
+
+	// The sharing policies of a user that mandate roles are replayed now, once the roles' members and assignments are
+	// added, for every user imported, whatever failed after it.
 	refused := s.replayMandatingUserSharing(ctx, mandating, results)
 	imported -= refused
 	failed += refused
@@ -1397,9 +1408,11 @@ var resourceDependencyOrder = []string{
 	// A gateway refers to no other resource and nothing refers to it, so its position is free.
 	// First keeps it out of the way of the ordering that does matter.
 	resourceTypeGateway,
-	resourceTypeAuthorizationDetailType,
 	// Before everything that is placed in a project, organization units included.
 	resourceTypeProject,
+	// After the project an authorization details type belongs to, so a project and its types import together and
+	// a removal takes the types off before the project, which is not deleted while it still has them.
+	resourceTypeAuthorizationDetailType,
 	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
@@ -1421,9 +1434,30 @@ var resourceDependencyOrder = []string{
 	resourceTypeCredentialConfiguration,
 }
 
+// importDependencyOrder is the order an import writes resources in: resourceDependencyOrder with groups and roles
+// before the flows that may assign them. A group's members and a role's assignments name resources imported after the
+// flows, so those are added in a later pass, after the agents. A deletion keeps resourceDependencyOrder.
+var importDependencyOrder = groupsAndRolesBeforeFlows(resourceDependencyOrder)
+
+// groupsAndRolesBeforeFlows returns order with the groups and roles moved to just before the flows.
+func groupsAndRolesBeforeFlows(order []string) []string {
+	moved := []string{resourceTypeGroup, resourceTypeRole}
+	result := make([]string, 0, len(order))
+	for _, resourceType := range order {
+		if slices.Contains(moved, resourceType) {
+			continue
+		}
+		if resourceType == resourceTypeFlow {
+			result = append(result, moved...)
+		}
+		result = append(result, resourceType)
+	}
+	return result
+}
+
 func orderDocumentsByDependencies(docs []parsedDocument) []parsedDocument {
-	priority := make(map[string]int, len(resourceDependencyOrder))
-	for i, resourceType := range resourceDependencyOrder {
+	priority := make(map[string]int, len(importDependencyOrder))
+	for i, resourceType := range importDependencyOrder {
 		priority[resourceType] = i
 	}
 

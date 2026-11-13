@@ -17,6 +17,14 @@ const UserConstants = {
    * Kind of an agent a user registered for themselves.
    */
   PERSONAL_AGENT_KIND: 'personal-assistant',
+  /**
+   * Flow type of the administrator-initiated attribute verification flow.
+   */
+  ADMIN_VERIFICATION_FLOW_TYPE: 'ADMIN_INITIATED',
+  /**
+   * Schema property types an administrator can send a verification link for. The shipped flow sends email only.
+   */
+  ADMIN_VERIFIABLE_TYPES: ['email'] as readonly string[],
 } as const;
 
 export default UserConstants;

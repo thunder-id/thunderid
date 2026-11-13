@@ -3,6 +3,7 @@
 
 import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
+import type {JSX} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import UserAddFormPage from '../UserAddFormPage';
 
@@ -16,7 +17,10 @@ vi.mock('react-i18next', async (importOriginal) => {
 
   return {
     ...(actual as object),
-    useTranslation: () => ({t: (key: string) => key}),
+    useTranslation: () => ({
+      t: (key: string, _fallback?: string, options?: {roles?: string}) =>
+        options?.roles ? `${key} ${options.roles}` : key,
+    }),
   };
 });
 
@@ -215,6 +219,153 @@ describe('UserAddFormPage', () => {
     expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith({limit: 1, offset: 0, projectId: undefined}, false);
     expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith(expect.objectContaining({placement: true}), false);
     expect(mockUseGetOrganizationUnits).not.toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  describe('an administrator, added outside any project', () => {
+    // The roles come from the console's config, as a packaged Control Plane's names them.
+    function giveAdministrators(roleIds: string[]): void {
+      window.__THUNDERID_RUNTIME_CONFIG__ = {
+        ...window.__THUNDERID_RUNTIME_CONFIG__!,
+        administrators: {role_ids: roleIds},
+      };
+    }
+
+    afterEach(() => {
+      const config = {...window.__THUNDERID_RUNTIME_CONFIG__!};
+      delete config.administrators;
+      window.__THUNDERID_RUNTIME_CONFIG__ = config;
+    });
+
+    async function create(user: ReturnType<typeof userEvent.setup>, page: JSX.Element): Promise<void> {
+      render(page);
+      await user.click(await screen.findByRole('combobox'));
+      await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'erin');
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+    }
+
+    function assigned(): RecordedRequest[] {
+      return requests().filter((request) => request.url.includes('/assignments/add'));
+    }
+
+    it('gives the administrators roles once created, then opens the list', async () => {
+      const fallback = mockHttpRequest.getMockImplementation();
+      const finishAssignments: (() => void)[] = [];
+      mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+        config.url.includes('/assignments/add')
+          ? new Promise((resolve) => {
+              finishAssignments.push(() => resolve({data: undefined}));
+            })
+          : fallback!(config),
+      );
+      const user = userEvent.setup();
+      giveAdministrators(['admins', 'auditors']);
+      await create(user, <UserAddFormPage />);
+
+      // The list opens only once every role is assigned, and the user cannot be submitted again meanwhile.
+      for (const count of [1, 2]) {
+        await waitFor(() => expect(assigned()).toHaveLength(count));
+        expect(mockNavigate).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', {name: 'users:addForm.creating'})).toBeDisabled();
+        finishAssignments[count - 1]();
+      }
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/users'));
+      expect(assigned().map((request) => [request.url.replace(/^.*\/roles\//, ''), request.data])).toEqual([
+        ['admins/assignments/add', {assignments: [{id: 'user-1', type: 'user'}]}],
+        ['auditors/assignments/add', {assignments: [{id: 'user-1', type: 'user'}]}],
+      ]);
+    });
+
+    it('tries every role, names those it could not assign, stays, and cannot create the user again', async () => {
+      const fallback = mockHttpRequest.getMockImplementation();
+      let refuseAdmins = true;
+      mockHttpRequest.mockImplementation((config: RecordedRequest) => {
+        if (config.url.includes('/admins/assignments/add') && refuseAdmins) {
+          return Promise.reject(new Error('forbidden'));
+        }
+        if (config.method === 'GET' && config.url.endsWith('/roles/admins')) {
+          return Promise.resolve({data: {name: 'Administrators'}});
+        }
+        return config.url.includes('/assignments/add') ? Promise.resolve({data: undefined}) : fallback!(config);
+      });
+      const user = userEvent.setup();
+      giveAdministrators(['admins', 'auditors']);
+      await create(user, <UserAddFormPage />);
+
+      expect(await screen.findByTestId('administrator-roles-error')).toHaveTextContent(
+        'users:addForm.administratorRolesError Administrators',
+      );
+      expect(screen.getByTestId('administrator-roles-error')).not.toHaveTextContent('auditors');
+      expect(assigned().map((request) => request.url.replace(/^.*\/roles\//, ''))).toEqual([
+        'admins/assignments/add',
+        'auditors/assignments/add',
+      ]);
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+
+      // Trying again assigns only the role that failed, then opens the list.
+      refuseAdmins = false;
+      await user.click(screen.getByRole('button', {name: 'users:addForm.retryRoles'}));
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/users'));
+      expect(assigned().map((request) => request.url.replace(/^.*\/roles\//, ''))).toEqual([
+        'admins/assignments/add',
+        'auditors/assignments/add',
+        'admins/assignments/add',
+      ]);
+      expect(assigned().at(-1)?.data).toEqual({assignments: [{id: 'user-1', type: 'user'}]});
+    });
+
+    it('still gives the roles when the page is closed while the user is being created', async () => {
+      const fallback = mockHttpRequest.getMockImplementation();
+      let finishCreate: (response: {data: {id: string}}) => void = () => undefined;
+      mockHttpRequest.mockImplementation((config: RecordedRequest) => {
+        if (config.method === 'POST' && config.url.endsWith('/users')) {
+          return new Promise((resolve) => {
+            finishCreate = resolve;
+          });
+        }
+        return config.url.includes('/assignments/add') ? Promise.resolve({data: undefined}) : fallback!(config);
+      });
+      const user = userEvent.setup();
+      giveAdministrators(['admins']);
+      const {unmount} = render(<UserAddFormPage />);
+      await user.click(await screen.findByRole('combobox'));
+      await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'erin');
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+      await waitFor(() => expect(requests().some((request) => request.url.endsWith('/users'))).toBe(true));
+
+      unmount();
+      finishCreate({data: {id: 'user-1'}});
+
+      await waitFor(() =>
+        expect(assigned().map((request) => request.url.replace(/^.*\/roles\//, ''))).toEqual([
+          'admins/assignments/add',
+        ]),
+      );
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('gives no role in a project', async () => {
+      mockUseGetOrganizationUnits.mockImplementation((params: {placement?: boolean}) =>
+        params.placement
+          ? {data: {totalResults: 1}, isLoading: false}
+          : {data: {totalResults: 0, organizationUnits: []}, isLoading: false},
+      );
+      giveAdministrators(['admins']);
+      const user = userEvent.setup();
+      await create(
+        user,
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserAddFormPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/users'));
+      expect(assigned()).toEqual([]);
+    });
   });
 
   describe('inside a project', () => {

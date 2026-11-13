@@ -49,7 +49,7 @@ func (s *TypeToolsTestSuite) TestListTypes() {
 	s.service.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
 		Return([]providers.AuthorizationDetailType{toolsTestType()}, nil)
 
-	_, out, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+	_, out, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, listTypesInput{})
 
 	s.Require().NoError(err)
 	s.Equal(1, out.TotalResults)
@@ -57,11 +57,29 @@ func (s *TypeToolsTestSuite) TestListTypes() {
 		out.Types)
 }
 
+// With a project, the tool lists only that project's types.
+func (s *TypeToolsTestSuite) TestListTypesOfAProject() {
+	inProject := toolsTestType()
+	inProject.ProjectID = testProjectID
+	other := toolsTestType()
+	other.ID, other.Type, other.ProjectID = "type-2", "payment", testOtherProjectID
+	s.service.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
+		Return([]providers.AuthorizationDetailType{inProject, other}, nil)
+
+	_, out, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{},
+		listTypesInput{ProjectID: testProjectID})
+
+	s.Require().NoError(err)
+	s.Equal(1, out.TotalResults)
+	s.Equal("type-1", out.Types[0].ID)
+	s.Equal(testProjectID, out.Types[0].ProjectID)
+}
+
 func (s *TypeToolsTestSuite) TestListTypesFails() {
 	s.service.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
 
-	_, _, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+	_, _, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, listTypesInput{})
 
 	s.Error(err)
 }

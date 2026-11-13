@@ -191,6 +191,7 @@ func (s *UserCredentialUpdateSystemFlowTestSuite) SetupTest() {
 	}, nil).Once()
 	s.entities.On("IsEntityDeclarative", mock.Anything, "user-1").Return(false, nil).Once()
 	s.service = &userService{
+		bus:           discardingBus{},
 		entityService: s.entities,
 		authzService:  newAllowAllAuthz(s.T()),
 		systemFlows:   s.flows,

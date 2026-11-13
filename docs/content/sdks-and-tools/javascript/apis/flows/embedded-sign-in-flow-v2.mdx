@@ -67,6 +67,7 @@ if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
 | `data` | `EmbeddedFlowResponseDataV2` | UI component tree or redirect data for the current step |
 | `assertion` | `string` | Present when `flowStatus` is `Complete`. Use to exchange for tokens |
 | `challengeToken` | `string` | Present when a challenge is required (e.g., TOTP step) |
+| `expiresIn` | `number` | Present when `flowStatus` is `Incomplete`. How many seconds the execution stays valid |
 | `redirectUrl` | `string` | Present when `type` is `Redirection` |
 | `error` | `FlowError` | Present when `flowStatus` is `Error` or `Incomplete`. Contains `code`, `message`, and `description` |
 

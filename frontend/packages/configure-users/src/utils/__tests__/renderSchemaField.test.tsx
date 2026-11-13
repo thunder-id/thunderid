@@ -16,12 +16,14 @@ function TestForm({
   defaultValues = {},
   onSubmit = undefined,
   labelSuffix = undefined,
+  endAdornment = undefined,
 }: {
   fieldName: string;
   fieldDef: PropertyDefinition;
   defaultValues?: TestFormData;
   onSubmit?: (data: TestFormData) => void;
   labelSuffix?: ReactNode;
+  endAdornment?: ReactNode;
 }) {
   const {
     control,
@@ -43,7 +45,7 @@ function TestForm({
         handleSubmit(handleFormSubmit)(e).catch(() => null);
       }}
     >
-      {renderSchemaField(fieldName, fieldDef, control, errors, undefined, labelSuffix)}
+      {renderSchemaField(fieldName, fieldDef, control, errors, undefined, labelSuffix, endAdornment)}
       <button type="submit">Submit</button>
     </form>
   );
@@ -485,6 +487,22 @@ describe('renderSchemaField', () => {
     );
     await user.click(screen.getByRole('button', {name: 'Submit'}));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({email: 'custom contact'}));
+  });
+
+  it("shows a contact field's end adornment inside its input, apart from its label suffix", () => {
+    render(
+      <TestForm
+        fieldName="email"
+        fieldDef={{type: 'email'}}
+        labelSuffix={<span>Unverified</span>}
+        endAdornment={<button type="button">Act</button>}
+      />,
+    );
+
+    const input = screen.getByRole('textbox', {name: 'email'});
+    expect(input.parentElement).toContainElement(screen.getByRole('button', {name: 'Act'}));
+    expect(input.parentElement).not.toContainElement(screen.getByText('Unverified'));
+    expect(input).toHaveAccessibleDescription('Unverified');
   });
 
   it("shows a contact field's label suffix beside its label and describes the input with it", () => {

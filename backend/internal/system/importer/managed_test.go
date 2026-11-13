@@ -139,11 +139,6 @@ func TestAnImportThatIsNotManagedOrIsADryRunMarksNothing(t *testing.T) {
 // to deploy again.
 func TestAResourceThatCannotBeMarkedIsReportedAsFailed(t *testing.T) {
 	svc, store := managedImportService(t, &fakeGroupService{}, nil, nil)
-	store.EXPECT().PartKeys(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
-	store.EXPECT().UnmarkParts(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-	store.EXPECT().MarkParts(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
 	store.EXPECT().Mark(mock.Anything, managedresource.TypeGroup, "group-new").Return(errMarkerStore).Once()
 
 	resp, svcErr := svc.ImportResources(context.Background(),
@@ -190,6 +185,7 @@ func TestAStaleMemberThatIsGoneIsTakenAsRemoved(t *testing.T) {
 
 	refused := &failingRemoval{memberID: "user-gone", err: &tidcommon.ErrorUnauthorized}
 	svc, store = managedImportService(t, refused, nil, nil)
+	store.EXPECT().Mark(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	store.EXPECT().PartKeys(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{"user/user-gone"}, nil)
 
@@ -222,6 +218,7 @@ func TestAMarkerFailureWhileReconcilingMembersFailsTheGroup(t *testing.T) {
 	for name, expect := range cases {
 		t.Run(name, func(t *testing.T) {
 			svc, store := managedImportService(t, &fakeGroupService{}, nil, nil)
+			store.EXPECT().Mark(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			expect(store)
 
 			resp, svcErr := svc.ImportResources(context.Background(),
@@ -483,7 +480,6 @@ func TestAFailureWhileReconcilingAssignmentsFailsTheRole(t *testing.T) {
 					managedresource.PartAssignment, []string{"ou-2/user/user-gone", "not-a-key"}).Return(nil)
 				store.EXPECT().MarkParts(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 					mock.Anything).Return(nil)
-				store.EXPECT().Mark(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			},
 			status: statusSuccess,
 		},
@@ -511,6 +507,7 @@ func TestAFailureWhileReconcilingAssignmentsFailsTheRole(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			svc, store := managedImportService(t, nil, &fakeRoleService{}, tc.assignments)
+			store.EXPECT().Mark(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			tc.expect(store)
 
 			resp, svcErr := svc.ImportResources(context.Background(),

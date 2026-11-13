@@ -30,6 +30,10 @@ var scalarLine = regexp.MustCompile(`^\s*(?:-\s+` + mappingKey + `\s*:\s*|-\s*|`
 var describingKeys = map[string]bool{"name": true, "displayName": true, "description": true, "handle": true,
 	"text": true, "title": true, "label": true, "username": true, "email": true}
 
+// idListKeys are the fields whose one value names several resources by id, separated by commas, such as the groups
+// and roles a provisioning node assigns. Each id in the value is read as a reference.
+var idListKeys = map[string]bool{"assignGroup": true, "assignRole": true}
+
 // kindKeys say what kind of thing a document, or an entry in it, is, at any depth, such as a member's
 // `type: user`, and never name another resource. A document's own top-level `id` is its identity, not a
 // reference either, while a nested id, such as a member's, is one.
@@ -152,12 +156,18 @@ func needsOf(resources []bundleResource) map[string][]string {
 				(field == "id" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "-")) {
 				continue
 			}
-			for _, needed := range byID[strings.TrimSpace(match[3])] {
-				if needed == own || seen[needed] {
-					continue
+			values := []string{strings.TrimSpace(match[3])}
+			if idListKeys[field] {
+				values = strings.Split(match[3], ",")
+			}
+			for _, value := range values {
+				for _, needed := range byID[strings.TrimSpace(value)] {
+					if needed == own || seen[needed] {
+						continue
+					}
+					seen[needed] = true
+					needs[own] = append(needs[own], needed)
 				}
-				seen[needed] = true
-				needs[own] = append(needs[own], needed)
 			}
 		}
 		sort.Strings(needs[own])

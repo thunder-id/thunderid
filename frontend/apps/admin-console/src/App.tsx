@@ -12,18 +12,18 @@ import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import AdminLayout from './layouts/AdminLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
-const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentOnboardPage})));
-const AgentEditPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentEditPage})));
-const AgentsListPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentsListPage})));
-const CreateGroupPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.CreateGroupPage})));
-const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupEditPage})));
-const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
-const CreateRolePage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.CreateRolePage})));
-const RoleEditPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RoleEditPage})));
-const RolesListPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RolesListPage})));
-const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
-const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
-const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
+const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents/pages/AgentAddRoute'));
+const AgentEditPage = lazy(() => import('@thunderid/configure-agents/pages/AgentEditPage'));
+const AgentsListPage = lazy(() => import('@thunderid/configure-agents/pages/AgentsListPage'));
+const CreateGroupPage = lazy(() => import('@thunderid/configure-groups/pages/CreateGroupPage'));
+const GroupEditPage = lazy(() => import('@thunderid/configure-groups/pages/GroupEditPage'));
+const GroupsListPage = lazy(() => import('@thunderid/configure-groups/pages/GroupsListPage'));
+const CreateRolePage = lazy(() => import('@thunderid/configure-roles/pages/CreateRolePage'));
+const RoleEditPage = lazy(() => import('@thunderid/configure-roles/pages/RoleEditPage'));
+const RolesListPage = lazy(() => import('@thunderid/configure-roles/pages/RolesListPage'));
+const UserAddPage = lazy(() => import('@thunderid/configure-users/pages/UserAddRoute'));
+const UserEditPage = lazy(() => import('@thunderid/configure-users/pages/UserEditPage'));
+const UsersListPage = lazy(() => import('@thunderid/configure-users/pages/UsersListPage'));
 
 export default function App(): JSX.Element {
   return (

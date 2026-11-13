@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
@@ -2384,9 +2385,12 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_IncompleteStoresContext() {
 		Return([]byte("encrypted-ctx"), nil, nil)
 	mockEngine.EXPECT().Execute(mock.Anything).
 		Return(FlowStep{Status: providers.FlowStatusIncomplete}, nil)
+	var stored FlowContextDB
 	mockStore.EXPECT().StoreFlowContext(
 		mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txMarkerKey{}) == "tx" }),
-		mock.AnythingOfType("FlowContextDB"), mock.Anything).Return(nil)
+		mock.AnythingOfType("FlowContextDB"), mock.Anything).
+		Run(func(_ context.Context, dbModel FlowContextDB, _ int64) { stored = dbModel }).
+		Return(nil)
 
 	service := &flowExecService{
 		flowStore:     mockStore,
@@ -2405,6 +2409,92 @@ func (s *ServiceTestSuite) TestExecute_NewFlow_IncompleteStoresContext() {
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
 	s.Equal(providers.FlowStatusIncomplete, flowStep.Status)
+	s.WithinDuration(time.Now().Add(time.Duration(defaultAuthFlowExpiry)*time.Second), flowStep.ExpiresAt,
+		time.Minute)
+	s.Equal(stored.ExpiryTime, flowStep.ExpiresAt)
+}
+
+func (s *ServiceTestSuite) TestExecute_ExistingFlow_KeepsStoredExpiry() {
+	testCases := []struct {
+		name             string
+		status           providers.FlowStatus
+		returnsExpiresAt bool
+	}{
+		{name: "incomplete step returns the expiry", status: providers.FlowStatusIncomplete, returnsExpiresAt: true},
+		{name: "error step does not return the expiry", status: providers.FlowStatusError},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			flowFactory, _ := core.Initialize(
+				cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+			testGraph := flowFactory.CreateGraph("test-graph-id", providers.FlowTypeAuthentication, 1)
+
+			expiresAt := time.Now().Add(10 * time.Minute).Truncate(time.Millisecond)
+			engineCtx := EngineContext{
+				ExecutionID:       "existing-execution-id",
+				AppID:             "test-app-id",
+				FlowType:          providers.FlowTypeAuthentication,
+				AuthenticatedUser: authncm.AuthenticatedUser{Attributes: map[string]interface{}{}},
+				UserInputs:        map[string]string{},
+				RuntimeData:       map[string]string{},
+				ExecutionHistory:  map[string]*providers.NodeExecutionRecord{},
+				Graph:             testGraph,
+				expiresAt:         expiresAt,
+			}
+			storedCtx := &FlowContextDB{}
+			s.Require().NoError(storedCtx.FromEngineContext(engineCtx))
+
+			mockStore := newFlowStoreInterfaceMock(s.T())
+			mockFlowProvider := NewFlowProviderMock(s.T())
+			mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+			mockEngine := newFlowEngineInterfaceMock(s.T())
+			mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
+			mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+			mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(s.T())
+
+			mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+			mockFlowProvider.EXPECT().
+				GetFlow(mock.Anything, "test-graph-id").
+				Return(&providers.CompleteFlowDefinition{ID: "test-graph-id"}, nil)
+			mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
+			mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
+				&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
+			mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
+				&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp}, nil)
+			mockEngine.EXPECT().Execute(mock.Anything).
+				Return(FlowStep{Status: tc.status}, nil)
+			mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return([]byte("encrypted-ctx"), nil, nil)
+			var updated FlowContextDB
+			mockStore.EXPECT().UpdateFlowContext(mock.Anything, mock.AnythingOfType("FlowContextDB")).
+				Run(func(_ context.Context, dbModel FlowContextDB) { updated = dbModel }).
+				Return(nil)
+
+			service := &flowExecService{
+				flowStore:    mockStore,
+				graphBuilder: mockGraphBuilder,
+				flowProvider: mockFlowProvider,
+				flowEngine:   mockEngine,
+				actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(),
+					nil, nil, nil),
+				transactioner: &stubTransactioner{},
+				cryptoSvc:     mockCrypto,
+				cfg:           testFlowExecCfg,
+			}
+
+			flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+				string(providers.FlowTypeAuthentication), "", false, "submit", map[string]string{}, "", "", "", nil)
+
+			s.Nil(svcErr)
+			if tc.returnsExpiresAt {
+				s.True(expiresAt.Equal(flowStep.ExpiresAt))
+			} else {
+				s.True(flowStep.ExpiresAt.IsZero())
+			}
+			s.True(expiresAt.Equal(updated.ExpiryTime))
+		})
+	}
 }
 
 func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompleteRemovesContext() {
@@ -2466,6 +2556,7 @@ func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompleteRemovesContext() {
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
 	s.Equal(providers.FlowStatusComplete, flowStep.Status)
+	s.True(flowStep.ExpiresAt.IsZero())
 }
 
 func (s *ServiceTestSuite) TestLoadNewContext_InvalidFlowType() {

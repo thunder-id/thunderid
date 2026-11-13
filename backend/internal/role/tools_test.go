@@ -178,6 +178,49 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 		s.True(out.Roles[0].ReadOnly)
 	})
 
+	s.Run("by project", func() {
+		s.roles.On("GetRoleListByProject", asCaller, "p-1", 30, 0, map[string]interface{}(nil)).
+			Return(&RoleList{TotalResults: 4, Roles: []Role{{ID: "r1", Name: "Leave", OUID: "ou-sys",
+				ProjectID: "p-1"}}}, (*tidcommon.ServiceError)(nil)).Once()
+		var out roleListMCPResponse
+		s.structured(s.call("list_roles", map[string]any{"projectId": "p-1"}), &out)
+		s.Equal(4, out.TotalResults)
+		s.Equal("p-1", out.Roles[0].ProjectID)
+	})
+
+	s.Run("by project, owned by a unit", func() {
+		s.roles.On("GetRoleListByProject", mock.Anything, "p-1", 10, 20, map[string]interface{}{"ouId": "ou-1"}).
+			Return(&RoleList{TotalResults: 21, Roles: []Role{{ID: "r9", OUID: "ou-1", ProjectID: "p-1"}}},
+				(*tidcommon.ServiceError)(nil)).Once()
+		var out roleListMCPResponse
+		s.structured(s.call("list_roles", map[string]any{"projectId": "p-1", "ouId": "ou-1", "limit": 10,
+			"offset": 20}), &out)
+		s.Equal(21, out.TotalResults)
+		s.Equal("r9", out.Roles[0].ID)
+	})
+
+	s.Run("by permission in a project keeps the project's roles", func() {
+		s.roles.On("GetRolesByPermission", asCaller, toolOrdersRS, "orders:refund").Return([]Role{
+			{ID: "r1", Name: "Refunds", OUID: "ou-sys"}, {ID: "r2", Name: "Project Refunds", OUID: "ou-sys"},
+		}, (*tidcommon.ServiceError)(nil)).Once()
+		s.roles.On("GetRoleListByProject", asCaller, "p-1", 100, 0, map[string]interface{}(nil)).
+			Return(&RoleList{TotalResults: 2, Roles: []Role{{ID: "r2"}}}, (*tidcommon.ServiceError)(nil)).Once()
+		s.roles.On("GetRoleListByProject", asCaller, "p-1", 100, 1, map[string]interface{}(nil)).
+			Return(&RoleList{TotalResults: 2, Roles: []Role{{ID: "r7"}}}, (*tidcommon.ServiceError)(nil)).Once()
+		var out roleListMCPResponse
+		s.structured(s.call("list_roles", map[string]any{"resourceServer": toolOrdersAPI,
+			"permission": "orders:refund", "projectId": "p-1"}), &out)
+		s.Equal(1, out.TotalResults)
+		s.Equal("r2", out.Roles[0].ID)
+		s.Equal("p-1", out.Roles[0].ProjectID)
+	})
+
+	s.Run("a project the service refuses", func() {
+		s.roles.On("GetRoleListByProject", mock.Anything, "p-x", 30, 0, map[string]interface{}(nil)).
+			Return((*RoleList)(nil), &ErrorInvalidProject).Once()
+		s.Contains(s.errorText(s.call("list_roles", map[string]any{"projectId": "p-x"})), "No project exists")
+	})
+
 	s.Run("a permission search returns every match, since the service doesn't page it", func() {
 		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:refund").Return([]Role{
 			{ID: "r1", Name: "A"}, {ID: "r2", Name: "B"}, {ID: "r3", Name: "C"},
@@ -292,7 +335,59 @@ func (s *RoleToolsTestSuite) TestCreateRole() {
 		s.Equal(toolRoleID, out.ID)
 	})
 
+	s.Run("in a project, in the system organization unit", func() {
+		s.connect(true)
+		s.ous.On("GetSystemOUID", mock.Anything).Return("ou-sys", (*tidcommon.ServiceError)(nil)).Once()
+		var detail RoleCreationDetail
+		s.roles.On("CreateRole", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { detail = args.Get(1).(RoleCreationDetail) }).
+			Return(&RoleWithPermissionsAndAssignments{ID: toolRoleID}, (*tidcommon.ServiceError)(nil)).Once()
+		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:read").
+			Return([]Role{}, (*tidcommon.ServiceError)(nil)).Once()
+		s.existingRole("orders:read").ProjectID = "p-1"
+
+		var out roleMCPDetails
+		s.structured(s.call("create_role", map[string]any{"name": "Leave Approvers", "projectId": "p-1",
+			"resourceServer": toolOrdersAPI, "permissions": []string{"orders:read"}}), &out)
+		s.Equal("ou-sys", detail.OUID)
+		s.Equal("p-1", detail.ProjectID)
+		s.Equal("p-1", out.ProjectID)
+		s.ous.AssertNotCalled(s.T(), "GetOrganizationUnitByPath", mock.Anything, mock.Anything)
+	})
+
+	s.Run("in a project, in a unit of the project", func() {
+		s.connect(true)
+		var detail RoleCreationDetail
+		s.roles.On("CreateRole", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { detail = args.Get(1).(RoleCreationDetail) }).
+			Return(&RoleWithPermissionsAndAssignments{ID: toolRoleID}, (*tidcommon.ServiceError)(nil)).Once()
+		s.existingRole()
+		var out roleMCPDetails
+		s.structured(s.call("create_role", map[string]any{"name": "Team", "projectId": "p-1", "ouId": "ou-1"}),
+			&out)
+		s.Equal("ou-1", detail.OUID)
+		s.Equal("p-1", detail.ProjectID)
+		s.ous.AssertNotCalled(s.T(), "GetSystemOUID", mock.Anything)
+	})
+
+	s.Run("a unit outside the project", func() {
+		s.connect(true)
+		s.roles.On("CreateRole", mock.Anything, mock.Anything).Return(
+			(*RoleWithPermissionsAndAssignments)(nil), &ErrorOUNotInProject).Once()
+		s.Contains(s.errorText(s.call("create_role", map[string]any{"name": "Team", "projectId": "p-1",
+			"ouId": "ou-9"})), "must be in the system organization unit or in an organization unit of the project")
+	})
+
+	s.Run("no system organization unit", func() {
+		s.connect(true)
+		s.ous.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError).Once()
+		s.Contains(s.errorText(s.call("create_role", map[string]any{"name": "Team", "projectId": "p-1"})),
+			"system organization unit wasn't found")
+		s.roles.AssertNotCalled(s.T(), "CreateRole", mock.Anything, mock.Anything)
+	})
+
 	s.Run("assignee type outside the enum", func() {
+		s.connect(true)
 		s.Contains(s.errorText(s.call("create_role", map[string]any{"name": "x", "ouId": "ou-1",
 			"assignees": []any{map[string]any{"id": "g1", "type": "team"}}})), "type")
 	})
@@ -451,6 +546,39 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 		s.roles.AssertNotCalled(s.T(), "CreateRole", mock.Anything, mock.Anything)
 	})
 
+	s.Run("same permissions in the unit and project", func() {
+		s.connect(true)
+		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:read").Return([]Role{
+			{ID: "role-1", OUID: "ou-sys"}}, (*tidcommon.ServiceError)(nil)).Once()
+		s.roles.On("GetRoleWithPermissions", mock.Anything, "role-1").Return(&RoleWithPermissions{
+			ID: "role-1", Name: "Readers", OUID: "ou-sys", ProjectID: "p-1",
+			Permissions: []ResourcePermissions{{ResourceServerID: toolOrdersRS,
+				Permissions: []string{"orders:read"}}}}, (*tidcommon.ServiceError)(nil)).Once()
+		text := s.errorText(s.call("create_role", map[string]any{"name": "More Readers", "ouId": "ou-sys",
+			"projectId": "p-1", "resourceServer": toolOrdersAPI, "permissions": []string{"orders:read"}}))
+		s.Contains(text, `the role "Readers" (role-1) in this organization unit and project`)
+		s.roles.AssertNotCalled(s.T(), "CreateRole", mock.Anything, mock.Anything)
+	})
+
+	s.Run("same permissions in another project is no duplicate", func() {
+		s.connect(true)
+		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:read").Return([]Role{
+			{ID: "role-1", OUID: "ou-sys"}}, (*tidcommon.ServiceError)(nil)).Once()
+		s.roles.On("GetRoleWithPermissions", mock.Anything, "role-1").Return(&RoleWithPermissions{
+			ID: "role-1", OUID: "ou-sys", ProjectID: "p-2", Permissions: []ResourcePermissions{{
+				ResourceServerID: toolOrdersRS, Permissions: []string{"orders:read"}}}},
+			(*tidcommon.ServiceError)(nil)).Once()
+		var detail RoleCreationDetail
+		s.roles.On("CreateRole", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { detail = args.Get(1).(RoleCreationDetail) }).
+			Return(&RoleWithPermissionsAndAssignments{ID: toolRoleID}, (*tidcommon.ServiceError)(nil)).Once()
+		s.existingRole("orders:read")
+		var out roleMCPDetails
+		s.structured(s.call("create_role", map[string]any{"name": "Readers", "ouId": "ou-sys",
+			"projectId": "p-1", "resourceServer": toolOrdersAPI, "permissions": []string{"orders:read"}}), &out)
+		s.Equal("p-1", detail.ProjectID)
+	})
+
 	s.Run("a role that grants more is no duplicate", func() {
 		s.connect(true)
 		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:read").Return([]Role{
@@ -487,6 +615,45 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 			(*tidcommon.ServiceError)(nil)).Once()
 		text := s.errorText(s.call("create_role", map[string]any{"name": "Support", "ouId": "ou-1"}))
 		s.Contains(text, `a role named "Support" already exists in this organization unit (role-7)`)
+	})
+}
+
+func (s *RoleToolsTestSuite) TestListResourceServers_InAProject() {
+	s.Run("paged through the project's listing", func() {
+		s.resources.On("GetResourceServerListByProject", mock.Anything, "p-1", "", 30, 0).Return(
+			&resourcepkg.ResourceServerList{TotalResults: 4, ResourceServers: []providers.ResourceServer{
+				{Name: "Leave", Identifier: "https://api.example.com/leave", OUID: "ou-sys", ProjectID: "p-1",
+					Type: providers.ResourceServerTypeAPI}}}, (*tidcommon.ServiceError)(nil)).Once()
+		var out resourceServerListMCPResponse
+		s.structured(s.call("list_resource_servers", map[string]any{"projectId": "p-1"}), &out)
+		s.Equal(4, out.TotalResults)
+		s.Equal([]resourceServerMCPItem{{ResourceServer: "https://api.example.com/leave", Name: "Leave",
+			Type: "API", OUID: "ou-sys", ProjectID: "p-1"}}, out.ResourceServers)
+		s.resources.AssertNotCalled(s.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	s.Run("a search reads every page of the project's listing", func() {
+		s.connect(true)
+		s.resources.On("GetResourceServerListByProject", mock.Anything, "p-1", "", 100, 0).Return(
+			&resourcepkg.ResourceServerList{TotalResults: 2, ResourceServers: []providers.ResourceServer{
+				{Name: "Leave", Identifier: "https://api.example.com/leave", ProjectID: "p-1",
+					Type: providers.ResourceServerTypeAPI}}}, (*tidcommon.ServiceError)(nil)).Once()
+		s.resources.On("GetResourceServerListByProject", mock.Anything, "p-1", "", 100, 1).Return(
+			&resourcepkg.ResourceServerList{TotalResults: 2, ResourceServers: []providers.ResourceServer{
+				{Name: "Chat", Identifier: "https://chat.example.com/mcp", ProjectID: "p-1",
+					Type: providers.ResourceServerTypeMCP}}}, (*tidcommon.ServiceError)(nil)).Once()
+		var out resourceServerListMCPResponse
+		s.structured(s.call("list_resource_servers", map[string]any{"projectId": "p-1", "type": "MCP"}), &out)
+		s.Equal(1, out.TotalResults)
+		s.Equal("Chat", out.ResourceServers[0].Name)
+	})
+
+	s.Run("a project the service refuses", func() {
+		s.connect(true)
+		s.resources.On("GetResourceServerListByProject", mock.Anything, "p-1", "", 30, 0).Return(
+			(*resourcepkg.ResourceServerList)(nil), &tidcommon.InternalServerError).Once()
+		s.Contains(s.errorText(s.call("list_resource_servers", map[string]any{"projectId": "p-1"})),
+			"failed to list resource servers")
 	})
 }
 

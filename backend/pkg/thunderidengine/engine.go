@@ -135,8 +135,12 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.runtimeCryptoSvc, systemconfig.GetServerRuntime().Config.AttributeCache.Encryption.Enabled)
 	engineCtx.authAssertGen = assert.Initialize()
 
+	// The engine subscribes nothing to its event bus, so the audit events of its services are dropped
+	// unwritten, no worker starts and the bus needs no stopping.
+	auditBus, _, _ := eventbus.Initialize()
+
 	authnProviderManager, err := authnprovidermgr.Initialize(
-		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders)
+		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}
@@ -259,10 +263,6 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		logger.Fatal(ctx, "Invalid origin configuration", log.Error(err))
 	}
 	cors.InitializeDynamicMatcher(originReader)
-
-	// The engine subscribes nothing to its event bus, so the OAuth services' audit events are dropped
-	// unwritten, no worker starts and the bus needs no stopping.
-	auditBus, _, _ := eventbus.Initialize()
 
 	// The embedded engine has no server-config store, so no default resource server is available: the
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission

@@ -202,6 +202,20 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"an agent detail", EventAgentUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
+		{"an agent credential update", EventAgentCredentialUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionUpdate, OutcomeSucceeded), nil},
+		{"an agent credential detail", EventAgentCredentialUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password"}), errDetailNotAllowed},
+		{"a user credential update", EventUserCredentialUpdate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeDenied(reasonForbidden)), nil},
+		{"a user credential detail", EventUserCredentialUpdate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password"}), errDetailNotAllowed},
+		{"a user credential enroll without a resolved user", EventUserCredentialEnroll,
+			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
+		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,
+			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeDenied("account_suspended")), nil},
 		{"an agent type create", EventAgentTypeCreate,
 			NewPayload(ctx, Ref{Type: TargetTypeAgentType}, ActionCreate, OutcomeFailed("usrs_1003")), nil},
 		{"an agent type update", EventAgentTypeUpdate,

@@ -1,0 +1,76 @@
+---
+displayed_sidebar: null
+title: <SharedFlowList />
+docType: reference
+description: Lists the flows shared with an organization unit, the flows it owns, or both, and reports the chosen flow so your application decides what to open.
+---
+
+# `<SharedFlowList />`
+
+The `SharedFlowList` component lists the flows shared with an organization unit, the flows it owns, or both. Selecting a flow reports it through `onSelect`, so your application decides what to open, for example [`<FlowVariablesForm />`](../flow-variables-form) for that flow.
+
+## Usage
+
+```jsx title="src/DelegatedAdmin.jsx" showLineNumbers
+import { useState } from 'react'
+import { SharedFlowList, FlowVariablesForm } from '@thunderid/react'
+
+function DelegatedAdmin({ ouId }) {
+  const [selection, setSelection] = useState()
+  const flowId = selection?.ouId === ouId ? selection.flowId : undefined
+
+  return (
+    <>
+      <SharedFlowList ouId={ouId} selectedFlowId={flowId} onSelect={(flow) => setSelection({ ouId, flowId: flow.id })} />
+      {flowId && <FlowVariablesForm key={`${ouId}:${flowId}`} flowId={flowId} ouId={ouId} />}
+    </>
+  )
+}
+```
+
+:::note
+The component must be rendered within `ThunderIDProvider`. The access token of the signed-in user needs the permissions the server requires to list flows.
+:::
+
+## Props
+
+`SharedFlowList` accepts the props below and every [`BaseSharedFlowList`](#basesharedflowlist) prop except `error`, `flows`, `isLoading`, `offset`, `onPageChange`, and `totalResults`, which it manages.
+
+| Prop | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `ouId` | `string` | Yes | | The organization unit to list the flows of. |
+| `ownership` | `'shared' \| 'owned' \| 'all'` | No | `'shared'` | Which flows to list: the ones shared with the unit, the ones it owns, or both. |
+| `flowType` | `string` | No | | Restricts the list to one flow type, for example `AUTHENTICATION`. |
+| `limit` | `number` | No | `20` | Page size. |
+
+### Ownership and Paging
+
+The server cannot filter a flow list by ownership. For `shared` and `owned`, the component reads the unit's flows, up to 100, and filters on each flow's `isOwnedByOU` value in the browser, then pages through the matches. A unit with more than 100 flows therefore lists matches from the first 100 flows only. For `all`, the component pages on the server and has no such limit.
+
+## BaseSharedFlowList
+
+`BaseSharedFlowList` is the presentational table. It holds no data of its own: pass the page of flows and handle selection and pagination. The table shows each flow's name, handle, and type.
+
+| Prop | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `flows` | `ManagedFlow[]` | Yes | | The page of flows to show. |
+| `totalResults` | `number` | No | `flows.length` | Total number of flows, used for pagination. |
+| `limit` | `number` | No | `20` | Page size. |
+| `offset` | `number` | No | `0` | Offset of the current page. |
+| `onPageChange` | `(offset: number) => void` | No | | Called with the offset of the page to show. Pagination is hidden when omitted. |
+| `onSelect` | `(flow: ManagedFlow) => void` | No | | Called when a flow is chosen. Rows are selectable only when set. |
+| `selectedFlowId` | `string` | No | | Identifier of the flow to highlight. |
+| `isLoading` | `boolean` | No | `false` | Shows a loading state. |
+| `error` | `string \| null` | No | `null` | An error message to show in place of the rows. |
+| `title` | `string` | No | | Heading of the list. Pass an empty string to hide it. |
+| `description` | `string` | No | | Text under the heading. |
+| `actions` | `ReactNode` | No | | Controls rendered next to the title. |
+| `className` | `string` | No | | CSS class for the root element. |
+| `preferences` | `Preferences` | No | | Internationalization preferences. |
+| `children` | `(props: BaseSharedFlowListRenderProps) => ReactNode` | No | | Renders custom UI in place of the default table. |
+
+The `children` render function receives the `flows` (also available as `rows`), the default `columns`, the `isLoading` and `error` state, `limit`, `offset`, `totalResults`, `onPageChange`, `onSelect`, and `selectedRowId`.
+
+## Internationalization
+
+The column headings, empty message, and error message come from the `admin.flows.list` keys in the SDK's translations, available in all nine locales. Override them through `preferences.i18n`. See [Internationalization](../../../../javascript/apis/i18n).

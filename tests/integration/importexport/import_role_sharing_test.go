@@ -88,7 +88,8 @@ func (suite *ImportExportErrorSuite) TestImportRoleAssignmentsAcrossOUs() {
 }
 
 // TestImportRoleAssignmentsOutsideTheRolesReach covers assignments the role cannot be given in: the
-// document fails and the role it created is removed.
+// document fails, and the role it created stays, since the assignments are added after the flows and one of them
+// may already assign the role.
 func (suite *ImportExportErrorSuite) TestImportRoleAssignmentsOutsideTheRolesReach() {
 	unsharedGroup := suite.groupIn("decl-m2m-child-c")
 	for name, assignment := range map[string]string{
@@ -105,7 +106,7 @@ func (suite *ImportExportErrorSuite) TestImportRoleAssignmentsOutsideTheRolesRea
 				"assignments:\n  - id: " + unsharedGroup + "\n" + assignment)
 
 			suite.Equal("failed", result.Status)
-			suite.Equal(http.StatusNotFound, suite.getStatus("/roles/"+id))
+			suite.Equal(http.StatusOK, suite.getStatus("/roles/"+id))
 		})
 	}
 }

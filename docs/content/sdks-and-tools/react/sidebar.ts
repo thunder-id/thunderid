@@ -78,6 +78,23 @@ const sidebar: SidebarsConfig = {
             },
             {
               type: 'category',
+              label: 'Delegated Admin Components',
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/shared-flow-list',
+                  label: '<SharedFlowList />',
+                },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/flow-variables-form',
+                  label: '<FlowVariablesForm />',
+                },
+              ],
+            },
+            {
+              type: 'category',
               label: 'User Self-care Components',
               collapsed: true,
               items: [
@@ -151,6 +168,11 @@ const sidebar: SidebarsConfig = {
               type: 'doc',
               id: 'sdks-and-tools/react/apis/hooks/use-consent-detail-field',
               label: 'useConsentDetailField()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/react/apis/hooks/use-flow-variables',
+              label: 'useFlowVariables()',
             },
           ],
         },

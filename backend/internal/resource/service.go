@@ -67,6 +67,9 @@ type ResourceServiceInterface interface {
 	GetResourceServerListByProject(
 		ctx context.Context, projectID, ouID string, limit, offset int,
 	) (*ResourceServerList, *tidcommon.ServiceError)
+	// ProjectHasResourceServers reports whether any resource server, runtime or declared, belongs to the
+	// project.
+	ProjectHasResourceServers(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	UpdateResourceServer(
 		ctx context.Context, id string, rs providers.ResourceServer,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
@@ -772,6 +775,22 @@ func (rs *resourceService) GetResourceServerListByProject(
 		Count:           len(resourceServers),
 		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, extraQuery),
 	}, nil
+}
+
+// ProjectHasResourceServers reports whether any resource server, runtime or declared, belongs to the project.
+// A project with more resource servers than the composite store can count has resource servers.
+func (rs *resourceService) ProjectHasResourceServers(ctx context.Context, projectID string) (bool,
+	*tidcommon.ServiceError) {
+	count, err := rs.resourceStore.GetResourceServerListCountByProject(ctx, projectID, "")
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return true, nil
+	}
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to count the resource servers of a project",
+			log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
 }
 
 // validateProjectOU checks that a resource server's organization unit belongs to its project. It returns

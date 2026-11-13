@@ -15,6 +15,8 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -28,12 +30,14 @@ type authnProviderManager struct {
 	authnProviders        map[string]providers.AuthnProviderInterface
 	logger                *log.Logger
 	credToProviderMapping map[string]string
+	bus                   eventbus.EventBusInterface
 }
 
 // newAuthnProviderManager creates a new authnProviderManager from the default provider
 // and the optional custom providers.
 func newAuthnProviderManager(defaultProvider providers.AuthnProviderInterface,
-	customProviders map[string]providers.CustomAuthnProvider) (providers.AuthnProviderManager, error) {
+	customProviders map[string]providers.CustomAuthnProvider, bus eventbus.EventBusInterface) (
+	providers.AuthnProviderManager, error) {
 	if defaultProvider == nil {
 		return nil, fmt.Errorf("authn provider manager: default provider must not be nil")
 	}
@@ -61,6 +65,7 @@ func newAuthnProviderManager(defaultProvider providers.AuthnProviderInterface,
 		authnProviders:        providerMap,
 		logger:                logger,
 		credToProviderMapping: credMap,
+		bus:                   bus,
 	}, nil
 }
 
@@ -354,6 +359,17 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 	requestedAttributes *providers.RequestedAttributes,
 	metadata *providers.AuthnMetadata,
 	authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
+	var stored *providers.AuthnResult
+	authUser, claims, svcErr := m.enroll(ctx, identifiers, credentials, metadata, authUser, &stored)
+	m.publishEnrollment(ctx, stored, svcErr)
+	return authUser, claims, svcErr
+}
+
+// enroll completes the enrollment without publishing its audit event, and sets stored to the provider's
+// result once the provider has stored the credential.
+func (m *authnProviderManager) enroll(ctx context.Context, identifiers, credentials map[string]interface{},
+	metadata *providers.AuthnMetadata, authUser providers.AuthUser, stored **providers.AuthnResult) (
+	providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
 	selectedProviderName, selectedProvider, svcErr := m.selectProvider(ctx, slices.Sorted(maps.Keys(credentials)))
 	if svcErr != nil {
 		return authUser, nil, svcErr
@@ -385,6 +401,7 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			return authUser, nil, &ErrorEnrollmentFailed
 		}
 	}
+	*stored = authResult
 	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
 		return authUser, nil, svcErr
 	}
@@ -395,6 +412,29 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 	}
 
 	return authUser, authResult.AuthenticatedClaims, nil
+}
+
+// publishEnrollment publishes the audit event of an attempt to enroll a credential. A credential the
+// provider stored is recorded as enrolled even when the call then fails, since the credential stays.
+// The actor is set here rather than read from the request, since the enrollment endpoints are public: it
+// is the enrolled user once a credential is stored, and anonymous otherwise.
+func (m *authnProviderManager) publishEnrollment(ctx context.Context, stored *providers.AuthnResult,
+	svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeUser}
+	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+	if stored != nil {
+		svcErr = nil
+		if stored.EntityReference != nil {
+			target.ID = stored.EntityReference.EntityID
+			actor = audit.Actor{Type: audit.ActorTypeUser, ID: target.ID}
+		}
+	}
+	payload := audit.ChangePayload(ctx, target, audit.ActionEnroll, svcErr)
+	if svcErr != nil && svcErr.Code == ErrorAccountSuspended.Code {
+		payload = audit.NewPayload(ctx, target, audit.ActionEnroll, audit.OutcomeDenied(auditReasonAccountSuspended))
+	}
+	eventbus.TryPublish(ctx, m.bus,
+		eventbus.NewEvent(ctx, audit.EventUserCredentialEnroll).With(payload.WithActor(actor)))
 }
 
 // LinkAccount records a linked account against the user this AuthUser names, on the provider

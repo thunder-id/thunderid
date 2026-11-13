@@ -1066,6 +1066,41 @@ func (us *userService) UpdateUserCredentials(
 	userID string,
 	credentials json.RawMessage,
 ) *tidcommon.ServiceError {
+	var written bool
+	svcErr := us.updateUserCredentials(ctx, userID, credentials, &written)
+	auditErr := svcErr
+	if written {
+		auditErr = nil
+	}
+	us.publishCredentialUpdate(ctx, userID, auditErr)
+	return svcErr
+}
+
+// publishCredentialUpdate publishes the audit event of an attempt to set a user's credentials. A flow on the
+// server's authority, such as a password reset through the recovery flow, runs with the subject of the
+// request it came in on, which a public path lets anyone's bearer token be. Its actor is therefore set
+// explicitly: the user whose credentials were set, or anonymous when they were not.
+func (us *userService) publishCredentialUpdate(ctx context.Context, userID string, svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
+	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr)
+	if security.IsRuntimeContext(ctx) {
+		actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+		if svcErr == nil {
+			actor = audit.Actor{Type: audit.ActorTypeUser, ID: userID}
+		}
+		payload = payload.WithActor(actor)
+	}
+	eventbus.TryPublish(ctx, us.bus, eventbus.NewEvent(ctx, audit.EventUserCredentialUpdate).With(payload))
+}
+
+// updateUserCredentials updates schema-defined credentials for a user without publishing its audit event,
+// and sets written once the credentials are stored, since a failure after that leaves them changed.
+func (us *userService) updateUserCredentials(
+	ctx context.Context,
+	userID string,
+	credentials json.RawMessage,
+	written *bool,
+) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating user credentials", log.MaskedString(log.LoggerKeyUserID, userID))
 
@@ -1155,7 +1190,7 @@ func (us *userService) UpdateUserCredentials(
 		return svcErr
 	}
 	if replaces {
-		if svcErr := us.replaceCredentials(ctx, logger, userID, plaintextJSON); svcErr != nil {
+		if svcErr := us.replaceCredentials(ctx, logger, userID, plaintextJSON, written); svcErr != nil {
 			return svcErr
 		}
 	} else if err = us.entityService.UpdateCredentials(ctx, userID, plaintextJSON); err != nil {
@@ -1190,7 +1225,7 @@ func (us *userService) replacesHeldCredential(ctx context.Context, logger *log.L
 // the sessions the user was given before the change. The post flow moves the cutoff past the write and
 // ends the sessions again, so a token or session issued while the credentials were changing is revoked too.
 func (us *userService) replaceCredentials(ctx context.Context, logger *log.Logger, userID string,
-	credentials json.RawMessage) *tidcommon.ServiceError {
+	credentials json.RawMessage, written *bool) *tidcommon.ServiceError {
 	inputs := map[string]string{systemFlowInputSubject: userID}
 	shared, svcErr := us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePre, inputs, nil)
 	if svcErr != nil {
@@ -1199,6 +1234,7 @@ func (us *userService) replaceCredentials(ctx context.Context, logger *log.Logge
 	if err := us.entityService.UpdateCredentials(ctx, userID, credentials); err != nil {
 		return us.credentialUpdateError(ctx, logger, userID, err)
 	}
+	*written = true
 	_, svcErr = us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePost, inputs, shared)
 	return svcErr
 }

@@ -112,6 +112,40 @@ describe('linkWorkspaceSource', () => {
     );
   });
 
+  it('redirects a wildcard subpath export to the matching source file', () => {
+    delete process.env['VITEST'];
+    writeJson(join(appRoot, 'package.json'), {dependencies: {'@thunderid/foo': 'workspace:*'}});
+    const packageDir = createLinkedPackage(appRoot, '@thunderid/foo', {
+      '.': {import: './dist/index.js'},
+      './*': {import: './dist/*.js'},
+    });
+    mkdirSync(join(packageDir, 'src', 'pages'), {recursive: true});
+    writeFileSync(join(packageDir, 'src', 'index.ts'), 'export default 1;');
+    writeFileSync(join(packageDir, 'src', 'pages', 'ListPage.tsx'), 'export default 2;');
+
+    const plugin = linkWorkspaceSource();
+    callConfigResolved(plugin, {command: 'serve', root: appRoot});
+
+    expect(callResolveId(plugin, '@thunderid/foo')).toBe(normalizePath(join(packageDir, 'src', 'index.ts')));
+    expect(callResolveId(plugin, '@thunderid/foo/pages/ListPage')).toBe(
+      normalizePath(join(packageDir, 'src', 'pages', 'ListPage.tsx')),
+    );
+    expect(callResolveId(plugin, '@thunderid/foo/pages/Missing')).toBeUndefined();
+  });
+
+  it('does not resolve a wildcard subpath export outside the package source', () => {
+    delete process.env['VITEST'];
+    writeJson(join(appRoot, 'package.json'), {dependencies: {'@thunderid/foo': 'workspace:*'}});
+    const packageDir = createLinkedPackage(appRoot, '@thunderid/foo', {'./*': {import: './dist/*.js'}});
+    mkdirSync(join(packageDir, 'src'), {recursive: true});
+    writeFileSync(join(packageDir, 'secret.ts'), 'export default 1;');
+
+    const plugin = linkWorkspaceSource();
+    callConfigResolved(plugin, {command: 'serve', root: appRoot});
+
+    expect(callResolveId(plugin, '@thunderid/foo/../secret')).toBeUndefined();
+  });
+
   it('ignores dependencies that are not @thunderid workspace packages', () => {
     delete process.env['VITEST'];
     writeJson(join(appRoot, 'package.json'), {

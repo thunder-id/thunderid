@@ -270,7 +270,7 @@ The builder provides one **Provisioning** step for users and agents. The precedi
 
 The supplied templates connect Provisioning's failure output to **Agent Details**. The own-identity template also sends incomplete results there; the OBO and Choose Mode templates use a dynamic input prompt for missing inputs. Keep these return paths when customizing the flow. Flow execution does not provide a general rollback of an agent after provisioning succeeds.
 
-To assign access during onboarding, set **Assign group** (`assignGroup`) and **Assign role** (`assignRole`) on Provisioning to comma-separated IDs of existing groups and roles. The executor assigns them after creating the agent. See [Assign groups and roles during onboarding](../../agents/manage-agents#assign-groups-and-roles-during-onboarding).
+To assign access during onboarding, select existing groups in **Assign group** (`assignGroup`) and existing roles in **Assign role** (`assignRole`) on Provisioning. The executor assigns them after creating the agent. See [Assign groups and roles during onboarding](../../agents/manage-agents#assign-groups-and-roles-during-onboarding).
 
 Both parts are needed for OBO: the flow collects the delegation settings, and provisioning receives `delegated: true` from its property or the administrator's selection. The **Login flow** field saves an existing authentication flow on the agent; it does not add user sign-in or consent steps to the onboarding flow. See [Configure onboarding for agents that act on behalf of users](../../agents/manage-agents#configure-onboarding-for-agents-that-act-on-behalf-of-users) for the widget setup.
 

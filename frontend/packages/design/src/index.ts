@@ -93,6 +93,14 @@ export {default as TimerAdapter} from './components/flow/adapters/TimerAdapter';
 export {default as extractLayoutFromDesign} from './utils/extractLayoutFromDesign';
 export {default as getIntegrationIcon} from './utils/getIntegrationIcon';
 export {
+  default as loadOxygenIcons,
+  getLoadedOxygenIcons,
+  type OxygenIconDefinition,
+  type OxygenIconSet,
+} from './utils/loadOxygenIcons';
+export {default as useOxygenIcons} from './hooks/useOxygenIcons';
+export {default as OxygenIcon, type OxygenIconProps} from './components/OxygenIcon';
+export {
   default as getAuthorizationDetailRowLayout,
   type AuthorizationDetailRowLayout,
 } from './utils/getAuthorizationDetailRowLayout';

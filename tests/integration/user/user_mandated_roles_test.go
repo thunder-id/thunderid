@@ -807,7 +807,8 @@ func (ts *UserMandatedRolesTestSuite) TestAUserAndItsRolesSurviveExportAndImport
 
 // Recorded behaviour (Task 4): on an existing user, a share carrying roles is replayed after every
 // document. A role in the same document assigning the user directly in a unit only that new share
-// reaches is refused and reported against the role, while the user's share still lands.
+// reaches is refused and reported against the role, which stays since its assignments are added after the flows
+// that may assign it, while the user's share still lands.
 func (ts *UserMandatedRolesTestSuite) TestImportingANewMandateOnAnExistingUserLandsAfterTheDocumentsRoles() {
 	mandatedRole := ts.newRole("Mandate Existing User Mandated", ts.parentOUID)
 	ts.shareRole(mandatedRole, unit(ts.childAOUID, "unit"))
@@ -824,7 +825,9 @@ func (ts *UserMandatedRolesTestSuite) TestImportingANewMandateOnAnExistingUserLa
 	ts.Equal("failed", roleResult.Status, "%+v", roleResult)
 	ts.Equal("ROL-1030", roleResult.Code, "%+v", roleResult)
 	status, raw := ts.do(http.MethodGet, "/roles/"+directRole, nil)
-	ts.Equal(http.StatusNotFound, status, "the refused role's create is undone: %s", raw)
+	ts.Equal(http.StatusOK, status, "the refused role stays, as a flow may already assign it: %s", raw)
+	ts.NotContains(ts.assignments(directRole, ts.childAOUID), directRow(userID, ts.childAOUID),
+		"the refused direct assignment must not be written")
 
 	userResult := ts.resultFor(resp, "user")
 	ts.Equal("success", userResult.Status, "%+v", userResult)

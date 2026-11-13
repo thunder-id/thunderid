@@ -33,10 +33,9 @@ export default function VerificationStatus({verifiedAt = undefined}: Verificatio
         }
         size="small"
         variant="outlined"
-        color={verifiedAt ? 'success' : 'default'}
+        color={verifiedAt ? 'success' : 'warning'}
         tabIndex={verifiedAt ? 0 : undefined}
         data-testid="verification-status"
-        sx={{ml: 1}}
       />
     </Tooltip>
   );

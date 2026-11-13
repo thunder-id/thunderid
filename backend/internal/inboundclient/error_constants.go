@@ -243,10 +243,9 @@ func (e *CIMDValidationError) Error() string {
 	return e.Underlying.ErrorDescription.DefaultValue
 }
 
-// FlowMismatchError is returned when a flow reached from one of the inbound client's configured flows
-// does not align with the inbound client's per-type flow ID (registration/recovery). SourceFlowType
-// is the type of the client-level flow whose flow reached the mismatched reference; FlowType
-// is the type of the referenced flow.
+// FlowMismatchError is returned when a flow reachable from one of the inbound client's configured
+// flows does not match the inbound client's assigned flow for that type. SourceFlowType is the type
+// of the configured flow that reaches the mismatch; FlowType is the type of the referenced flow.
 type FlowMismatchError struct {
 	SourceFlowType providers.FlowType
 	FlowType       providers.FlowType
