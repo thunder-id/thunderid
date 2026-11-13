@@ -91,8 +91,9 @@ func (a *managementAPIKeyAuthenticator) trustsPath(path string) bool {
 	return false
 }
 
-// hasManagementAPIKey reports whether a management API key digest is configured at all, by the same
-// rule the server uses to restrict the APIs only the key may call.
-func hasManagementAPIKey(keyHash string) bool {
-	return engineconfig.SecurityConfig{ManagementAPIKeyHash: keyHash}.HasManagementAPIKey()
+// managementAPIKeyDigest normalizes a configured digest by the same rule the server uses to restrict
+// the APIs only the key may call, so a padded digest still matches the presented key's hash. It
+// returns "" when no key is configured.
+func managementAPIKeyDigest(keyHash string) string {
+	return engineconfig.SecurityConfig{ManagementAPIKeyHash: keyHash}.ManagementAPIKeyDigest()
 }

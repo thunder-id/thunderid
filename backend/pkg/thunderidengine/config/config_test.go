@@ -71,3 +71,14 @@ func TestHasManagementAPIKey(t *testing.T) {
 		assert.Equal(t, want, SecurityConfig{ManagementAPIKeyHash: value}.HasManagementAPIKey(), "%q", value)
 	}
 }
+
+func TestManagementAPIKeyDigest(t *testing.T) {
+	for value, want := range map[string]string{
+		"":                        "",
+		" \x00\t\n":               "",
+		"4955d93012fc5e2e":        "4955d93012fc5e2e",
+		" \t4955d93012fc5e2e\r\n": "4955d93012fc5e2e",
+	} {
+		assert.Equal(t, want, SecurityConfig{ManagementAPIKeyHash: value}.ManagementAPIKeyDigest(), "%q", value)
+	}
+}

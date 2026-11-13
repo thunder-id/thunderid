@@ -22,9 +22,8 @@ func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer Revocatio
 ) (func(http.Handler) http.Handler, error) {
 	authenticators := make([]AuthenticatorInterface, 0, 2)
 
-	if hasManagementAPIKey(managementAPIKeyHash) {
-		managementAuthenticator, err := newManagementAPIKeyAuthenticator(
-			managementAPIKeyHash, managementAPIKeyPaths)
+	if digest := managementAPIKeyDigest(managementAPIKeyHash); digest != "" {
+		managementAuthenticator, err := newManagementAPIKeyAuthenticator(digest, managementAPIKeyPaths)
 		if err != nil {
 			return nil, err
 		}
