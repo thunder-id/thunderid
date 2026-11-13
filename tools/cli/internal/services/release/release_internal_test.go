@@ -5,11 +5,14 @@ package release
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -130,6 +133,48 @@ func TestDownloadFile_GivesUpAfterRepeatedServerErrors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HTTP 502")
 	assert.Equal(t, downloadAttempts, hits)
+}
+
+// A server that accepts the connection but never answers used to hang the download forever. The
+// timeout must cover only the wait for headers, so a large body is not cut off.
+func TestNewDownloadClient_TimesOutOnlyWaitingForHeaders(t *testing.T) {
+	client := newDownloadClient(5 * time.Second)
+
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.Equal(t, 5*time.Second, transport.ResponseHeaderTimeout)
+	assert.Zero(t, client.Timeout, "the whole download must not be capped")
+}
+
+// roundTripFunc lets a test decide what each attempt returns without waiting on a real timeout.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestDownloadFile_RetriesAfterAStalledAttempt(t *testing.T) {
+	noRetryDelay(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("complete"))
+	}))
+	defer srv.Close()
+
+	var attempts atomic.Int32
+	orig := downloadClient
+	downloadClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if attempts.Add(1) == 1 {
+			return nil, errors.New("net/http: timeout awaiting response headers")
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	t.Cleanup(func() { downloadClient = orig })
+
+	dest := filepath.Join(t.TempDir(), "release.zip")
+	require.NoError(t, downloadFile(srv.URL, dest, nil))
+
+	data, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	assert.Equal(t, "complete", string(data))
+	assert.Equal(t, int32(2), attempts.Load())
 }
 
 // A missing asset will not appear on a second try, so it must fail at once.
