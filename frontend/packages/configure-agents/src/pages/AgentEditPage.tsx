@@ -15,6 +15,7 @@ import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-t
 import {
   OAuth2GrantTypes,
   getBackchannelLogoutUriServerError,
+  hasScopeNamesChanged,
   hasUserAccess,
   isIdJagEnabled,
   validateBackchannelLogoutUri,
@@ -259,9 +260,10 @@ export default function AgentEditPage(): JSX.Element {
     }
   }, [agent, agentId, editedAgent, agentTypeDetails, updateAgent, refetch, logger]);
 
-  const hasChanges = Object.entries(editedAgent).some(
-    ([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent]),
-  );
+  const hasChanges =
+    Object.entries(editedAgent).some(([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent])) ||
+    (editedAgent.inboundAuthConfig !== undefined &&
+      hasScopeNamesChanged(editedAgent.inboundAuthConfig, agent?.inboundAuthConfig));
 
   const resourceTypeTitle = t('agents:listing.title', 'Agents');
 

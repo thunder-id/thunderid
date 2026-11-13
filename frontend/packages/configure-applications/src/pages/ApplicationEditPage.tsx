@@ -62,6 +62,7 @@ import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
 import getTemplateCapabilities from '../utils/getTemplateCapabilities';
 import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
+import hasScopeNamesChanged from '../utils/hasScopeNamesChanged';
 import isSystemConsoleClient from '../utils/isSystemConsoleClient';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
 import {hasUserAccess} from '../utils/oauth2Rules';
@@ -254,7 +255,9 @@ export default function ApplicationEditPage() {
     () =>
       Object.entries(editedApp).some(
         ([key, value]) => !isEqualIgnoringEmpty(value, application?.[key as keyof Application]),
-      ),
+      ) ||
+      (editedApp.inboundAuthConfig !== undefined &&
+        hasScopeNamesChanged(editedApp.inboundAuthConfig, application?.inboundAuthConfig)),
     [editedApp, application],
   );
   const hasChanges = hasApplicationChanges || organizationAccess.hasChanges;

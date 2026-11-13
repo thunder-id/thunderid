@@ -427,6 +427,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovedResourceIss
 }
 
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovedWithoutOpenIDIssuesAccessTokenOnly() {
+	suite.oauthApp.ScopeClaims["profile"] = []string{"name"}
 	record := suite.request(deviceauth.DeviceStateApproved)
 	record.AuthorizedScopes = "profile"
 	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)

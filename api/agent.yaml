@@ -3245,7 +3245,7 @@ components:
             type: array
             items:
               type: string
-          description: Custom scope-to-claims mapping. Allows embedding claims into tokens when a scope is granted.
+          description: Scope-to-claims mapping. Only the scopes listed here are granted, each releasing the claims listed for it.
           example:
             profile: ["name", "family_name", "given_name"]
             email: ["email", "email_verified"]

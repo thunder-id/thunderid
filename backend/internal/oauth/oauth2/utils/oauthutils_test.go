@@ -719,13 +719,20 @@ func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_StandardOIDC
 	}
 }
 
-func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_UnmappedStandardScopesStayOIDC() {
-	// A standard OIDC scope the app does not map stays OIDC and falls back to its standard claims.
+func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_UnmappedStandardScopesAreDropped() {
+	// A standard OIDC scope the app does not map is neither OIDC nor a permission scope.
 	oidcScopes, nonOidcScopes := SeparateOIDCAndNonOIDCScopes(
-		"openid profile email read", map[string][]string{"profile": {"name"}})
+		"openid profile email address phone roles read", map[string][]string{"profile": {"name"}})
 
-	assert.Equal(suite.T(), []string{"openid", "profile", "email"}, oidcScopes)
+	assert.Equal(suite.T(), []string{"openid", "profile"}, oidcScopes)
 	assert.Equal(suite.T(), []string{"read"}, nonOidcScopes)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_DeviceSSOIsOIDCWithoutAMapping() {
+	oidcScopes, nonOidcScopes := SeparateOIDCAndNonOIDCScopes("openid device_sso", nil)
+
+	assert.Equal(suite.T(), []string{"openid", "device_sso"}, oidcScopes)
+	assert.Nil(suite.T(), nonOidcScopes)
 }
 
 func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_OpenIDIsOIDCWithoutAMapping() {
@@ -741,13 +748,13 @@ func (suite *OAuth2UtilsTestSuite) TestResolveScopeClaims() {
 
 	// The app's mapping wins where it defines the scope, narrowing what profile releases.
 	assert.Equal(suite.T(), []string{"name"}, ResolveScopeClaims("profile", mapping))
-	// An unmapped standard scope falls back to its standard claims.
-	assert.Equal(suite.T(), []string{"email", "email_verified"}, ResolveScopeClaims("email", mapping))
+	// An unmapped standard scope releases nothing, like an unmapped custom one.
+	assert.Nil(suite.T(), ResolveScopeClaims("email", mapping))
 	// A mapped custom scope releases what it maps.
 	assert.Equal(suite.T(), []string{"organization"}, ResolveScopeClaims("custom", mapping))
-	// An unmapped custom scope has no claims to fall back to.
 	assert.Nil(suite.T(), ResolveScopeClaims("unknown", mapping))
-	// A scope mapped to an empty list releases nothing, rather than falling back.
+	assert.Nil(suite.T(), ResolveScopeClaims("profile", nil))
+	// A scope mapped to an empty list releases nothing.
 	assert.Empty(suite.T(), ResolveScopeClaims("phone", map[string][]string{"phone": {}}))
 }
 

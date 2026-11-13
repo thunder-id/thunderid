@@ -71,6 +71,7 @@ export {default as ApplicationConstants} from './constants/application-constants
 export {default as CertificateTypes} from './constants/certificate-types';
 export {default as TokenConstants} from './constants/token-constants';
 export {getGrantTypeLabel} from './utils/getGrantTypeLabel';
+export {default as hasScopeNamesChanged} from './utils/hasScopeNamesChanged';
 export {
   applyGrantTypesChange,
   applyTokenEndpointAuthMethodChange,

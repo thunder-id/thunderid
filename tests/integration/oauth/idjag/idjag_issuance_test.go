@@ -1038,6 +1038,11 @@ func (ts *IDJAGIssuanceTestSuite) grantRoleAndGroup() {
 	ts.T().Cleanup(func() { _ = testutils.DeleteGroup(groupID) })
 }
 
+// idTokenAttributesScopeClaims maps the email and roles scopes the ID token attribute clients sign in with.
+func idTokenAttributesScopeClaims() map[string]any {
+	return map[string]any{"email": []string{"email"}, "roles": []string{"roles", "groups"}}
+}
+
 // idTokenAttributesTokenConfig returns client token settings whose ID token releases email, roles and
 // groups, with ID-JAG on.
 func idTokenAttributesTokenConfig() map[string]any {
@@ -1064,7 +1069,7 @@ func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAppDefinition(clientID string
 				"responseTypes":           []string{"code"},
 				"tokenEndpointAuthMethod": "client_secret_basic",
 				"scopes":                  []string{"openid", "email", "roles"},
-				"scopeClaims":             map[string]any{"roles": []string{"roles", "groups"}},
+				"scopeClaims":             idTokenAttributesScopeClaims(),
 				"token":                   idTokenAttributesTokenConfig(),
 			},
 		}},
@@ -1088,7 +1093,7 @@ func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAgentDefinition() map[string]
 				"pkceRequired":            true,
 				"tokenEndpointAuthMethod": "client_secret_basic",
 				"scopes":                  []string{"openid", "email", "roles"},
-				"scopeClaims":             map[string]any{"roles": []string{"roles", "groups"}},
+				"scopeClaims":             idTokenAttributesScopeClaims(),
 				"token":                   idTokenAttributesTokenConfig(),
 			},
 		}},
