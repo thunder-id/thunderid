@@ -38,6 +38,7 @@ func Initialize(
 	transactioner providers.Transactioner,
 	serverConfigSvc serverConfigProvider,
 	ssoTransport session.HandleTransportInterface,
+	ssoSessions ssoSessionLifetime,
 	governance providers.IdentityGovernanceProvider,
 	variableValuesProvider variableValueProvider,
 	flowVisibility flowVisibilityProvider,
@@ -48,16 +49,12 @@ func Initialize(
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc,
 		flowProvider, graphBuilder, variableValuesProvider)
-	// Bound the SSO handle's lifetime to the session's configured absolute timeout (same fallback as
-	// the session executor's timeouts).
-	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
-		cfg.Session.ActivityRefreshIntervalSeconds)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
 		actorProvider, ouProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
 		graphBuilder, jwtService, serverConfigSvc, governance, flowVisibility, permissionProvider, cfg,
-		sessionTimeouts.Absolute)
+		ssoSessions)
 
-	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
+	handler := newFlowExecutionHandler(flowExecService, ssoTransport, ssoSessions)
 	registerRoutes(mux, handler)
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, &flowTools{

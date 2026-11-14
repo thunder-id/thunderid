@@ -387,6 +387,9 @@ flow:
   {{- end }}
 {{- end }}
 
+session:
+  activity_refresh_interval_seconds: {{ .Values.configuration.session.activityRefreshIntervalSeconds }}
+
 import:
   timeout_seconds: {{ .Values.configuration.import.timeoutSeconds }}
 

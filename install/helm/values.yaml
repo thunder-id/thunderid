@@ -569,6 +569,12 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
+  # SSO session configuration. The session timeouts are runtime settings in the session server-config
+  # section; activityRefreshIntervalSeconds is the shortest time between two writes of a session's
+  # activity, which an idle timeout must exceed.
+  session:
+    activityRefreshIntervalSeconds: 60
+
   # Direct API authentication endpoints (/auth/**, /register/passkey/**). Set enabled to false to
   # remove them from the server. AuthZEN access endpoints are not affected.
   directApi:

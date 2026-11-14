@@ -922,6 +922,15 @@ type Config struct {
 	ResourceSharing            ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
 	AccountAccess              AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
 	IdentityGovernanceProvider IdentityGovernanceProviderConfig  `yaml:"identity_governance_provider" json:"identity_governance_provider"` //nolint:lll
+	Session                    SessionConfig                     `yaml:"session"               json:"session"`
+}
+
+// SessionConfig holds the SSO session limits the operator sets. The session timeouts themselves are in
+// the session server-config section.
+type SessionConfig struct {
+	// ActivityRefreshIntervalSeconds is the shortest time between two writes of a session's activity. An
+	// idle timeout must be longer.
+	ActivityRefreshIntervalSeconds int64 `yaml:"activity_refresh_interval_seconds" json:"activity_refresh_interval_seconds"` //nolint:lll
 }
 
 // ResourceSharingConfig configures how resources may be shared across organization units.

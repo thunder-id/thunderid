@@ -375,10 +375,6 @@ var (
 	errUnknownDefaultResourceServer = errors.New(
 		"default resource server does not resolve to an existing resource server")
 
-	// errDeclarativeDefaultLocked is returned when attempting to override a declarative default.
-	errDeclarativeDefaultLocked = errors.New(
-		"default resource server is set declaratively and cannot be overridden")
-
 	// errDefaultResourceServerLookupFailed is returned when resource server lookup fails.
 	errDefaultResourceServerLookupFailed = errors.New("failed to resolve default resource server")
 

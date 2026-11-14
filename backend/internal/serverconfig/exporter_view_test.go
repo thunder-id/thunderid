@@ -23,7 +23,7 @@ func viewServerConfigDocument(t *testing.T, content string) *yaml.Node {
 }
 
 // An exported section is shown as its GET returns it: the document as the writable layer over an
-// absent read-only layer, merged by the section's handler.
+// absent read-only layer, merged by the section's handler and laid over its default.
 func TestServerConfigExporter_ViewResourceShowsTheDocumentAsItsRead(t *testing.T) {
 	exported, err := yaml.Marshal(&serverConfigExportDoc{
 		Name:  "cors",
@@ -35,6 +35,7 @@ func TestServerConfigExporter_ViewResourceShowsTheDocumentAsItsRead(t *testing.T
 	handler.EXPECT().Decode(json.RawMessage(`{"allowedOrigins":["https://app.example"]}`)).
 		Return([]string{"https://app.example"}, nil)
 	handler.EXPECT().Merge([]string{}, []string{"https://app.example"}).Return([]string{"https://app.example"})
+	handler.EXPECT().Default().Return(nil)
 	exporter := newServerConfigExporter(nil, map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: handler})
 
 	view, err := exporter.ViewResource(context.Background(), viewServerConfigDocument(t, string(exported)))

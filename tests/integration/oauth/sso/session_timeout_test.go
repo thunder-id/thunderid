@@ -22,10 +22,9 @@ const (
 	refreshPeerClientSecret = "sso_refresh_peer_secret" //nolint:gosec // test credential
 )
 
-// SSO session timeouts are read once, when the session service is constructed, so changing them
-// requires a server restart rather than only a configuration write. Every test here therefore
-// restores the original configuration and restarts again, so a failure cannot leave the rest of the
-// run with second-scale session lifetimes.
+// SSO session timeouts are read from the session section each time a session uses them, so a write
+// applies at once, with no restart. Every test here restores the original configuration, so a failure
+// cannot leave the rest of the run with second-scale session lifetimes.
 func (ts *SSOLogoutTestSuite) writableSessionConfig() string {
 	req, err := http.NewRequest(http.MethodGet, sessionConfigURL, nil)
 	ts.Require().NoError(err)
@@ -55,31 +54,19 @@ func (ts *SSOLogoutTestSuite) putSessionConfig(body string) {
 		"failed to update session config with %s", body)
 }
 
-// applySessionTimeouts writes the given timeouts and restarts the server so the session service
-// picks them up, registering the restore before making any change so a mid-test failure still
-// returns the deployment to its original lifetimes.
+// applySessionTimeouts writes the given timeouts, which the next session use reads, registering the
+// restore before making any change so a mid-test failure still returns the deployment to its original
+// lifetimes.
 //
-// idle must not exceed absolute, and the activity-refresh interval must be strictly less than idle;
-// both are rejected by configuration validation otherwise.
-func (ts *SSOLogoutTestSuite) applySessionTimeouts(idle, absolute, activityRefresh int64) {
+// idle must not exceed absolute, and must be longer than the deployment's activity refresh interval
+// (one second on the integration server); configuration validation refuses it otherwise.
+func (ts *SSOLogoutTestSuite) applySessionTimeouts(idle, absolute int64) {
 	original := ts.writableSessionConfig()
 	ts.T().Cleanup(func() {
 		ts.putSessionConfig(original)
-		if err := testutils.RestartServer(); err != nil {
-			ts.T().Logf("cleanup: server did not restart cleanly after session config restore: %v", err)
-		}
-		if err := testutils.ObtainAdminAccessToken(); err != nil {
-			ts.T().Logf("cleanup: failed to re-obtain admin token after restore: %v", err)
-		}
 	})
 
-	ts.putSessionConfig(fmt.Sprintf(
-		`{"idleTimeoutSeconds":%d,"absoluteTimeoutSeconds":%d,"activityRefreshIntervalSeconds":%d}`,
-		idle, absolute, activityRefresh))
-
-	ts.Require().NoError(testutils.RestartServer(), "failed to restart server with session timeouts")
-	ts.Require().NoError(testutils.ObtainAdminAccessToken(),
-		"failed to re-obtain admin token after restart")
+	ts.putSessionConfig(fmt.Sprintf(`{"idleTimeoutSeconds":%d,"absoluteTimeoutSeconds":%d}`, idle, absolute))
 }
 
 // sessionSurvives reports whether a fresh authorize is satisfied by the existing SSO session. A
@@ -102,9 +89,9 @@ func (ts *SSOLogoutTestSuite) putSessionConfigExpectingRejection(body string) st
 	return string(respBody)
 }
 
-// Session timeouts are only read at startup, so an incoherent set has to be refused when it is
-// written rather than discovered at the next restart. These are the combinations that would let a
-// session behave in a way the deadlines are meant to prevent.
+// An incoherent set of session timeouts is refused when it is written, before any session reads it.
+// These are the combinations that would let a session behave in a way the deadlines are meant to
+// prevent.
 func (ts *SSOLogoutTestSuite) TestSessionConfig_IncoherentTimeoutsRejected() {
 	// The write is expected to fail, but restore the original on the way out regardless, so a
 	// regression that lets one through cannot leave the rest of the run misconfigured.
@@ -119,15 +106,13 @@ func (ts *SSOLogoutTestSuite) TestSessionConfig_IncoherentTimeoutsRejected() {
 
 	ts.Run("idle beyond absolute", func() {
 		// An idle deadline past the absolute cap could never be reached, so the pair is meaningless.
-		ts.putSessionConfigExpectingRejection(
-			`{"idleTimeoutSeconds":600,"absoluteTimeoutSeconds":300,"activityRefreshIntervalSeconds":60}`)
+		ts.putSessionConfigExpectingRejection(`{"idleTimeoutSeconds":600,"absoluteTimeoutSeconds":300}`)
 	})
 
-	ts.Run("refresh not below idle", func() {
-		// The refresh interval bounds how stale the persisted idle deadline may be. At or above the
-		// idle window, an active session could be skipped past its own deadline.
-		ts.putSessionConfigExpectingRejection(
-			`{"idleTimeoutSeconds":60,"absoluteTimeoutSeconds":600,"activityRefreshIntervalSeconds":60}`)
+	ts.Run("idle not above the activity refresh interval", func() {
+		// The deployment's refresh interval bounds how stale the persisted idle deadline may be. An idle
+		// window no longer than it could let an active session be skipped past its own deadline.
+		ts.putSessionConfigExpectingRejection(`{"idleTimeoutSeconds":1,"absoluteTimeoutSeconds":600}`)
 	})
 }
 
@@ -135,7 +120,7 @@ func (ts *SSOLogoutTestSuite) TestSessionConfig_IncoherentTimeoutsRejected() {
 // abandoned browser session cannot skip authentication indefinitely.
 func (ts *SSOLogoutTestSuite) TestSSOSession_IdleTimeoutForcesReauthentication() {
 	// A generous absolute timeout isolates the idle deadline as the only thing that can expire.
-	ts.applySessionTimeouts(2, 600, 1)
+	ts.applySessionTimeouts(2, 600)
 
 	client := ts.newSessionClient()
 	ts.login(client, ssoReuseUsername, "idle_timeout_state_1")
@@ -156,7 +141,7 @@ func (ts *SSOLogoutTestSuite) TestSSOSession_IdleTimeoutForcesReauthentication()
 func (ts *SSOLogoutTestSuite) TestSSOSession_AbsoluteTimeoutForcesReauthentication() {
 	// Idle equals absolute so that refreshing activity mid-way slides the idle deadline beyond the
 	// absolute one, leaving the absolute cap as the only reason the session can expire.
-	ts.applySessionTimeouts(4, 4, 1)
+	ts.applySessionTimeouts(4, 4)
 
 	client := ts.newSessionClient()
 	ts.login(client, ssoReuseUsername, "absolute_timeout_state_1")
@@ -180,7 +165,7 @@ func (ts *SSOLogoutTestSuite) TestSSOSession_AbsoluteTimeoutForcesReauthenticati
 // then still signs the user in silently after the original idle deadline has passed.
 func (ts *SSOLogoutTestSuite) TestSSOSession_TokenRefreshExtendsIdleTimeout() {
 	// A generous absolute timeout isolates the idle deadline as the only thing that can expire.
-	ts.applySessionTimeouts(6, 600, 1)
+	ts.applySessionTimeouts(6, 600)
 	ts.createParticipantApplication("SSORefreshPeerApp", refreshPeerClientID, refreshPeerClientSecret)
 
 	client := ts.newSessionClient()

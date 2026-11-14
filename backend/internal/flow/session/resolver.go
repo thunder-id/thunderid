@@ -18,15 +18,19 @@ type Resolver interface {
 }
 
 type resolver struct {
-	store sessionStore
+	store    sessionStore
+	timeouts timeoutsSource
 }
 
-// newResolver creates a Resolver backed by the given session store.
-func newResolver(store sessionStore) Resolver {
-	return &resolver{store: store}
+// newResolver creates a Resolver backed by the given session store, which also holds a session to the
+// timeouts in effect.
+func newResolver(store sessionStore, timeouts timeoutsSource) Resolver {
+	return &resolver{store: store, timeouts: timeouts}
 }
 
-// Resolve implements Resolver.
+// Resolve implements Resolver. A session is live while it is within the deadlines stored with it and
+// within the timeouts in effect now, so a shorter timeout also ends an existing session that has gone
+// past it, while a longer one never stretches a stored deadline.
 func (r *resolver) Resolve(ctx context.Context, handleID string, now time.Time) (*Session, error) {
 	if handleID == "" {
 		return nil, nil
@@ -46,6 +50,10 @@ func (r *resolver) Resolve(ctx context.Context, handleID string, now time.Time) 
 	if expired(s.IdleExpiresAt, now) || expired(s.AbsoluteExpiresAt, now) {
 		return nil, nil
 	}
+	timeouts := r.timeouts.current(ctx)
+	if expiredAfter(s.LastActiveAt, timeouts.Idle, now) || expiredAfter(s.CreatedAt, timeouts.Absolute, now) {
+		return nil, nil
+	}
 
 	return s, nil
 }
@@ -54,4 +62,10 @@ func (r *resolver) Resolve(ctx context.Context, handleID string, now time.Time) 
 // means "no deadline" and never expires.
 func expired(deadline, now time.Time) bool {
 	return !deadline.IsZero() && !now.Before(deadline)
+}
+
+// expiredAfter reports whether lifetime has passed since start at now. A zero start is unknown and never
+// expires.
+func expiredAfter(start time.Time, lifetime time.Duration, now time.Time) bool {
+	return !start.IsZero() && expired(start.Add(lifetime), now)
 }

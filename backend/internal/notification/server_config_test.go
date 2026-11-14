@@ -56,11 +56,14 @@ func (s *ServerConfigTestSuite) TestValidateAcceptsClearingTheSender() {
 }
 
 // A declarative sender locks the section.
-func (s *ServerConfigTestSuite) TestValidateRejectsAWriteOverADeclarativeSender() {
-	s.ErrorIs(s.handler.Validate(context.Background(),
-		notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "sender-2"},
-		notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "sender-1"},
-		notificationconfig.NotificationSectionConfig{}), errDeclarativeSenderLocked)
+func (s *ServerConfigTestSuite) TestIsLocked() {
+	s.True(s.handler.IsLocked(notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "sender-1"}))
+	s.False(s.handler.IsLocked(notificationconfig.NotificationSectionConfig{}))
+	s.False(s.handler.IsLocked(nil))
+}
+
+func (s *ServerConfigTestSuite) TestDefault() {
+	s.Nil(s.handler.Default())
 }
 
 func (s *ServerConfigTestSuite) TestMerge() {

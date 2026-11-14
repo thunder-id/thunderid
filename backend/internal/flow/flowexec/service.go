@@ -43,6 +43,11 @@ type flowVisibilityProvider interface {
 	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
 }
 
+// ssoSessionLifetime says how long an SSO session started now lasts. The session service implements it.
+type ssoSessionLifetime interface {
+	AbsoluteTimeout(ctx context.Context) time.Duration
+}
+
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine          flowEngineInterface
@@ -61,8 +66,9 @@ type flowExecService struct {
 	flowVisibility      flowVisibilityProvider
 	permissionProvider  providers.PermissionProvider
 	cfg                 flowconfig.Config
-	// ssoHandleTTL is how long a handle returned in the response body stays usable.
-	ssoHandleTTL time.Duration
+	// ssoSessions says how long a handle returned in the response body stays usable. It is nil where
+	// the deployment keeps no SSO sessions.
+	ssoSessions ssoSessionLifetime
 }
 
 // newFlowExecService creates a new instance of flowExecService with the provided dependencies.
@@ -81,7 +87,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	flowVisibility flowVisibilityProvider,
 	permissionProvider providers.PermissionProvider,
 	cfg flowconfig.Config,
-	ssoHandleTTL time.Duration) FlowExecServiceInterface {
+	ssoSessions ssoSessionLifetime) FlowExecServiceInterface {
 	return &flowExecService{
 		flowProvider:        flowProvider,
 		flowStore:           flowStore,
@@ -99,7 +105,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		flowVisibility:      flowVisibility,
 		permissionProvider:  permissionProvider,
 		cfg:                 cfg,
-		ssoHandleTTL:        ssoHandleTTL,
+		ssoSessions:         ssoSessions,
 	}
 }
 
@@ -220,7 +226,7 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	}
 
 	// Return the SSO session this step started or ended in the response body too.
-	s.applyOutboundSSO(&flowStep)
+	s.applyOutboundSSO(ctx, &flowStep)
 
 	// Surface the OAuth callback type (grant type) from runtime data onto the terminal response so the
 	// Gate/SDK routes the completion or failure to the correct callback handler (e.g. CIBA).
@@ -484,14 +490,14 @@ func applyInboundSSO(engineCtx *EngineContext, ctx context.Context, sessionData 
 
 // applyOutboundSSO adds the SSO session this step started or ended to the step, keyed by flow
 // identifier, for the response body to return to a caller that holds its handles itself.
-func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
+func (s *flowExecService) applyOutboundSSO(ctx context.Context, flowStep *FlowStep) {
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
 		flowStep.SessionData = []IssuedSessionData{{
 			SessionData: SessionData{
 				FlowIdentifier: session.FlowIdentifier(flowStep.SSOFlowID),
 				SessionHandle:  flowStep.SSOHandleOut,
 			},
-			ExpiresIn: int64(s.ssoHandleTTL.Seconds()),
+			ExpiresIn: int64(ssoHandleTTL(ctx, s.ssoSessions).Seconds()),
 		}}
 	}
 	if flowStep.SSOClearFlowID != "" {

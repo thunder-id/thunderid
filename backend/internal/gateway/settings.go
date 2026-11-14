@@ -7,16 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
-
-// errDeclarativeSettingsLocked is returned when a write targets a gateway section set declaratively.
-var errDeclarativeSettingsLocked = errors.New("gateway is set declaratively and cannot be overridden")
 
 // settingsValue is the gateway server-config section: how this deployment deploys, changed at
 // runtime without a restart.
@@ -86,11 +82,8 @@ func (h settingsHandler) Decode(raw json.RawMessage) (any, error) {
 	return value, nil
 }
 
-// Validate refuses a write while a declarative document sets the section.
-func (h settingsHandler) Validate(_ context.Context, incoming, readOnly, _ any) error {
-	if ro, ok := readOnly.(settingsValue); ok && !ro.isEmpty() {
-		return errDeclarativeSettingsLocked
-	}
+// Validate checks the incoming value is a gateway section.
+func (h settingsHandler) Validate(_ context.Context, incoming, _, _ any) error {
 	if _, ok := incoming.(settingsValue); !ok {
 		return fmt.Errorf("%s: unexpected config type %T", serverconfig.ConfigNameGateway, incoming)
 	}
@@ -105,6 +98,17 @@ func (h settingsHandler) Merge(readOnly, writable any) any {
 	}
 	wr, _ := writable.(settingsValue)
 	return wr.over(h.base)
+}
+
+// Default returns nil: Merge lays the section over gateway.auto_apply itself.
+func (h settingsHandler) Default() any {
+	return nil
+}
+
+// IsLocked reports whether a declarative document sets the section.
+func (h settingsHandler) IsLocked(readOnly any) bool {
+	ro, ok := readOnly.(settingsValue)
+	return ok && !ro.isEmpty()
 }
 
 // autoApplySetting reports whether a captured change deploys to the first gateway, and how each

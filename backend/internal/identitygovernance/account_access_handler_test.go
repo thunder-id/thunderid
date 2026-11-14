@@ -361,10 +361,15 @@ func (s *AccountAccessHandlerTestSuite) TestMergeTakesTheLockEmailTemplatesOfThe
 }
 
 // While a declarative document exists the section is locked, so a write cannot be a silent no-op.
-func (s *AccountAccessHandlerTestSuite) TestADeclarativeDocumentRefusesWrites() {
-	err := s.precedence.Validate(context.Background(), s.decode(`{"user":{"default":{"threshold":2}}}`),
-		s.decode(`{"user":{"default":{"threshold":7}}}`), accountAccessValue{})
-	s.Require().ErrorIs(err, errDeclarativeAccountAccessLocked)
+func (s *AccountAccessHandlerTestSuite) TestADeclarativeDocumentLocksTheSection() {
+	s.True(s.precedence.IsLocked(s.decode(`{"user":{"default":{"threshold":7}}}`)))
+	s.False(s.precedence.IsLocked(accountAccessValue{}))
+	s.False(s.precedence.IsLocked(nil))
+}
+
+// The section lays itself over the deployment base in Merge, so it has no separate default.
+func (s *AccountAccessHandlerTestSuite) TestTheSectionHasNoSeparateDefault() {
+	s.Nil(s.precedence.Default())
 }
 
 // At load time a partial declarative document is checked laid over the base.

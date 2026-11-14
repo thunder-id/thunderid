@@ -109,6 +109,103 @@ func (_c *ServerConfigHandlerInterfaceMock_Decode_Call) RunAndReturn(run func(ra
 	return _c
 }
 
+// Default provides a mock function for the type ServerConfigHandlerInterfaceMock
+func (_mock *ServerConfigHandlerInterfaceMock) Default() any {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Default")
+	}
+
+	var r0 any
+	if returnFunc, ok := ret.Get(0).(func() any); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	return r0
+}
+
+// ServerConfigHandlerInterfaceMock_Default_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Default'
+type ServerConfigHandlerInterfaceMock_Default_Call struct {
+	*mock.Call
+}
+
+// Default is a helper method to define mock.On call
+func (_e *ServerConfigHandlerInterfaceMock_Expecter) Default() *ServerConfigHandlerInterfaceMock_Default_Call {
+	return &ServerConfigHandlerInterfaceMock_Default_Call{Call: _e.mock.On("Default")}
+}
+
+func (_c *ServerConfigHandlerInterfaceMock_Default_Call) Run(run func()) *ServerConfigHandlerInterfaceMock_Default_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ServerConfigHandlerInterfaceMock_Default_Call) Return(anyMoqParam any) *ServerConfigHandlerInterfaceMock_Default_Call {
+	_c.Call.Return(anyMoqParam)
+	return _c
+}
+
+func (_c *ServerConfigHandlerInterfaceMock_Default_Call) RunAndReturn(run func() any) *ServerConfigHandlerInterfaceMock_Default_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsLocked provides a mock function for the type ServerConfigHandlerInterfaceMock
+func (_mock *ServerConfigHandlerInterfaceMock) IsLocked(readOnly any) bool {
+	ret := _mock.Called(readOnly)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsLocked")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func(any) bool); ok {
+		r0 = returnFunc(readOnly)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// ServerConfigHandlerInterfaceMock_IsLocked_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsLocked'
+type ServerConfigHandlerInterfaceMock_IsLocked_Call struct {
+	*mock.Call
+}
+
+// IsLocked is a helper method to define mock.On call
+//   - readOnly any
+func (_e *ServerConfigHandlerInterfaceMock_Expecter) IsLocked(readOnly any) *ServerConfigHandlerInterfaceMock_IsLocked_Call {
+	return &ServerConfigHandlerInterfaceMock_IsLocked_Call{Call: _e.mock.On("IsLocked", readOnly)}
+}
+
+func (_c *ServerConfigHandlerInterfaceMock_IsLocked_Call) Run(run func(readOnly any)) *ServerConfigHandlerInterfaceMock_IsLocked_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 any
+		if args[0] != nil {
+			arg0 = args[0].(any)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ServerConfigHandlerInterfaceMock_IsLocked_Call) Return(b bool) *ServerConfigHandlerInterfaceMock_IsLocked_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *ServerConfigHandlerInterfaceMock_IsLocked_Call) RunAndReturn(run func(readOnly any) bool) *ServerConfigHandlerInterfaceMock_IsLocked_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Merge provides a mock function for the type ServerConfigHandlerInterfaceMock
 func (_mock *ServerConfigHandlerInterfaceMock) Merge(readOnly any, writable any) any {
 	ret := _mock.Called(readOnly, writable)

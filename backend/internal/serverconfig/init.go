@@ -35,6 +35,9 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	}
 	service := newServerConfigService(store, handlers, observability, bus, authzService)
 	service.(*serverConfigService).managed = managedresource.GetStore()
+	// Only a server that keeps server configuration in declarative documents alone reads the file store
+	// on its own.
+	_, service.(*serverConfigService).declarativeOnly = store.(*fileBasedStore)
 
 	registerRoutes(mux, newServerConfigHandler(service))
 
@@ -48,7 +51,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 func initializeStore(cacheManager cache.CacheManagerInterface,
 	handlers map[ConfigName]ServerConfigHandlerInterface) (serverConfigStoreInterface, error) {
 	cachedDB := func() serverConfigStoreInterface {
-		configCache := cache.GetCache[*ServerConfig](cacheManager, serverConfigCacheName)
+		configCache := cache.GetCacheWithTTL[*ServerConfig](cacheManager, serverConfigCacheName, serverConfigCacheTTL)
 		return newCachedBackStore(newServerConfigStore(), configCache)
 	}
 

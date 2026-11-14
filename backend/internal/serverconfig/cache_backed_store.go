@@ -6,12 +6,17 @@ package serverconfig
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const serverConfigCacheName = "ServerConfigByNameCache"
+
+// serverConfigCacheTTL is how long a node keeps a section it read, unless cache.properties sets a TTL for
+// the cache. A write made on another node reaches this one within it.
+const serverConfigCacheTTL = 30 * time.Second
 
 // cachedBackStore wraps a serverConfigStoreInterface with an in-memory cache for GetServerConfig.
 // Writes invalidate the affected cache entry.

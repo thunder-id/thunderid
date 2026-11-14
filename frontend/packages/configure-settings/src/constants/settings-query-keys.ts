@@ -11,6 +11,8 @@ const SettingsQueryKeys = {
   CORS: 'cors',
   /** Name segment for the account-lockout section */
   ACCOUNT_ACCESS: 'accountAccess',
+  /** Name segment for the session timeouts section */
+  SESSION: 'session',
 } as const;
 
 export default SettingsQueryKeys;

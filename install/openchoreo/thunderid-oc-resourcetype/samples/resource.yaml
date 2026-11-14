@@ -1606,7 +1606,7 @@ spec:
       # File: session.yaml
       resource_type: server_config
       name: session
-      value: {"idleTimeoutSeconds":0,"absoluteTimeoutSeconds":0,"activityRefreshIntervalSeconds":0}
+      value: {"idleTimeoutSeconds":0,"absoluteTimeoutSeconds":0}
       
       ---
       # File: flow.yaml

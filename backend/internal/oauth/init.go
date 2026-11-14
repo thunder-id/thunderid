@@ -7,7 +7,6 @@ package oauth
 import (
 	"net/http"
 	"slices"
-	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
@@ -118,15 +117,11 @@ func Initialize(
 
 	// A device secret lasts as long as an SSO session can. The embedded engine has no session service,
 	// so it issues none.
-	var deviceSecretValidity time.Duration
-	if ssoSession != nil {
-		deviceSecretValidity = ssoSession.AbsoluteTimeout()
-	}
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
 		cibaService, deviceAuthService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails,
-		deviceSecretValidity, ssoSession, cfg)
+		ssoSession, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, governance, cfg, bus)

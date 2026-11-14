@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
@@ -196,7 +197,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer()
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestNewAuthorizationCodeGrantHandler() {
 	handler := newAuthorizationCodeGrantHandler(suite.mockAuthzService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement, time.Hour, noAuthzDetails())
+		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement, nil, noAuthzDetails())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -500,7 +501,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_RefreshCarr
 		Return(refreshable, nil).Once()
 	handler := newAuthorizationCodeGrantHandler(
 		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService,
-		suite.mockEnforcement, time.Hour, authzDetails)
+		suite.mockEnforcement, nil, authzDetails)
 	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).Return(nil)
 
 	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
@@ -2045,8 +2046,15 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) boundCode() authz.Authoriza
 	return code
 }
 
+// sessionsLasting gives the handler an SSO session service whose sessions last lifetime.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) sessionsLasting(lifetime time.Duration) {
+	sessions := sessionmock.NewServiceMock(suite.T())
+	sessions.EXPECT().AbsoluteTimeout(mock.Anything).Return(lifetime)
+	suite.handler.ssoSession = sessions
+}
+
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_CarriesTheBoundSessions() {
-	suite.handler.deviceSecretValidity = time.Hour
+	suite.sessionsLasting(time.Hour)
 	code := suite.boundCode()
 	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
 		mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
@@ -2078,7 +2086,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneW
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_BuildFailureIsNotFatal() {
-	suite.handler.deviceSecretValidity = time.Hour
+	suite.sessionsLasting(time.Hour)
 	code := suite.boundCode()
 	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
 		Return(nil, errors.New("signing failed"))

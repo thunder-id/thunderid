@@ -41,6 +41,9 @@ func (suite *ServiceTestSuite) SetupTest() {
 	suite.ctx = context.Background()
 	suite.mockStore = newServerConfigStoreInterfaceMock(suite.T())
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
+	// The suite's section has no default and is never locked; the tests of either build their own.
+	suite.mockHandler.EXPECT().Default().Return(nil).Maybe()
+	suite.mockHandler.EXPECT().IsLocked(mock.Anything).Return(false).Maybe()
 	suite.service = newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, discardingBus{},
 		allowingAuthz(suite.T()))
@@ -498,7 +501,8 @@ func (suite *ServiceTestSuite) TestSetConfig_RefusedWithoutWriteAccess() {
 				&sysauthz.ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: "cors"}).
 				Return(false, tt.authzErr).Once()
 			service := newServerConfigService(newServerConfigStoreInterfaceMock(suite.T()),
-				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, discardingBus{}, authz)
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: objectSection(suite.T(), nil)}, nil,
+				discardingBus{}, authz)
 
 			suite.Equal(tt.want, service.SetConfig(context.Background(), ConfigNameCORS, json.RawMessage(`{}`)))
 		})
@@ -510,4 +514,80 @@ func allowingAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfa
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	return authz
+}
+
+// sessionService builds a service over the suite store with an object section that has a default.
+func (suite *ServiceTestSuite) sessionService() ServerConfigService {
+	handler := objectSection(suite.T(), map[string]any{
+		"idleTimeoutSeconds": 7200, "absoluteTimeoutSeconds": 28800, "nested": map[string]any{"a": 1, "b": 2},
+	})
+	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
+		ConfigNameSession: handler,
+	}, nil, discardingBus{}, allowingAuthz(suite.T()))
+}
+
+// A read shows the default, and lays the configured value over it field by field: a field it leaves
+// unset keeps the default, and a nested object is laid over the default's the same way.
+func (suite *ServiceTestSuite) TestGetConfig_LaysTheConfiguredValueOverTheDefault() {
+	writable := json.RawMessage(`{"idleTimeoutSeconds":900,"nested":{"b":3}}`)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).
+		Return(storeLayers{Writable: writable}, nil)
+
+	layers, svcErr := suite.sessionService().GetConfig(suite.ctx, ConfigNameSession)
+
+	suite.Require().Nil(svcErr)
+	out, err := json.Marshal(layers)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{
+		"readOnly": {},
+		"writable": {"idleTimeoutSeconds": 900, "nested": {"b": 3}},
+		"merged": {"idleTimeoutSeconds": 900, "absoluteTimeoutSeconds": 28800, "nested": {"a": 1, "b": 3}}
+	}`, string(out))
+}
+
+// GetMergedConfig returns the same effective value, read on each call.
+func (suite *ServiceTestSuite) TestGetMergedConfig_LaysTheConfiguredValueOverTheDefault() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).
+		Return(storeLayers{Writable: json.RawMessage(`{"absoluteTimeoutSeconds":3600}`)}, nil)
+
+	merged, svcErr := suite.sessionService().GetMergedConfig(suite.ctx, string(ConfigNameSession))
+
+	suite.Require().Nil(svcErr)
+	out, err := json.Marshal(merged)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{"idleTimeoutSeconds":7200,"absoluteTimeoutSeconds":3600,"nested":{"a":1,"b":2}}`, string(out))
+}
+
+// A declarative document locks the section: the document is laid over the default with the writable
+// layer ignored, and a write is refused before the value is validated.
+func (suite *ServiceTestSuite) TestDeclarativeDocumentLocksTheSection() {
+	stored := storeLayers{
+		ReadOnly: json.RawMessage(`{"idleTimeoutSeconds":1800}`),
+		Writable: json.RawMessage(`{"idleTimeoutSeconds":900,"absoluteTimeoutSeconds":3600}`),
+	}
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).Return(stored, nil)
+	service := suite.sessionService()
+
+	layers, svcErr := service.GetConfig(suite.ctx, ConfigNameSession)
+	suite.Require().Nil(svcErr)
+	out, err := json.Marshal(layers.Merged)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800,"nested":{"a":1,"b":2}}`,
+		string(out))
+
+	suite.Same(&ErrorInvalidConfigValue, service.SetConfig(suite.ctx, ConfigNameSession, json.RawMessage(`{}`)))
+	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+}
+
+// A server that keeps server configuration only in declarative documents refuses every write, as a
+// section a document locks.
+func (suite *ServiceTestSuite) TestDeclarativeOnlyStoreLocksEverySection() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).Return(storeLayers{}, nil)
+	service := suite.sessionService()
+	service.(*serverConfigService).declarativeOnly = true
+
+	suite.Same(&ErrorInvalidConfigValue, service.SetConfig(suite.ctx, ConfigNameSession, json.RawMessage(`{}`)))
+	suite.Same(&ErrorInvalidConfigValue, service.UpdateConfig(suite.ctx, ConfigNameSession, setKey{"a", "1"}))
+	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "ReplaceServerConfigIf", mock.Anything, mock.Anything, mock.Anything)
 }

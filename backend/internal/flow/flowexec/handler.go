@@ -27,16 +27,17 @@ type flowExecutionHandler struct {
 	// ssoTransport carries the SSO handle to and from the client. It is nil when the deployment has
 	// no SSO session store.
 	ssoTransport session.HandleTransportInterface
-	// ssoHandleTTL bounds the per-flow SSO handle to the session's configured absolute lifetime.
-	ssoHandleTTL time.Duration
+	// ssoSessions bounds the per-flow SSO handle to the session's absolute lifetime. It is nil where the
+	// deployment keeps no SSO sessions.
+	ssoSessions ssoSessionLifetime
 }
 
 func newFlowExecutionHandler(flowExecService FlowExecServiceInterface, ssoTransport session.HandleTransportInterface,
-	ssoHandleTTL time.Duration) *flowExecutionHandler {
+	ssoSessions ssoSessionLifetime) *flowExecutionHandler {
 	return &flowExecutionHandler{
 		flowExecService: flowExecService,
 		ssoTransport:    ssoTransport,
-		ssoHandleTTL:    ssoHandleTTL,
+		ssoSessions:     ssoSessions,
 	}
 }
 
@@ -126,8 +127,9 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 		// Emit the per-flow SSO handle when the flow minted a new session handle. This must happen
 		// before the response body is written.
 		if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
-			// The handle has no TTL of its own; bound it to the session's configured absolute lifetime.
-			h.ssoTransport.Write(ssoExchange, flowStep.SSOFlowID, flowStep.SSOHandleOut, h.ssoHandleTTL)
+			// The handle has no TTL of its own; bound it to the session's absolute lifetime.
+			h.ssoTransport.Write(ssoExchange, flowStep.SSOFlowID, flowStep.SSOHandleOut,
+				ssoHandleTTL(ctx, h.ssoSessions))
 		}
 
 		// Clear the per-flow SSO handle when the flow terminated the session (sign-out).

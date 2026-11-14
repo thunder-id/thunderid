@@ -3,6 +3,7 @@
 
 import {render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {Box} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import DurationField from '../DurationField';
@@ -112,6 +113,59 @@ describe('DurationField', () => {
     expect(screen.getByRole('combobox', {name: 'Unit'})).toHaveTextContent('Minutes');
   });
 
+  // A message as long as a sentence does not fit under the narrow number box, so it runs beneath both
+  // controls and describes each of them.
+  it('shows an inline error beneath both controls', () => {
+    render(
+      <Box sx={{width: 600}}>
+        <DurationField
+          inline
+          label="Idle timeout"
+          seconds={7200}
+          error="Too long."
+          testId="duration"
+          onChange={vi.fn()}
+        />
+      </Box>,
+    );
+
+    const number = screen.getByRole('spinbutton', {name: 'Idle timeout'});
+    expect(number).toHaveAttribute('aria-invalid', 'true');
+    expect(number).toHaveAccessibleDescription('Too long.');
+    expect(screen.getByRole('combobox', {name: 'Unit'})).toHaveAccessibleDescription('Too long.');
+    const box = number.closest('.MuiInputBase-root')!.getBoundingClientRect();
+    expect(screen.getByText('Too long.').getBoundingClientRect().width).toBeGreaterThan(box.width);
+  });
+
+  // A hint beside the field describes both controls, with any error after it.
+  it('describes both controls with the elements it is given, then the error', () => {
+    render(
+      <>
+        <p id="hint">Signs the user out after this long without activity.</p>
+        <DurationField
+          inline
+          label="Idle timeout"
+          seconds={7200}
+          error="Too long."
+          describedBy="hint"
+          testId="duration"
+          onChange={vi.fn()}
+        />
+      </>,
+    );
+
+    const description = 'Signs the user out after this long without activity. Too long.';
+    expect(screen.getByRole('spinbutton', {name: 'Idle timeout'})).toHaveAccessibleDescription(description);
+    expect(screen.getByRole('combobox', {name: 'Unit'})).toHaveAccessibleDescription(description);
+  });
+
+  // Outside a row, the field's own helper text describes the number, as the text field sets it up.
+  it('keeps the helper text as the description of a field outside a row', () => {
+    render(<DurationField label="Lock duration" seconds={300} error="Too short." onChange={vi.fn()} />);
+
+    expect(screen.getByRole('spinbutton', {name: 'Lock duration'})).toHaveAccessibleDescription('Too short.');
+  });
+
   it('names the unit list after the field when it shows the zero entry inline', () => {
     render(
       <DurationField
@@ -125,5 +179,17 @@ describe('DurationField', () => {
     );
 
     expect(screen.getByRole('combobox', {name: 'Lock duration'})).toHaveTextContent('Until an administrator unlocks');
+  });
+
+  // A value of zero has no unit of its own, as for a field reset to a default not yet known.
+  it('empties the box and keeps the unit when the value becomes zero from outside', () => {
+    const {rerender} = render(
+      <DurationField label="Idle timeout" seconds={7200} testId="duration" onChange={vi.fn()} />,
+    );
+
+    rerender(<DurationField label="Idle timeout" seconds={0} testId="duration" onChange={vi.fn()} />);
+
+    expect(screen.getByTestId('duration')).toHaveValue(null);
+    expect(unitText()).toBe('Hours');
   });
 });

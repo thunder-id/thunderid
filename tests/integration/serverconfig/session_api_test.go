@@ -19,9 +19,8 @@ var sessionConfigURL = serverConfigURL + "/session"
 
 // sessionSectionValue mirrors the session section value: SSO session lifetimes in seconds.
 type sessionSectionValue struct {
-	IdleTimeoutSeconds             int64 `json:"idleTimeoutSeconds"`
-	AbsoluteTimeoutSeconds         int64 `json:"absoluteTimeoutSeconds"`
-	ActivityRefreshIntervalSeconds int64 `json:"activityRefreshIntervalSeconds"`
+	IdleTimeoutSeconds     int64 `json:"idleTimeoutSeconds"`
+	AbsoluteTimeoutSeconds int64 `json:"absoluteTimeoutSeconds"`
 }
 
 type sessionLayers struct {
@@ -29,6 +28,9 @@ type sessionLayers struct {
 	Writable sessionSectionValue `json:"writable"`
 	Merged   sessionSectionValue `json:"merged"`
 }
+
+// builtInSessionDefaults are the session timeouts a deployment takes when nothing sets them.
+var builtInSessionDefaults = sessionSectionValue{IdleTimeoutSeconds: 7200, AbsoluteTimeoutSeconds: 28800}
 
 // SessionConfigAPITestSuite covers the session server-config section and the PUT branches the CORS
 // suite does not reach: the response body of a successful PUT, PUT against an unsupported name, and
@@ -65,25 +67,43 @@ func (suite *SessionConfigAPITestSuite) TestListIncludesSessionSection() {
 	suite.Contains(names, "session")
 }
 
+// An unset section reads as its built-in defaults in effect, with nothing set.
+func (suite *SessionConfigAPITestSuite) TestReadShowsTheDefaults() {
+	layers := suite.getLayers()
+
+	suite.Equal(sessionSectionValue{}, layers.Writable)
+	suite.Equal(builtInSessionDefaults, layers.Merged)
+}
+
 func (suite *SessionConfigAPITestSuite) TestPutPersistsAndReadsBack() {
-	suite.putSession(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800,` +
-		`"activityRefreshIntervalSeconds":300}`)
+	suite.putSession(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800}`)
 
 	layers := suite.getLayers()
 	suite.Equal(int64(1800), layers.Writable.IdleTimeoutSeconds)
 	suite.Equal(int64(28800), layers.Writable.AbsoluteTimeoutSeconds)
-	suite.Equal(int64(300), layers.Writable.ActivityRefreshIntervalSeconds)
 
 	// The writable layer wins for each field it sets.
 	suite.Equal(int64(1800), layers.Merged.IdleTimeoutSeconds)
 	suite.Equal(int64(28800), layers.Merged.AbsoluteTimeoutSeconds)
 }
 
+// A field a write leaves out keeps its default, and a later write that leaves it out again returns a
+// set field to its default.
+func (suite *SessionConfigAPITestSuite) TestAnUnsetFieldTakesItsDefault() {
+	suite.putSession(`{"idleTimeoutSeconds":900}`)
+
+	layers := suite.getLayers()
+	suite.Equal(sessionSectionValue{IdleTimeoutSeconds: 900}, layers.Writable)
+	suite.Equal(sessionSectionValue{IdleTimeoutSeconds: 900, AbsoluteTimeoutSeconds: 28800}, layers.Merged)
+
+	suite.putSession(`{}`)
+	suite.Equal(builtInSessionDefaults, suite.getLayers().Merged)
+}
+
 // TestPutReturnsRecomputedLayers pins that a successful PUT answers with the new layers, not just a
 // status code. The CORS suite only checks the status, so a stale response body would go unnoticed.
 func (suite *SessionConfigAPITestSuite) TestPutReturnsRecomputedLayers() {
-	status, body := suite.put(sessionConfigURL,
-		`{"idleTimeoutSeconds":900,"absoluteTimeoutSeconds":7200,"activityRefreshIntervalSeconds":60}`)
+	status, body := suite.put(sessionConfigURL, `{"idleTimeoutSeconds":900,"absoluteTimeoutSeconds":7200}`)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
 	var layers sessionLayers
@@ -97,15 +117,11 @@ func (suite *SessionConfigAPITestSuite) TestPutReturnsRecomputedLayers() {
 
 // TestPutReplacesRatherThanMerges asserts a second PUT replaces the writable layer wholesale.
 func (suite *SessionConfigAPITestSuite) TestPutReplacesRatherThanMerges() {
-	suite.putSession(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800,` +
-		`"activityRefreshIntervalSeconds":300}`)
-	suite.putSession(`{"idleTimeoutSeconds":600,"absoluteTimeoutSeconds":3600,` +
-		`"activityRefreshIntervalSeconds":60}`)
+	suite.putSession(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800}`)
+	suite.putSession(`{"idleTimeoutSeconds":600}`)
 
 	layers := suite.getLayers()
-	suite.Equal(int64(600), layers.Writable.IdleTimeoutSeconds)
-	suite.Equal(int64(3600), layers.Writable.AbsoluteTimeoutSeconds)
-	suite.Equal(int64(60), layers.Writable.ActivityRefreshIntervalSeconds)
+	suite.Equal(sessionSectionValue{IdleTimeoutSeconds: 600}, layers.Writable)
 }
 
 // --- Validation branches ---
@@ -113,18 +129,27 @@ func (suite *SessionConfigAPITestSuite) TestPutReplacesRatherThanMerges() {
 // TestPutIdleExceedingAbsoluteReturns400 covers a cross-field invariant: idle must not exceed the
 // absolute timeout.
 func (suite *SessionConfigAPITestSuite) TestPutIdleExceedingAbsoluteReturns400() {
-	status, body := suite.put(sessionConfigURL,
-		`{"idleTimeoutSeconds":7200,"absoluteTimeoutSeconds":3600,"activityRefreshIntervalSeconds":60}`)
+	status, body := suite.put(sessionConfigURL, `{"idleTimeoutSeconds":7200,"absoluteTimeoutSeconds":3600}`)
 
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Equal("SCF-1003", suite.errorCode(body))
 	suite.Zero(suite.getLayers().Writable.IdleTimeoutSeconds, "a rejected value must not persist")
 }
 
-// TestPutActivityRefreshNotLessThanIdleReturns400 covers the resolved-duration invariant.
-func (suite *SessionConfigAPITestSuite) TestPutActivityRefreshNotLessThanIdleReturns400() {
-	status, body := suite.put(sessionConfigURL,
-		`{"idleTimeoutSeconds":600,"absoluteTimeoutSeconds":3600,"activityRefreshIntervalSeconds":600}`)
+// An idle timeout is compared with an absolute one only when both are set, so an absolute timeout
+// shorter than the default idle timeout is accepted on its own, and the idle timeout in effect is cut
+// to it.
+func (suite *SessionConfigAPITestSuite) TestPutAbsoluteBelowTheDefaultIdleIsAccepted() {
+	status, body := suite.put(sessionConfigURL, `{"absoluteTimeoutSeconds":3600}`)
+
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+	suite.Equal(sessionSectionValue{AbsoluteTimeoutSeconds: 3600}, suite.getLayers().Writable)
+}
+
+// An idle timeout must be longer than the deployment's activity refresh interval, which the
+// integration server sets to one second.
+func (suite *SessionConfigAPITestSuite) TestPutIdleNotLongerThanTheActivityRefreshIntervalReturns400() {
+	status, body := suite.put(sessionConfigURL, `{"idleTimeoutSeconds":1}`)
 
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Equal("SCF-1003", suite.errorCode(body))

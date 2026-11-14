@@ -49,20 +49,32 @@ func TestServerConfigExporter_GetAllResourceIDs_Error(t *testing.T) {
 	assert.Same(t, &common.InternalServerError, svcErr)
 }
 
-func TestServerConfigExporter_GetResourceByID_ExportsEffectiveValue(t *testing.T) {
+// The export carries the configured value, not the default under it, so where it is imported that
+// server's own default applies to whatever the value leaves unset.
+func TestServerConfigExporter_GetResourceByID_ExportsTheConfiguredValue(t *testing.T) {
+	readOnly := map[string]any{}
+	writable := map[string]any{"idleTimeoutSeconds": 900}
 	service := NewServerConfigServiceMock(t)
-	service.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).
-		Return(ServerConfigLayers{Merged: mergedValue}, nil)
+	service.EXPECT().GetConfig(mock.Anything, ConfigNameSession).Return(ServerConfigLayers{
+		ReadOnly: readOnly,
+		Writable: writable,
+		Merged:   map[string]any{"idleTimeoutSeconds": 900, "absoluteTimeoutSeconds": 28800},
+	}, nil)
+	handler := NewServerConfigHandlerInterfaceMock(t)
+	handler.EXPECT().Merge(readOnly, writable).Return(writable)
+	exporter := newServerConfigExporter(service,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameSession: handler})
 
-	resource, name, svcErr := newServerConfigExporter(service, nil).GetResourceByID(context.Background(), "cors")
-	assert.Nil(t, svcErr)
-	assert.Equal(t, "cors", name)
+	resource, name, svcErr := exporter.GetResourceByID(context.Background(), string(ConfigNameSession))
+	require.Nil(t, svcErr)
+	assert.Equal(t, string(ConfigNameSession), name)
 
-	doc := resource.(*serverConfigExportDoc)
-	assert.Equal(t, "cors", doc.Name)
+	doc, ok := resource.(*serverConfigExportDoc)
+	require.True(t, ok)
+	assert.Equal(t, string(ConfigNameSession), doc.Name)
 	raw, err := json.Marshal(doc.Value)
 	require.NoError(t, err)
-	assert.JSONEq(t, string(mergedValue), string(raw))
+	assert.JSONEq(t, `{"idleTimeoutSeconds":900}`, string(raw))
 }
 
 func TestServerConfigExporter_GetResourceByID_Error(t *testing.T) {
