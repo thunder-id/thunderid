@@ -80,7 +80,7 @@ type GroupServiceTestSuite struct {
 	suite.Suite
 }
 
-func (suite *GroupServiceTestSuite) SetupSuite() {
+func (suite *GroupServiceTestSuite) SetupTest() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{Enabled: false},
 	}
@@ -90,7 +90,7 @@ func (suite *GroupServiceTestSuite) SetupSuite() {
 	}
 }
 
-func (suite *GroupServiceTestSuite) TearDownSuite() {
+func (suite *GroupServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
@@ -4461,4 +4461,79 @@ func (suite *GroupServiceTestSuite) TestProjectHasGroups() {
 			require.Equal(suite.T(), tc.expected, has)
 		})
 	}
+}
+
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_SkipsMissingGroups() {
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"deleted-group"}).
+		Return([]GroupBasicDAO{}, nil).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"deleted-group"})
+
+	suite.Require().Nil(svcErr)
+	storeMock.AssertNotCalled(suite.T(), "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_StoreError() {
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).
+		Return(nil, errors.New("db down")).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A group whose unit neither owns the member nor has it shared is skipped rather than failing the add.
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_SkipsGroupsOutsideMemberOU() {
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"other-ou-group"}).
+		Return([]GroupBasicDAO{{ID: "other-ou-group", OUID: "ou-other"}}, nil).Once()
+	entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
+		Return([]providers.Entity{{ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1"}}, nil).Once()
+	service := &groupService{groupStore: storeMock, entityService: entityMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"other-ou-group"})
+
+	suite.Require().Nil(svcErr)
+	storeMock.AssertNotCalled(suite.T(), "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_MemberLookupError() {
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).
+		Return([]GroupBasicDAO{{ID: "group-1", OUID: "ou-1"}}, nil).Once()
+	entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
+		Return(nil, errors.New("db down")).Once()
+	service := &groupService{groupStore: storeMock, entityService: entityMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_DeclarativeStoreWritesNothing() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("", &config.Config{
+		Group: config.GroupConfig{Store: "declarative"},
+	}))
+	suite.T().Cleanup(config.ResetServerRuntime)
+	storeMock := newGroupStoreInterfaceMock(suite.T())
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
+
+	suite.Require().Nil(svcErr)
+	storeMock.AssertNotCalled(suite.T(), "GetGroupsByIDs", mock.Anything, mock.Anything)
 }

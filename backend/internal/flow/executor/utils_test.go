@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -1093,4 +1094,22 @@ const testPinnedMobile = "+94714627887"
 func mobilePin() *providers.AttributeVerificationPin {
 	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "mobile_number",
 		Value: testPinnedMobile, Channel: providers.VerificationChannelSMS}
+}
+
+// The connection's sync modes are recorded, defaulting when unset.
+func (s *UtilsTestSuite) TestSetSyncModes() {
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+	setSyncModes(execResp, &providers.IDPDTO{ID: "idp-1"})
+	s.Equal(string(providers.SyncModeOverrideReceived), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+	s.Equal(string(providers.SyncModeNoSync), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
+
+	execResp = &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+	setSyncModes(execResp, &providers.IDPDTO{ID: "idp-1", AttributeConfiguration: &providers.AttributeConfiguration{
+		Sync: &providers.SyncConfiguration{
+			Attributes:     providers.SyncModeSessionOnly,
+			GroupsAndRoles: providers.SyncModeSessionOnly,
+		},
+	}})
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
 }
