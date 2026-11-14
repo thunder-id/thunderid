@@ -26,7 +26,8 @@ type variableStoreInterface interface {
 	// InsertVariable stores a variable and reports whether it did. False means the name was taken.
 	InsertVariable(ctx context.Context, v Variable) (bool, error)
 	UpsertVariable(ctx context.Context, v Variable) (created bool, err error)
-	DeleteVariable(ctx context.Context, name string) error
+	// DeleteVariable removes a variable and reports whether one was stored under the name.
+	DeleteVariable(ctx context.Context, name string) (bool, error)
 }
 
 // secretStoreInterface is the secrets half of persistence.
@@ -41,7 +42,8 @@ type secretStoreInterface interface {
 	// InsertSecret stores a secret and reports whether it did. False means the name was taken.
 	InsertSecret(ctx context.Context, name, encrypted, description string) (bool, error)
 	UpsertSecret(ctx context.Context, name, encrypted, description string) (created bool, err error)
-	DeleteSecret(ctx context.Context, name string) error
+	// DeleteSecret removes a secret and reports whether one was stored under the name.
+	DeleteSecret(ctx context.Context, name string) (bool, error)
 }
 
 // storeInterface is both halves, which is what the service holds.
@@ -141,15 +143,16 @@ func (s *store) UpsertVariable(ctx context.Context, v Variable) (bool, error) {
 	return false, fmt.Errorf("failed to write variable %q: it was deleted during each attempt", v.Name)
 }
 
-func (s *store) DeleteVariable(ctx context.Context, name string) error {
+func (s *store) DeleteVariable(ctx context.Context, name string) (bool, error) {
 	dbClient, err := s.client()
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteVariable, name, s.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to delete variable: %w", err)
+	deleted, err := dbClient.ExecuteContext(ctx, queryDeleteVariable, name, s.scope(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to delete variable: %w", err)
 	}
-	return nil
+	return deleted > 0, nil
 }
 
 func (s *store) GetSecret(ctx context.Context, name string) (*Secret, error) {
@@ -226,15 +229,16 @@ func (s *store) UpsertSecret(ctx context.Context, name, encrypted, description s
 	return false, fmt.Errorf("failed to write secret %q: it was deleted during each attempt", name)
 }
 
-func (s *store) DeleteSecret(ctx context.Context, name string) error {
+func (s *store) DeleteSecret(ctx context.Context, name string) (bool, error) {
 	dbClient, err := s.client()
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteSecret, name, s.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to delete secret: %w", err)
+	deleted, err := dbClient.ExecuteContext(ctx, queryDeleteSecret, name, s.scope(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to delete secret: %w", err)
 	}
-	return nil
+	return deleted > 0, nil
 }
 
 // ListVariables returns one page of variables and the total the query matched.

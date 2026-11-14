@@ -46,6 +46,20 @@ const (
 	EventUserTypeUpdate = "user_type.update"
 	// EventUserTypeDelete names an attempt to delete a user type.
 	EventUserTypeDelete = "user_type.delete"
+	// EventVariableCreate names an attempt to create a variable.
+	EventVariableCreate = "variable.create"
+	// EventVariableUpdate names an attempt to store a variable under a name, replacing the one held
+	// there or creating it when the name is unused.
+	EventVariableUpdate = "variable.update"
+	// EventVariableDelete names an attempt to delete a variable.
+	EventVariableDelete = "variable.delete"
+	// EventSecretCreate names an attempt to create a secret.
+	EventSecretCreate = "secret.create"
+	// EventSecretUpdate names an attempt to store a secret under a name, rotating the one held there or
+	// creating it when the name is unused.
+	EventSecretUpdate = "secret.update"
+	// EventSecretDelete names an attempt to delete a secret.
+	EventSecretDelete = "secret.delete"
 	// EventApplicationCreate names an attempt to create an application.
 	EventApplicationCreate = "application.create"
 	// EventApplicationUpdate names an attempt to change an application.
@@ -78,6 +92,10 @@ const (
 	EventConnectionUpdate = "connection.update"
 	// EventConnectionDelete names an attempt to delete a connection.
 	EventConnectionDelete = "connection.delete"
+	// EventConsentCreate names an attempt to record a user's consent decisions as a new consent.
+	EventConsentCreate = "consent.create"
+	// EventConsentUpdate names an attempt to replace the decisions a consent holds.
+	EventConsentUpdate = "consent.update"
 	// EventResourceServerCreate names an attempt to create a resource server.
 	EventResourceServerCreate = "resource_server.create"
 	// EventResourceServerUpdate names an attempt to change a resource server.
@@ -177,6 +195,12 @@ const (
 	TargetTypeUserSharingPolicy = "user_sharing_policy"
 	// TargetTypeUserType is the target type of an event about a user type.
 	TargetTypeUserType = "user_type"
+	// TargetTypeVariable is the target type of an event about a variable, identified by its name. It
+	// never carries the value.
+	TargetTypeVariable = "variable"
+	// TargetTypeSecret is the target type of an event about a secret, identified by its name. It never
+	// carries the value.
+	TargetTypeSecret = "secret"
 	// TargetTypeApplication is the target type of an event about an application.
 	TargetTypeApplication = "application"
 	// TargetTypeApplicationSharingPolicy is the target type of an event about a sharing policy of an
@@ -187,6 +211,9 @@ const (
 	// TargetTypeConnection is the target type of an event about a connection of any kind: an identity
 	// provider, an AuthZEN PDP or an HTTP endpoint.
 	TargetTypeConnection = "connection"
+	// TargetTypeConsent is the target type of an event about a consent. It never carries the purposes or
+	// elements the consent holds.
+	TargetTypeConsent = "consent"
 	// TargetTypeResourceServer is the target type of an event about a resource server.
 	TargetTypeResourceServer = "resource_server"
 	// TargetTypeResource is the target type of an event about a resource of a resource server.
@@ -269,6 +296,14 @@ var auditedEvents = map[string][]string{
 	EventUserTypeUpdate: nil,
 	EventUserTypeDelete: nil,
 
+	EventVariableCreate: nil,
+	EventVariableUpdate: nil,
+	EventVariableDelete: nil,
+
+	EventSecretCreate: nil,
+	EventSecretUpdate: nil,
+	EventSecretDelete: nil,
+
 	EventApplicationCreate: nil,
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
@@ -284,6 +319,9 @@ var auditedEvents = map[string][]string{
 	EventConnectionCreate: nil,
 	EventConnectionUpdate: nil,
 	EventConnectionDelete: nil,
+
+	EventConsentCreate: nil,
+	EventConsentUpdate: nil,
 
 	EventResourceServerCreate:         nil,
 	EventResourceServerUpdate:         nil,

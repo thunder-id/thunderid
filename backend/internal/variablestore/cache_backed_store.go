@@ -90,12 +90,12 @@ func (s *cacheBackedStore) UpsertVariable(ctx context.Context, v Variable) (bool
 	return created, err
 }
 
-func (s *cacheBackedStore) DeleteVariable(ctx context.Context, name string) error {
-	err := s.store.DeleteVariable(ctx, name)
+func (s *cacheBackedStore) DeleteVariable(ctx context.Context, name string) (bool, error) {
+	deleted, err := s.store.DeleteVariable(ctx, name)
 	if err == nil {
 		s.forgetVariable(ctx, name)
 	}
-	return err
+	return deleted, err
 }
 
 func (s *cacheBackedStore) GetSecret(ctx context.Context, name string) (*Secret, error) {
@@ -138,12 +138,12 @@ func (s *cacheBackedStore) UpsertSecret(ctx context.Context, name, encrypted, de
 	return created, err
 }
 
-func (s *cacheBackedStore) DeleteSecret(ctx context.Context, name string) error {
-	err := s.store.DeleteSecret(ctx, name)
+func (s *cacheBackedStore) DeleteSecret(ctx context.Context, name string) (bool, error) {
+	deleted, err := s.store.DeleteSecret(ctx, name)
 	if err == nil {
 		s.forgetSecret(ctx, name)
 	}
-	return err
+	return deleted, err
 }
 
 // forgetVariable drops a name so the next read goes to the database.
