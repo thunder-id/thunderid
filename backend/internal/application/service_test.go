@@ -5416,8 +5416,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicC
 	mockStore.On("GetOAuthClientByClientID", mock.Anything, "public-client").
 		Return(&providers.OAuthClient{PublicClient: true}, nil)
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	target, svcErr := service.ValidateClientSecretRegeneration(
+		context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
@@ -5427,8 +5427,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicC
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesApplicationWithoutClient() {
 	service, _ := suite.newFlowTargetTestService(&providers.Entity{Category: providers.EntityCategoryApp})
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	target, svcErr := service.ValidateClientSecretRegeneration(
+		context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
@@ -5442,11 +5442,11 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_ReturnsRevocat
 			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 		}, nil)
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	target, svcErr := service.ValidateClientSecretRegeneration(
+		context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), "secret-client", target.ClientKey)
+	assert.Equal(suite.T(), "secret-client", target.ClientID)
 }
 
 // A revocation is sized from the client id recorded in the entity's attributes. When that blob cannot be
@@ -5472,8 +5472,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesUncover
 		Return(&sysauthz.ErrorGrantNotPermitted).Once()
 	service.authzService = authzMock
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	target, svcErr := service.ValidateClientSecretRegeneration(
+		context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), target)
 	assert.NotNil(suite.T(), svcErr)
@@ -5529,20 +5529,21 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_AllowsUnspecif
 	mockStore.On("GetOAuthClientByClientID", mock.Anything, "unset-method-client").
 		Return(&providers.OAuthClient{}, nil)
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	target, svcErr := service.ValidateClientSecretRegeneration(
+		context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), "unset-method-client", target.ClientKey)
+	assert.Equal(suite.T(), "unset-method-client", target.ClientID)
 }
 
 // The rotation must be refused before anything is written when the application cannot be rotated,
 // so a refusal never leaves a half-rotated credential behind.
 func (suite *ServiceTestSuite) TestRegenerateClientSecret_RefusedBeforePersist() {
 	service, _ := suite.newFlowTargetTestService(&providers.Entity{Category: providers.EntityCategoryApp})
+	regeneratesThroughTheHolder(service, service.entityService.(*entitymock.EntityServiceInterfaceMock))
 
-	secret, svcErr := service.ApplyCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(
+		context.Background(), testServiceAppID))
 
 	assert.Empty(suite.T(), secret)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
@@ -5569,12 +5570,13 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 		authzService:         allowAllAuthz(suite.T()),
 		bus:                  discardingBus{},
 	}
+	regeneratesThroughTheHolder(service, mockEntityService)
 
-	secret, svcErr := service.ApplyCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(
+		context.Background(), testServiceAppID))
 
 	assert.Nil(suite.T(), svcErr)
-	assert.NotEmpty(suite.T(), secret)
+	assert.Equal(suite.T(), testRegeneratedSecret, secret)
 	mockEntityService.AssertExpectations(suite.T())
 }
 
@@ -6508,8 +6510,7 @@ func (suite *ServiceTestSuite) TestFlowValidations_RequireTheApplicationActionIn
 			return svcErr
 		}},
 		"secret regeneration": {security.ActionUpdateApplication, func(s *applicationService) *tidcommon.ServiceError {
-			_, svcErr := s.ValidateCredentialAction(context.Background(), testServiceAppID,
-				model.CredentialActionRegenerate)
+			_, svcErr := s.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 			return svcErr
 		}},
 	}

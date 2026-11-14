@@ -416,8 +416,6 @@ func (ts *NarrowAdminFlowTestSuite) TestViewersOwnFlow_ServicesRefuseRoleResourc
 		{"role-deletion", "AccessChangeValidator", "role_deletion", map[string]string{"targetRoleId": roleID}},
 		{"action-deletion", "AccessChangeValidator", "action_deletion", map[string]string{
 			"targetResourceServerId": ts.rsID, "targetActionId": absentID}},
-		{"secret-regeneration", "ApplicationActionValidator", "revoke_before_action", map[string]string{
-			"targetApplicationId": appID}},
 		{"application-deletion", "ApplicationActionValidator", "revoke_before_removal", map[string]string{
 			"targetApplicationId": appID}},
 	}

@@ -30,23 +30,13 @@ type applicationAction struct {
 	notFound tidcommon.ServiceError
 }
 
-// applicationActionsByMode maps the node's mode to the action it prepares. Both plan a revocation
-// bounded at the validation, which the post flow moves past the write.
+// applicationActionsByMode maps the node's mode to the action it prepares. A client secret rotation has
+// its own validator, for applications and agents alike: see entitySecretRotationValidator.
 var applicationActionsByMode = map[string]applicationAction{
 	ExecutorModeRevokeBeforeRemoval: {
 		validate: func(p applicationAdminProvider) applicationValidator { return p.ValidateDeleteApplication },
 		reason:   revocation.ReasonApplicationRemoved,
 		notFound: ErrApplicationDeletionNotAllowed,
-	},
-	ExecutorModeRevokeBeforeAction: {
-		validate: func(p applicationAdminProvider) applicationValidator {
-			return func(ctx context.Context, appID string) (
-				*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError) {
-				return p.ValidateCredentialAction(ctx, appID, appmodel.CredentialActionRegenerate)
-			}
-		},
-		reason:   revocation.ReasonApplicationSecretRegenerated,
-		notFound: ErrSecretRegenerationNotAllowed,
 	},
 }
 

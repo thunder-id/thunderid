@@ -661,6 +661,7 @@ func activatePermissions(p *SystemPermissions) {
 		// Agent APIs.
 		{"GET /agents", p.AgentView},
 		{"POST /agents", p.AgentCreate},
+		{"POST /agents/*/client-secret/regenerate", p.AgentUpdate},
 		{"GET /agents/**", p.AgentView},
 		{"PUT /agents/**", p.AgentUpdate},
 		{"DELETE /agents/**", p.AgentDelete},
@@ -831,6 +832,7 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /applications", p.AppCreate},
 		{"POST /applications/*/sharing-policies", p.AppUpdate},
 		{"DELETE /applications/*/sharing-policies/**", p.AppUpdate},
+		{"POST /applications/*/client-secret/regenerate", p.AppUpdate},
 		{"GET /applications/**", p.AppView},
 		{"PUT /applications/**", p.AppUpdate},
 		{"DELETE /applications/**", p.AppDelete},
@@ -943,12 +945,13 @@ func activatePermissions(p *SystemPermissions) {
 		"update_authorization_detail_type":    p.AuthzDetailUpdate,
 
 		// Application tools.
-		"list_applications":            p.AppView,
-		"get_application_by_id":        p.AppView,
-		"get_application_by_client_id": p.AppView,
-		"get_application_templates":    p.AppView,
-		"create_application":           p.AppCreate,
-		"update_application":           p.AppUpdate,
+		"list_applications":             p.AppView,
+		"get_application_by_id":         p.AppView,
+		"get_application_by_client_id":  p.AppView,
+		"get_application_templates":     p.AppView,
+		"create_application":            p.AppCreate,
+		"update_application":            p.AppUpdate,
+		"regenerate_application_secret": p.AppUpdate,
 	}
 
 	// Only the Control Plane serves projects. A plane that declares no project permission leaves the

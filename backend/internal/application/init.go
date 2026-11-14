@@ -154,6 +154,14 @@ func registerRoutes(mux *http.ServeMux, appHandler *applicationHandler) {
 		}, opts3))
 	mux.HandleFunc(middleware.WithCORS("GET /applications/{id}/overlay-rules",
 		appHandler.HandleOverlayRuleGetRequest, opts3))
+	mux.HandleFunc(middleware.WithCORS("POST /applications/{id}/client-secret/regenerate",
+		appHandler.HandleClientSecretRegenerateRequest, opts3))
+	// Without its own preflight route this action falls to OPTIONS /applications/, which does not
+	// allow POST, and the browser blocks the request.
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /applications/{id}/client-secret/regenerate",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts3))
 
 	opts4 := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT", "DELETE"},

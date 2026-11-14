@@ -633,20 +633,6 @@ var (
 				"Remove or reassign them first",
 		},
 	}
-	// ErrorUnsupportedCredentialAction is the error returned when a credential action the service does
-	// not implement is requested.
-	ErrorUnsupportedCredentialAction = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "APP-1049",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.unsupported_credential_action",
-			DefaultValue: "Unsupported credential action",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.unsupported_credential_action_description",
-			DefaultValue: "The requested action is not supported for this application's credential",
-		},
-	}
 	// ErrorInvalidCIMDClient is the error returned when a client registered from a Client ID Metadata
 	// Document breaks a document rule. The description names the rule.
 	ErrorInvalidCIMDClient = tidcommon.ServiceError{

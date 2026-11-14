@@ -413,6 +413,37 @@ func (suite *ApplicationToolsTestSuite) TestUpdateApplication_Error() {
 	mockService.AssertExpectations(suite.T())
 }
 
+func (suite *ApplicationToolsTestSuite) TestRegenerateApplicationSecret_Success() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	tools := &applicationTools{appService: mockService}
+	mockService.On("RegenerateClientSecret", mock.Anything, "app123").
+		Return(&model.ClientSecretResponse{ClientSecret: "new-secret"}, nil).Once()
+
+	result, output, err := tools.regenerateApplicationSecret(context.Background(), &mcp.CallToolRequest{},
+		tool.IDInput{ID: "app123"})
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(output)
+	assert.Equal(suite.T(), "new-secret", output.ClientSecret)
+	assert.Equal(suite.T(), clientSecretNotice, output.Notice)
+}
+
+func (suite *ApplicationToolsTestSuite) TestRegenerateApplicationSecret_Error() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	tools := &applicationTools{appService: mockService}
+	mockService.On("RegenerateClientSecret", mock.Anything, "app123").Return(nil, &ErrorApplicationHasNoClientSecret).
+		Once()
+
+	result, output, err := tools.regenerateApplicationSecret(context.Background(), &mcp.CallToolRequest{},
+		tool.IDInput{ID: "app123"})
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Nil(suite.T(), output)
+	assert.Contains(suite.T(), err.Error(), "failed to regenerate application secret")
+}
+
 func (suite *ApplicationToolsTestSuite) TestGetApplicationTemplates_Success() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	tools := &applicationTools{appService: mockService}

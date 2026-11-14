@@ -179,7 +179,29 @@ func (suite *AgentServiceTestSuite) setupService() (
 		entityTypeService:    suite.newEntityTypeMock(),
 		transactioner:        transaction.NewNoOpTransactioner(),
 	}
+	regeneratesThroughTheHolder(svc, mockEntity)
 	return svc, mockEntity, mockInbound, mockOU, mockRole
+}
+
+// testRegeneratedSecret is the secret the mocked entity layer generates.
+const testRegeneratedSecret = "regenerated-client-secret-0123456789"
+
+// regeneratesThroughTheHolder has the mocked entity layer regenerate a secret as the entity service does: it
+// asks the agent service, the holder of agents, whether the secret may be regenerated, then stores a new
+// one. The system flows the entity service runs around the write are tested with it.
+func regeneratesThroughTheHolder(svc *agentService, entities *entitymock.EntityServiceInterfaceMock) {
+	entities.EXPECT().RegenerateClientSecret(mock.Anything, providers.EntityCategoryAgent, mock.Anything).
+		RunAndReturn(func(ctx context.Context, _ providers.EntityCategory, agentID string) (
+			*entity.ClientSecretRegeneration, *tidcommon.ServiceError) {
+			if _, svcErr := svc.ValidateClientSecretRegeneration(ctx, agentID); svcErr != nil {
+				return nil, svcErr
+			}
+			if err := entities.UpdateSystemCredentials(ctx, agentID,
+				json.RawMessage(`{"`+fieldClientSecret+`":"`+testRegeneratedSecret+`"}`)); err != nil {
+				return nil, &tidcommon.InternalServerError
+			}
+			return &entity.ClientSecretRegeneration{ClientSecret: testRegeneratedSecret}, nil
+		}).Maybe()
 }
 
 // newEntityTypeMock returns an entity type service that places every agent type in testOUID and
@@ -7106,6 +7128,26 @@ func (suite *AgentServiceTestSuite) TestGetAgentListByOwner() {
 	})
 }
 
+// The profile names the agent's client and how long its tokens can live, which the revocation around a
+// regeneration is kept for.
+func (suite *AgentServiceTestSuite) TestValidateClientSecretRegeneration_ReturnsTheClientAndItsLifetime() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	svc.resolveLifetime = func(*providers.OAuthClient) time.Duration { return 10 * time.Minute }
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	clearMockCalls(mockInbound, "GetOAuthProfileByEntityID")
+	clearMockCalls(mockInbound, "GetOAuthClientByClientID")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-1"), nil)
+	mockInbound.On("GetOAuthProfileByEntityID", mock.Anything, testAgentID).Return(&providers.OAuthProfile{
+		TokenEndpointAuthMethod: string(providers.TokenEndpointAuthMethodClientSecretBasic)}, nil)
+	mockInbound.On("GetOAuthClientByClientID", mock.Anything, "cid-1").Return(&providers.OAuthClient{}, nil)
+
+	profile, svcErr := svc.ValidateClientSecretRegeneration(context.Background(), testAgentID)
+
+	suite.Nil(svcErr)
+	suite.Equal(&entity.ClientSecretProfile{ClientID: "cid-1", MaxLifetimeSeconds: 600}, profile)
+}
+
 func (suite *AgentServiceTestSuite) TestRegenerateAgentSecret() {
 	secretProfile := &providers.OAuthProfile{
 		GrantTypes:              []string{string(providers.GrantTypeClientCredentials)},
@@ -7149,9 +7191,9 @@ func (suite *AgentServiceTestSuite) TestRegenerateAgentSecret() {
 					clearMockCalls(mockInbound, "GetOAuthProfileByEntityID")
 					mockInbound.On("GetOAuthProfileByEntityID", mock.Anything, testAgentID).Return(tc.profile, nil)
 				}
-				secret, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
+				regenerated, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
 				suite.Equal(tc.want, svcErr)
-				suite.Empty(secret)
+				suite.Nil(regenerated)
 				mockEntity.AssertNotCalled(suite.T(), "UpdateSystemCredentials", mock.Anything, mock.Anything,
 					mock.Anything)
 			})
@@ -7189,8 +7231,9 @@ func (suite *AgentServiceTestSuite) TestRegenerateAgentSecret() {
 		mockEntity.On("UpdateSystemCredentials", mock.Anything, testAgentID, mock.Anything).
 			Run(func(args mock.Arguments) { stored = args.Get(2).(json.RawMessage) }).Return(nil)
 
-		secret, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
+		regenerated, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
 		suite.Require().Nil(svcErr)
+		secret := regenerated.ClientSecret
 		suite.NotEmpty(secret)
 		var credentials map[string]string
 		suite.Require().NoError(json.Unmarshal(stored, &credentials))

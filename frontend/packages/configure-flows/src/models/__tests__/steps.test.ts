@@ -225,8 +225,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.AttributeVerification).toBe('AttributeVerificationExecutor');
     });
 
-    it('should have exactly 40 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(40);
+    it('should have exactly 39 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(39);
     });
   });
 

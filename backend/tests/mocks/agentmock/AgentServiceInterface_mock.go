@@ -10,6 +10,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/entity"
 	model0 "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -1231,22 +1232,24 @@ func (_c *AgentServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(r
 }
 
 // RegenerateAgentSecret provides a mock function for the type AgentServiceInterfaceMock
-func (_mock *AgentServiceInterfaceMock) RegenerateAgentSecret(ctx context.Context, agentID string) (string, *common.ServiceError) {
+func (_mock *AgentServiceInterfaceMock) RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agentID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RegenerateAgentSecret")
 	}
 
-	var r0 string
+	var r0 *model.ClientSecretResponse
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.ClientSecretResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, agentID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.ClientSecretResponse); ok {
 		r0 = returnFunc(ctx, agentID)
 	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ClientSecretResponse)
+		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, agentID)
@@ -1288,12 +1291,12 @@ func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Return(s string, serviceError *common.ServiceError) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
-	_c.Call.Return(s, serviceError)
+func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Return(clientSecretResponse *model.ClientSecretResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
+	_c.Call.Return(clientSecretResponse, serviceError)
 	return _c
 }
 
-func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) RunAndReturn(run func(ctx context.Context, agentID string) (string, *common.ServiceError)) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
+func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*model.ClientSecretResponse, *common.ServiceError)) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1865,6 +1868,76 @@ func (_c *AgentServiceInterfaceMock_ValidateAgent_Call) Return(clientID string, 
 }
 
 func (_c *AgentServiceInterfaceMock_ValidateAgent_Call) RunAndReturn(run func(ctx context.Context, agent *providers.Agent, excludeID string) (string, string, model0.InboundClient, *common.ServiceError)) *AgentServiceInterfaceMock_ValidateAgent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateClientSecretRegeneration provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, agentID string) (*entity.ClientSecretProfile, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateClientSecretRegeneration")
+	}
+
+	var r0 *entity.ClientSecretProfile
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entity.ClientSecretProfile, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entity.ClientSecretProfile); ok {
+		r0 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entity.ClientSecretProfile)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateClientSecretRegeneration'
+type AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call struct {
+	*mock.Call
+}
+
+// ValidateClientSecretRegeneration is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) ValidateClientSecretRegeneration(ctx any, agentID any) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	return &AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call{Call: _e.mock.On("ValidateClientSecretRegeneration", ctx, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Run(run func(ctx context.Context, agentID string)) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Return(clientSecretProfile *entity.ClientSecretProfile, serviceError *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Return(clientSecretProfile, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*entity.ClientSecretProfile, *common.ServiceError)) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
 	_c.Call.Return(run)
 	return _c
 }

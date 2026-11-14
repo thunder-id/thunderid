@@ -1539,6 +1539,112 @@ paths:
         "500":
           description: Internal server error
 
+  /agents/{id}/client-secret/regenerate:
+    post:
+      tags:
+        - Agents
+      summary: Regenerate an agent's client secret
+      description: |
+        Replaces the client secret of an agent that authenticates with one with a newly generated
+        secret, and returns it. The response is the only time the new secret can be read: it is stored
+        hashed and no read returns it.
+
+        The old secret stops working at once. The tokens issued to the agent up to the change are
+        revoked: before the new secret is written, and again once it is, so a token issued while it was
+        being written is revoked too. If the revocation before the write fails, the secret is not
+        changed. If the one after the write fails, the new secret is stored and still returned, with
+        `revocationIncomplete: true`: a token issued while it was being written may stay valid until it
+        expires, and regenerating again revokes it. The attempt is recorded as failed in the audit log.
+
+        An agent that authenticates without a client secret (a public client, `none` or
+        `private_key_jwt`), a personal agent, one declared in a file, and one a control plane deployed
+        are refused. The caller needs the same permissions as for updating the agent.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+      responses:
+        "200":
+          description: Client secret regenerated
+          headers:
+            Cache-Control:
+              description: Always `no-store`, since the body carries a secret.
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientSecretResponse'
+              example:
+                clientSecret: "pD3fXq9sT7wLk2vB8nR4mZ6cY1hJ5gA0"
+        "400":
+          description: The agent's client secret cannot be regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no-client-secret:
+                  summary: The agent authenticates without a client secret
+                  value:
+                    code: "AGT-1052"
+                    message:
+                      key: "error.agentservice.client_secret_not_used"
+                      defaultValue: "Agent has no client secret"
+                    description:
+                      key: "error.agentservice.client_secret_not_used_description"
+                      defaultValue: "Only an agent that authenticates with a client secret can have its secret regenerated"
+                personal-agent:
+                  summary: The agent is a personal agent
+                  value:
+                    code: "AGT-1059"
+                    message:
+                      key: "error.agentservice.personal_agent_secret_not_regenerable"
+                      defaultValue: "Secret cannot be regenerated"
+                    description:
+                      key: "error.agentservice.personal_agent_secret_not_regenerable_description"
+                      defaultValue: "A personal agent's client secret cannot be regenerated"
+        "403":
+          description: >
+            Forbidden. The caller may not update the agent, the agent is declared in a file
+            (`AGT-1027`), or it was deployed by a control plane, which only a later deploy from the
+            control plane changes (`AGT-1063`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1063"
+                message:
+                  key: "error.agentservice.managed_agent"
+                  defaultValue: "Cannot modify an agent deployed by the control plane"
+                description:
+                  key: "error.agentservice.managed_agent_description"
+                  defaultValue: "The agent was deployed by the control plane and can only be changed there"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Internal server error
+
   /agents/{id}/groups:
     get:
       tags:
@@ -2853,6 +2959,21 @@ components:
             that organization unit.
           example: true
 
+    ClientSecretResponse:
+      type: object
+      description: A newly generated client secret, returned only when it is generated.
+      required:
+        - clientSecret
+      properties:
+        clientSecret:
+          type: string
+          description: The new client secret.
+        revocationIncomplete:
+          type: boolean
+          description: |
+            Present and `true` when the secret is stored but revoking the tokens issued while it was
+            being written failed. Those tokens may stay valid until they expire; regenerate again to
+            revoke them.
     AgentGroup:
       type: object
       required: [id, name, ouId]

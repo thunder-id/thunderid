@@ -66,7 +66,9 @@ type AgentServiceInterface interface {
 	UpdateAgent(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (
 		*model.AgentCompleteResponse, *tidcommon.ServiceError)
 	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
-	RegenerateAgentSecret(ctx context.Context, agentID string) (string, *tidcommon.ServiceError)
+	RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *tidcommon.ServiceError)
+	ValidateClientSecretRegeneration(ctx context.Context, agentID string) (
+		*entity.ClientSecretProfile, *tidcommon.ServiceError)
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 	GetAgentGroups(ctx context.Context, agentID string, limit, offset int) (
 		*model.AgentGroupListResponse, *tidcommon.ServiceError)
@@ -1354,74 +1356,97 @@ func (s *agentService) updateAgentCredentials(ctx context.Context, agentID strin
 }
 
 // RegenerateAgentSecret replaces the client secret of an agent that authenticates with one, and returns
-// the new secret. That is the only time it can be read, since it is hashed when stored.
+// the new secret. That is the only time it can be read, since it is hashed when stored. The entity service
+// generates and stores it, revoking what the old secret issued.
 func (s *agentService) RegenerateAgentSecret(ctx context.Context, agentID string) (
-	string, *tidcommon.ServiceError) {
-	secret, svcErr := s.regenerateAgentSecret(ctx, agentID)
-	s.publishAgentEvent(ctx, audit.EventAgentUpdate, audit.ActionUpdate, agentID, svcErr)
-	return secret, svcErr
+	*model.ClientSecretResponse, *tidcommon.ServiceError) {
+	if agentID == "" {
+		return nil, &ErrorMissingAgentID
+	}
+	regenerated, svcErr := s.entityService.RegenerateClientSecret(ctx, providers.EntityCategoryAgent, agentID)
+	// A failed revocation after the write is audited as the failure it is, but the secret is still
+	// returned: it is already stored, and nobody could read it again.
+	audited := svcErr
+	if audited == nil {
+		audited = regenerated.RevocationError
+	}
+	s.publishAgentEvent(ctx, audit.EventAgentUpdate, audit.ActionUpdate, agentID, audited)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	s.captureRegeneratedSecret(ctx, agentID, regenerated.ClientSecret)
+	return &model.ClientSecretResponse{ClientSecret: regenerated.ClientSecret,
+		RevocationIncomplete: regenerated.RevocationError != nil, Revoked: regenerated.Revoked}, nil
 }
 
-// regenerateAgentSecret replaces an agent's client secret without publishing its audit event.
-func (s *agentService) regenerateAgentSecret(ctx context.Context, agentID string) (
-	string, *tidcommon.ServiceError) {
+// ValidateClientSecretRegeneration reports whether the caller may regenerate the agent's client secret and
+// returns the profile of the artifacts its client has issued, without changing state. The entity service
+// asks it before a regeneration, and the flow run before the secret is replaced asks it again.
+func (s *agentService) ValidateClientSecretRegeneration(ctx context.Context, agentID string) (
+	*entity.ClientSecretProfile, *tidcommon.ServiceError) {
 	if agentID == "" {
-		return "", &ErrorMissingAgentID
+		return nil, &ErrorMissingAgentID
 	}
 
 	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
-			return "", &ErrorAgentNotFound
+			return nil, &ErrorAgentNotFound
 		}
 		s.logger.Error(ctx, "Failed to retrieve agent entity for secret regeneration",
 			log.MaskedString("agentID", agentID), log.Error(err))
-		return "", &tidcommon.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if existing.Category != providers.EntityCategoryAgent {
-		return "", &ErrorAgentNotFound
+		return nil, &ErrorAgentNotFound
 	}
 	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
-		return "", svcErr
+		return nil, svcErr
 	}
 	if svcErr := s.checkAgentAccess(ctx, security.ActionUpdateAgent, existing.OUID, agentID, ""); svcErr != nil {
-		return "", svcErr
+		return nil, svcErr
 	}
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
-		return "", svcErr
+		return nil, svcErr
 	}
 
 	sysAttrs := readSystemAttributes(existing.SystemAttributes)
 	if sysAttrs.Kind == providers.AgentKindPersonalAssistant {
-		return "", &ErrorPersonalAgentSecretNotRegenerable
+		return nil, &ErrorPersonalAgentSecretNotRegenerable
 	}
 	clientID := sysAttrs.ClientID
 	oauth, err := s.inboundClientService.GetOAuthProfileByEntityID(ctx, agentID)
 	if err != nil && !errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 		s.logger.Error(ctx, "Failed to load OAuth profile for secret regeneration",
 			log.MaskedString("agentID", agentID), log.Error(err))
-		return "", &tidcommon.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if clientID == "" || !usesClientSecret(oauth) {
-		return "", &ErrorClientSecretNotUsed
+		return nil, &ErrorClientSecretNotUsed
 	}
+	return &entity.ClientSecretProfile{
+		ClientID:           clientID,
+		MaxLifetimeSeconds: int64(s.revocationTTL(ctx, clientID, 0) / time.Second),
+	}, nil
+}
 
-	clientSecret, err := oauthutils.GenerateOAuth2ClientSecret()
+// captureRegeneratedSecret hands the agent, with the secret just written, to the value capturer, as an update
+// that sets the secret does. Only the regeneration still holds the secret, since it is hashed on write. A
+// failure to read the agent back is logged and leaves the capture out.
+func (s *agentService) captureRegeneratedSecret(ctx context.Context, agentID, clientSecret string) {
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to generate client secret", log.Error(err))
-		return "", &tidcommon.InternalServerError
-	}
-	sysCredsJSON, err := buildSystemCredentialsJSON(clientSecret)
-	if err != nil {
-		s.logger.Error(ctx, "Failed to build agent system credentials", log.Error(err))
-		return "", &tidcommon.InternalServerError
-	}
-	if err = s.entityService.UpdateSystemCredentials(ctx, agentID, sysCredsJSON); err != nil {
-		s.logger.Error(ctx, "Failed to update agent system credentials",
+		s.logger.Warn(ctx, "Failed to read the agent back, so its regenerated secret was not captured",
 			log.MaskedString("agentID", agentID), log.Error(err))
-		return "", &tidcommon.InternalServerError
+		return
 	}
-
+	clientID := readSystemAttributes(existing.SystemAttributes).ClientID
+	oauth, err := s.inboundClientService.GetOAuthProfileByEntityID(ctx, agentID)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read the agent's OAuth profile, so its regenerated secret was not captured",
+			log.MaskedString("agentID", agentID), log.Error(err))
+		return
+	}
 	s.captureValues(ctx, &model.AgentCompleteResponse{
 		ID:         agentID,
 		OUID:       existing.OUID,
@@ -1432,7 +1457,6 @@ func (s *agentService) regenerateAgentSecret(ctx context.Context, agentID string
 			OAuthConfig: oauthProfileToComplete(clientID, oauth),
 		}}, clientID, clientSecret),
 	}, nil, false)
-	return clientSecret, nil
 }
 
 // DeleteAgent removes the agent and its associated inbound client.

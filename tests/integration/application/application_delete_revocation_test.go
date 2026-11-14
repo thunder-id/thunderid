@@ -21,6 +21,9 @@ func (ts *ApplicationAPITestSuite) oauthApp(name string, config map[string]inter
 	}
 	if config != nil {
 		app.InboundAuthConfig = []map[string]interface{}{{"type": "oauth2", "config": config}}
+	} else {
+		// Without it, CreateApplication gives the application a default OAuth client.
+		app.Embedded = true
 	}
 	appID, err := testutils.CreateApplication(app)
 	ts.Require().NoError(err, "Failed to create the application")
