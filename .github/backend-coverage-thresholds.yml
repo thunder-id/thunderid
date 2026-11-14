@@ -49,6 +49,10 @@ packages:
   # successful retrieval and the mapping that follows it are covered by unit tests, and this bar
   # applies to the rules, the rejections, and the routes the suite does reach.
   backend/internal/cimd: 50
+  # The Twilio and Vonage clients send to fixed public endpoints (api.twilio.com, api.nexmo.com), so the
+  # integration suite, which sends SMS through the custom provider against a local server, never builds
+  # them. Building them, and the factory branches that do, are covered by unit tests.
+  backend/internal/notification/client: 60
   # backend/internal/system/i18n: 0
 
 # Thresholds grouped by pull request label. A group applies only when the pull

@@ -7,7 +7,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -236,6 +239,9 @@ func (suite *HTTPClientTestSuite) TestSSRFSafeDialContext() {
 		"[::1]:443",           // IPv6 loopback
 		"[fc00::1]:443",       // IPv6 unique-local (ULA)
 		"[fe80::1]:443",       // IPv6 link-local
+		"100.64.0.1:443",      // RFC 6598 shared address space
+		"100.100.100.200:443", // Alibaba Cloud metadata, in RFC 6598 space
+		"0.1.2.3:443",         // "this network"
 	}
 	for _, addr := range blockedAddrs {
 		_, err := ssrfSafeDialContext(context.Background(), "tcp", addr)
@@ -413,10 +419,12 @@ func (suite *HTTPClientTestSuite) TestClientWithRootCAs_DoesNotFollowRedirects()
 
 func (suite *HTTPClientTestSuite) TestIsPrivateHost() {
 	for _, host := range []string{"localhost", "LOCALHOST", "app.localhost", "127.0.0.1", "::1", "169.254.169.254",
-		"10.1.2.3", "172.20.0.1", "192.168.0.1", "fd12::1", "fe80::1", "0.0.0.0", "::"} {
+		"10.1.2.3", "172.20.0.1", "192.168.0.1", "fd12::1", "fe80::1", "0.0.0.0", "::", "100.64.0.1",
+		"100.127.255.255", "100.100.100.200", "0.1.2.3"} {
 		assert.True(suite.T(), IsPrivateHost(host), host)
 	}
-	for _, host := range []string{"rp.example.com", "8.8.8.8", "2001:4860:4860::8888", "172.32.0.1"} {
+	for _, host := range []string{"rp.example.com", "8.8.8.8", "2001:4860:4860::8888", "172.32.0.1",
+		"100.63.255.255", "100.128.0.1"} {
 		assert.False(suite.T(), IsPrivateHost(host), host)
 	}
 }
@@ -442,4 +450,114 @@ func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_RejectPrivateUsesTh
 func (suite *HTTPClientTestSuite) TestSSRFSafeDialContext_RefusesUnspecifiedAddress() {
 	_, err := ssrfSafeDialContext(context.Background(), "tcp", "0.0.0.0:443")
 	assert.Error(suite.T(), err)
+}
+
+// The guarded dial's timeout bounds the whole dial: the resolution runs under it, and each connection
+// attempt gets a share of what is left, so two addresses that drop connections cannot take twice the
+// timeout, and the first cannot use it all up before the second is tried. The last address gets all
+// that is left.
+func (suite *HTTPClientTestSuite) TestGuardedDial_SplitsOneDeadlineAcrossAttempts() {
+	var resolveDeadline time.Time
+	resolver := newIpResolverInterfaceMock(suite.T())
+	resolver.EXPECT().LookupIPAddr(mock.Anything, "example.test").
+		Run(func(ctx context.Context, _ string) {
+			var ok bool
+			resolveDeadline, ok = ctx.Deadline()
+			suite.True(ok, "the resolution ran without the dial's deadline")
+		}).
+		Return([]net.IPAddr{{IP: net.ParseIP("203.0.113.1")}, {IP: net.ParseIP("203.0.113.2")}}, nil).Once()
+	var attempts []time.Time
+	conns := newConnDialerInterfaceMock(suite.T())
+	conns.EXPECT().DialContext(mock.Anything, "tcp", mock.Anything).
+		Run(func(ctx context.Context, _, _ string) {
+			deadline, ok := ctx.Deadline()
+			suite.True(ok, "an attempt ran without a deadline")
+			attempts = append(attempts, deadline)
+		}).
+		Return(nil, errors.New("connection refused")).Twice()
+	d := &dialer{timeout: time.Minute, rejectPrivate: true, resolver: resolver, conns: conns}
+
+	_, err := d.DialContext(context.Background(), "tcp", "example.test:443")
+
+	suite.Error(err)
+	suite.Require().Len(attempts, 2, "every resolved address should be tried")
+	suite.True(attempts[0].Before(resolveDeadline), "the first attempt could use up the whole deadline")
+	suite.Equal(resolveDeadline, attempts[1], "the last attempt should get all that is left")
+}
+
+// With no timeout the guarded dial adds no deadline, as before.
+func (suite *HTTPClientTestSuite) TestGuardedDial_NoTimeoutAddsNoDeadline() {
+	resolver := newIpResolverInterfaceMock(suite.T())
+	resolver.EXPECT().LookupIPAddr(mock.Anything, "example.test").
+		Run(func(ctx context.Context, _ string) {
+			_, ok := ctx.Deadline()
+			suite.False(ok)
+		}).
+		Return([]net.IPAddr{{IP: net.ParseIP("203.0.113.1")}}, nil).Once()
+	conns := newConnDialerInterfaceMock(suite.T())
+	conns.EXPECT().DialContext(mock.Anything, "tcp", "203.0.113.1:443").
+		Run(func(ctx context.Context, _, _ string) {
+			_, ok := ctx.Deadline()
+			suite.False(ok)
+		}).
+		Return(nil, errors.New("connection refused")).Once()
+	d := &dialer{rejectPrivate: true, resolver: resolver, conns: conns}
+
+	_, err := d.DialContext(context.Background(), "tcp", "example.test:443")
+
+	suite.Error(err)
+}
+
+// A dialer that allows private addresses runs the same dial, resolving and connecting to the resolved
+// address, and only skips the check: a private address is reached, and the attempt keeps its deadline.
+func (suite *HTTPClientTestSuite) TestUnguardedDial_ReachesPrivateAddressesThroughTheSameDial() {
+	resolver := newIpResolverInterfaceMock(suite.T())
+	resolver.EXPECT().LookupIPAddr(mock.Anything, "internal.test").
+		Return([]net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil).Once()
+	conn, peer := net.Pipe()
+	defer func() { _ = peer.Close() }()
+	conns := newConnDialerInterfaceMock(suite.T())
+	conns.EXPECT().DialContext(mock.Anything, "tcp", "10.0.0.5:8080").
+		Run(func(ctx context.Context, _, _ string) {
+			_, ok := ctx.Deadline()
+			suite.True(ok, "the attempt ran without the dial's deadline")
+		}).
+		Return(conn, nil).Once()
+	d := &dialer{timeout: time.Minute, resolver: resolver, conns: conns}
+
+	got, err := d.DialContext(context.Background(), "tcp", "internal.test:8080")
+
+	suite.Require().NoError(err)
+	suite.Equal(conn, got)
+}
+
+// A dialer is built with the system resolver and a plain net.Dialer, whichever the guard says.
+func (suite *HTTPClientTestSuite) TestNewDialer_UsesTheSystemResolver() {
+	for _, rejectPrivate := range []bool{true, false} {
+		d := newDialer(time.Second, rejectPrivate)
+		suite.Equal(net.DefaultResolver, d.resolver)
+		suite.IsType(&net.Dialer{}, d.conns)
+		suite.Equal(rejectPrivate, d.rejectPrivate)
+	}
+}
+
+// Each attempt gets an equal share of the time left, at least minAttemptTime, never past the deadline,
+// and the last address gets all of it.
+func (suite *HTTPClientTestSuite) TestAttemptDeadline() {
+	now := time.Unix(1_700_000_000, 0)
+	cases := []struct {
+		name      string
+		left      time.Duration
+		remaining int
+		want      time.Duration
+	}{
+		{"equal share", 30 * time.Second, 3, 10 * time.Second},
+		{"last address gets the rest", 30 * time.Second, 1, 30 * time.Second},
+		{"share raised to the minimum", 3 * time.Second, 3, minAttemptTime},
+		{"minimum capped at the deadline", time.Second, 3, time.Second},
+		{"deadline already passed", -time.Second, 2, -time.Second},
+	}
+	for _, tc := range cases {
+		suite.Equal(now.Add(tc.want), attemptDeadline(now, now.Add(tc.left), tc.remaining), tc.name)
+	}
 }

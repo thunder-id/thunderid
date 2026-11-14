@@ -4256,12 +4256,12 @@ func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_Rej
 	}
 }
 
-// An operator with relying parties on internal networks can turn the guard off.
+// An operator with relying parties on internal networks can turn the guard off with
+// server.allow_private_addresses.
 func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_GuardOffAcceptsPrivateHosts() {
 	sysconfig.ResetServerRuntime()
 	cfg := &sysconfig.Config{}
-	allow := false
-	cfg.OAuth.Logout.Backchannel.RejectPrivateAddresses = &allow
+	cfg.Server.AllowPrivateAddresses = true
 	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
 	defer suite.SetupTest()
 

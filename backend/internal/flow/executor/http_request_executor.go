@@ -67,6 +67,7 @@ type httpRequestExecutor struct {
 	providers.Executor
 	ouService     providers.OrganizationUnitProvider
 	authnProvider providers.AuthnProviderManager
+	clients       httpservice.OutboundClientProviderInterface
 	logger        *log.Logger
 }
 
@@ -77,6 +78,7 @@ func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService providers.OrganizationUnitProvider,
 	authnProvider providers.AuthnProviderManager,
+	clients httpservice.OutboundClientProviderInterface,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))
@@ -98,6 +100,7 @@ func newHTTPRequestExecutor(
 		Executor:      base,
 		ouService:     ouService,
 		authnProvider: authnProvider,
+		clients:       clients,
 		logger:        logger,
 	}
 }
@@ -394,8 +397,7 @@ func (h *httpRequestExecutor) executeRequestWithRetry(ctx *providers.NodeContext
 		retryDelay = config.ErrorHandling.RetryDelay
 	}
 
-	httpClient := httpservice.NewHTTPClientWithTimeout(
-		time.Duration(config.Timeout) * time.Second)
+	httpClient := h.clients.NewHTTPClient(time.Duration(config.Timeout) * time.Second)
 
 	var lastErr error
 	attempts := retryCount + 1

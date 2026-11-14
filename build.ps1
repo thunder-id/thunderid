@@ -1231,6 +1231,16 @@ function Package-Quickstart {
     Write-QuickstartFile -Path $cp_deployment -Content (
         (Read-QuickstartFile $cp_deployment).TrimEnd("`n") + "`n`ngateway:`n  auto_apply: true`n  allow_private_addresses: true`n")
 
+    # The pack runs every plane, and whatever a user tries with it (a local mail catcher, a mock SMS
+    # gateway, an identity provider or HTTP request target on localhost), on one host, so it turns off
+    # the block on private addresses that every other deployment keeps on (server.allow_private_addresses
+    # defaults to false). Inserted under each plane's existing server section.
+    foreach ($plane_dir in @($auth_dp_dir, $dp_dir, $cp_dir)) {
+        $plane_deployment = Join-Path $plane_dir "deployment.yaml"
+        Add-QuickstartLine -Path $plane_deployment -Pattern '^server:\s*$' -Lines "  allow_private_addresses: true"
+        Assert-QuickstartPatch $plane_deployment "  allow_private_addresses: true"
+    }
+
     Assert-QuickstartPatch (Join-Path $auth_dp_dir "bootstrap/control-plane-resource-server.yaml") "identifier: https://localhost:$QUICKSTART_CP_PORT"
     Assert-QuickstartPatch (Join-Path $auth_dp_dir "deployment.yaml") "port: $QUICKSTART_AUTH_DP_PORT"
     Assert-QuickstartPatch (Join-Path $dp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"

@@ -36,6 +36,7 @@ import (
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -96,6 +97,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 			Encryption: engineCtx.encryptionConfig,
 		},
 		AttributeCache: engineCtx.attributeCacheConfig,
+		// Only the private-address allowance is read from the runtime's server config, by the checks that
+		// refuse a configured destination before any call is made.
+		Server: engineconfig.ServerConfig{AllowPrivateAddresses: engineCtx.serverConfig.AllowPrivateAddresses},
 	}
 
 	err = systemconfig.InitializeServerRuntime(engineCtx.serverHome, &sysConfig)
@@ -174,6 +178,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		OAuth:                      oauthSettings,
 		GateClient:                 engineCtx.gateClientConfig,
 		EnableOUQualifiedEndpoints: engineCtx.serverConfig.EnableOUQualifiedEndpoints,
+		AllowPrivateAddresses:      engineCtx.serverConfig.AllowPrivateAddresses,
 	}
 	// With no SSO session store there is no session termination to deliver, so back-channel logout is
 	// off: no dispatcher is built and discovery does not advertise it.
@@ -184,9 +189,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		logger.Debug(ctx,
 			"No authorization details type provider is set, so every requested authorization detail is refused")
 	}
+	outboundClients := httpservice.NewOutboundClientProvider(engineCtx.serverConfig.AllowPrivateAddresses)
 	if engineCtx.authzDetailProvider == nil {
 		engineCtx.authzDetailProvider = authzdetailexec.Initialize(engineCtx.authorizationDetailTypes,
-			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
+			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault(), outboundClients)
 	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:           engineCtx.flowFactory,
@@ -209,6 +215,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
 		AuthzDetailProvider: engineCtx.authzDetailProvider,
+		OutboundClients:     outboundClients,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,

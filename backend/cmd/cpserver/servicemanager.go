@@ -69,6 +69,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/importer"
 	"github.com/thunder-id/thunderid/internal/system/jose"
@@ -225,7 +226,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Notification: only the sender-management (CRUD) service and the notification section handler are
 	// kept. The OTP and sender runtime services this returns are data plane concerns and are dropped.
 	notifSenderMgtSvc, _, _, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus,
+			httpservice.NewOutboundClientProvider(runtime.Config.Server.AllowPrivateAddresses))
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	// Create the flow server-config handler early so it can be registered before serverconfig is

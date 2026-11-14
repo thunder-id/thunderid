@@ -261,6 +261,9 @@ type ExecutorDependencies struct {
 	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
+
+	// OutboundClients builds the clients HTTP request steps reach their configured endpoints with.
+	OutboundClients httpservice.OutboundClientProviderInterface
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -334,7 +337,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,
-				deps.AuthnProvider))
+				deps.AuthnProvider, deps.OutboundClients))
 		},
 		ExecutorNameUserTypeResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserTypeResolver, newUserTypeResolver(

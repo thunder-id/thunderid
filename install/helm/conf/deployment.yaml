@@ -5,6 +5,7 @@ server:
   hostname: "0.0.0.0"
   port: {{ .Values.configuration.server.port }}
   http_only: {{ .Values.configuration.server.httpOnly }}
+  allow_private_addresses: {{ .Values.configuration.server.allowPrivateAddresses | default false }}
   public_url: {{ .Values.configuration.server.publicUrl | quote }}
   {{- if .Values.configuration.server.identifier }}
   identifier: {{ .Values.configuration.server.identifier | quote }}
@@ -336,8 +337,13 @@ oauth:
     insecure: {{ .Values.configuration.oauth.dcr.insecure }}
   logout:
     backchannel:
+      {{- /* rejectPrivateAddresses was replaced by configuration.server.allowPrivateAddresses, which also
+      covers the server's other calls to administrator-configured destinations. A release that still
+      sets it is refused rather than mapped, so the wider setting is chosen on purpose. */}}
+      {{- if hasKey .Values.configuration.oauth.logout.backchannel "rejectPrivateAddresses" }}
+      {{- fail "configuration.oauth.logout.backchannel.rejectPrivateAddresses was removed. Remove it, and set configuration.server.allowPrivateAddresses to true if back-channel logout receivers (or other administrator-configured destinations) run on private addresses." }}
+      {{- end }}
       enabled: {{ .Values.configuration.oauth.logout.backchannel.enabled }}
-      reject_private_addresses: {{ .Values.configuration.oauth.logout.backchannel.rejectPrivateAddresses }}
   client_assertion:
     max_lifetime: {{ .Values.configuration.oauth.clientAssertion.maxLifetime }}
     max_iat_age: {{ .Values.configuration.oauth.clientAssertion.maxIatAge }}

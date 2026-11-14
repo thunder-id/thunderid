@@ -34,7 +34,8 @@ type VonageClient struct {
 }
 
 // newVonageClient creates a new instance of VonageClient.
-func newVonageClient(ctx context.Context, sender common.NotificationSenderDTO) (MessageClientInterface, error) {
+func newVonageClient(ctx context.Context, sender common.NotificationSenderDTO,
+	clients syshttp.OutboundClientProviderInterface) (MessageClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, vonageLoggerComponentName))
 
 	client := &VonageClient{}
@@ -58,7 +59,7 @@ func newVonageClient(ctx context.Context, sender common.NotificationSenderDTO) (
 			logger.Warn(ctx, "Unknown property for Vonage client", log.String("property", prop.GetName()))
 		}
 	}
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	client.httpClient = clients.NewHTTPClient(httpClientTimeout)
 
 	return client, nil
 }

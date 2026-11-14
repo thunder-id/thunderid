@@ -57,6 +57,7 @@ The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 - turns the default admin into the Service Desk Admin on dp and cp, with its own group and role under separate IDs, and leaves auth-dp's default `admin` as it is
 - sets auth-dp to port 8091
 - turns on `gateway.auto_apply` and `gateway.allow_private_addresses` in the Control Plane's `deployment.yaml`; the second lets it reach dp on `localhost`, which it refuses by default
+- turns on `server.allow_private_addresses` in the `deployment.yaml` of auth-dp, dp and cp, so identity providers, email and SMS providers, HTTP request steps and back-channel logout receivers you run on `localhost` work out of the box. Every other deployment refuses those addresses by default
 - adds [bootstrap.sh](bootstrap.sh) as `quickstart-bootstrap.sh` next to `setup.sh` and `start.sh`
 
 ### Bootstrap resources

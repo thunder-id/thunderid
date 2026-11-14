@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -44,7 +45,7 @@ import (
 
 // noAuthzDetails refuses every detail; the server runtime must be initialized first.
 func noAuthzDetails() providers.AuthorizationDetailProvider {
-	return authzdetailexec.Initialize(nil, time.Second)
+	return authzdetailexec.Initialize(nil, time.Second, httpservice.NewOutboundClientProvider(false))
 }
 
 const (

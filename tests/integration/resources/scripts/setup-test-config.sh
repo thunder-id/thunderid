@@ -4,6 +4,9 @@ DB_TYPE=${DB_TYPE:-sqlite}
 
 cat > tests/integration/resources/deployment.yaml <<EOF
 server:
+  # The suite's mock identity providers, SMS and SMTP servers, HTTP request step targets, back-channel
+  # logout receivers and other admin-configured endpoints listen on localhost.
+  allow_private_addresses: true
   hostname: localhost
   port: 8095
   system_ou_id: "01900000-0000-7000-8000-000000000001"
@@ -35,6 +38,7 @@ gateway:
   max_gateways: 5
   # The suite registers gateways on localhost.
   allow_private_addresses: true
+
 
 tls:
   cert_file: "config/certs/server.cert"
@@ -177,8 +181,4 @@ oauth:
         - OTP
       "urn:thunder:acr:biometrics":
         - BIO
-  logout:
-    backchannel:
-      # The back-channel logout tests run their receiver on localhost.
-      reject_private_addresses: false
 EOF

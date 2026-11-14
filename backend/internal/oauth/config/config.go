@@ -20,6 +20,10 @@ type Config struct {
 	OAuth                      engineconfig.OAuthConfig
 	GateClient                 engineconfig.GateClientConfig
 	EnableOUQualifiedEndpoints bool
+	// AllowPrivateAddresses is the server's server.allow_private_addresses: whether calls to
+	// destinations an administrator configures, back-channel logout URIs among them, may reach a
+	// loopback, link-local, private or unspecified address.
+	AllowPrivateAddresses bool
 }
 
 // FromServerRuntime builds OAuth configuration from the global server runtime, seeding the
@@ -37,6 +41,7 @@ func FromServerRuntime() Config {
 		OAuth:                      oauth,
 		GateClient:                 runtime.Config.GateClient,
 		EnableOUQualifiedEndpoints: runtime.Config.Server.EnableOUQualifiedEndpoints,
+		AllowPrivateAddresses:      runtime.Config.Server.AllowPrivateAddresses,
 	}
 }
 

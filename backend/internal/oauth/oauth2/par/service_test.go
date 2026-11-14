@@ -25,6 +25,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
@@ -32,7 +33,7 @@ import (
 
 // noAuthzDetails refuses every detail; the server runtime must be initialized first.
 func noAuthzDetails() providers.AuthorizationDetailProvider {
-	return authzdetailexec.Initialize(nil, time.Second)
+	return authzdetailexec.Initialize(nil, time.Second, httpservice.NewOutboundClientProvider(false))
 }
 
 const (

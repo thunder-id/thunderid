@@ -4,6 +4,9 @@
 # management tokens come from the suite's own trusted issuer, since a Control Plane issues none, and
 # the management API key is the one tests/integration/resources/deployment.yaml configures.
 server:
+  # The suite's mock identity providers, SMS and SMTP servers, HTTP request step targets, back-channel
+  # logout receivers and other admin-configured endpoints listen on localhost.
+  allow_private_addresses: true
   hostname: "localhost"
   port: 8095
   system_ou_id: "01900000-0000-7000-8000-000000000001"
@@ -35,6 +38,7 @@ gateway:
   max_gateways: 5
   # The suite registers the data plane on localhost.
   allow_private_addresses: true
+
 
 tls:
   min_version: "1.3"

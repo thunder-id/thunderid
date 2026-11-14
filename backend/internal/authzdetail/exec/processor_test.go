@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -41,7 +43,7 @@ func TestProcessorTestSuite(t *testing.T) {
 func (s *ProcessorTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("", &config.Config{Server: engineconfig.ServerConfig{Identifier: "test"}})
-	s.client = newProcessorClient(5 * time.Second)
+	s.client = newProcessorClient(5*time.Second, httpservice.NewOutboundClientProvider(true))
 }
 
 func sampleProcessorRequest() processorRequest {
@@ -219,4 +221,26 @@ func (s *ProcessorTestSuite) TestBatchKey_GroupsByEndpointAndCredential() {
 	s.Equal(first, sameCredential, "types sharing an endpoint and a credential share a call")
 	s.NotEqual(first, otherCredential, "a credential never goes with another type's details")
 	s.NotEqual(first, none)
+}
+
+func (s *ProcessorTestSuite) TestProcess_RefusesPrivateAddresses() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"results":[]}`))
+	}))
+	defer server.Close()
+
+	refusing := newProcessorClient(5*time.Second, httpservice.NewOutboundClientProvider(false))
+	for _, endpoint := range []string{server.URL, strings.Replace(server.URL, "127.0.0.1", "localhost", 1),
+		"http://10.0.0.1:8080/process", "http://169.254.169.254/process"} {
+		_, err := refusing.Process(context.Background(), providers.AuthorizationDetailProcessor{Endpoint: endpoint},
+			sampleProcessorRequest())
+		s.ErrorIs(err, httpservice.ErrPrivateAddress, "reached %s", endpoint)
+		s.ErrorIs(err, errProcessorUnavailable)
+	}
+
+	for _, endpoint := range []string{server.URL, strings.Replace(server.URL, "127.0.0.1", "localhost", 1)} {
+		_, err := s.client.Process(context.Background(), providers.AuthorizationDetailProcessor{Endpoint: endpoint},
+			sampleProcessorRequest())
+		s.NotErrorIs(err, httpservice.ErrPrivateAddress, "refused %s", endpoint)
+	}
 }

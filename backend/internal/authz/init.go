@@ -19,11 +19,12 @@ func Initialize(
 	resourceService resource.ResourceServiceInterface,
 	entityService entity.EntityServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	clients httpservice.OutboundClientProviderInterface,
 ) providers.AuthorizationProvider {
 	rbacEngine, authZENPDPEngine := engine.Initialize(
 		roleService,
 		authZENPDPService,
-		httpservice.NewHTTPClientWithoutRedirects(0, false),
+		clients.NewHTTPClientWithoutRedirects(0),
 	)
 	return newAuthorizationService(
 		rbacEngine,

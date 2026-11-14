@@ -7,6 +7,7 @@
     "product_name": "ThunderID",
     "system_ou_id": "",
     "trusted_proxies": [],
+    "allow_private_addresses": false,
     "timeouts": {
       "read_header_seconds": 10,
       "write_seconds": 10,
@@ -204,8 +205,7 @@
         "max_attempts" : 3,
         "retry_delay" : 2,
         "max_in_flight" : 16,
-        "queue_size" : 1024,
-        "reject_private_addresses" : true
+        "queue_size" : 1024
       }
     },
     "authorization_details": {

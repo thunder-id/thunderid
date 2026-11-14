@@ -17,6 +17,9 @@ $configPath = "tests/integration/resources/deployment.yaml"
 
 $header = @"
 server:
+  # The suite's mock identity providers, SMS and SMTP servers, HTTP request step targets, back-channel
+  # logout receivers and other admin-configured endpoints listen on localhost.
+  allow_private_addresses: true
   hostname: localhost
   port: 8095
   system_ou_id: "01900000-0000-7000-8000-000000000001"
@@ -33,6 +36,7 @@ gateway:
   max_gateways: 5
   # The suite registers gateways on localhost.
   allow_private_addresses: true
+
 
 tls:
   cert_file: "config/certs/server.cert"
