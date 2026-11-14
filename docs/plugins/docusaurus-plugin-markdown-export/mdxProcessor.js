@@ -64,8 +64,11 @@ function extractFrontmatter(content) {
   return { frontmatter, body: content.slice(match[0].length) };
 }
 
+// Only the page's own MDX imports go. An `import` line inside a code sample is part of the sample.
 function removeImports(content) {
-  return content.replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '');
+  return transformOutsideCodeSpans(content, (plain) =>
+    plain.replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, ''),
+  );
 }
 
 /** Replace `{{...}}` frontmatter-style placeholders that may have leaked into the body. */
