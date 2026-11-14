@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -77,8 +78,18 @@ func newFlowEngine(
 	}
 }
 
-// Execute executes a step in the flow
+// Execute executes a step in the flow. A step that fails with a service error ends the flow, so what the
+// flow created is undone.
 func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
+	flowStep, svcErr := fe.execute(ctx)
+	if svcErr != nil {
+		fe.compensate(ctx, fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID)))
+	}
+	return flowStep, svcErr
+}
+
+// execute runs the nodes of a step until the flow pauses, completes or fails.
+func (fe *flowEngine) execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
 	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	flowStep := FlowStep{
@@ -317,6 +328,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 
 	fe.trackPresentedOptionalInputs(ctx, nodeResp)
 	fe.updateContextWithNodeResponse(ctx, nodeResp)
+	fe.recordCompensation(ctx, currentNode, nodeResp)
 
 	nextNode, continueExecution, svcErr := fe.processNodeResponse(ctx, nodeResp, flowStep, logger)
 	if svcErr != nil {
@@ -983,6 +995,7 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 		if ctx.frameDepth() > 0 {
 			return fe.handleCalleeFailure(ctx, nodeResp, flowStep, logger)
 		}
+		fe.compensate(ctx, logger)
 		flowStep.Status = providers.FlowStatusError
 		flowStep.Error = nodeResp.Error
 		return nil, false, nil
@@ -991,6 +1004,49 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 			log.String("status", string(nodeResp.Status)))
 		return nil, false, &tidcommon.InternalServerError
 	}
+}
+
+// recordCompensation records what the node's executor created, so it can be undone if the flow ends in an error.
+func (fe *flowEngine) recordCompensation(ctx *EngineContext, node core.NodeInterface,
+	nodeResp *common.NodeResponse) {
+	ref := nodeResp.EngineData[common.EngineDataKeyCompensationRef]
+	if ref == "" {
+		return
+	}
+	execNode, ok := node.(core.ExecutorBackedNodeInterface)
+	if !ok {
+		return
+	}
+	ctx.compensations = append(ctx.compensations,
+		compensation{ExecutorName: execNode.GetExecutorName(), Ref: ref})
+}
+
+// compensate has each executor undo what it created in the flow, newest first. A failed undo is logged and
+// does not change the error the flow ends with.
+func (fe *flowEngine) compensate(ctx *EngineContext, logger *log.Logger) {
+	if len(ctx.compensations) == 0 {
+		return
+	}
+	ctx.compensated = true
+	for _, c := range slices.Backward(ctx.compensations) {
+		exec, err := fe.getExecutorByName(c.ExecutorName)
+		if err != nil {
+			logger.Error(ctx.Context, "Failed to get the executor to undo its creation",
+				log.String(log.LoggerKeyExecutorName, c.ExecutorName), log.Error(err))
+			continue
+		}
+		compensating, ok := exec.(core.CompensatingExecutorInterface)
+		if !ok {
+			logger.Error(ctx.Context, "Executor cannot undo its creation",
+				log.String(log.LoggerKeyExecutorName, c.ExecutorName))
+			continue
+		}
+		if err = compensating.Compensate(ctx.Context, c.Ref); err != nil {
+			logger.Error(ctx.Context, "Failed to undo the executor's creation",
+				log.String(log.LoggerKeyExecutorName, c.ExecutorName), log.Error(err))
+		}
+	}
+	ctx.compensations = nil
 }
 
 // isSignInBoundaryRefusal reports whether a node refused a sign-in for its organization unit boundary.
@@ -1298,6 +1354,7 @@ func (fe *flowEngine) handleCalleeFailure(ctx *EngineContext, nodeResp *common.N
 	// If the call node has no onFailure target, terminate the flow with error
 	onFailureID := cn.GetOnFailure()
 	if onFailureID == "" {
+		fe.compensate(ctx, logger)
 		flowStep.Status = providers.FlowStatusError
 		flowStep.Error = nodeResp.Error
 		return nil, false, nil

@@ -99,6 +99,12 @@ type EngineContext struct {
 	// authority is what a flow that acts for its caller runs with. Persisted with the context; executors never
 	// see it.
 	authority *flowAuthority
+	// compensations lists what executors created, in creation order, to undo if the flow ends in an error.
+	// Persisted with the context and shared by every call frame.
+	compensations []compensation
+	// compensated marks a step whose failure undid what the flow created. The flow cannot be resumed after
+	// it, so its context is removed. Transient, never persisted.
+	compensated bool
 	// SessionFlowID overrides the flow whose SSO session this execution operates on. It is set for
 	// sign-out flows, which run a different flow than the one that owns the session: the login (auth)
 	// flow id is carried here so the inbound cookie, SSO inputs, and cookie clear all resolve under
@@ -112,6 +118,12 @@ type EngineContext struct {
 	// expiresAt is when the stored context expires. Set when the context is first stored and persisted
 	// with it, since an update keeps the stored expiry. Zero for a context stored without one.
 	expiresAt time.Time
+}
+
+// compensation is something an executor created, which it undoes if the flow ends in an error.
+type compensation struct {
+	ExecutorName string `json:"executorName"`
+	Ref          string `json:"ref"`
 }
 
 // flowAuthority is the authority a flow that acts for its caller runs with: the caller who started it, as their
@@ -416,7 +428,8 @@ type flowContextContent struct {
 	PromptNodeID          *string `json:"promptNodeId,omitempty"`
 	BoundSubject          string  `json:"boundSubject,omitempty"`
 
-	Authority *flowAuthority `json:"authority,omitempty"`
+	Authority     *flowAuthority `json:"authority,omitempty"`
+	Compensations []compensation `json:"compensations,omitempty"`
 }
 
 // graphResolverFunc resolves a flow graph by its flow ID. Used during context deserialization to
@@ -630,6 +643,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		CurrentPromptNodeID:   promptNodeID,
 		boundSubject:          content.BoundSubject,
 		authority:             content.Authority,
+		compensations:         content.Compensations,
 		expiresAt:             f.ExpiryTime,
 	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
@@ -812,6 +826,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		PromptNodeID:          promptNodeIDStr,
 		BoundSubject:          ctx.boundSubject,
 		Authority:             ctx.authority,
+		Compensations:         ctx.compensations,
 	}
 
 	contextJSON, err := json.Marshal(content)

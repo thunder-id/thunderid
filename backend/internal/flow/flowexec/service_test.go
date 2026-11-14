@@ -2559,6 +2559,62 @@ func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompleteRemovesContext() {
 	s.True(flowStep.ExpiresAt.IsZero())
 }
 
+func (s *ServiceTestSuite) TestExecute_ExistingFlow_CompensatedErrorRemovesContext() {
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	testGraph := flowFactory.CreateGraph("test-graph-id", providers.FlowTypeRegistration, 1)
+
+	engineCtx := EngineContext{
+		ExecutionID:       "existing-execution-id",
+		AppID:             "test-app-id",
+		FlowType:          providers.FlowTypeRegistration,
+		AuthenticatedUser: authncm.AuthenticatedUser{Attributes: map[string]interface{}{}},
+		UserInputs:        map[string]string{},
+		RuntimeData:       map[string]string{},
+		ExecutionHistory:  map[string]*providers.NodeExecutionRecord{},
+		Graph:             testGraph,
+	}
+	storedCtx := &FlowContextDB{}
+	s.Require().NoError(storedCtx.FromEngineContext(engineCtx))
+
+	mockStore := newFlowStoreInterfaceMock(s.T())
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockEngine := newFlowEngineInterfaceMock(s.T())
+	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
+	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockFlowProvider.EXPECT().
+		GetFlow(mock.Anything, "test-graph-id").
+		Return(&providers.CompleteFlowDefinition{ID: "test-graph-id"}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
+	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
+		&inboundmodel.InboundClient{ID: "test-app-id", RegistrationFlowID: "test-graph-id"}, nil)
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, "test-app-id").Return(
+		&providers.Entity{ID: "test-app-id", Category: providers.EntityCategoryApp}, nil)
+	mockEngine.EXPECT().Execute(mock.Anything).
+		Run(func(ctx *EngineContext) { ctx.compensated = true }).
+		Return(FlowStep{Status: providers.FlowStatusError}, nil)
+	mockStore.EXPECT().DeleteFlowContext(mock.Anything, "existing-execution-id").Return(nil)
+
+	service := &flowExecService{
+		flowStore:     mockStore,
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowEngine:    mockEngine,
+		actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil, nil),
+		transactioner: &stubTransactioner{},
+		cfg:           testFlowExecCfg,
+	}
+
+	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+		string(providers.FlowTypeRegistration), "", false, "submit", map[string]string{}, "", "", "", nil)
+
+	s.Nil(svcErr)
+	s.Equal(providers.FlowStatusError, flowStep.Status)
+	mockStore.AssertNotCalled(s.T(), "UpdateFlowContext", mock.Anything, mock.Anything)
+}
+
 func (s *ServiceTestSuite) TestLoadNewContext_InvalidFlowType() {
 	service := &flowExecService{cfg: testFlowExecCfg}
 

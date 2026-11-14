@@ -2245,6 +2245,110 @@ func (s *EngineTestSuite) TestProcessNodeResponse_FailureStatus() {
 	s.False(continueExec)
 	s.Nil(next)
 	s.Equal(providers.FlowStatusError, flowStep.Status)
+	s.False(ctx.compensated)
+}
+
+func (s *EngineTestSuite) TestRecordCompensation() {
+	testCases := []struct {
+		name       string
+		node       func() core.NodeInterface
+		engineData map[string]string
+		expected   []compensation
+	}{
+		{
+			name: "Executor reports what it created",
+			node: func() core.NodeInterface {
+				n := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+				n.On("GetExecutorName").Return("OUExecutor")
+				return n
+			},
+			engineData: map[string]string{common.EngineDataKeyCompensationRef: "ou-1"},
+			expected:   []compensation{{ExecutorName: "OUExecutor", Ref: "ou-1"}},
+		},
+		{
+			name: "Executor reports nothing",
+			node: func() core.NodeInterface {
+				return coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+			},
+		},
+		{
+			name: "Node without an executor",
+			node: func() core.NodeInterface {
+				return coremock.NewNodeInterfaceMock(s.T())
+			},
+			engineData: map[string]string{common.EngineDataKeyCompensationRef: "ou-1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			fe := &flowEngine{logger: log.GetLogger()}
+			ctx := &EngineContext{Context: context.Background()}
+
+			fe.recordCompensation(ctx, tc.node(), &common.NodeResponse{EngineData: tc.engineData})
+
+			s.Equal(tc.expected, ctx.compensations)
+		})
+	}
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponse_FailureStatus_CompensatesNewestFirst() {
+	t := s.T()
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(t)
+	first := coremock.NewCompensatingExecutorInterfaceMock(t)
+	second := coremock.NewCompensatingExecutorInterfaceMock(t)
+	mockRegistry.EXPECT().GetExecutor("Missing").Return(nil, errors.New("not found"))
+	mockRegistry.EXPECT().GetExecutor("NotCompensating").Return(coremock.NewExecutorInterfaceMock(t), nil)
+	mockRegistry.EXPECT().GetExecutor("First").Return(first, nil)
+	mockRegistry.EXPECT().GetExecutor("Second").Return(second, nil)
+
+	var order []string
+	first.On("Compensate", mock.Anything, "ref-1").Run(func(mock.Arguments) { order = append(order, "ref-1") }).
+		Return(nil)
+	second.On("Compensate", mock.Anything, "ref-2").Run(func(mock.Arguments) { order = append(order, "ref-2") }).
+		Return(errors.New("undo failed"))
+
+	fe := &flowEngine{executorRegistry: mockRegistry, logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), compensations: []compensation{
+		{ExecutorName: "Missing", Ref: "ref-0"},
+		{ExecutorName: "NotCompensating", Ref: "ref-x"},
+		{ExecutorName: "First", Ref: "ref-1"},
+		{ExecutorName: "Second", Ref: "ref-2"},
+	}}
+	nodeErr := &tidcommon.ServiceError{Code: "err-1"}
+	flowStep := &FlowStep{}
+
+	next, continueExec, svcErr := fe.processNodeResponse(ctx,
+		&common.NodeResponse{Status: common.NodeStatusFailure, Error: nodeErr}, flowStep, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.False(continueExec)
+	s.Nil(next)
+	s.Equal(providers.FlowStatusError, flowStep.Status)
+	s.Equal(nodeErr, flowStep.Error)
+	s.Equal([]string{"ref-2", "ref-1"}, order)
+	s.Nil(ctx.compensations)
+	s.True(ctx.compensated)
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponse_ForwardStatus_KeepsCompensations() {
+	t := s.T()
+	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockNextNode := coremock.NewNodeInterfaceMock(t)
+	mockGraph.On("GetNode", "retry-prompt").Return(mockNextNode, true)
+	mockNextNode.On("GetID").Return("retry-prompt").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	compensations := []compensation{{ExecutorName: "OUExecutor", Ref: "ou-1"}}
+	ctx := &EngineContext{Context: context.Background(), Graph: mockGraph, compensations: compensations}
+
+	_, _, svcErr := fe.processNodeResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusForward, NextNodeID: "retry-prompt",
+		Error: &tidcommon.ServiceError{Code: "err-1"},
+	}, &FlowStep{}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Equal(compensations, ctx.compensations)
 }
 
 func (s *EngineTestSuite) TestProcessNodeResponse_CompleteStatus() {
@@ -3079,6 +3183,30 @@ func (s *EngineTestSuite) TestFlowEngineExecute_NilGraph() {
 
 	_, err := fe.Execute(ctx)
 	s.NotNil(err)
+}
+
+func (s *EngineTestSuite) TestFlowEngineExecute_ServiceErrorCompensates() {
+	t := s.T()
+	mockObs := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockObs.EXPECT().IsEnabled().Return(false).Maybe()
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(t)
+	mockExec := coremock.NewCompensatingExecutorInterfaceMock(t)
+	mockRegistry.EXPECT().GetExecutor("OUExecutor").Return(mockExec, nil)
+	mockExec.On("Compensate", mock.Anything, "ou-1").Return(nil).Once()
+
+	fe := &flowEngine{executorRegistry: mockRegistry, logger: log.GetLogger(), observabilitySvc: mockObs}
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "exec-1",
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		compensations:    []compensation{{ExecutorName: "OUExecutor", Ref: "ou-1"}},
+	}
+
+	_, err := fe.Execute(ctx)
+
+	s.NotNil(err)
+	s.True(ctx.compensated)
+	s.Nil(ctx.compensations)
 }
 
 func (s *EngineTestSuite) TestFlowEngineExecute_FailsWhenNodeExceedsVisitLimit() {
@@ -4661,8 +4789,12 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_NoOnFailure() {
 
 	mockCallerGraph.On("GetNode", "call-node-1").Return(mockCallNode, true)
 	mockCallNode.On("GetOnFailure").Return("")
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(t)
+	mockExec := coremock.NewCompensatingExecutorInterfaceMock(t)
+	mockRegistry.EXPECT().GetExecutor("OUExecutor").Return(mockExec, nil)
+	mockExec.On("Compensate", mock.Anything, "ou-1").Return(nil).Once()
 
-	fe := &flowEngine{logger: log.GetLogger()}
+	fe := &flowEngine{executorRegistry: mockRegistry, logger: log.GetLogger()}
 	flowStep := &FlowStep{}
 
 	callerErr := &tidcommon.ServiceError{Code: "callee-failed"}
@@ -4671,7 +4803,8 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_NoOnFailure() {
 		Error:  callerErr,
 	}
 
-	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph}
+	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph,
+		compensations: []compensation{{ExecutorName: "OUExecutor", Ref: "ou-1"}}}
 	ctx.pushFrame("call-node-1")
 	ctx.Graph = coremock.NewGraphInterfaceMock(t)
 
@@ -4681,6 +4814,7 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_NoOnFailure() {
 	s.Nil(svcErr)
 	s.Equal(providers.FlowStatusError, flowStep.Status)
 	s.Equal(callerErr, flowStep.Error)
+	s.Nil(ctx.compensations)
 }
 
 func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
@@ -4702,7 +4836,8 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
 		Error:  callerErr,
 	}
 
-	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph}
+	compensations := []compensation{{ExecutorName: "OUExecutor", Ref: "ou-1"}}
+	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph, compensations: compensations}
 	ctx.pushFrame("call-node-1")
 	ctx.Graph = coremock.NewGraphInterfaceMock(t)
 
@@ -4713,6 +4848,7 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
 	s.NotNil(ctx.CurrentNodeResponse)
 	s.Equal(common.NodeStatusForward, ctx.CurrentNodeResponse.Status)
 	s.Equal(callerErr, ctx.CurrentNodeResponse.Error)
+	s.Equal(compensations, ctx.compensations)
 }
 
 func (s *EngineTestSuite) TestHandleCalleeFailure_DeviceGrantRoutesToConfiguredFailureNode() {

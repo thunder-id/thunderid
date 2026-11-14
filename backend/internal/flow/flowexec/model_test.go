@@ -1026,6 +1026,31 @@ func (s *ModelTestSuite) TestInterceptorSharedData_RoundTrip() {
 	s.Equal("3", resultCtx.InterceptorSharedData["reqCount"])
 }
 
+func (s *ModelTestSuite) TestCompensations_RoundTrip() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id")
+	mockGraph.On("GetType").Return(providers.FlowTypeRegistration)
+
+	compensations := []compensation{{ExecutorName: "OUExecutor", Ref: "ou-1"}, {ExecutorName: "Other", Ref: "r-2"}}
+	ctx := EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "test-exec-id",
+		FlowType:         providers.FlowTypeRegistration,
+		UserInputs:       map[string]string{},
+		RuntimeData:      map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Graph:            mockGraph,
+		compensations:    compensations,
+	}
+
+	dbModel := &FlowContextDB{}
+	s.NoError(dbModel.FromEngineContext(ctx))
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+	s.NoError(err)
+	s.Equal(compensations, resultCtx.compensations)
+}
+
 // FrameStack tests
 
 func (s *ModelTestSuite) TestFrameStack_PushAndDepth() {

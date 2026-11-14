@@ -116,6 +116,65 @@ func (_c *ConfigurableOUProviderMock_CreateOrganizationUnit_Call) RunAndReturn(r
 	return _c
 }
 
+// DeleteOrganizationUnit provides a mock function for the type ConfigurableOUProviderMock
+func (_mock *ConfigurableOUProviderMock) DeleteOrganizationUnit(ctx context.Context, id string) *common.ServiceError {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteOrganizationUnit")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ConfigurableOUProviderMock_DeleteOrganizationUnit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteOrganizationUnit'
+type ConfigurableOUProviderMock_DeleteOrganizationUnit_Call struct {
+	*mock.Call
+}
+
+// DeleteOrganizationUnit is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *ConfigurableOUProviderMock_Expecter) DeleteOrganizationUnit(ctx any, id any) *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call {
+	return &ConfigurableOUProviderMock_DeleteOrganizationUnit_Call{Call: _e.mock.On("DeleteOrganizationUnit", ctx, id)}
+}
+
+func (_c *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call) Run(run func(ctx context.Context, id string)) *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call) Return(serviceError *common.ServiceError) *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *ConfigurableOUProviderMock_DeleteOrganizationUnit_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEligibleOUs provides a mock function for the type ConfigurableOUProviderMock
 func (_mock *ConfigurableOUProviderMock) GetEligibleOUs(ctx context.Context) ([]string, *common.ServiceError) {
 	ret := _mock.Called(ctx)
