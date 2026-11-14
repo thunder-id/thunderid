@@ -161,7 +161,7 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 	}
 
 	loginHint := ctx.UserInputs[userInputLoginHint]
-	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
+	loginHintAttr := cibaLoginHintAttribute(ctx)
 
 	if loginHintAttr != "" {
 		if loginHint == "" {
@@ -238,9 +238,9 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 	// errors (i.e. user not found). Other failures reported by IdentifyEntity — such
 	// as ambiguous matches or system errors — are not recoverable in identify mode
 	// and must be returned as-is so the caller can handle them appropriately.
-	// When loginHintAttribute is set the identifier was supplied externally — there is no
-	// interactive user to re-enter it, so keep ExecFailure.
-	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
+	// When a CIBA request's login hint names the user, the identifier was supplied externally and there is
+	// no interactive user to re-enter it, so keep ExecFailure.
+	loginHintAttr := cibaLoginHintAttribute(ctx)
 	if execResp.Status == providers.ExecFailure &&
 		execResp.Error != nil && execResp.Error.Code == ErrEntityNotFound.Code && loginHintAttr == "" {
 		logger.Debug(ctx.Context, "User not found — promoting to user input required",
@@ -548,11 +548,11 @@ func setEntityStateFromCount(execResp *providers.ExecutorResponse, count int) {
 }
 
 // buildSearchAttributes collects search attributes from user inputs and runtime data.
-// When the loginHintAttribute node property is set, the login_hint value from UserInputs is
+// In a CIBA request with the loginHintAttribute node property set, the login_hint value from UserInputs is
 // mapped to the configured attribute so the flow admin controls which user attribute resolves
 // the identifier without hardcoding a specific attribute.
 func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[string]interface{} {
-	if hintAttr, ok := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string); ok && hintAttr != "" {
+	if hintAttr := cibaLoginHintAttribute(ctx); hintAttr != "" {
 		if hint, exists := ctx.UserInputs[userInputLoginHint]; exists && hint != "" {
 			return map[string]interface{}{hintAttr: hint}
 		}
@@ -771,4 +771,15 @@ func extractDisambiguationOptions(candidates []*providers.Entity) []providers.In
 	}
 
 	return inputs
+}
+
+// cibaLoginHintAttribute returns the attribute a CIBA request's login hint is matched against. Outside a CIBA
+// request it returns an empty string, so the step identifies the user from its own inputs.
+func cibaLoginHintAttribute(ctx *providers.NodeContext) string {
+	callbackType := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData, common.RuntimeKeyCallbackType)
+	if callbackType != string(providers.GrantTypeCIBA) {
+		return ""
+	}
+	attribute, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
+	return attribute
 }

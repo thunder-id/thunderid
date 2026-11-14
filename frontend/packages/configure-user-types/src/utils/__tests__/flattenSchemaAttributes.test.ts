@@ -18,9 +18,9 @@ describe('flattenSchemaAttributes', () => {
     };
 
     expect(flattenSchemaAttributes(schema)).toEqual([
-      {attribute: 'username', credential: false},
-      {attribute: 'age', credential: false},
-      {attribute: 'active', credential: false},
+      {attribute: 'username', credential: false, unique: false},
+      {attribute: 'age', credential: false, unique: false},
+      {attribute: 'active', credential: false, unique: false},
     ]);
   });
 
@@ -53,18 +53,32 @@ describe('flattenSchemaAttributes', () => {
   it('tags credential attributes instead of dropping them', () => {
     const schema: UserTypeDefinition = {
       username: {type: 'string'},
-      password: {type: 'string', credential: true},
+      password: {type: 'string', credential: true, unique: false},
     };
 
     expect(flattenSchemaAttributes(schema)).toEqual([
-      {attribute: 'username', credential: false},
-      {attribute: 'password', credential: true},
+      {attribute: 'username', credential: false, unique: false},
+      {attribute: 'password', credential: true, unique: false},
+    ]);
+  });
+
+  it('tags unique attributes', () => {
+    const schema: UserTypeDefinition = {
+      email: {type: 'string', unique: true},
+      given_name: {type: 'string'},
+    };
+
+    expect(flattenSchemaAttributes(schema)).toEqual([
+      {attribute: 'email', credential: false, unique: true},
+      {attribute: 'given_name', credential: false, unique: false},
     ]);
   });
 
   it('applies the prefix to top level attributes', () => {
     const schema: UserTypeDefinition = {city: {type: 'string'}};
 
-    expect(flattenSchemaAttributes(schema, 'address.')).toEqual([{attribute: 'address.city', credential: false}]);
+    expect(flattenSchemaAttributes(schema, 'address.')).toEqual([
+      {attribute: 'address.city', credential: false, unique: false},
+    ]);
   });
 });

@@ -11,6 +11,8 @@ export interface FlattenedAttribute {
   attribute: string;
   /** Whether the attribute is a credential (password and similar). */
   credential: boolean;
+  /** Whether each user of the type must have a distinct value for the attribute. */
+  unique: boolean;
 }
 
 /** Credentials only exist on string and number properties; read the flag off the union safely. */
@@ -44,7 +46,7 @@ export default function flattenSchemaAttributes(
     if (definition.type === 'object' && definition.properties) {
       attributes.push(...flattenSchemaAttributes(definition.properties, `${fullKey}.`));
     } else if (definition.type !== 'array') {
-      attributes.push({attribute: fullKey, credential: isCredential(definition)});
+      attributes.push({attribute: fullKey, credential: isCredential(definition), unique: Boolean(definition.unique)});
     }
   }
 

@@ -96,9 +96,27 @@ Content-Type: application/json
 </TabItem>
 </Tabs>
 
+## Configure How the Login Hint Identifies the User
+
+The CIBA flow's **Identify User** step has **Identify from a CIBA login hint** enabled. It looks up the user by matching the `login_hint` value against the user attribute set in **Login hint attribute**. Flows created from the CIBA template match against `username`. To accept a different hint, such as an email address, change the attribute:
+
+1. Navigate to the **Flows** section in the <ProductName /> Console and open the CIBA flow.
+2. In the flow builder, select the **Identify User** node.
+3. Make sure **Identify from a CIBA login hint** is selected. Selecting it sets **Login hint attribute** to `username`.
+4. In **Login hint attribute**, enter the user attribute to match, for example `email`. The field suggests the attributes that every user type declaring them marks as unique.
+5. Save the flow.
+
+The attribute must identify exactly one user. When no user or more than one user matches, the request fails.
+
+When a client sends `id_token_hint` instead of `login_hint`, <ProductName /> passes the ID token's `sub` claim, the user's ID, to the flow as the login hint. To accept `id_token_hint`, set **Login hint attribute** to `userID`. Because a flow matches the hint against one attribute, use a separate flow and application for clients that send `id_token_hint`.
+
+**Identify from a CIBA login hint** applies only to CIBA requests. In a CIBA request, the **Identify User** step ignores its configured inputs and fails instead of prompting again when no user matches. Other sign-ins that run the same flow use the step's configured inputs as usual.
+
 ## Run the Flow
 
 ### Step 1: Initiate Backchannel Authentication
+
+This example sends an email address as the `login_hint`, so it assumes the flow's **Login hint attribute** is set to `email`.
 
 ```bash
 curl -X POST https://{{productSlug}}.example.com/oauth2/bc-authorize \
