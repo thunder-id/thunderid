@@ -258,3 +258,64 @@ describe('VerifiablePresentationForm issuer trust', () => {
     expect(screen.queryByRole('button', {name: 'Save'})).not.toBeInTheDocument();
   });
 });
+
+describe('VerifiablePresentationForm subject claim', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const withClaims: VerifiablePresentation = {
+    ...definition,
+    mandatoryClaims: ['given_name', 'national_id'],
+    optionalClaims: ['email'],
+  };
+
+  async function openClaimsTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole('tab', {name: 'Claims'}));
+  }
+
+  it('offers only the mandatory claims and sends the chosen one', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    expect(screen.getByRole('combobox', {name: 'Subject claim'})).toHaveTextContent('Credential subject (sub)');
+    await user.click(screen.getByRole('combobox', {name: 'Subject claim'}));
+    const listbox = await screen.findByRole('listbox');
+    expect(
+      within(listbox)
+        .getAllByRole('option')
+        .map((option: HTMLElement) => option.textContent),
+    ).toEqual(['Credential subject (sub)', 'given_name', 'national_id']);
+    await user.click(within(listbox).getByRole('option', {name: 'national_id'}));
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({subjectClaim: 'national_id'}));
+  });
+
+  it('falls back to the credential sub when the chosen claim is removed', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    expect(screen.getByRole('combobox', {name: 'Subject claim'})).toHaveTextContent('national_id');
+    await user.click(screen.getAllByRole('button', {name: 'Remove claim'})[1]);
+    expect(screen.getByRole('combobox', {name: 'Subject claim'})).toHaveTextContent('Credential subject (sub)');
+
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({subjectClaim: undefined}));
+  });
+
+  it('restores the stored subject claim on reset', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    await user.click(screen.getByRole('combobox', {name: 'Subject claim'}));
+    await user.click(within(await screen.findByRole('listbox')).getByRole('option', {name: 'given_name'}));
+    await user.click(screen.getByRole('button', {name: 'Reset'}));
+
+    expect(screen.getByRole('combobox', {name: 'Subject claim'})).toHaveTextContent('national_id');
+    expect(screen.queryByRole('button', {name: 'Save'})).not.toBeInTheDocument();
+  });
+});

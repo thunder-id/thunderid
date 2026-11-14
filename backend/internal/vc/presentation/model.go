@@ -42,6 +42,9 @@ type PresentationDefinitionDTO struct {
 	EnforceTrustedIssuer *bool `json:"enforceTrustedIssuer,omitempty" yaml:"enforceTrustedIssuer,omitempty"`
 	// TrustedAuthorities holds the trusted issuer certificates of this definition.
 	TrustedAuthorities []TrustedAuthority `json:"trustedAuthorities,omitempty" yaml:"trustedAuthorities,omitempty"`
+	// SubjectClaim names the mandatory claim (dotted path) that identifies the holder at sign-in, such as a
+	// national identifier. Empty identifies the holder by the credential sub.
+	SubjectClaim string `json:"subjectClaim,omitempty" yaml:"subjectClaim,omitempty"`
 }
 
 // presentationDefinitionRequest is the API request body for create/update. A definition in a project may
@@ -60,6 +63,7 @@ type presentationDefinitionRequest struct {
 	ClaimValues          map[string][]string `json:"claimValues"`
 	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer"`
 	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities"`
+	SubjectClaim         string              `json:"subjectClaim"`
 }
 
 // presentationDefinitionResponse is the API response body. Trusted authorities
@@ -80,6 +84,7 @@ type presentationDefinitionResponse struct {
 	ClaimValues          map[string][]string `json:"claimValues,omitempty"`
 	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer,omitempty"`
 	TrustedAuthorities   []string            `json:"trustedAuthorities,omitempty"`
+	SubjectClaim         string              `json:"subjectClaim,omitempty"`
 }
 
 // toResponse converts a DTO to its API response shape.
@@ -100,6 +105,7 @@ func toResponse(dto PresentationDefinitionDTO) presentationDefinitionResponse {
 		ClaimValues:          dto.ClaimValues,
 		EnforceTrustedIssuer: dto.EnforceTrustedIssuer,
 		TrustedAuthorities:   trustedAuthorityNames(dto.TrustedAuthorities),
+		SubjectClaim:         dto.SubjectClaim,
 	}
 }
 

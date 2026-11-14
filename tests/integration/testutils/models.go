@@ -647,6 +647,7 @@ type PresentationDefinition struct {
 	ClaimValues          map[string][]string `json:"claimValues,omitempty"`
 	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer,omitempty"`
 	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities,omitempty"`
+	SubjectClaim         string              `json:"subjectClaim,omitempty"`
 }
 
 // TrustedAuthority is a trusted issuer certificate supplied on a presentation definition

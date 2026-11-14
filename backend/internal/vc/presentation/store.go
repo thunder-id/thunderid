@@ -23,6 +23,7 @@ type claimsBlob struct {
 	Mandatory []string            `json:"mandatory,omitempty"`
 	Optional  []string            `json:"optional,omitempty"`
 	Values    map[string][]string `json:"values,omitempty"`
+	Subject   string              `json:"subject,omitempty"`
 }
 
 // definitionStoreInterface persists managed presentation definitions in configdb.
@@ -258,6 +259,7 @@ func marshalClaims(dto PresentationDefinitionDTO) (string, error) {
 		Mandatory: dto.MandatoryClaims,
 		Optional:  dto.OptionalClaims,
 		Values:    dto.ClaimValues,
+		Subject:   dto.SubjectClaim,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal claims: %w", err)
@@ -315,6 +317,7 @@ func buildDefinitionDTOFromRow(row map[string]interface{}) (*PresentationDefinit
 		dto.MandatoryClaims = cb.Mandatory
 		dto.OptionalClaims = cb.Optional
 		dto.ClaimValues = cb.Values
+		dto.SubjectClaim = cb.Subject
 	}
 	dto.EnforceTrustedIssuer = columnNullableBool(row["enforce_trusted_issuer"])
 	if authoritiesBytes := columnBytes(row["trusted_authorities"]); len(authoritiesBytes) > 0 {

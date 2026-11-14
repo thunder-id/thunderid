@@ -6757,6 +6757,13 @@ const translations = {
     'form.format.label': 'Format',
     'form.format.sdJwt': 'SD-JWT VC (dc+sd-jwt)',
     'form.format.hint': 'Only SD-JWT VC is currently supported.',
+    'form.holder.title': 'Holder identification',
+    'form.holder.description':
+      'Choose the claim that identifies the holder when this presentation definition is used to sign in.',
+    'form.holder.subjectClaim.label': 'Subject claim',
+    'form.holder.subjectClaim.sub': 'Credential subject (sub)',
+    'form.holder.subjectClaim.hint':
+      'Only mandatory claims are listed. Sign-in also requires enforcing a trusted issuer whose certificate matches the credential issuer. Changing this claim later stops returning holders from resolving to their existing users.',
     'form.dangerZone.title': 'Danger zone',
     'form.dangerZone.description': 'Irreversible actions for this presentation definition.',
     'form.dangerZone.delete': 'Delete presentation definition',
