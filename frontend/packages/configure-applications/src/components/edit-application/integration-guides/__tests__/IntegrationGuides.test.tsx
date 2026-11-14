@@ -1,7 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {render, screen, fireEvent, waitFor, within} from '@testing-library/react';
 import {LoggerProvider, LogLevel} from '@thunderid/logger';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {Application} from '../../../../models/application';
@@ -78,8 +79,33 @@ const promptFixtures: Record<string, string> = {
   'https://thunderid.dev/prompts/nextjs/redirect-based.txt': 'Integrate {{productName}} with Next.js',
 };
 
+const reactGuideUrl = 'https://thunderid.dev/docs/next/guides/getting-started/connect-your-application/react.md';
+const reactGuide = [
+  '# React Quickstart',
+  '',
+  '## Create an Application',
+  '',
+  '1. Sign in to the Console.',
+  '',
+  '## Add the Provider',
+  '',
+  'Wrap your root component.',
+  '',
+  '```jsx title="src/main.jsx"',
+  '<ThunderIDProvider clientId="<your-client-id>" baseUrl="https://localhost:8090" />',
+  '```',
+  '',
+  '## Run Your App',
+  '',
+  'Start the development server.',
+].join('\n');
+
 const renderWithProviders = (component: React.ReactElement) =>
-  render(<LoggerProvider logger={{level: LogLevel.DEBUG}}>{component}</LoggerProvider>);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <LoggerProvider logger={{level: LogLevel.DEBUG}}>{component}</LoggerProvider>
+    </QueryClientProvider>,
+  );
 
 const reactApplication: Application = {
   id: 'app-123',
@@ -211,22 +237,24 @@ describe('IntegrationGuides', () => {
     );
   });
 
-  it('hides the read-the-quickstart-guide card when the docs link is not configured', () => {
+  it('hides the integration guide when the docs link is not configured', () => {
     const documentationLinksWithoutDocs = {...documentationLinks};
     delete documentationLinksWithoutDocs['applications.templates.react.docs'];
     mockGetDocumentationLink.mockImplementation((key: string) => documentationLinksWithoutDocs[key]);
 
     renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
 
-    expect(screen.queryByText('Read the quickstart guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Integrate your application')).not.toBeInTheDocument();
     expect(screen.getByRole('link', {name: /Open on StackBlitz/i})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /Copy prompt/i})).toBeInTheDocument();
   });
 
   it('shows the leaving-console confirmation before opening the docs guide', () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
 
-    fireEvent.click(screen.getByRole('button', {name: /Open quickstart/i}));
+    fireEvent.click(screen.getByRole('button', {name: 'Open integration guide'}));
+    fireEvent.click(screen.getByRole('button', {name: /Open in docs/i}));
     expect(screen.getByText('You are leaving ThunderID')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', {name: 'Continue'}));
@@ -237,6 +265,41 @@ describe('IntegrationGuides', () => {
     );
 
     openSpy.mockRestore();
+  });
+
+  it('opens the docs guide in a dialog with the application values filled into the code', async () => {
+    mockGetRuntimeUrl.mockReturnValue('https://gateway.example.com');
+    promptFixtures[reactGuideUrl] = reactGuide;
+
+    renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', {name: 'Open integration guide'}));
+
+    expect(screen.getByRole('dialog', {name: 'Integration guide'})).toBeInTheDocument();
+    expect(await screen.findByRole('button', {name: /Add the Provider/})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /Run Your App/})).toBeInTheDocument();
+    // Creating the application is already done by the time someone reads its Overview tab.
+    expect(screen.queryByText('Sign in to the Console.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('src/main.jsx')).toHaveTextContent(
+      '<ThunderIDProvider clientId="client-123" baseUrl="https://gateway.example.com" />',
+    );
+
+    fireEvent.click(screen.getByRole('button', {name: 'Close'}));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    delete promptFixtures[reactGuideUrl];
+  });
+
+  it('keeps the link to the docs site when the page is not a quickstart it can show inline', async () => {
+    renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Open integration guide'}));
+
+    expect(await screen.findByText('Follow the step-by-step guide on the docs site.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /Open in docs/i})).toBeInTheDocument();
   });
 
   it('copies the coding agent prompt with placeholders replaced', async () => {
@@ -361,13 +424,16 @@ describe('IntegrationGuides', () => {
       type: 'mobile',
     };
 
-    it('shows one quickstart guide card per platform and no StackBlitz banner', () => {
+    it('offers one quickstart guide per platform and no StackBlitz banner', () => {
       renderWithProviders(<IntegrationGuides application={mobileApplication} oauth2Config={oauth2Config} />);
 
       expect(screen.queryByRole('link', {name: /Open on StackBlitz/i})).not.toBeInTheDocument();
-      expect(screen.getByText('iOS quickstart guide')).toBeInTheDocument();
-      expect(screen.getByText('Android quickstart guide')).toBeInTheDocument();
-      expect(screen.getByText('Flutter quickstart guide')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', {name: 'Open integration guide'}));
+
+      const platforms = screen.getByRole('group', {name: 'Platform'});
+      expect(within(platforms).getByRole('button', {name: 'iOS'})).toBeInTheDocument();
+      expect(within(platforms).getByRole('button', {name: 'Android'})).toBeInTheDocument();
+      expect(within(platforms).getByRole('button', {name: 'Flutter'})).toBeInTheDocument();
     });
 
     it('shows App Native flow endpoints instead of the OAuth2/OIDC endpoints', () => {

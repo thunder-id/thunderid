@@ -13,6 +13,10 @@ const ApplicationQueryKeys = {
    * Key for a single application query
    */
   APPLICATION: 'application',
+  /**
+   * Key for a quickstart guide fetched from the docs site
+   */
+  QUICKSTART_GUIDE: 'application-quickstart-guide',
 } as const;
 
 export default ApplicationQueryKeys;

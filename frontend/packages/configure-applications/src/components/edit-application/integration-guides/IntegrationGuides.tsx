@@ -24,10 +24,24 @@ import {useGetOrganizationUnit} from '@thunderid/configure-organization-units';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {DefaultTheme, type Theme, useGetTheme} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
-import {Box, Button, Chip, Link, Paper, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
-import {ArrowRight, ArrowUpRight, Check, Copy, Sparkles} from '@wso2/oxygen-ui-icons-react';
+import {
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Paper,
+  Stack,
+  Tooltip,
+  Typography,
+  useColorScheme,
+} from '@wso2/oxygen-ui';
+import {ArrowRight, BookOpen, Check, Copy, Sparkles, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
+import QuickstartGuide, {type QuickstartGuideSource} from './QuickstartGuide';
 import type {Application} from '../../../models/application';
 import type {OAuth2Config} from '../../../models/oauth';
 import {getIntegrationGuideForTemplate} from '../../../utils/getIntegrationGuidesForTemplate';
@@ -94,7 +108,7 @@ function IconBadge({children, gradient = false}: {children: ReactNode; gradient?
   );
 }
 
-/** Vendor logo shown in a quickstart card for a given platform's {@link QuickstartLink.label}. */
+/** Vendor logo shown next to a quickstart guide for a given platform's {@link QuickstartLink.label}. */
 const QUICKSTART_ICONS: Record<string, JSX.Element> = {
   Android: <AndroidLogo size={18} />,
   Flutter: <FlutterLogo size={18} />,
@@ -115,16 +129,14 @@ function IconCard({
   title,
   description,
   children,
-  sx = undefined,
 }: {
   icon: ReactNode;
   title: ReactNode;
   description: ReactNode;
   children: ReactNode;
-  sx?: object;
 }): JSX.Element {
   return (
-    <Paper variant="outlined" sx={{borderRadius: '10px', p: 2.25, display: 'flex', gap: 1.75, ...sx}}>
+    <Paper variant="outlined" sx={{borderRadius: '10px', p: 2.25, display: 'flex', gap: 1.75}}>
       {icon}
       <Box sx={{minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column'}}>
         <Typography variant="subtitle2" sx={{fontWeight: 600, mb: 0.5}}>
@@ -175,9 +187,10 @@ function OverviewCard({
  * Overview tab for an application's edit page.
  *
  * Always shows the application's identifiers, and, for OAuth2-enabled applications, its OIDC
- * endpoints. When the application's template has a runnable quickstart, it additionally shows a
- * StackBlitz quickstart, a link to the hosted integration guide, a ready-made coding-agent
- * prompt, and a preview of the sign-in experience.
+ * endpoints. When the application's template has a quickstart, it additionally shows a StackBlitz
+ * quickstart, an emphasized card that opens the integration guide from the docs site in a dialog
+ * with this application's values filled in, a ready-made coding-agent prompt, and a preview of
+ * the sign-in experience.
  */
 export default function IntegrationGuides({
   application,
@@ -204,6 +217,7 @@ export default function IntegrationGuides({
   const productName = config.brand.product_name;
   const [promptCopied, setPromptCopied] = useState(false);
   const [isFetchingPrompt, setIsFetchingPrompt] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const externalLinkConfirmation = useExternalLinkConfirmation();
 
   const templateId = application.template ?? undefined;
@@ -211,17 +225,13 @@ export default function IntegrationGuides({
   const promptUrl = resolveTemplateLink(guide?.llm_prompt.docsUrl, getDocumentationLink);
   const quickstarts = getQuickstartsForTemplate(templateId) ?? [];
   const playgrounds = getPlaygroundsForTemplate(templateId) ?? [];
-  // A template with exactly one quickstart guide gets a single generic guide card. Templates
-  // covering multiple platform SDKs (e.g. Mobile, which spans iOS/Android/Flutter) get one guide
-  // card per platform instead. Entries whose docs link isn't configured (resolves to undefined)
-  // are dropped rather than rendered with a dead link.
-  const primaryQuickstart = quickstarts.length === 1 ? quickstarts[0] : undefined;
-  const primaryQuickstartDocsUrl = resolveTemplateLink(primaryQuickstart?.docsUrl, getDocumentationLink);
-  const visibleQuickstarts = primaryQuickstart
-    ? []
-    : quickstarts
-        .map((entry) => ({...entry, docsUrl: resolveTemplateLink(entry.docsUrl, getDocumentationLink)}))
-        .filter((entry): entry is {label: string; docsUrl: string} => Boolean(entry.docsUrl));
+  // One guide per platform SDK the template covers (e.g. Mobile spans iOS, Android, and Flutter).
+  // Entries whose docs link isn't configured (resolves to undefined) are dropped rather than
+  // rendered with a dead link.
+  const quickstartGuides: QuickstartGuideSource[] = quickstarts.flatMap((entry) => {
+    const docsUrl = resolveTemplateLink(entry.docsUrl, getDocumentationLink);
+    return docsUrl ? [{label: entry.label, docsUrl, icon: QUICKSTART_ICONS[entry.label]}] : [];
+  });
   // A template with exactly one playground gets the runnable banner, provided it's on an
   // environment the console knows how to render (currently only StackBlitz). Templates covering
   // multiple platform SDKs, or platforms with no runnable environment (e.g. native mobile), have
@@ -383,7 +393,30 @@ export default function IntegrationGuides({
 
   const colorMode: 'light' | 'dark' = (mode === 'system' ? systemMode : mode) === 'dark' ? 'dark' : 'light';
   const themeSwatchColor = themeDetails?.theme.colorSchemes?.[colorMode]?.palette?.primary?.main;
-  const hasVisibleQuickstart = Boolean(primaryQuickstartDocsUrl) || visibleQuickstarts.length > 0;
+  const hasVisibleQuickstart = quickstartGuides.length > 0;
+  // The docs code samples are written against a local instance with placeholder identifiers.
+  // Swapping in this application's values leaves the developer nothing to look up.
+  const guideCodeValues = {
+    '<your-client-id>': oauth2Config?.clientId,
+    '<your-application-id>': application.id,
+    'https://localhost:8090': runtimeUrl,
+  };
+  const renderCopyPromptButton = (variant: 'contained' | 'outlined'): JSX.Element => (
+    <Button
+      variant={variant}
+      size="small"
+      disabled={isFetchingPrompt}
+      startIcon={promptCopied ? <Check size={13} /> : <Copy size={13} />}
+      sx={{flexShrink: 0}}
+      onClick={() => {
+        handleCopyPrompt().catch(() => {
+          /* Error already handled */
+        });
+      }}
+    >
+      {promptCopied ? t('common:actions.copied') : t('applications:edit.overview.agentPrompt.action', 'Copy prompt')}
+    </Button>
+  );
   const endpointsCard = (showOAuthEndpoints || showFlowEndpoints) && (
     <OverviewCard
       title={t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints')}
@@ -463,104 +496,72 @@ export default function IntegrationGuides({
             />
           )}
 
-          {(hasVisibleQuickstart || promptUrl) && (
-            <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.75}}>
-              {primaryQuickstartDocsUrl && (
-                <IconCard
-                  icon={
-                    <IconBadge>{QUICKSTART_ICONS[primaryQuickstart!.label] ?? <ArrowUpRight size={16} />}</IconBadge>
-                  }
-                  title={t('applications:edit.overview.readGuide.title', 'Read the quickstart guide')}
-                  description={t(
-                    'applications:edit.overview.readGuide.description',
-                    'Step-by-step integration guide on the docs site.',
+          {hasVisibleQuickstart && (
+            <Paper variant="outlined" sx={{p: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2}}>
+              <IconBadge>
+                {(quickstartGuides.length === 1 ? quickstartGuides[0].icon : undefined) ?? <BookOpen size={16} />}
+              </IconBadge>
+              <Box sx={{flex: '1 1 240px', minWidth: 0}}>
+                <Typography variant="h6" component="h2">
+                  {t('applications:edit.overview.guide.title', 'Integrate your application')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {t(
+                    'applications:edit.overview.guide.description',
+                    'A step-by-step guide, with the values of this application already in the code samples.',
                   )}
-                  sx={{flex: '1 1 240px'}}
+                </Typography>
+              </Box>
+              <Stack direction="row" flexWrap="wrap" gap={1}>
+                {/* The coding agent prompt is the quickest way in, so it is the primary action whenever
+                    the template has one. */}
+                <Button
+                  variant={promptUrl ? 'outlined' : 'contained'}
+                  size="small"
+                  startIcon={<BookOpen size={16} />}
+                  onClick={() => setIsGuideOpen(true)}
                 >
-                  <Link
-                    component="button"
-                    type="button"
-                    variant="body2"
-                    underline="hover"
-                    sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5, fontWeight: 600}}
-                    onClick={() => externalLinkConfirmation.requestNavigation(primaryQuickstartDocsUrl)}
+                  {t('applications:edit.overview.guide.open', 'Open integration guide')}
+                </Button>
+                {promptUrl && (
+                  <Tooltip
+                    title={t(
+                      'applications:edit.overview.agentPrompt.description',
+                      'Copy a ready-made prompt for Claude, Cursor, or any agent.',
+                    )}
                   >
-                    {t('applications:edit.overview.readGuide.action', 'Open quickstart')}
-                    <ArrowUpRight size={13} />
-                  </Link>
-                </IconCard>
-              )}
+                    <span>{renderCopyPromptButton('contained')}</span>
+                  </Tooltip>
+                )}
+              </Stack>
+            </Paper>
+          )}
 
-              {visibleQuickstarts.map((entry) => (
-                <IconCard
-                  key={entry.label}
-                  icon={<IconBadge>{QUICKSTART_ICONS[entry.label] ?? <ArrowUpRight size={16} />}</IconBadge>}
-                  title={t('applications:edit.overview.readGuide.titleFor', '{{label}} quickstart guide', {
-                    label: entry.label,
-                  })}
-                  description={t(
-                    'applications:edit.overview.readGuide.descriptionFor',
-                    'Step-by-step {{label}} integration guide on the docs site.',
-                    {label: entry.label},
-                  )}
-                  sx={{flex: '1 1 240px'}}
-                >
-                  <Link
-                    component="button"
-                    type="button"
-                    variant="body2"
-                    underline="hover"
-                    sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5, fontWeight: 600}}
-                    onClick={() => externalLinkConfirmation.requestNavigation(entry.docsUrl)}
-                  >
-                    {t('applications:edit.overview.readGuide.action', 'Open quickstart')}
-                    <ArrowUpRight size={13} />
-                  </Link>
-                </IconCard>
-              ))}
-
-              {promptUrl && (
-                <IconCard
-                  icon={
-                    <IconBadge>
-                      <Sparkles size={16} />
-                    </IconBadge>
-                  }
-                  title={
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <span>{t('applications:edit.overview.agentPrompt.title', 'Integrate with a coding agent')}</span>
-                      <Chip
-                        label={t('applications:edit.overview.agentPrompt.badge', 'AI')}
-                        size="small"
-                        color="primary"
-                        sx={{height: 18, fontSize: '0.65rem', fontWeight: 600}}
-                      />
-                    </Stack>
-                  }
-                  description={t(
-                    'applications:edit.overview.agentPrompt.description',
-                    'Copy a ready-made prompt for Claude, Cursor, or any agent.',
-                  )}
-                  sx={{flex: '1 1 240px'}}
-                >
-                  <Button
-                    variant="outlined"
+          {!hasVisibleQuickstart && promptUrl && (
+            <IconCard
+              icon={
+                <IconBadge>
+                  <Sparkles size={16} />
+                </IconBadge>
+              }
+              title={
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <span>{t('applications:edit.overview.agentPrompt.title', 'Integrate with a coding agent')}</span>
+                  <Chip
+                    label={t('applications:edit.overview.agentPrompt.badge', 'AI')}
                     size="small"
-                    disabled={isFetchingPrompt}
-                    startIcon={promptCopied ? <Check size={13} /> : <Copy size={13} />}
-                    onClick={() => {
-                      handleCopyPrompt().catch(() => {
-                        /* Error already handled */
-                      });
-                    }}
-                  >
-                    {promptCopied
-                      ? t('common:actions.copied')
-                      : t('applications:edit.overview.agentPrompt.action', 'Copy prompt')}
-                  </Button>
-                </IconCard>
+                    color="primary"
+                    sx={{height: 18, fontSize: '0.65rem', fontWeight: 600}}
+                  />
+                </Stack>
+              }
+              description={t(
+                'applications:edit.overview.agentPrompt.description',
+                'Copy a ready-made prompt for Claude, Cursor, or any agent.',
               )}
-            </Box>
+            >
+              {renderCopyPromptButton('outlined')}
+            </IconCard>
           )}
 
           {isSignInFacing && (
@@ -717,6 +718,40 @@ export default function IntegrationGuides({
         {detailsCard}
         {showEndpointsInSidebar && endpointsCard}
       </Stack>
+
+      {hasVisibleQuickstart && (
+        // Kept mounted so the guide is fetched before it is first opened, and closing the dialog
+        // does not lose the step someone was on.
+        <Dialog
+          open={isGuideOpen}
+          onClose={() => setIsGuideOpen(false)}
+          maxWidth="md"
+          fullWidth
+          keepMounted
+          aria-labelledby="integration-guide-title"
+        >
+          <DialogTitle
+            id="integration-guide-title"
+            sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2}}
+          >
+            {t('applications:edit.overview.guide.dialogTitle', 'Integration guide')}
+            <IconButton
+              size="small"
+              aria-label={t('common:actions.close', 'Close')}
+              onClick={() => setIsGuideOpen(false)}
+            >
+              <X size={18} aria-hidden />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            <QuickstartGuide
+              guides={quickstartGuides}
+              codeValues={guideCodeValues}
+              onOpenLink={externalLinkConfirmation.requestNavigation}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ExternalLinkConfirmDialog
         isOpen={externalLinkConfirmation.isOpen}
