@@ -67,7 +67,8 @@ func (s *ServiceTestSuite) SetupTest() {
 			Salt: "testsalt", Iterations: 1, KeySize: 32,
 		},
 	}, nil).Maybe()
-	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(),
+		nil, nil, discardingBus{})
 	s.ctx = context.Background()
 	s.testErr = errors.New("store error")
 }
@@ -378,7 +379,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_AppliesTheRuntimeRowReadBeforeTheTra
 			s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 			s.store.On("UpdateEntity", mock.Anything, e).Return(nil).Once()
 			s.store.On("GetEntity", mock.Anything, e.ID).Return(stored, nil).Once()
-			svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil)
+			svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil, discardingBus{})
 
 			updated, err := svc.UpdateEntity(s.ctx, e.ID, e)
 
@@ -641,7 +642,7 @@ func (s *ServiceTestSuite) TestCreateEntity_WritesTheRuntimeRowAfterTheCommit() 
 	var events []string
 	transactioner, txCtx := s.passingTransactioner(&committed, &events)
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
-	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil)
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil, discardingBus{})
 	e := testEntity("create-after")
 	e.State = providers.EntityStateSuspended
 	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound).Once()
@@ -678,7 +679,7 @@ func (s *ServiceTestSuite) TestDeleteEntity_DeletesTheRuntimeRowAfterTheCommit()
 	var events []string
 	transactioner, txCtx := s.passingTransactioner(&committed, &events)
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
-	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil)
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil, discardingBus{})
 	s.store.On("DeleteEntity", txCtx, "del-after").Return(nil).Once()
 	runtime.On("DeleteRuntimeData", s.ctx, "del-after").
 		Run(func(mock.Arguments) { events = append(events, "runtime row deleted") }).Return(nil).Once()
@@ -692,7 +693,8 @@ func (s *ServiceTestSuite) TestDeleteEntity_DeletesTheRuntimeRowAfterTheCommit()
 // expectations, for tests that make one runtime call fail.
 func (s *ServiceTestSuite) newServiceWithRuntimeMock() (EntityServiceInterface, *entityRuntimeStoreInterfaceMock) {
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
-	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(),
+		nil, nil, discardingBus{})
 	return svc, runtime
 }
 
@@ -744,7 +746,8 @@ func (s *ServiceTestSuite) TestUpdateEntity_Success() {
 
 func (s *ServiceTestSuite) newSvcWithEntityType() (*entityService, *entitytypemock.EntityTypeServiceInterfaceMock) {
 	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
-	svc := newEntityService(s.store, s.runtime, s.hashService, ets, nil, transaction.NewNoOpTransactioner(), nil, nil)
+	svc := newEntityService(s.store, s.runtime, s.hashService, ets, nil, transaction.NewNoOpTransactioner(),
+		nil, nil, discardingBus{})
 	return svc.(*entityService), ets
 }
 
@@ -1212,7 +1215,7 @@ const testUserSharingType sharing.ResourceType = "user"
 func (s *ServiceTestSuite) withUserSharing() *sharingmock.SharingServiceInterfaceMock {
 	sharingService := sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(),
-		sharingService, nil)
+		sharingService, nil, discardingBus{})
 	s.svc.RegisterSharedCategory(providers.EntityCategoryUser, testUserSharingType)
 	return sharingService
 }
@@ -2552,7 +2555,7 @@ func (s *ServiceTestSuite) TestResolveLinkedAccounts_RejectsEmptyArguments() {
 func (s *ServiceTestSuite) TestGetLinkedEntities_ReturnsHoldersWithOUHandles() {
 	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, ouService,
-		transaction.NewNoOpTransactioner(), nil, nil)
+		transaction.NewNoOpTransactioner(), nil, nil, discardingBus{})
 	first, second := testEntity("e-holder-1"), testEntity("e-holder-2")
 	second.OUID = "ou-2"
 	s.store.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").
@@ -2919,7 +2922,8 @@ func (s *ServiceTestSuite) governedRead(e *providers.Entity, state providers.Ent
 	s.runtime = newEntityRuntimeStoreInterfaceMock(s.T())
 	s.runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).
 		Return(map[string]entityRuntimeData{e.ID: row}, nil).Once()
-	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(),
+		nil, nil, discardingBus{})
 }
 
 // The governed read carries the category, the parsed lock state and the runtime row's revision.
@@ -3094,7 +3098,7 @@ func (s *ServiceTestSuite) newServiceWithIndexedEmail() (*entityService, *entity
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
 	installRuntimeFixture(runtime)
 	svc := newEntityService(store, runtime, s.hashService, ets, nil,
-		transaction.NewNoOpTransactioner(), nil, nil).(*entityService)
+		transaction.NewNoOpTransactioner(), nil, nil, discardingBus{}).(*entityService)
 	return svc, store
 }
 
@@ -3495,7 +3499,7 @@ func (s *ServiceTestSuite) verificationService(store *entityStoreInterfaceMock,
 	installRuntimeFixture(runtime)
 	store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
 	return &entityService{store: store, runtimeStore: runtime, entityTypeService: schema,
-		transactioner: markingTransactioner(s.T()), logger: log.GetLogger()}
+		transactioner: markingTransactioner(s.T()), bus: discardingBus{}, logger: log.GetLogger()}
 }
 
 func (s *ServiceTestSuite) TestCreateAndGenericWritesCannotSetVerification() {
@@ -3611,7 +3615,7 @@ func (s *ServiceTestSuite) lockedUser(current providers.Entity) (*entityService,
 	store := newEntityStoreInterfaceMock(s.T())
 	store.On("LockEntity", mock.Anything, current.ID).Return(current, nil).Once()
 	return &entityService{store: store, entityTypeService: contactTypeService(s.T()),
-		transactioner: transaction.NewNoOpTransactioner(), logger: log.GetLogger()}, store
+		transactioner: transaction.NewNoOpTransactioner(), bus: discardingBus{}, logger: log.GetLogger()}, store
 }
 
 func (s *ServiceTestSuite) TestRecordRefusesAUserDeletedBeforeTheLock() {
@@ -3723,7 +3727,8 @@ func (s *ServiceTestSuite) TestAUserTypeChangePublishesWithTheCaller() {
 	installRuntimeFixture(runtime)
 	obs, published := s.captureEvents()
 	svc := &entityService{store: store, runtimeStore: runtime, entityTypeService: contactTypeService(s.T()),
-		transactioner: transaction.NewNoOpTransactioner(), observability: obs, logger: log.GetLogger()}
+		transactioner: transaction.NewNoOpTransactioner(), observability: obs, bus: discardingBus{},
+		logger: log.GetLogger()}
 	next := current
 	next.Type = "employee"
 	ctx := security.WithSecurityContextTest(context.Background(),

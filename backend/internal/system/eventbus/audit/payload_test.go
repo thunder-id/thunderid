@@ -212,6 +212,24 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user credential detail", EventUserCredentialUpdate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"credential_type": "password"}), errDetailNotAllowed},
+		{"a verification request with its attribute", EventUserVerificationRequest,
+			NewPayload(ctx, testTarget, ActionRequest, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAttribute: "email"}), nil},
+		{"a refused verification request", EventUserVerificationRequest,
+			NewPayload(ctx, testTarget, ActionRequest, OutcomeDenied(reasonForbidden)).
+				WithDetails(map[string]string{DetailAttribute: "email"}), nil},
+		{"a verification with its attribute", EventUserVerificationVerify,
+			NewPayload(ctx, testTarget, ActionVerify, OutcomeFailed("avs_1001")).
+				WithDetails(map[string]string{DetailAttribute: "mobile"}), nil},
+		{"a verification invalidation with its attribute", EventUserVerificationInvalidate,
+			NewPayload(ctx, testTarget, ActionInvalidate, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAttribute: "email"}), nil},
+		{"a verification detail other than the attribute", EventUserVerificationVerify,
+			NewPayload(ctx, testTarget, ActionVerify, OutcomeSucceeded).
+				WithDetails(map[string]string{"value": "a@example.com"}), errDetailNotAllowed},
+		{"an invalidation reason is not a detail", EventUserVerificationInvalidate,
+			NewPayload(ctx, testTarget, ActionInvalidate, OutcomeSucceeded).
+				WithDetails(map[string]string{"reason": "value_changed"}), errDetailNotAllowed},
 		{"a user credential enroll without a resolved user", EventUserCredentialEnroll,
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
 		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,

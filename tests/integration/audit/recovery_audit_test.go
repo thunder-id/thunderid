@@ -109,6 +109,15 @@ func (ts *AuditLogTestSuite) TestAPasswordResetThroughRecoveryNamesTheResetUserA
 func (ts *AuditLogTestSuite) executeRecovery(token, appID string, request map[string]interface{}) (
 	*http.Response, *common.FlowStep) {
 	ts.T().Helper()
+	response, step := ts.executeRecoveryStep(token, appID, request)
+	ts.Require().NotEqual("ERROR", step.FlowStatus, "%+v", step.Error)
+	return response, step
+}
+
+// executeRecoveryStep is executeRecovery for a step that may end the flow in error.
+func (ts *AuditLogTestSuite) executeRecoveryStep(token, appID string, request map[string]interface{}) (
+	*http.Response, *common.FlowStep) {
+	ts.T().Helper()
 	payload, err := json.Marshal(request)
 	ts.Require().NoError(err)
 	header := http.Header{"Authorization": {"Bearer " + token}}
@@ -119,7 +128,6 @@ func (ts *AuditLogTestSuite) executeRecovery(token, appID string, request map[st
 	ts.Require().Equal(http.StatusOK, response.StatusCode, string(body))
 	var step common.FlowStep
 	ts.Require().NoError(json.Unmarshal(body, &step))
-	ts.Require().NotEqual("ERROR", step.FlowStatus, string(body))
 	return response, &step
 }
 

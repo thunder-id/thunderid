@@ -16,6 +16,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -41,18 +43,21 @@ type attributeVerificationService struct {
 	entityTypeService entitytype.EntityTypeServiceInterface
 	observability     providers.ObservabilityProvider
 	authorizer        sysauthz.SystemAuthorizationServiceInterface
+	bus               eventbus.EventBusInterface
 	logger            *log.Logger
 }
 
 // newAttributeVerificationService creates the attribute verification service.
 func newAttributeVerificationService(entityService entity.EntityServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface, observability providers.ObservabilityProvider,
-	authorizer sysauthz.SystemAuthorizationServiceInterface) *attributeVerificationService {
+	authorizer sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface) *attributeVerificationService {
 	return &attributeVerificationService{
 		entityService:     entityService,
 		entityTypeService: entityTypeService,
 		observability:     observability,
 		authorizer:        authorizer,
+		bus:               bus,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AttributeVerificationService")),
 	}
 }
@@ -70,6 +75,13 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 	}
 
 	contact, svcErr := s.readStoredContact(ctx, request.EntityID, request.Attribute)
+	// The attribute is typed by the caller, so it is recorded only once it resolved to a contact.
+	var auditedAttribute string
+	if svcErr == nil {
+		auditedAttribute = request.Attribute
+	}
+	s.publishAuditEvent(ctx, audit.EventUserVerificationRequest, audit.ActionRequest, request.EntityID,
+		auditedAttribute, svcErr)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -85,6 +97,16 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 // RecordAttributeVerification records a pinned contact as verified. A user deleted since the pin, or a
 // contact that changed or is no longer eligible, is refused.
 func (s *attributeVerificationService) RecordAttributeVerification(ctx context.Context,
+	pin providers.AttributeVerificationPin) *tidcommon.ServiceError {
+	svcErr := s.recordAttributeVerification(ctx, pin)
+	// The pin comes from the evidence of an earlier successful prepare, so its attribute is server-pinned.
+	s.publishAuditEvent(ctx, audit.EventUserVerificationVerify, audit.ActionVerify, pin.Subject, pin.Attribute,
+		svcErr)
+	return svcErr
+}
+
+// recordAttributeVerification records a pinned contact as verified and publishes its observability event.
+func (s *attributeVerificationService) recordAttributeVerification(ctx context.Context,
 	pin providers.AttributeVerificationPin) *tidcommon.ServiceError {
 	contact, svcErr := s.readStoredContact(ctx, pin.Subject, pin.Attribute)
 	if svcErr == nil && contact.pin != pin {
@@ -249,6 +271,29 @@ func (s *attributeVerificationService) publishEvent(ctx context.Context, eventTy
 		WithData(event.DataKey.Attribute, pin.Attribute).
 		WithData(event.DataKey.ActorSub, actor)
 	s.observability.PublishEvent(ctx, evt)
+}
+
+// publishAuditEvent publishes the audit event of an attempt on a user's attribute that ended with svcErr,
+// setting the attribute detail only when one is given, never its value. A flow on the server's authority
+// may carry any bearer token sent to a public path, so under a runtime context the actor is set explicitly:
+// the user for a verification that succeeded, anonymous for every other outcome and for a request.
+func (s *attributeVerificationService) publishAuditEvent(ctx context.Context, name string, action audit.Action,
+	entityID, attribute string, svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: entityID}
+	payload := audit.ChangePayload(ctx, target, action, svcErr)
+	if attribute != "" {
+		payload = payload.WithDetails(map[string]string{audit.DetailAttribute: attribute})
+	}
+
+	if security.IsRuntimeContext(ctx) {
+		actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+		if action == audit.ActionVerify && svcErr == nil {
+			actor = audit.Actor{Type: audit.ActorTypeUser, ID: entityID}
+		}
+		payload = payload.WithActor(actor)
+	}
+
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).With(payload))
 }
 
 // serverError logs an attribute verification server failure and returns the server error.

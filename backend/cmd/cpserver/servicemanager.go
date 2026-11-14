@@ -186,7 +186,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, agentTypeExporter)
 
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
-		sharingService, observabilitySvc)
+		sharingService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	projectService, projectExporter, err := project.Initialize(mux, mcpServer, ouService, entityService,
@@ -198,8 +198,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
-	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
-		observabilitySvc, ouAuthzService)
+	attributeVerificationService, err := attributeverification.Initialize(entityService, entityTypeService,
+		observabilitySvc, ouAuthzService, auditBus)
+	fatalOnError(ctx, logger, err, "Failed to initialize AttributeVerificationService")
 
 	// The accountAccess handler is built over the deployment policy, which must be valid on its own.
 	governanceCfg := identitygovernance.FromServerRuntime()

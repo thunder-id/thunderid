@@ -23,8 +23,10 @@ func TestInitTestSuite(t *testing.T) {
 
 // The service is built over the given entity type service, so a collected value is pinned by its schema.
 func (s *InitTestSuite) TestInitializeBuildsTheService() {
-	var provider providers.AttributeVerificationProvider = Initialize(
-		entitymock.NewEntityServiceInterfaceMock(s.T()), contactSchema(s.T()), nil, nil)
+	service, err := Initialize(entitymock.NewEntityServiceInterfaceMock(s.T()), contactSchema(s.T()), nil, nil,
+		discardingBus{})
+	s.Require().NoError(err)
+	var provider providers.AttributeVerificationProvider = service
 
 	pin, svcErr := provider.PrepareAttributeVerification(context.Background(),
 		pendingRequest("person", "workEmail", " User@Example.com "))
