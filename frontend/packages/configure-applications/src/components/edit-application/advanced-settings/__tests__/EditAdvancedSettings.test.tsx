@@ -1,13 +1,22 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {fireEvent, render, screen} from '@testing-library/react';
+import {fireEvent, render as rtlRender, screen, type RenderOptions, type RenderResult} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {CapabilitiesProvider} from '@thunderid/contexts';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
 import EditAdvancedSettings from '../EditAdvancedSettings';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 const {mockUseThunderID} = vi.hoisted(() => ({
   mockUseThunderID: vi.fn(() => ({discovery: null}) as unknown),
@@ -76,7 +85,6 @@ vi.mock('../../../ApplicationDeleteDialog', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

@@ -175,13 +175,8 @@ func (s *securityService) authorize(r *http.Request) error {
 // sub-resources) are listed before broader wildcards in apiPermissionEntries to
 // ensure correct precedence — no manual prefix arithmetic is required.
 func (s *securityService) getRequiredPermissionForAPI(method, path string) string {
-	key := method + " " + path
-	for _, entry := range s.compiledAPIPermissions {
-		if entry.re.MatchString(key) {
-			return entry.permission
-		}
-	}
-	return GetSystemRootPermission()
+	permission, _ := matchAPIPermission(s.compiledAPIPermissions, method+" "+path)
+	return permission
 }
 
 // isPublicPath checks if the given request path matches any of the configured public path patterns.

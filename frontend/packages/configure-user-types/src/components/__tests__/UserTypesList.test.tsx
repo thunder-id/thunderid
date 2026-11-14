@@ -176,7 +176,6 @@ vi.mock('../../../organization-units/api/useGetOrganizationUnits', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

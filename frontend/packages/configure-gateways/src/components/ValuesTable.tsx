@@ -24,6 +24,7 @@ import {Check, ChevronRight, Pencil, Trash2, X} from '@wso2/oxygen-ui-icons-reac
 import {Fragment, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useDeleteStoredValue, useSetStoredValue} from '../api/useStoredValues';
+import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {StoredValue, ValueKind, ValueReference} from '../models/deploy';
 import groupByResource, {humanize, type ResourceGroup, type TypeGroup} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';
@@ -85,6 +86,9 @@ const countOf = (resources: ResourceGroup[]): number =>
  */
 export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {canValue} = useGatewayValueAccess();
+  const canSet = canValue(kind, 'update');
+  const canDelete = canValue(kind, 'delete');
   const setValue = useSetStoredValue(gatewayId, kind);
   const deleteValue = useDeleteStoredValue(gatewayId, kind);
   const [editing, setEditing] = useState<string | null>(null);
@@ -234,7 +238,8 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     );
   };
 
-  const actionsCell = (row: ValueRow): JSX.Element => {
+  const actionsCell = (row: ValueRow): JSX.Element | null => {
+    if (!canSet && !canDelete) return null;
     const held = isHeld(row, secret);
     if (editing === row.name) {
       return (
@@ -261,16 +266,18 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     }
     return (
       <>
-        <Button
-          size="small"
-          variant="text"
-          startIcon={<Pencil size={14} />}
-          onClick={() => start(row)}
-          aria-label={t('values.setLabel', 'Set {{name}}', {name: row.name})}
-        >
-          {held ? (secret ? t('values.replace', 'Replace') : t('values.edit', 'Edit')) : t('values.set', 'Set')}
-        </Button>
-        {held && (
+        {canSet && (
+          <Button
+            size="small"
+            variant="text"
+            startIcon={<Pencil size={14} />}
+            onClick={() => start(row)}
+            aria-label={t('values.setLabel', 'Set {{name}}', {name: row.name})}
+          >
+            {held ? (secret ? t('values.replace', 'Replace') : t('values.edit', 'Edit')) : t('values.set', 'Set')}
+          </Button>
+        )}
+        {held && canDelete && (
           <Tooltip title={t('values.delete', 'Remove')}>
             <IconButton
               size="small"

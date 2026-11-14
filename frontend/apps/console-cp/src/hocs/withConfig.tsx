@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ServerCapabilitiesProvider} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {ThunderIDProvider} from '@thunderid/react';
 import type {ThunderIDProviderProps} from '@thunderid/react';
@@ -94,7 +95,9 @@ export default function withConfig<P extends object>(WrappedComponent: Component
         scopes={getTrustedIssuerScopes().length > 0 ? getTrustedIssuerScopes() : undefined}
         {...sdkProps}
       >
-        <WrappedComponent {...props} />
+        <ServerCapabilitiesProvider>
+          <WrappedComponent {...props} />
+        </ServerCapabilitiesProvider>
       </ThunderIDProvider>
     );
   };

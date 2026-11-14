@@ -94,7 +94,6 @@ const mockIdJagEnabled = (idJagEnabled: boolean): void => {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
