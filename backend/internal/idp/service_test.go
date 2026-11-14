@@ -2141,7 +2141,7 @@ func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMappin
 	s.mockResource.AssertNotCalled(s.T(), "ValidatePermissions", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_PermissionOutsideOUSkipped() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_PermissionOutsideOUSkipped() {
 	s.mockResource.On("GetResourceServer", mock.Anything, "rs-1").
 		Return(&providers.ResourceServer{ID: "rs-1", OUID: "ou-other"}, nil)
 
@@ -2154,7 +2154,7 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_PermissionOutsid
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"scope": "orders:read"})
 
 	s.Nil(err)
@@ -2697,23 +2697,23 @@ func directMappingIDP(mapping providers.AuthorizationDirectMapping) *providers.I
 	}
 }
 
-// ----- GetDirectAuthorizationTargets resolution -----
+// ----- ResolveDirectAuthorizationTargets resolution -----
 
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_NilIDPReturnsNil() {
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_NilIDPReturnsNil() {
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), nil, map[string]interface{}{"groups": "engineering"})
 	s.Nil(err)
 	s.Nil(targets)
 }
 
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_NoAttributeConfigurationReturnsNil() {
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_NoAttributeConfigurationReturnsNil() {
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), &providers.IDPDTO{}, map[string]interface{}{"groups": "engineering"})
 	s.Nil(err)
 	s.Nil(targets)
 }
 
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_MissingClaimConfersNothing() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_MissingClaimConfersNothing() {
 	idp := &providers.IDPDTO{
 		AttributeConfiguration: &providers.AttributeConfiguration{
 			AuthorizationMapping: &providers.AuthorizationMapping{Direct: []providers.AuthorizationDirectMapping{
@@ -2721,15 +2721,15 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_MissingClaimConf
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{})
 	s.Nil(err)
 	s.Empty(targets)
 }
 
-// TestGetDirectAuthorizationTargets_RoleSingleMatchGrants resolves a claim value that names
+// TestResolveDirectAuthorizationTargets_RoleSingleMatchGrants resolves a claim value that names
 // exactly one role to that role's ID.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleSingleMatchGrants() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_RoleSingleMatchGrants() {
 	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"platform-admins"}, "ou-1").
 		Return(map[string][]*role.Role{"platform-admins": {{ID: "role-1", Name: "platform-admins", OUID: "ou-1"}}}, nil)
 
@@ -2741,15 +2741,15 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleSingleMatchG
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"role": "platform-admins"})
 
 	s.Nil(err)
 	s.Equal([]providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "role-1"}}, targets)
 }
 
-// TestGetDirectAuthorizationTargets_RoleNoMatchSkipped confers nothing when no role has that name.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleNoMatchSkipped() {
+// TestResolveDirectAuthorizationTargets_RoleNoMatchSkipped confers nothing when no role has that name.
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_RoleNoMatchSkipped() {
 	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"ghost-role"}, "").
 		Return(map[string][]*role.Role{}, nil)
 
@@ -2760,17 +2760,17 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleNoMatchSkipp
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"role": "ghost-role"})
 
 	s.Nil(err)
 	s.Empty(targets)
 }
 
-// TestGetDirectAuthorizationTargets_RoleAmbiguousMatchSkipped confers nothing when a name matches
+// TestResolveDirectAuthorizationTargets_RoleAmbiguousMatchSkipped confers nothing when a name matches
 // more than one role the organization unit can grant, here one it owns and one shared with it,
 // rather than picking one arbitrarily.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleAmbiguousMatchSkipped() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_RoleAmbiguousMatchSkipped() {
 	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"admins"}, "ou-1").
 		Return(map[string][]*role.Role{"admins": {
 			{ID: "role-1", Name: "admins", OUID: "ou-1"},
@@ -2785,15 +2785,74 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleAmbiguousMat
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"role": "admins"})
 
 	s.Nil(err)
 	s.Empty(targets)
 }
 
-// TestGetDirectAuthorizationTargets_GroupSingleMatchGrants mirrors the role case for groups.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_GroupSingleMatchGrants() {
+// TestResolveDirectAuthorizationTargets_ReturnsAmbiguousMatches returns every match of a name that
+// matches more than one group or role as ambiguous, and grants none of them.
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_ReturnsAmbiguousMatches() {
+	s.mockGroup.On("GetGroupsByNames", mock.Anything, []string{"engineering", "ops"}, "").
+		Return(map[string][]*group.Group{
+			"engineering": {{ID: "group-1", Name: "engineering"}, {ID: "group-2", Name: "engineering"}},
+			"ops":         {{ID: "group-3", Name: "ops"}},
+		}, nil)
+	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"admins", "viewers"}, "").
+		Return(map[string][]*role.Role{
+			"admins":  {{ID: "role-1"}, {ID: "role-2"}},
+			"viewers": {{ID: "role-3"}},
+		}, nil)
+
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Direct: []providers.AuthorizationDirectMapping{
+				{Claim: "team", TargetType: providers.AuthorizationTargetGroup},
+				{Claim: "role", TargetType: providers.AuthorizationTargetRole},
+			}},
+		},
+	}
+	claims := map[string]interface{}{
+		"team": []interface{}{"engineering", "ops"}, "role": []interface{}{"admins", "viewers"},
+	}
+	targets, ambiguous, err := s.idpService.ResolveDirectAuthorizationTargets(context.Background(), idp, claims)
+
+	s.Nil(err)
+	s.Equal([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetGroup, ID: "group-3"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-3"},
+	}, targets)
+	s.Equal([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetGroup, ID: "group-1"},
+		{Type: providers.AuthorizationTargetGroup, ID: "group-2"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-1"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-2"},
+	}, ambiguous)
+}
+
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_LookupError() {
+	s.mockGroup.On("GetGroupsByNames", mock.Anything, []string{"engineering"}, "").
+		Return(nil, &tidcommon.InternalServerError)
+
+	idp := &providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: &providers.AuthorizationMapping{Direct: []providers.AuthorizationDirectMapping{
+				{Claim: "team", TargetType: providers.AuthorizationTargetGroup},
+			}},
+		},
+	}
+	targets, ambiguous, err := s.idpService.ResolveDirectAuthorizationTargets(
+		context.Background(), idp, map[string]interface{}{"team": "engineering"})
+
+	s.NotNil(err)
+	s.Nil(targets)
+	s.Nil(ambiguous)
+}
+
+// TestResolveDirectAuthorizationTargets_GroupSingleMatchGrants mirrors the role case for groups.
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_GroupSingleMatchGrants() {
 	s.mockGroup.On("GetGroupsByNames", mock.Anything, []string{"engineering"}, "ou-1").
 		Return(map[string][]*group.Group{"engineering": {{ID: "group-1", Name: "engineering", OUID: "ou-1"}}}, nil)
 
@@ -2805,32 +2864,32 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_GroupSingleMatch
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"team": "engineering"})
 
 	s.Nil(err)
 	s.Equal([]providers.AuthorizationTarget{{Type: providers.AuthorizationTargetGroup, ID: "group-1"}}, targets)
 }
 
-// TestGetDirectAuthorizationTargets_SharedRoleGrants grants a role another organization unit owns
+// TestResolveDirectAuthorizationTargets_SharedRoleGrants grants a role another organization unit owns
 // and has shared with the identity provider's, when it is the only match.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_SharedRoleGrants() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_SharedRoleGrants() {
 	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"admins"}, "ou-1").
 		Return(map[string][]*role.Role{"admins": {{ID: "role-2", Name: "admins", OUID: "ou-2"}}}, nil)
 
 	idp := directMappingIDP(providers.AuthorizationDirectMapping{
 		Claim: "role", TargetType: providers.AuthorizationTargetRole,
 	})
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"role": "admins"})
 
 	s.Nil(err)
 	s.Equal([]providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "role-2"}}, targets)
 }
 
-// TestGetDirectAuthorizationTargets_PermissionValidatedTokensGranted grants only the claim
+// TestResolveDirectAuthorizationTargets_PermissionValidatedTokensGranted grants only the claim
 // values that ValidatePermissions confirms exist on the configured resource server.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_PermissionValidatedTokensGranted() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_PermissionValidatedTokensGranted() {
 	s.mockResource.On("GetResourceServer", mock.Anything, "rs-1").
 		Return(&providers.ResourceServer{ID: "rs-1", OUID: "ou-1"}, nil)
 	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"orders:read", "orders:write"}).
@@ -2847,7 +2906,7 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_PermissionValida
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"scope": "orders:read orders:write"})
 
 	s.Nil(err)
@@ -2856,9 +2915,9 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_PermissionValida
 	}, targets)
 }
 
-// TestGetDirectAuthorizationTargets_RoleServiceErrorPropagates surfaces a role service error
+// TestResolveDirectAuthorizationTargets_RoleServiceErrorPropagates surfaces a role service error
 // rather than silently skipping.
-func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleServiceErrorPropagates() {
+func (s *IDPServiceTestSuite) TestResolveDirectAuthorizationTargets_RoleServiceErrorPropagates() {
 	s.mockRole.On("GetRolesByNames", mock.Anything, []string{"admins"}, "").
 		Return((map[string][]*role.Role)(nil), &tidcommon.InternalServerError)
 
@@ -2869,7 +2928,7 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_RoleServiceError
 			}},
 		},
 	}
-	targets, err := s.idpService.GetDirectAuthorizationTargets(
+	targets, _, err := s.idpService.ResolveDirectAuthorizationTargets(
 		context.Background(), idp, map[string]interface{}{"role": "admins"})
 
 	s.Nil(targets)

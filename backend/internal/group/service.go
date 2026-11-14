@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"strconv"
@@ -83,6 +84,10 @@ type GroupServiceInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
 	ValidateRemoveGroupMembers(ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError
+	AddMemberToExistingGroups(ctx context.Context, member Member, groupIDs []string) *tidcommon.ServiceError
+	// GetMemberGroupIDs returns the IDs of the groups the member directly belongs to. It performs no
+	// authorization check of its own.
+	GetMemberGroupIDs(ctx context.Context, member Member) ([]string, *tidcommon.ServiceError)
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -1905,6 +1910,55 @@ func (gs *groupService) markManagedReadOnly(ctx context.Context, groups []GroupB
 		// whatever the list said, so it is served without the flag rather than failed.
 		logger.Error(ctx, "Failed to read which groups a control plane deployed", log.Error(err))
 	}
+}
+
+// AddMemberToExistingGroups adds member to the groups in groupIDs that still exist and whose
+// organization unit owns the member or has it shared with it, skipping the rest. Nothing is written
+// when groups are declarative-only, since the declarative store holds no writable memberships.
+func (gs *groupService) AddMemberToExistingGroups(
+	ctx context.Context, member Member, groupIDs []string,
+) *tidcommon.ServiceError {
+	if len(groupIDs) == 0 || isGroupDeclarativeModeEnabled() {
+		return nil
+	}
+	groups, svcErr := gs.GetGroupsByIDs(ctx, groupIDs)
+	if svcErr != nil {
+		return svcErr
+	}
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	entityIDs, memberGroupIDs := splitMemberIDs([]Member{member})
+	available := make([]string, 0, len(groups))
+	for _, id := range slices.Sorted(maps.Keys(groups)) {
+		unavailableIDs, err := gs.findMembersNotAvailableInOU(ctx, groups[id].OUID, entityIDs, memberGroupIDs)
+		if err != nil {
+			logger.Error(ctx, "Failed to check member organization units", log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if len(unavailableIDs) > 0 {
+			logger.Debug(ctx, "Skipping group outside the member's organization units", log.String("groupID", id))
+			continue
+		}
+		available = append(available, id)
+	}
+	if len(available) == 0 {
+		return nil
+	}
+	return gs.AddMembersToGroups(ctx, []Member{member}, available)
+}
+
+// GetMemberGroupIDs returns the IDs of the groups the member directly belongs to.
+func (gs *groupService) GetMemberGroupIDs(ctx context.Context, member Member) ([]string, *tidcommon.ServiceError) {
+	if svcErr := validateMemberTypes([]Member{member}); svcErr != nil {
+		return nil, svcErr
+	}
+	stored := normalizeMembers([]Member{member})[0]
+	groupIDs, err := gs.groupStore.GetMemberGroupIDs(ctx, string(stored.Type), stored.ID)
+	if err != nil {
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).Error(ctx,
+			"Failed to get the member's groups", log.MaskedString("memberID", member.ID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return groupIDs, nil
 }
 
 // convertGroupDAOToGroup constructs a Group from a GroupDAO.

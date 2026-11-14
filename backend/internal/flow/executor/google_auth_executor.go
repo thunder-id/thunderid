@@ -24,6 +24,7 @@ func newGoogleOIDCAuthExecutor(
 	idpService providers.IDPProvider,
 	authService authngoogle.GoogleOIDCAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
+	syncer *federatedSyncer,
 ) oidcAuthExecutorInterface {
 	defaultInputs := []providers.Input{
 		{
@@ -39,7 +40,7 @@ func newGoogleOIDCAuthExecutor(
 	}
 
 	base := newOIDCAuthExecutor(ExecutorNameGoogleAuth, defaultInputs, []providers.Input{},
-		flowFactory, idpService, oidcSvcCast, authnProvider, providers.IDPTypeGoogle)
+		flowFactory, idpService, oidcSvcCast, authnProvider, providers.IDPTypeGoogle, syncer)
 
 	return &googleOIDCAuthExecutor{
 		oidcAuthExecutorInterface: base,

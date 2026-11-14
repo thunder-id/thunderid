@@ -13,9 +13,10 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
+import {useStore, type ReactFlowState} from '@xyflow/react';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
+import {FEDERATED_EXECUTORS, PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger, parseCommaSeparated} from './utils';
@@ -24,6 +25,10 @@ import {BOOLEAN_VARIABLES, NUMBER_VARIABLES, TEXT_VARIABLES} from './variableBin
 import useGetAllGroups from '../../../../api/useGetAllGroups';
 import useGetAllRoles from '../../../../api/useGetAllRoles';
 import type {StepData} from '../../../../models/steps';
+
+function selectHasFederatedExecutor(state: ReactFlowState): boolean {
+  return state.nodes.some((node) => FEDERATED_EXECUTORS.has((node.data as StepData)?.action?.executor?.name ?? ''));
+}
 
 /**
  * Turns groups or roles into picker options. Names are unique only within an organization unit, so a name that more than
@@ -67,6 +72,8 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
     const stepData = resource?.data as StepData | undefined;
     return stepData?.properties ?? {};
   }, [resource]);
+
+  const hasFederatedExecutor = useStore(selectHasFederatedExecutor);
 
   const handleStringPropertyChange = useCallback(
     (propertyName: string, value: string): void => {
@@ -303,43 +310,14 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         )}
       </VariableBinding>
 
-      <VariableBinding
-        inline
-        resource={resource}
-        onChange={onChange}
-        propertyKey="seedGroupsFromMapping"
-        accepts={BOOLEAN_VARIABLES}
-        label={t('flows:core.executions.provisioning.seedGroupsFromMapping.label')}
-      >
-        {({commit, label, value: stored}) => (
-          <>
-            <FormControlLabel
-              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
-              label={label}
-            />
-            <FormHelperText>{t('flows:core.executions.provisioning.seedGroupsFromMapping.hint')}</FormHelperText>
-          </>
-        )}
-      </VariableBinding>
-
-      <VariableBinding
-        inline
-        resource={resource}
-        onChange={onChange}
-        propertyKey="seedRolesFromMapping"
-        accepts={BOOLEAN_VARIABLES}
-        label={t('flows:core.executions.provisioning.seedRolesFromMapping.label')}
-      >
-        {({commit, label, value: stored}) => (
-          <>
-            <FormControlLabel
-              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
-              label={label}
-            />
-            <FormHelperText>{t('flows:core.executions.provisioning.seedRolesFromMapping.hint')}</FormHelperText>
-          </>
-        )}
-      </VariableBinding>
+      {hasFederatedExecutor && (!!properties['assignGroup'] || !!properties['assignRole']) && (
+        <Alert severity="warning">
+          {t(
+            'flows:core.executions.provisioning.federatedOverrideWarning',
+            "With Override all sync, a federated sign-in removes groups and roles assigned here that the connection's authorization mapping doesn't resolve.",
+          )}
+        </Alert>
+      )}
     </Stack>
   );
 }

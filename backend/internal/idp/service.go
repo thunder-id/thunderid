@@ -49,9 +49,9 @@ type IDPServiceInterface interface {
 	ApplySchemaAwareDefaults(ctx context.Context, idp *providers.IDPDTO)
 	ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
 	ValidateAuthorizationRuleMappingTargets(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
-	GetDirectAuthorizationTargets(
+	ResolveDirectAuthorizationTargets(
 		ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
-	) ([]providers.AuthorizationTarget, *tidcommon.ServiceError)
+	) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError)
 }
 
 // ownerErrors are the errors given when the organization unit of an identity provider is refused.
@@ -865,23 +865,23 @@ func (is *idpService) validateUserTypeResolution(
 	return nil
 }
 
-// GetDirectAuthorizationTargets resolves the IDP's AuthorizationMapping.Direct entries for claims.
+// ResolveDirectAuthorizationTargets resolves the IDP's AuthorizationMapping.Direct entries for claims.
 // Each claim value is looked up by exact name (role, group) or validated permission string
 // (permission) against live data. A name matches only the roles the IDP's organization unit owns or
-// has shared with it, and the groups it owns. A value that resolves to more than one role or group,
-// or to none, is skipped rather than granted.
-func (is *idpService) GetDirectAuthorizationTargets(
+// has shared with it, and the groups it owns. A value that resolves to none is skipped. A value that
+// resolves to more than one role or group isn't granted: its matches are returned as ambiguous instead.
+func (is *idpService) ResolveDirectAuthorizationTargets(
 	ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
-) ([]providers.AuthorizationTarget, *tidcommon.ServiceError) {
+) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError) {
 	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.AuthorizationMapping == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	mappings := idp.AttributeConfiguration.AuthorizationMapping.Direct
 	if len(mappings) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	var targets []providers.AuthorizationTarget
+	var targets, ambiguous []providers.AuthorizationTarget
 	for _, mapping := range mappings {
 		value, ok := utils.GetNestedValue(claims, mapping.Claim)
 		if !ok {
@@ -896,38 +896,44 @@ func (is *idpService) GetDirectAuthorizationTargets(
 		case providers.AuthorizationTargetRole:
 			found, svcErr := is.roleService.GetRolesByNames(ctx, tokens, idp.OUID)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			for _, token := range tokens {
-				if matches := found[token]; len(matches) == 1 {
-					targets = append(targets, providers.AuthorizationTarget{
-						Type: providers.AuthorizationTargetRole, ID: matches[0].ID,
-					})
+				for _, match := range found[token] {
+					target := providers.AuthorizationTarget{Type: providers.AuthorizationTargetRole, ID: match.ID}
+					if len(found[token]) == 1 {
+						targets = append(targets, target)
+					} else {
+						ambiguous = append(ambiguous, target)
+					}
 				}
 			}
 		case providers.AuthorizationTargetGroup:
 			found, svcErr := is.groupService.GetGroupsByNames(ctx, tokens, idp.OUID)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			for _, token := range tokens {
-				if matches := found[token]; len(matches) == 1 {
-					targets = append(targets, providers.AuthorizationTarget{
-						Type: providers.AuthorizationTargetGroup, ID: matches[0].ID,
-					})
+				for _, match := range found[token] {
+					target := providers.AuthorizationTarget{Type: providers.AuthorizationTargetGroup, ID: match.ID}
+					if len(found[token]) == 1 {
+						targets = append(targets, target)
+					} else {
+						ambiguous = append(ambiguous, target)
+					}
 				}
 			}
 		case providers.AuthorizationTargetPermission:
 			owned, svcErr := is.resourceServerOwnedByOU(ctx, mapping.ResourceServerID, idp.OUID)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			if !owned {
 				continue
 			}
 			invalid, svcErr := is.resourceService.ValidatePermissions(ctx, mapping.ResourceServerID, tokens)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			for _, token := range tokens {
 				if !slices.Contains(invalid, token) {
@@ -941,7 +947,7 @@ func (is *idpService) GetDirectAuthorizationTargets(
 		}
 	}
 
-	return dedupeAuthorizationTargets(targets), nil
+	return dedupeAuthorizationTargets(targets), dedupeAuthorizationTargets(ambiguous), nil
 }
 
 // ValidateAuthorizationRuleMappingTargets verifies every named role, group, and permission exists, and

@@ -331,7 +331,8 @@ var fedStrictAuthApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{
+			"userTypeHandle", "ouId", "ouName", "ouHandle", "firstName", "lastName", "city"},
 	},
 }
 
@@ -877,6 +878,13 @@ func (s *FederatedMappingSuite) registerEntity(
 	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) *testutils.User {
 	s.T().Helper()
 	s.applyConfig(config)
+	return s.registerWithAppliedConfig(user)
+}
+
+// registerWithAppliedConfig drives the registration flow like registerEntity, under the configuration
+// already applied to the connection.
+func (s *FederatedMappingSuite) registerWithAppliedConfig(user *testutils.OIDCUserInfo) *testutils.User {
+	s.T().Helper()
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
 

@@ -37,6 +37,7 @@ type identifyingExecutor struct {
 	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
+	syncer         *federatedSyncer
 	accessGuard    *accessGuard
 	logger         *log.Logger
 }
@@ -45,14 +46,15 @@ var _ providers.Executor = (*identifyingExecutor)(nil)
 var _ identifyingExecutorInterface = (*identifyingExecutor)(nil)
 
 // newIdentifyingExecutor creates a new instance of IdentifyingExecutor. The authentication provider
-// binds the user a federated identity's link holders are narrowed to, and may be nil for an executor
-// that never resolves between link holders.
+// binds the user a federated identity's link holders are narrowed to and the syncer writes that user's
+// pending federated sync. Both may be nil for an executor that never resolves between link holders.
 func newIdentifyingExecutor(
 	name string,
 	defaultInputs, prerequisites []providers.Input,
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	syncer *federatedSyncer,
 	accessGuard *accessGuard,
 ) *identifyingExecutor {
 	if name == "" {
@@ -75,6 +77,7 @@ func newIdentifyingExecutor(
 		Executor:       base,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
+		syncer:         syncer,
 		accessGuard:    accessGuard,
 		logger:         logger,
 	}
@@ -431,7 +434,7 @@ func (i *identifyingExecutor) promptLinkHolders(ctx context.Context, holders []*
 // link itself, so it is authenticated by entity ID, which the provider admits as a federated sign-in.
 func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
 	entityID string, logger *log.Logger) (*providers.ExecutorResponse, error) {
-	if i.authnProvider == nil {
+	if i.authnProvider == nil || i.syncer == nil {
 		return nil, errors.New("no authentication provider to bind the resolved link holder")
 	}
 	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp); svcErr != nil {
@@ -441,6 +444,12 @@ func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execRes
 		logger.Debug(ctx.Context, "Failed to bind the resolved link holder", log.String("errorCode", svcErr.Code))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped))
+		return execResp, nil
+	}
+	if ok, err := i.syncer.syncPendingUser(ctx, execResp, entityID, logger); !ok {
+		if err != nil {
+			return nil, err
+		}
 		return execResp, nil
 	}
 

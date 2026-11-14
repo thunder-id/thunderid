@@ -30,6 +30,11 @@ const ConnectionConstants = {
    * `authorization_grant_profiles_supported` while it accepts identity assertions (ID-JAG).
    */
   ID_JAG_GRANT_PROFILE: 'urn:ietf:params:oauth:grant-profile:id-jag',
+
+  /**
+   * The mode each sync setting takes on the server when it is unset.
+   */
+  DEFAULT_SYNC_MODES: {attributes: 'override_received', groupsAndRoles: 'no_sync'},
 } as const;
 
 export default ConnectionConstants;

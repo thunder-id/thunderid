@@ -24,6 +24,7 @@ func newGithubOAuthExecutor(
 	idpService providers.IDPProvider,
 	authService authngithub.GithubOAuthAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
+	syncer *federatedSyncer,
 ) oAuthExecutorInterface {
 	oauthSvcCast, ok := authService.(authnoauth.OAuthAuthnCoreServiceInterface)
 	if !ok {
@@ -31,7 +32,7 @@ func newGithubOAuthExecutor(
 	}
 
 	base := newOAuthExecutor(ExecutorNameGitHubAuth, []providers.Input{}, []providers.Input{},
-		flowFactory, idpService, oauthSvcCast, authnProvider, providers.IDPTypeGitHub)
+		flowFactory, idpService, oauthSvcCast, authnProvider, providers.IDPTypeGitHub, syncer)
 
 	return &githubOAuthExecutor{
 		oAuthExecutorInterface: base,
