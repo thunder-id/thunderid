@@ -184,6 +184,31 @@ func (s *StoreTestSuite) TestGetByHandle_Miss() {
 	s.Nil(got)
 }
 
+func (s *StoreTestSuite) TestGetBySessionID() {
+	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	row := map[string]interface{}{
+		"session_id": "sess-1", "subject_id": "user-1", "flow_id": "flow-1", "flow_version": int64(2),
+		"flow_execution_id": "exec-1", "handle_id": "handle-abc", "authenticated_at": base,
+		"created_at": base, "last_active_at": base, "state": "ACTIVE", "version": int64(1),
+	}
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetSessionBySessionID,
+		"sess-1", testDeploymentID).
+		Return([]map[string]interface{}{row}, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetSessionBySessionID,
+		"missing", testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+
+	got, err := s.store.GetBySessionID(context.Background(), "sess-1")
+	s.NoError(err)
+	s.Require().NotNil(got)
+	s.Equal("user-1", got.SubjectID)
+
+	got, err = s.store.GetBySessionID(context.Background(), "missing")
+	s.NoError(err)
+	s.Nil(got)
+}
+
 func (s *StoreTestSuite) TestGetByExecutionID_Hit() {
 	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
 	row := map[string]interface{}{

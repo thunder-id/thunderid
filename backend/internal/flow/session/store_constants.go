@@ -35,6 +35,16 @@ var (
 			`FROM "SESSION" WHERE HANDLE_ID = $1 AND DEPLOYMENT_ID = $2 AND TYPE = 'SSO'`,
 	}
 
+	// queryGetSessionBySessionID fetches a session by its ID, for the session management API, which
+	// never sees the handle.
+	queryGetSessionBySessionID = model.DBQuery{
+		ID: "SEQ-SESS-23",
+		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryGetSessionByExecutionID fetches the session established by a given flow execution, or no
 	// rows when that execution has not established one. Used on the fresh join path to attach later
 	// checkpoints to the session an earlier join in the same execution already created.
@@ -163,6 +173,65 @@ var (
 			`WHERE SESSION_ID = $3 AND STATE = $4 AND LAST_ACTIVE_AT <= $5 ` +
 			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $1) ` +
 			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $1) AND DEPLOYMENT_ID = $6`,
+	}
+
+	// The live-session queries below apply the resolver's liveness rule in SQL, since expired rows
+	// stay in the table until cleanup removes them: STATE is ACTIVE and neither deadline has been
+	// reached at the caller-supplied time. A NULL deadline never expires.
+
+	// queryListLiveSessionsBySubject returns one page of a subject's live sessions, most recently
+	// active first. Backed by idx_session_subject.
+	queryListLiveSessionsBySubject = model.DBQuery{
+		ID: "SEQ-SESS-19",
+		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $2) ` +
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND DEPLOYMENT_ID = $5 ` +
+			`ORDER BY LAST_ACTIVE_AT DESC, SESSION_ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountLiveSessionsBySubject counts a subject's live sessions.
+	queryCountLiveSessionsBySubject = model.DBQuery{
+		ID: "SEQ-SESS-20",
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $2) ` +
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryListLiveSessionsByApp returns one page of the live sessions an application has joined,
+	// most recently active first. An application signed in under several organization units has a
+	// participant row per unit, so the sessions are matched through a subquery, which returns each one
+	// once. Backed by idx_session_participant_app.
+	queryListLiveSessionsByApp = model.DBQuery{
+		ID: "SEQ-SESS-21",
+		Query: `SELECT S.SESSION_ID, S.SUBJECT_ID, S.FLOW_ID, S.FLOW_VERSION, S.FLOW_EXECUTION_ID, ` +
+			`S.HANDLE_ID, S.AUTHENTICATED_AT, S.CREATED_AT, S.LAST_ACTIVE_AT, S.IDLE_EXPIRES_AT, ` +
+			`S.ABSOLUTE_EXPIRES_AT, S.PROPERTIES, S.STATE, S.VERSION ` +
+			`FROM "SESSION" S ` +
+			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
+			`WHERE P.APP_ID = $1 AND P.DEPLOYMENT_ID = $5) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND (S.IDLE_EXPIRES_AT IS NULL OR S.IDLE_EXPIRES_AT > $2) ` +
+			`AND (S.ABSOLUTE_EXPIRES_AT IS NULL OR S.ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND S.DEPLOYMENT_ID = $5 ` +
+			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountLiveSessionsByApp counts the live sessions an application has joined, each once however
+	// many organization units it signed in under.
+	queryCountLiveSessionsByApp = model.DBQuery{
+		ID: "SEQ-SESS-22",
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" S ` +
+			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
+			`WHERE P.APP_ID = $1 AND P.DEPLOYMENT_ID = $3) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND (S.IDLE_EXPIRES_AT IS NULL OR S.IDLE_EXPIRES_AT > $2) ` +
+			`AND (S.ABSOLUTE_EXPIRES_AT IS NULL OR S.ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND S.DEPLOYMENT_ID = $3`,
 	}
 )
 

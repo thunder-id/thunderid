@@ -16,9 +16,20 @@ var dataPlaneOrgCatalog = []catalogResource{
 	{ResourceTypeAgentType, crudActions},
 }
 
+// sessionActions are the actions declared on SSO sessions, which can only be read and revoked.
+var sessionActions = []string{catalogActionView, catalogActionDelete}
+
+// dataPlaneSystemCatalog lists, in declaration order, each resource declared under the system root
+// resource on the System resource server and the actions declared on it. These are the resources that
+// reach the whole deployment.
+var dataPlaneSystemCatalog = []catalogResource{
+	{ResourceTypeSession, sessionActions},
+}
+
 // InitDataPlanePermissions activates the data plane's permissions. When handle is non-empty (e.g.
 // "mgmt"), every permission is prefixed with it.
-//   - The system root permission reaches the whole deployment. It has no child permission yet.
+//   - The system root permission reaches the whole deployment, and so does a child permission for each
+//     resource and action in dataPlaneSystemCatalog.
 //   - The org root permission, and a child permission for each resource and action in
 //     dataPlaneOrgCatalog, are bounded to the organization unit the token names.
 //   - Every other organization-owned resource requires the org root permission.
@@ -123,7 +134,11 @@ func InitDataPlanePermissions(handle string) {
 		ServerConfigUpdate:  system,
 		ConfigVersionView:   system,
 		ConfigVersionCreate: system,
+
+		SessionView:   buildPermission(handle, "system", string(ResourceTypeSession), catalogActionView),
+		SessionDelete: buildPermission(handle, "system", string(ResourceTypeSession), catalogActionDelete),
 	}
 	p.Catalog = append([]string{org}, buildCatalog(handle, "org", dataPlaneOrgCatalog)...)
+	p.Catalog = append(p.Catalog, buildCatalog(handle, "system", dataPlaneSystemCatalog)...)
 	activatePermissions(p)
 }

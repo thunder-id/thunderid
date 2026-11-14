@@ -104,6 +104,8 @@ const (
 	ResourceTypeServerConfig ResourceType = "serverconfig"
 	// ResourceTypeConfigurationVersion identifies a configuration version resource.
 	ResourceTypeConfigurationVersion ResourceType = "configversion"
+	// ResourceTypeSession identifies an SSO session resource.
+	ResourceTypeSession ResourceType = "session"
 )
 
 // ---- Permission catalog ----
@@ -459,6 +461,8 @@ type SystemPermissions struct {
 	AppCreate                  string
 	AppUpdate                  string
 	AppDelete                  string
+	SessionView                string
+	SessionDelete              string
 	// Catalog holds every permission the plane declares besides Root, in declaration order: each
 	// resource followed by its actions.
 	Catalog []string
@@ -624,6 +628,8 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /users/me", ""},
 		{"GET /users/me/**", ""},
 		{"PUT /users/me/**", ""},
+		{"DELETE /users/me/sessions", ""},
+		{"DELETE /users/me/sessions/**", ""},
 		{"POST /users/me/update-credentials", ""},
 		{"GET /capabilities", ""},
 		{"DELETE /users/me/agents/*", ""},
@@ -975,6 +981,16 @@ func activatePermissions(p *SystemPermissions) {
 			"update_project":    p.ProjectUpdate,
 		})
 	}
+
+	// Only the Data Plane serves sessions. A plane that declares no session permission leaves the session
+	// APIs out, so they require the root permission.
+	if p.SessionView != "" {
+		apiPermissionEntries = append(apiPermissionEntries,
+			apiPermissionEntry{"GET /sessions", p.SessionView},
+			apiPermissionEntry{"DELETE /sessions", p.SessionDelete},
+			apiPermissionEntry{"DELETE /sessions/**", p.SessionDelete},
+		)
+	}
 }
 
 // GetSystemPermissions returns the active system permissions.
@@ -1075,6 +1091,12 @@ func LacksOrganizationUnit(ctx context.Context) bool {
 		return false
 	}
 	return GetOUID(ctx) == "" && !HasSystemPermission(GetPermissions(ctx))
+}
+
+// reachesDeployment reports whether required is the system root permission or one under it, which reach the
+// whole deployment rather than one organization unit.
+func reachesDeployment(required string) bool {
+	return sysPerms != nil && (required == sysPerms.Root || strings.HasPrefix(required, sysPerms.Root+":"))
 }
 
 // HasSufficientSystemPermission reports whether permissions satisfy a permission of the System resource
