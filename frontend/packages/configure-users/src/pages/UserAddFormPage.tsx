@@ -6,6 +6,7 @@ import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@
 import {OrganizationUnitTreePicker, useGetOrganizationUnits} from '@thunderid/configure-organization-units';
 import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {orderAttributes} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -29,7 +30,6 @@ import useGetUserTypes from '../api/useGetUserTypes';
 import useUserRoutes from '../hooks/useUserRoutes';
 import type {CreateUserRequest, PropertyDefinition, SchemaInterface} from '../models/users';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
-import orderSchemaAttributes from '../utils/orderSchemaAttributes';
 import renderSchemaField from '../utils/renderSchemaField';
 
 type AttributeFormData = Record<string, unknown>;
@@ -289,7 +289,7 @@ export default function UserAddFormPage(): JSX.Element {
 
             {/* The type's own schema decides the rest, so a type with extra attributes needs no
                 change here. */}
-            {orderSchemaAttributes(schema).map(([name, definition]: [string, PropertyDefinition]) =>
+            {orderAttributes(schema, {onCreate: true}).map(([name, definition]: [string, PropertyDefinition]) =>
               renderSchemaField(name, definition, control, errors, resolveDisplayName),
             )}
 

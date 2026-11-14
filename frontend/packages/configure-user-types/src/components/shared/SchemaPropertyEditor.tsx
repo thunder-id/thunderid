@@ -27,7 +27,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {ChevronDown, ChevronRight, Info, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {ArrowDown, ArrowUp, ChevronDown, ChevronRight, Info, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, useRef, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import AttributeLibraryPanel from './AttributeLibraryPanel';
@@ -85,6 +85,7 @@ export default function SchemaPropertyEditor({
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pendingScrollId = useRef<string | null>(null);
+  const pendingFocus = useRef<{id: string; direction: 'up' | 'down'} | null>(null);
   const [pendingCredentialRemoveId, setPendingCredentialRemoveId] = useState<string | null>(null);
 
   // Only changes when a property is added/removed/renamed — not on every keystroke of
@@ -97,6 +98,18 @@ export default function SchemaPropertyEditor({
     if (!pendingScrollId.current) return;
     rowRefs.current[pendingScrollId.current]?.scrollIntoView({behavior: 'auto', block: 'center'});
     pendingScrollId.current = null;
+  }, [properties]);
+
+  // A reorder moves the row's DOM node, so focus the move button again once it settles.
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    const {id, direction} = pendingFocus.current;
+    pendingFocus.current = null;
+    const row = rowRefs.current[id];
+    const button =
+      row?.querySelector<HTMLButtonElement>(`[data-move="${direction}"]:not(:disabled)`) ??
+      row?.querySelector<HTMLButtonElement>('[data-move]:not(:disabled)');
+    button?.focus();
   }, [properties]);
 
   const toggleExpanded = (id: string): void => {
@@ -128,6 +141,15 @@ export default function SchemaPropertyEditor({
     onPropertiesChange([...properties, newProperty]);
     setExpandedIds((prev) => ({...prev, [id]: true}));
     pendingScrollId.current = id;
+  };
+
+  const handleMoveProperty = (index: number, offset: -1 | 1): void => {
+    const target = index + offset;
+    if (target < 0 || target >= properties.length) return;
+    const reordered = [...properties];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    pendingFocus.current = {id: properties[index].id, direction: offset < 0 ? 'up' : 'down'};
+    onPropertiesChange(reordered);
   };
 
   const handleRemoveProperty = (id: string): void => {
@@ -199,7 +221,7 @@ export default function SchemaPropertyEditor({
       <AttributeLibraryPanel existingNames={existingNames} onAdd={handleAddAttribute} disabled={disabled} />
 
       <Stack direction="column" spacing={3}>
-        {properties.map((property) => (
+        {properties.map((property, index) => (
           <Paper
             key={property.id}
             ref={(el: HTMLDivElement | null) => {
@@ -225,6 +247,8 @@ export default function SchemaPropertyEditor({
               aria-expanded={expandedIds[property.id] ?? false}
               onClick={() => toggleExpanded(property.id)}
               onKeyDown={(e) => {
+                // Keys pressed on the row's own buttons act on those buttons, not on the row.
+                if (e.target !== e.currentTarget) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   toggleExpanded(property.id);
@@ -258,6 +282,42 @@ export default function SchemaPropertyEditor({
                 <Chip label={t('userTypes:credential', 'Credential')} size="small" variant="outlined" />
               )}
               <Box sx={{flexGrow: 1}} />
+              {!disabled && (
+                <>
+                  <Tooltip title={t('userTypes:moveUp', 'Move up')}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={t('userTypes:moveUp', 'Move up')}
+                        data-move="up"
+                        disabled={index === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMoveProperty(index, -1);
+                        }}
+                      >
+                        <ArrowUp size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={t('userTypes:moveDown', 'Move down')}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={t('userTypes:moveDown', 'Move down')}
+                        data-move="down"
+                        disabled={index === properties.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMoveProperty(index, 1);
+                        }}
+                      >
+                        <ArrowDown size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </>
+              )}
               {!disabled && (
                 <Tooltip title={t('userTypes:removeProperty', 'Remove property')}>
                   <IconButton
@@ -342,7 +402,7 @@ export default function SchemaPropertyEditor({
                 />
 
                 {/* Checkbox options with info tooltips */}
-                <Box sx={{display: 'flex', gap: 3}}>
+                <Box sx={{display: 'flex', flexWrap: 'wrap', columnGap: 3}}>
                   <Tooltip
                     title={t('userTypes:tooltips.required', 'Users must provide a value for this field')}
                     placement="top"
@@ -364,6 +424,32 @@ export default function SchemaPropertyEditor({
                       }
                     />
                   </Tooltip>
+                  {!property.required && (
+                    <Tooltip
+                      title={t(
+                        'userTypes:tooltips.promptOnCreate',
+                        'Prompt for this optional field when an account is created: added by an admin, accepted from an invite, or signed up',
+                      )}
+                      placement="top"
+                      arrow
+                    >
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={!property.hiddenOnCreate}
+                            onChange={(e) => handlePropertyChange(property.id, 'hiddenOnCreate', !e.target.checked)}
+                            disabled={disabled}
+                          />
+                        }
+                        label={
+                          <Stack direction="row" alignItems="center" spacing={0.5} sx={{whiteSpace: 'nowrap'}}>
+                            <span>{t('userTypes:promptOnCreate', 'Prompt on onboarding')}</span>
+                            <Info size={14} color="inherit" />
+                          </Stack>
+                        }
+                      />
+                    </Tooltip>
+                  )}
                   {supportsUnique(property.type) && (
                     <Tooltip
                       title={t('userTypes:tooltips.unique', 'Each user must have a distinct value for this field')}

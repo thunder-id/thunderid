@@ -4131,6 +4131,74 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_Ordering_Sorte
 	assert.Equal(suite.T(), "firstName", fwdInputs[1].Identifier)
 }
 
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_Ordering_DisplayOrderLeads() {
+	zero, one, two := 0, 1, 2
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: attributeEmail, DisplayName: "Email", Required: true},
+			{Attribute: "nickname", DisplayName: "Nickname", DisplayOrder: &two},
+			{Attribute: attributePassword, DisplayName: "Password", Required: true, Credential: true,
+				DisplayOrder: &one},
+			{Attribute: "username", DisplayName: "Username", Required: true, DisplayOrder: &zero},
+			{Attribute: "address", DisplayName: "Address"},
+			{Attribute: "alias", DisplayName: "Alias", DisplayOrder: &two},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{categoryTypeKey: testUserType},
+		NodeProperties: map[string]interface{}{
+			propertyKeyDynamicInputsIncludeOptional: true,
+		},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.executor.HasRequiredInputs(ctx, execResp)
+
+	identifiers := make([]string, 0, len(execResp.Inputs))
+	for _, inp := range execResp.Inputs {
+		identifiers = append(identifiers, inp.Identifier)
+	}
+	// Attributes with the same display order follow attribute name.
+	assert.Equal(suite.T(), []string{"username", attributePassword, "alias", "nickname", attributeEmail,
+		"address"}, identifiers)
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_HiddenOnCreate() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: attributeEmail, DisplayName: "Email", Required: true, HiddenOnCreate: true},
+			{Attribute: "nickname", DisplayName: "Nickname", HiddenOnCreate: true},
+			{Attribute: "address", DisplayName: "Address", HiddenOnCreate: true},
+			{Attribute: attributePin, DisplayName: "PIN", Credential: true, HiddenOnCreate: true},
+			{Attribute: "firstName", DisplayName: "First Name"},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{categoryTypeKey: testUserType},
+		NodeInputs:  []providers.Input{{Identifier: "address", Type: providers.InputTypeText}},
+		NodeProperties: map[string]interface{}{
+			propertyKeyDynamicInputsIncludeOptional:            true,
+			propertyKeyDynamicInputsIncludeOptionalCredentials: true,
+		},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.executor.HasRequiredInputs(ctx, execResp)
+
+	identifiers := make([]string, 0, len(execResp.Inputs))
+	for _, inp := range execResp.Inputs {
+		identifiers = append(identifiers, inp.Identifier)
+	}
+	// A required attribute and one the node declares are asked for even when hidden.
+	assert.Equal(suite.T(), []string{attributeEmail, "address", "firstName"}, identifiers)
+}
+
 func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_MaxPerPrompt_CapsForwardedPromptBatchOnly() {
 	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).

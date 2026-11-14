@@ -25,8 +25,8 @@ import {
   DialogContentText,
   DialogActions,
 } from '@wso2/oxygen-ui';
-import {Trash2, Plus, Info} from '@wso2/oxygen-ui-icons-react';
-import {useState, type JSX} from 'react';
+import {ArrowDown, ArrowUp, Trash2, Plus, Info} from '@wso2/oxygen-ui-icons-react';
+import {useEffect, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SchemaPropertyInput, PropertyType} from '../../../models/property-definition';
 import {invalidateI18nCache} from '../../../utils/invalidateI18nCache';
@@ -56,6 +56,20 @@ export default function EditSchemaSettings({
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const pendingFocus = useRef<{id: string; direction: 'up' | 'down'} | null>(null);
+
+  // A reorder moves the row's DOM node, so focus the move button again once it settles.
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    const {id, direction} = pendingFocus.current;
+    pendingFocus.current = null;
+    const row = rowRefs.current[id];
+    const button =
+      row?.querySelector<HTMLButtonElement>(`[data-move="${direction}"]:not(:disabled)`) ??
+      row?.querySelector<HTMLButtonElement>('[data-move]:not(:disabled)');
+    button?.focus();
+  }, [properties]);
   const [credentialRemoveDialogOpen, setCredentialRemoveDialogOpen] = useState(false);
   const [pendingCredentialRemoveId, setPendingCredentialRemoveId] = useState<string | null>(null);
 
@@ -86,6 +100,15 @@ export default function EditSchemaSettings({
           : prop,
       ),
     );
+  };
+
+  const handleMoveProperty = (index: number, offset: -1 | 1): void => {
+    const target = index + offset;
+    if (target < 0 || target >= properties.length) return;
+    const reordered = [...properties];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    pendingFocus.current = {id: properties[index].id, direction: offset < 0 ? 'up' : 'down'};
+    onPropertiesChange(reordered);
   };
 
   const handleRemoveProperty = (propertyId: string): void => {
@@ -134,9 +157,12 @@ export default function EditSchemaSettings({
 
   return (
     <Box>
-      {properties.map((property) => (
+      {properties.map((property, index) => (
         <Paper
           key={property.id}
+          ref={(el: HTMLDivElement | null) => {
+            rowRefs.current[property.id] = el;
+          }}
           variant="outlined"
           sx={{
             position: 'relative',
@@ -148,27 +174,48 @@ export default function EditSchemaSettings({
             '&:hover .property-delete-btn': {opacity: 1},
           }}
         >
-          {/* Remove button - visible on hover and on keyboard focus */}
+          {/* Move buttons, and the remove button, visible on hover and on keyboard focus */}
           {!disabled && properties.length > 1 && (
-            <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
-              <IconButton
-                className="property-delete-btn"
-                size="small"
-                color="error"
-                aria-label={t('agentTypes:removeProperty', 'Remove property')}
-                onClick={() => handleRemoveProperty(property.id)}
-                sx={{
-                  position: 'absolute',
-                  top: 8,
-                  right: 8,
-                  opacity: 0,
-                  transition: 'opacity 0.2s',
-                  '&:focus-visible': {opacity: 1},
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            <Stack direction="row" sx={{position: 'absolute', top: 8, right: 8}}>
+              <Tooltip title={t('agentTypes:moveUp', 'Move up')}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={t('agentTypes:moveUp', 'Move up')}
+                    data-move="up"
+                    disabled={index === 0}
+                    onClick={() => handleMoveProperty(index, -1)}
+                  >
+                    <ArrowUp size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title={t('agentTypes:moveDown', 'Move down')}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={t('agentTypes:moveDown', 'Move down')}
+                    data-move="down"
+                    disabled={index === properties.length - 1}
+                    onClick={() => handleMoveProperty(index, 1)}
+                  >
+                    <ArrowDown size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
+                <IconButton
+                  className="property-delete-btn"
+                  size="small"
+                  color="error"
+                  aria-label={t('agentTypes:removeProperty', 'Remove property')}
+                  onClick={() => handleRemoveProperty(property.id)}
+                  sx={{opacity: 0, transition: 'opacity 0.2s', '&:focus-visible': {opacity: 1}}}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           )}
 
           <Stack spacing={2}>
@@ -238,7 +285,7 @@ export default function EditSchemaSettings({
             />
 
             {/* Checkbox options with info tooltips */}
-            <Box sx={{display: 'flex', gap: 3}}>
+            <Box sx={{display: 'flex', flexWrap: 'wrap', columnGap: 3}}>
               <Tooltip
                 title={t('agentTypes:tooltips.required', 'This field must be provided when creating a user')}
                 placement="top"
@@ -260,6 +307,32 @@ export default function EditSchemaSettings({
                   }
                 />
               </Tooltip>
+              {!property.required && (
+                <Tooltip
+                  title={t(
+                    'agentTypes:tooltips.promptOnCreate',
+                    'Prompt for this optional field when an agent is created: added by an admin or onboarded through a flow',
+                  )}
+                  placement="top"
+                  arrow
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!property.hiddenOnCreate}
+                        disabled={disabled}
+                        onChange={(e) => handlePropertyChange(property.id, 'hiddenOnCreate', !e.target.checked)}
+                      />
+                    }
+                    label={
+                      <Stack direction="row" alignItems="center" spacing={0.5} sx={{whiteSpace: 'nowrap'}}>
+                        <span>{t('agentTypes:promptOnCreate', 'Prompt on onboarding')}</span>
+                        <Info size={14} color="inherit" />
+                      </Stack>
+                    }
+                  />
+                </Tooltip>
+              )}
               {(property.type === 'string' ||
                 isContactAttributeType(property.type) ||
                 property.type === 'number' ||

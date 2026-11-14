@@ -941,7 +941,7 @@ describe('AgentAddFormPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it("asks for the attributes in the agent type's order: display attribute, required, optional, credentials", async () => {
+  it("asks for the attributes in the agent type's order: display attribute, required, optional, credentials, each by name", async () => {
     const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
     h.http.request.mockImplementation((config: unknown) =>
       (config as RecordedRequest).url.includes('/agent-types/type-1')
@@ -971,8 +971,8 @@ describe('AgentAddFormPage', () => {
     expect(Array.from(fields, (element) => element.id)).toEqual([
       'label',
       'environment',
-      'model',
       'function',
+      'model',
       'apiKey',
     ]);
   });

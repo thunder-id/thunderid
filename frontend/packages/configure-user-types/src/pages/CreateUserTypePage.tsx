@@ -8,7 +8,7 @@ import {
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
 import {useLogger} from '@thunderid/logger/react';
-import {getContactTypesMissingRegex, getErrorMessage, isContactAttributeType} from '@thunderid/utils';
+import {getContactTypesMissingRegex, getErrorMessage} from '@thunderid/utils';
 import {Box, Stack, Button, CircularProgress, IconButton, LinearProgress, Alert, AppBreadcrumbs} from '@wso2/oxygen-ui';
 import {Home, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useEffect, useMemo} from 'react';
@@ -22,7 +22,8 @@ import UserTypeConstraints from '../constants/user-type-constraints';
 import useUserTypeCreate from '../contexts/UserTypeCreate/useUserTypeCreate';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import {UserTypeCreateFlowStep} from '../models/user-type-create-flow';
-import type {PropertyDefinition, UserTypeDefinition, CreateUserTypeRequest} from '../types/user-types';
+import type {CreateUserTypeRequest} from '../types/user-types';
+import convertPropertiesToSchema from '../utils/convertPropertiesToSchema';
 
 import {
   getMissingPrimaryContactTypes,
@@ -296,43 +297,7 @@ export default function CreateUserTypePage(): JSX.Element {
       return;
     }
 
-    // Convert properties to schema definition
-    const schema: UserTypeDefinition = {};
-    validProperties.forEach((prop) => {
-      const actualType = prop.type === 'enum' ? 'string' : prop.type;
-
-      const propDef: Partial<PropertyDefinition> = {
-        type: actualType,
-        required: prop.required,
-        ...(prop.displayName.trim() ? {displayName: prop.displayName.trim()} : {}),
-      };
-
-      if (actualType === 'string' || isContactAttributeType(actualType) || actualType === 'number') {
-        if (prop.unique) {
-          (propDef as {unique?: boolean}).unique = true;
-        }
-        if (prop.credential && (actualType === 'string' || actualType === 'number')) {
-          (propDef as {credential?: boolean}).credential = true;
-        }
-      }
-
-      if (actualType === 'string' || isContactAttributeType(actualType)) {
-        if (prop.type === 'enum' || prop.enum.length > 0) {
-          (propDef as {enum?: string[]}).enum = prop.enum;
-        }
-        if (prop.regex.trim() || isContactAttributeType(prop.type)) {
-          (propDef as {regex?: string}).regex = prop.regex;
-        }
-      }
-
-      if (actualType === 'array') {
-        (propDef as {items?: {type: string}}).items = {type: 'string'};
-      } else if (actualType === 'object') {
-        (propDef as {properties?: Record<string, PropertyDefinition>}).properties = {};
-      }
-
-      schema[prop.name.trim()] = propDef as PropertyDefinition;
-    });
+    const schema = convertPropertiesToSchema(validProperties);
 
     const requestBody: CreateUserTypeRequest = {
       handle: trimmedHandle,

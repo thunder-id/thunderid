@@ -47,9 +47,25 @@ type property interface {
 		exists func(map[string]interface{}) (bool, error), logger *log.Logger) (bool, error)
 }
 
+// Keys of the display settings a top-level property can set. They are read here rather than by
+// each property type, so nested properties do not accept them.
+const (
+	keyDisplay  = "display"
+	keyOrder    = "order"
+	keyOnCreate = "onCreate"
+	keyHidden   = "hidden"
+)
+
+// attributeHints holds a top-level property's display order and whether it is hidden on create.
+type attributeHints struct {
+	displayOrder   *int
+	hiddenOnCreate bool
+}
+
 // Schema represents an entity type schema with a set of properties.
 type Schema struct {
 	properties map[string]property
+	hints      map[string]attributeHints
 }
 
 // getPropertyByPath returns the property at the given dot-notation path
@@ -215,6 +231,11 @@ type AttributeInfo struct {
 	// Enum holds the permitted values in schema order when the property constrains them, and is
 	// empty otherwise.
 	Enum []string
+	// DisplayOrder is the attribute's position among the others when it is collected, lower first
+	// and attribute name for the same order, and nil when the schema does not set one.
+	DisplayOrder *int
+	// HiddenOnCreate is true when an optional attribute is not asked for when an account is created.
+	HiddenOnCreate bool
 }
 
 // AttributeFilter selects top-level schema properties by their characteristics. Credential and
@@ -249,14 +270,17 @@ func (cs *Schema) GetAttributes(filter AttributeFilter) []AttributeInfo {
 		if filter.Type != "" && prop.getType() != filter.Type {
 			continue
 		}
+		attrHints := cs.hints[attr]
 		result = append(result, AttributeInfo{
-			Attribute:   attr,
-			DisplayName: prop.getDisplayName(),
-			Type:        prop.getType(),
-			Required:    prop.isRequired(),
-			Credential:  isCredential,
-			Unique:      prop.isUnique(),
-			Enum:        prop.getEnum(),
+			Attribute:      attr,
+			DisplayName:    prop.getDisplayName(),
+			Type:           prop.getType(),
+			Required:       prop.isRequired(),
+			Credential:     isCredential,
+			Unique:         prop.isUnique(),
+			Enum:           prop.getEnum(),
+			DisplayOrder:   attrHints.displayOrder,
+			HiddenOnCreate: attrHints.hiddenOnCreate,
 		})
 	}
 	return result
@@ -401,17 +425,81 @@ func CompileSchema(schema json.RawMessage) (*Schema, error) {
 
 	compiled := &Schema{
 		properties: make(map[string]property, len(schemaMap)),
+		hints:      make(map[string]attributeHints, len(schemaMap)),
 	}
 
 	for propName, propRaw := range schemaMap {
-		compiledProp, err := compileProperty(propName, propRaw)
+		var propMap map[string]json.RawMessage
+		if err := json.Unmarshal(propRaw, &propMap); err != nil {
+			return nil, fmt.Errorf("invalid property '%s': property definition must be an object", propName)
+		}
+		propHints, err := extractDisplay(propMap)
+		if err != nil {
+			return nil, fmt.Errorf("invalid property '%s': %w", propName, err)
+		}
+		compiledProp, err := compilePropertyMap(propName, propMap)
 		if err != nil {
 			return nil, fmt.Errorf("invalid property '%s': %w", propName, err)
 		}
 		compiled.properties[propName] = compiledProp
+		compiled.hints[propName] = propHints
 	}
 
 	return compiled, nil
+}
+
+// extractDisplay reads the display settings of a top-level property and removes them from propMap.
+func extractDisplay(propMap map[string]json.RawMessage) (attributeHints, error) {
+	var result attributeHints
+	raw, ok := propMap[keyDisplay]
+	if !ok {
+		return result, nil
+	}
+	delete(propMap, keyDisplay)
+
+	var display map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &display); err != nil || display == nil {
+		return result, fmt.Errorf("'%s' field must be an object", keyDisplay)
+	}
+	for key, value := range display {
+		switch key {
+		case keyOrder:
+			var order *int
+			if err := json.Unmarshal(value, &order); err != nil || order == nil || *order < 0 {
+				return result, fmt.Errorf("'%s.%s' field must be a non-negative integer", keyDisplay, keyOrder)
+			}
+			result.displayOrder = order
+		case keyOnCreate:
+			hidden, err := extractHidden(value)
+			if err != nil {
+				return result, err
+			}
+			result.hiddenOnCreate = hidden
+		default:
+			return result, fmt.Errorf("invalid field '%s.%s'", keyDisplay, key)
+		}
+	}
+	return result, nil
+}
+
+// extractHidden reads the hidden setting of display.onCreate.
+func extractHidden(raw json.RawMessage) (bool, error) {
+	var onCreate map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &onCreate); err != nil || onCreate == nil {
+		return false, fmt.Errorf("'%s.%s' field must be an object", keyDisplay, keyOnCreate)
+	}
+	hidden := false
+	for key, value := range onCreate {
+		if key != keyHidden {
+			return false, fmt.Errorf("invalid field '%s.%s.%s'", keyDisplay, keyOnCreate, key)
+		}
+		var val *bool
+		if err := json.Unmarshal(value, &val); err != nil || val == nil {
+			return false, fmt.Errorf("'%s.%s.%s' field must be a boolean", keyDisplay, keyOnCreate, keyHidden)
+		}
+		hidden = *val
+	}
+	return hidden, nil
 }
 
 func compileProperty(propName string, propRaw json.RawMessage) (property, error) {
@@ -419,7 +507,10 @@ func compileProperty(propName string, propRaw json.RawMessage) (property, error)
 	if err := json.Unmarshal(propRaw, &propMap); err != nil {
 		return nil, fmt.Errorf("property definition must be an object")
 	}
+	return compilePropertyMap(propName, propMap)
+}
 
+func compilePropertyMap(propName string, propMap map[string]json.RawMessage) (property, error) {
 	typeRaw, exists := propMap["type"]
 	if !exists {
 		return nil, fmt.Errorf("missing required 'type' field")

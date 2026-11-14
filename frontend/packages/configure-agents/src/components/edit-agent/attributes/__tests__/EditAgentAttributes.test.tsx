@@ -97,7 +97,7 @@ describe('EditAgentAttributes', () => {
     expect(screen.queryByTestId('field-password')).not.toBeInTheDocument();
   });
 
-  it("orders the editable fields as the agent type's schema does, display attribute first", () => {
+  it('orders the editable fields in the shared order, display attribute first', () => {
     mockUseGetAgentType.mockReturnValue({
       data: {
         id: 'schema-1',
@@ -121,8 +121,8 @@ describe('EditAgentAttributes', () => {
     expect(screen.getAllByTestId(/^field-/).map((element) => element.getAttribute('data-testid'))).toEqual([
       'field-label',
       'field-environment',
-      'field-model',
       'field-function',
+      'field-model',
     ]);
   });
 

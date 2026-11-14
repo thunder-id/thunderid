@@ -21,7 +21,7 @@ const property = (overrides: Partial<SchemaPropertyInput>): SchemaPropertyInput 
 describe('convertPropertiesToSchema', () => {
   it('should skip properties without a name and trim the names it keeps', () => {
     expect(convertPropertiesToSchema([property({name: '  '}), property({name: ' model '})])).toEqual({
-      model: {type: 'string', required: false},
+      model: {type: 'string', required: false, display: {order: 0}},
     });
   });
 
@@ -32,14 +32,14 @@ describe('convertPropertiesToSchema', () => {
         property({name: 'secret', type: 'number', credential: true}),
       ]),
     ).toEqual({
-      name: {type: 'string', required: true, displayName: 'Name', unique: true},
-      secret: {type: 'number', required: false, credential: true},
+      name: {type: 'string', required: true, displayName: 'Name', display: {order: 0}, unique: true},
+      secret: {type: 'number', required: false, display: {order: 1}, credential: true},
     });
   });
 
   it('should store an enum as a string with its allowed values', () => {
     expect(convertPropertiesToSchema([property({name: 'tier', type: 'enum', enum: ['a', 'b']})])).toEqual({
-      tier: {type: 'string', required: false, enum: ['a', 'b']},
+      tier: {type: 'string', required: false, display: {order: 0}, enum: ['a', 'b']},
     });
   });
 
@@ -51,15 +51,15 @@ describe('convertPropertiesToSchema', () => {
         property({name: 'mail', type: 'email', regex: ''}),
       ]),
     ).toEqual({
-      code: {type: 'string', required: false, regex: '^[A-Z]+$'},
-      plain: {type: 'string', required: false},
-      mail: {type: 'email', required: false, regex: ''},
+      code: {type: 'string', required: false, display: {order: 0}, regex: '^[A-Z]+$'},
+      plain: {type: 'string', required: false, display: {order: 1}},
+      mail: {type: 'email', required: false, display: {order: 2}, regex: ''},
     });
   });
 
   it('should not mark booleans as credentials', () => {
     expect(convertPropertiesToSchema([property({name: 'active', type: 'boolean', credential: true})])).toEqual({
-      active: {type: 'boolean', required: false},
+      active: {type: 'boolean', required: false, display: {order: 0}},
     });
   });
 
@@ -70,8 +70,19 @@ describe('convertPropertiesToSchema', () => {
         property({name: 'meta', type: 'object', properties: {team: {type: 'string'}}}),
       ]),
     ).toEqual({
-      tags: {type: 'array', required: false, items: {type: 'string'}},
-      meta: {type: 'object', required: false, properties: {team: {type: 'string'}}},
+      tags: {type: 'array', required: false, display: {order: 0}, items: {type: 'string'}},
+      meta: {type: 'object', required: false, display: {order: 1}, properties: {team: {type: 'string'}}},
+    });
+  });
+  it('should save an optional property that is not asked for on create', () => {
+    expect(
+      convertPropertiesToSchema([
+        property({name: 'model', hiddenOnCreate: true}),
+        property({name: 'label', required: true, hiddenOnCreate: true}),
+      ]),
+    ).toEqual({
+      model: {type: 'string', required: false, display: {order: 0, onCreate: {hidden: true}}},
+      label: {type: 'string', required: true, display: {order: 1}},
     });
   });
 });

@@ -87,7 +87,7 @@ describe('AttributesSummarySection', () => {
     );
 
     const labels = screen.getAllByText(/^(nickname|sub|email|given_name|username)$/).map((el) => el.textContent);
-    expect(labels).toEqual(['username', 'given_name', 'email', 'sub', 'nickname']);
+    expect(labels).toEqual(['email', 'username', 'given_name', 'sub', 'nickname']);
   });
 
   it('shows an empty state when there are no attribute values', () => {

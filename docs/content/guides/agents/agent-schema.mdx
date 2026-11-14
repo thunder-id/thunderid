@@ -29,7 +29,11 @@ Each attribute in the schema has:
 - **required**: whether every agent must set a value;
 - **unique**: whether the value must be unique across agents;
 - **credential**: whether the value is stored hashed and hidden (string or number only);
-- for a string, an optional **regex pattern**; for email or mobile, a **regex pattern** prefilled by the Console; for an enum, the list of **allowed values**.
+- for a string, an optional **regex pattern**; for email or mobile, a **regex pattern** prefilled by the Console; for an enum, the list of **allowed values**;
+- a **display order** (`display.order`): its position, lowest first, on the Console's **Add agent** form, on the agent's profile, and among the fields a flow's **Provisioning** step asks for. Use the up and down arrows in the agent type's **Schema** tab to change it;
+- **Prompt on onboarding** (`display.onCreate.hidden`, default `false`): whether an optional attribute is asked for when an agent is created, on the **Add agent** form and by a flow's **Provisioning** step. Clearing it sets `hidden` to `true`. Required attributes are always asked for.
+
+Fields that a flow's prompt lists itself keep the order the flow gives them and are always shown. The shipped agent onboarding flow lists the default schema's attributes on its **Agent Details** step this way. The display order and **Prompt on onboarding** apply to top-level attributes only. They work as they do for user types; see [Attribute Order and Account Creation](../../users/user-type-reference#attribute-order-and-account-creation).
 
 Email and mobile attributes hold string values and support the **required** and **unique** flags. They cannot be credentials or define enum values. The Console requires a regex pattern for these types.
 

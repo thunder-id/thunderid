@@ -341,7 +341,7 @@ describe('CreateAgentTypePage', () => {
           displayName: 'Research Assistant',
           ouId: 'root-ou',
           systemAttributes: {display: 'name'},
-          schema: {name: {type: 'string', required: false}},
+          schema: {name: {type: 'string', required: false, display: {order: 0}}},
         });
       });
       expect(mockNavigate).toHaveBeenCalledWith('/agent-types');

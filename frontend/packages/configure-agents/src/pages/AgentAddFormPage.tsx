@@ -8,7 +8,7 @@ import {renderSchemaField, useGetUser, useGetUsers} from '@thunderid/configure-u
 import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useThunderID} from '@thunderid/react';
-import {getErrorMessage} from '@thunderid/utils';
+import {getErrorMessage, orderAttributes} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -34,7 +34,6 @@ import ClientSecretSuccessDialog from '../components/ClientSecretSuccessDialog';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import type {Agent, AgentInboundAuthConfig, AgentOwner, CreateAgentRequest} from '../models/agent';
 import {isInvalidExternalOwner} from '../utils/externalOwner';
-import orderAgentAttributes from '../utils/orderAgentAttributes';
 
 type AttributeFormData = Record<string, unknown>;
 
@@ -528,8 +527,11 @@ export default function AgentAddFormPage(): JSX.Element {
           }}
         >
           <Stack spacing={3} sx={isAttributesStep ? undefined : {display: 'none'}}>
-            {orderAgentAttributes(agentType?.schema ?? {}, agentType?.systemAttributes?.display).map(
-              ([fieldName, fieldDef]) => renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+            {orderAttributes(agentType?.schema ?? {}, {
+              onCreate: true,
+              leading: agentType?.systemAttributes?.display,
+            }).map(([fieldName, fieldDef]) =>
+              renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
             )}
           </Stack>
         </form>

@@ -11,7 +11,7 @@ import type {
 
 /**
  * Convert editable property inputs to the API schema format. Properties without a name are
- * skipped.
+ * skipped, and each property's position is saved as its display order.
  *
  * @param properties - The schema properties being edited
  * @returns The agent type schema the API accepts
@@ -28,13 +28,14 @@ export default function convertPropertiesToSchema(properties: SchemaPropertyInpu
 
   properties
     .filter((prop) => prop.name.trim())
-    .forEach((prop) => {
+    .forEach((prop, index) => {
       const actualType: PropertyType = prop.type === 'enum' ? 'string' : prop.type;
 
       const propDef: Partial<PropertyDefinition> = {
         type: actualType,
         required: prop.required,
         ...(prop.displayName.trim() ? {displayName: prop.displayName.trim()} : {}),
+        display: {order: index, ...(!prop.required && prop.hiddenOnCreate ? {onCreate: {hidden: true}} : {})},
       };
 
       if (prop.unique) {

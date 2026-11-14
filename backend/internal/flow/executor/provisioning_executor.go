@@ -654,6 +654,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 //
 // Missing inputs are ordered as: required non-credentials -> optional non-credentials ->
 // required credentials -> optional credentials and then each group sorted by attribute name.
+// Attrs with a display order in the schema lead, lowest first and by attribute name for the same order.
 // maxPerPrompt caps the forwarded prompt batch after this list is built.
 // includeOptional only affects optional non-credential attrs.
 func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
@@ -696,6 +697,7 @@ func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
 		schemaMissing = append(schemaMissing, ncOptionalMissing...)
 		schemaMissing = append(schemaMissing, credRequiredMissing...)
 		schemaMissing = append(schemaMissing, credOptionalMissing...)
+		orderByDisplayOrder(schemaMissing, allSchemaAttrs)
 
 		// Schema attrs lead: a record field is asked for last so the prompt reads schema first.
 		missing = append(schemaMissing, missing...)
@@ -746,6 +748,11 @@ func (p *provisioningExecutor) buildMissingInputs(
 		effectiveRequired := attr.Required
 		if inNodeInputs {
 			effectiveRequired = attr.Required || nodeInp.Required
+		}
+		// An optional attribute the entity type hides on create is asked for only when the node
+		// declares it.
+		if !effectiveRequired && attr.HiddenOnCreate && !inNodeInputs {
+			continue
 		}
 
 		if attr.Credential {

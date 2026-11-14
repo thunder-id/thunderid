@@ -5,6 +5,7 @@ import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
 import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {renderSchemaField} from '@thunderid/configure-users';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {orderAttributes} from '@thunderid/utils';
 import {Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useEffect, useRef, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
@@ -12,7 +13,6 @@ import {useTranslation} from 'react-i18next';
 import AttributesSummarySection from './AttributesSummarySection';
 import LifespanSection from './LifespanSection';
 import type {Agent} from '../../../models/agent';
-import orderAgentAttributes from '../../../utils/orderAgentAttributes';
 
 interface EditAgentAttributesProps {
   agent: Agent;
@@ -129,7 +129,7 @@ export default function EditAgentAttributes({
   }
 
   const schemaFields = schemaDetails?.schema
-    ? orderAgentAttributes(schemaDetails.schema, schemaDetails.systemAttributes?.display).filter(
+    ? orderAttributes(schemaDetails.schema, {leading: schemaDetails.systemAttributes?.display}).filter(
         ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
       )
     : [];
