@@ -19,6 +19,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -569,6 +570,33 @@ func (ts *AuditLogTestSuite) linesPerCall(responses ...*http.Response) [][]testu
 		perCall = append(perCall, byTraceID[traceID])
 	}
 	return perCall
+}
+
+// executeFlow posts one flow request like executeFlowStep, and also checks the step is not an error.
+func (ts *AuditLogTestSuite) executeFlow(token, appID string, request map[string]interface{}) (
+	*http.Response, *common.FlowStep) {
+	ts.T().Helper()
+	response, step := ts.executeFlowStep(token, appID, request)
+	ts.Require().NotEqual("ERROR", step.FlowStatus, "%+v", step)
+	return response, step
+}
+
+// executeFlowStep posts one flow request with the bearer token and the application's Flow Secret, and
+// returns the response and the step it got after checking the request was accepted.
+func (ts *AuditLogTestSuite) executeFlowStep(token, appID string, request map[string]interface{}) (
+	*http.Response, *common.FlowStep) {
+	ts.T().Helper()
+	payload, err := json.Marshal(request)
+	ts.Require().NoError(err)
+	header := http.Header{"Authorization": {"Bearer " + token}}
+	if secret := testutils.GetFlowSecret(appID); secret != "" {
+		header.Set(testutils.FlowSecretHeaderName, secret)
+	}
+	response, body := ts.post(testutils.GetRawHTTPClient(), "/flow/execute", payload, header)
+	ts.Require().Equal(http.StatusOK, response.StatusCode, string(body))
+	var step common.FlowStep
+	ts.Require().NoError(json.Unmarshal(body, &step), string(body))
+	return response, &step
 }
 
 // unusedIDCounter is seeded from the clock so runs differ, and advances per call so two calls in one

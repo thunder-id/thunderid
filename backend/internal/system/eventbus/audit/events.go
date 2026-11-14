@@ -34,6 +34,9 @@ const (
 	// EventUserCredentialUpdate names an attempt to set credentials of a user. It never carries a
 	// credential or its type.
 	EventUserCredentialUpdate = "user.credential.update" //nolint:gosec // an event name, not a credential
+	// EventUserLinkedAccountCreate names an attempt to link a federated identity to a user. It carries
+	// the connection the identity came through, never the identity's sub at it.
+	EventUserLinkedAccountCreate = "user.linked_account.create"
 	// EventUserSharingPolicyCreate names an attempt to create a sharing policy of a user.
 	EventUserSharingPolicyCreate = "user.sharing_policy.create"
 	// EventUserSharingPolicyUpdate names an attempt to change a sharing policy of a user.
@@ -238,6 +241,9 @@ var principalTargetTypes = map[string]string{
 // DetailGrantType is the detail key of the grant type a token was requested with.
 const DetailGrantType = "grant_type"
 
+// DetailConnection is the detail key of the ID of the connection a federated identity came through.
+const DetailConnection = "connection"
+
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
 
@@ -260,6 +266,8 @@ var auditedEvents = map[string][]string{
 
 	EventUserCredentialEnroll: nil,
 	EventUserCredentialUpdate: nil,
+
+	EventUserLinkedAccountCreate: {DetailConnection},
 
 	EventUserSharingPolicyCreate: nil,
 	EventUserSharingPolicyUpdate: nil,
