@@ -66,7 +66,8 @@ const (
 
 // ControlPlaneChildScopes are the child permissions of system the trusted issuer signs a management token for,
 // each in the environment variable ControlPlaneScopedTokenEnv names.
-var ControlPlaneChildScopes = []string{"system:user", "system:app", "system:role", "system:flow", "system:connection"}
+var ControlPlaneChildScopes = []string{"system:user", "system:app", "system:role", "system:flow", "system:connection",
+	"system:flow:update"}
 
 // ControlPlaneScopedTokenEnv returns the environment variable that carries the trusted issuer's management token
 // with exactly scope.

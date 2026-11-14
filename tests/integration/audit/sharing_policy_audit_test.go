@@ -42,7 +42,7 @@ func (ts *AuditLogTestSuite) TestAUserSharingPolicyLifecycleWritesOneLinePerChan
 	ts.Require().Equal(http.StatusNoContent, deletedAgain.StatusCode)
 
 	ts.requireSharingPolicyLifecycle(ts.linesPerCall(created, updated, deleted, deletedAgain), "user",
-		userID, policyID, ouID)
+		testutils.AuditRef{Type: "user", ID: userID}, policyID, ouID)
 }
 
 // Creating, updating and deleting a sharing policy of an application writes one line each, with the
@@ -67,7 +67,7 @@ func (ts *AuditLogTestSuite) TestAnApplicationSharingPolicyLifecycleWritesOneLin
 	ts.Require().Equal(http.StatusNoContent, deletedAgain.StatusCode)
 
 	ts.requireSharingPolicyLifecycle(ts.linesPerCall(created, updated, deleted, deletedAgain), "application",
-		appID, policyID, ouID)
+		testutils.AuditRef{Type: "application", ID: appID}, policyID, ouID)
 }
 
 // A sharing policy change that fails records the policy it named, or none on a create, and no subject.
@@ -152,10 +152,10 @@ func (ts *AuditLogTestSuite) TestEverySharingPolicyPathRecordsItsOutcome() {
 }
 
 // requireSharingPolicyLifecycle checks the lines of a create, an update, a delete and a repeated delete of
-// the policy with policyID of the resource of resourceType with resourceID: one line for each change, and
-// none for the repeated delete. None names ouID, the unit the policy shares from.
-func (ts *AuditLogTestSuite) requireSharingPolicyLifecycle(perCall [][]testutils.AuditLine, resourceType,
-	resourceID, policyID, ouID string) {
+// the policy with policyID of a resource of resourceType: one line for each change, with subject as its
+// subject, and none for the repeated delete. None names ouID, the unit the policy shares from.
+func (ts *AuditLogTestSuite) requireSharingPolicyLifecycle(perCall [][]testutils.AuditLine, resourceType string,
+	subject testutils.AuditRef, policyID, ouID string) {
 	ts.T().Helper()
 	ts.Require().Len(perCall, 4)
 	ts.Empty(perCall[3], "a delete that removed nothing writes no line")
@@ -169,7 +169,7 @@ func (ts *AuditLogTestSuite) requireSharingPolicyLifecycle(perCall [][]testutils
 		ts.Equal(event, line.Event)
 		ts.Equal(action, line.Action)
 		ts.Equal(policyRef, line.Target, event)
-		ts.Equal(testutils.AuditRef{Type: resourceType, ID: resourceID}, line.Subject, event)
+		ts.Equal(subject, line.Subject, event)
 		ts.Equal(adminRef, line.Actor, event)
 		ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, event)
 		ts.NotContains(line.Raw, ouID, "%s: no organization unit of the policy is recorded", event)

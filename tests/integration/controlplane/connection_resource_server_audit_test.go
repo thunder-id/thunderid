@@ -10,8 +10,9 @@ import (
 )
 
 // The Control Plane writes an audit line for each connection, resource server and action it creates,
-// updates and deletes, with the administrator the trusted issuer's token names as the actor and no
-// client secret or name. It writes its output to the server log only when a test started it, so the
+// updates and deletes, and for each sharing policy of a connection it creates, updates and deletes, with the
+// administrator the trusted issuer's token names as the actor and no client secret or name. A policy's line
+// has the connection as subject. It writes its output to the server log only when a test started it, so the
 // test restarts it first.
 func (ts *ControlPlaneTestSuite) TestConnectionAndResourceServerChangesAreAudited() {
 	ts.Require().NoError(testutils.RestartServer(), "the Control Plane must restart so its output is captured")
@@ -32,6 +33,24 @@ func (ts *ControlPlaneTestSuite) TestConnectionAndResourceServerChangesAreAudite
 	connectionBody["name"] = connectionName + "-renamed"
 	status, raw = ts.call(http.MethodPut, "/connections/google/"+connection.ID, connectionBody, nil)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	childID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("cp-audit-share-child"), Name: "Control Plane sharing child", Parent: &ts.ouID,
+		ProjectID: defaultProjectID,
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteOrganizationUnit(childID) })
+	policiesPath := "/connections/google/" + connection.ID + "/sharing-policies"
+	var policy created
+	status, raw = ts.call(http.MethodPost, policiesPath, map[string]any{"childUnits": map[string]any{"mode": "all"}},
+		&policy)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	status, raw = ts.call(http.MethodPut, policiesPath+"/"+policy.ID,
+		map[string]any{"version": 1, "childUnits": map[string]any{"mode": "all"}}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	status, raw = ts.call(http.MethodDelete, policiesPath+"/"+policy.ID, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
 	status, raw = ts.call(http.MethodDelete, "/connections/google/"+connection.ID, nil, nil)
 	ts.Require().Equal(http.StatusNoContent, status, string(raw))
 
@@ -80,5 +99,19 @@ func (ts *ControlPlaneTestSuite) TestConnectionAndResourceServerChangesAreAudite
 		ts.NotContains(line.Raw, clientSecret, "a client secret is never recorded")
 		ts.NotContains(line.Raw, connectionName, "the name of a connection is not recorded")
 		ts.NotContains(line.Raw, rsName, "the name of a resource server is not recorded")
+	}
+
+	policyRef := testutils.AuditRef{Type: "connection_sharing_policy", ID: policy.ID}
+	for _, action := range []string{"create", "update", "delete"} {
+		event := "connection.sharing_policy." + action
+		line, err := reader.Await(func(line testutils.AuditLine) bool {
+			return line.Event == event && line.Target == policyRef
+		})
+		ts.Require().NoError(err, event)
+		ts.Equal(connectionRef, line.Subject, event)
+		ts.Equal(testutils.AuditRef{Type: "user", ID: testutils.TrustedIssuerAdminSubject}, line.Actor, event)
+		ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, event)
+		ts.NotContains(line.Raw, connectionName, "%s: the connection's name is not recorded", event)
+		ts.NotContains(line.Raw, childID, "%s: no unit the policy reaches is recorded", event)
 	}
 }
