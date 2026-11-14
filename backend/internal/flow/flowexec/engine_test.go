@@ -2771,16 +2771,23 @@ func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOt
 	s.False(ok)
 }
 
+// A recovery flow and an administrator-initiated flow, whose user recovers access through it, are marked so
+// their proofs are checked at the recovery plane.
 func (s *EngineTestSuite) TestExecuteNodePackage_MarksRecoveryFlow() {
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRecovery, providers.Application{}, "")
+	for _, flowType := range []providers.FlowType{providers.FlowTypeRecovery, providers.FlowTypeAdminInitiated} {
+		nodeCtx := s.executeNodePackageCapturingContext(flowType, providers.Application{}, "")
 
-	s.True(authnprovidercm.IsRecoveryProof(nodeCtx))
+		s.True(authnprovidercm.IsRecoveryProof(nodeCtx), string(flowType))
+	}
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_DoesNotMarkOtherFlowsAsRecovery() {
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, providers.Application{}, "")
+	for _, flowType := range []providers.FlowType{providers.FlowTypeAuthentication,
+		providers.FlowTypeAdministration, providers.FlowTypeSelf} {
+		nodeCtx := s.executeNodePackageCapturingContext(flowType, providers.Application{}, "")
 
-	s.False(authnprovidercm.IsRecoveryProof(nodeCtx))
+		s.False(authnprovidercm.IsRecoveryProof(nodeCtx), string(flowType))
+	}
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_CompletesAndReturnsNilNextNode() {

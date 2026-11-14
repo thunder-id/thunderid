@@ -187,3 +187,34 @@ func (suite *DefaultUserMgtProviderTestSuite) TestUpdateUserCredentialsDelegates
 		})
 	}
 }
+
+// The invalidation and its check reach the user service with the caller's context, and the service's answer is
+// returned unchanged.
+func (suite *DefaultUserMgtProviderTestSuite) TestCredentialInvalidationDelegatesWithTheCallersContext() {
+	type ctxKey string
+	callerCtx := context.WithValue(context.Background(), ctxKey("caller"), "admin-1")
+	callers := mock.MatchedBy(func(ctx context.Context) bool {
+		return !security.IsRuntimeContext(ctx) && ctx.Value(ctxKey("caller")) == "admin-1"
+	})
+	for name, test := range map[string]struct {
+		marker string
+		svcErr *tidcommon.ServiceError
+	}{
+		"success": {marker: "2026-11-12T10:00:00.5Z"},
+		"refusal": {svcErr: &user.ErrorInvalidCredential},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockService.On("ValidateRemoveUserCredential", callers, testUserID, "password").
+				Return(test.svcErr).Once()
+			suite.mockService.On("RemoveUserCredential", callers, testUserID, "password").
+				Return(test.marker, test.svcErr).Once()
+
+			suite.Equal(test.svcErr,
+				suite.provider.ValidateRemoveUserCredential(callerCtx, testUserID, "password"))
+			marker, svcErr := suite.provider.RemoveUserCredential(callerCtx, testUserID, "password")
+			suite.Equal(test.marker, marker)
+			suite.Equal(test.svcErr, svcErr)
+		})
+	}
+}

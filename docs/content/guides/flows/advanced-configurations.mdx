@@ -592,6 +592,16 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 }
 ```
 
+**Credential reset modes:** in an administrator-initiated flow, this executor also runs a credential reset that an administrator starts and the user completes from an emailed link, as `default-admin-credential-reset-flow` does. These modes run only in administrator-initiated flows:
+
+| Mode | What it does |
+|---|---|
+| `validate` | Checks, changing nothing, that the administrator may reset the credential the `credential` input names for the user the flow was started for, and that the user is not suspended. It refuses a request that carries any input besides `subject` and its credential input, so **Send Email** reads the address from the user's stored profile, from the attribute its email input names: `email` by default, or another such as `workEmail`. Place it before the link is generated, so a refused reset sends nothing. |
+| `invalidate` | Removes the stored credential, revoking the user's tokens and ending their sessions. It runs only after the link was sent, so place it right after **Send Email**, with no View between them. If it fails, the link that was sent stops working. |
+| `set` (default) | In an administrator-initiated flow, sets only the credential the reset removed. Before it asks for anything, it fails, as an invalid link does, when the user's credentials changed after the reset started, such as by a later reset or a forgot password recovery, and refuses a suspended user. It asks for one masked input named after the credential, labelled with its display name, so point its **On Incomplete** at a View with a dynamic input placeholder. |
+
+Only string credentials can be reset this way; `validate` refuses a number credential.
+
 </details>
 
 #### Federated Authentication

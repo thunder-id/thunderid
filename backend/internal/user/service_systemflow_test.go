@@ -13,12 +13,14 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -339,4 +341,132 @@ func (s *UserCredentialUpdateSystemFlowTestSuite) TestNoProviderRunsNoFlow() {
 	s.Nil(s.update())
 
 	s.Equal([]string{"validate", "write"}, s.order)
+}
+
+// An invalidation revokes before the removal and again after it, from what the pre flow shared, and returns the
+// marker the removal wrote.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestInvalidationRevokesAroundTheRemoval() {
+	shared := map[string]string{"revocationPlan": "plan"}
+	s.expectRemovalCheck()
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, shared, nil)
+	s.expectRemoval(nil)
+	s.expectFlow(systemFlowUserCredentialUpdatePost, shared, nil, nil)
+
+	marker, svcErr := s.invalidate()
+
+	s.Nil(svcErr)
+	s.Equal("2026-11-12T10:00:00.5Z", marker)
+	s.Equal([]string{"check", systemFlowUserCredentialUpdatePre, "remove", systemFlowUserCredentialUpdatePost},
+		s.order)
+}
+
+// A refusal from the pre flow is the caller's answer, and the credential stays.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestARefusedRevocationRemovesNothing() {
+	refusal := &tidcommon.ServiceError{Code: "USR-1999", Type: tidcommon.ClientErrorType}
+	s.expectRemovalCheck()
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, nil, refusal)
+
+	marker, svcErr := s.invalidate()
+
+	s.Equal(refusal, svcErr)
+	s.Empty(marker)
+	s.Equal([]string{"check", systemFlowUserCredentialUpdatePre}, s.order)
+}
+
+// A failed removal is returned, and the post flow doesn't run.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestAFailedRemovalRunsNoPostFlow() {
+	s.expectRemovalCheck()
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, nil, nil)
+	s.expectRemoval(errors.New("store down"))
+
+	marker, svcErr := s.invalidate()
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Empty(marker)
+	s.Equal([]string{"check", systemFlowUserCredentialUpdatePre, "remove"}, s.order)
+}
+
+// A failed post flow is returned, after the credential is removed, with no marker.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestAFailedPostFlowAfterARemovalIsReturned() {
+	s.expectRemovalCheck()
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, nil, nil)
+	s.expectRemoval(nil)
+	s.expectFlow(systemFlowUserCredentialUpdatePost, nil, nil, &tidcommon.InternalServerError)
+
+	marker, svcErr := s.invalidate()
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Empty(marker)
+	s.Equal([]string{"check", systemFlowUserCredentialUpdatePre, "remove", systemFlowUserCredentialUpdatePost},
+		s.order)
+}
+
+// The check alone runs no flow.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestTheInvalidationCheckRunsNoFlow() {
+	s.expectRemovalCheck()
+
+	s.Nil(s.service.ValidateRemoveUserCredential(context.Background(), "user-1", "password"))
+
+	s.Equal([]string{"check"}, s.order)
+}
+
+// A credential the type does not declare, or a schema that cannot be read, is refused.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestTheDeclaredCredentialCheckRefuses() {
+	schemaDown := &tidcommon.ServiceError{Code: "ETS-5000", Type: tidcommon.ServerErrorType,
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "store down"}}
+	cases := map[string]struct {
+		noEntityTypes bool
+		declared      []entitytype.AttributeInfo
+		schemaErr     *tidcommon.ServiceError
+		want          *tidcommon.ServiceError
+	}{
+		"no entity type service": {noEntityTypes: true, want: &tidcommon.InternalServerError},
+		"schema read failure":    {schemaErr: schemaDown, want: &tidcommon.InternalServerError},
+		"type not found":         {schemaErr: &entitytype.ErrorEntityTypeNotFound, want: &ErrorEntityTypeNotFound},
+		"undeclared credential": {declared: []entitytype.AttributeInfo{{Attribute: "pin", Credential: true}},
+			want: &ErrorInvalidCredential},
+		"no credentials declared": {want: &ErrorInvalidCredential},
+	}
+	// SetupTest expects one check of user-1; each further case makes another.
+	s.entities.On("GetEntityProfile", mock.Anything, "user-1").Return(&providers.Entity{
+		ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1",
+	}, nil).Times(len(cases) - 1)
+	s.entities.On("IsEntityDeclarative", mock.Anything, "user-1").Return(false, nil).Times(len(cases) - 1)
+	for name, tc := range cases {
+		s.Run(name, func() {
+			s.service.entityTypeService = nil
+			if !tc.noEntityTypes {
+				entityTypes := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+				entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, mock.Anything,
+					entitytype.AttributeFilter{AllowCredential: true}).Return(tc.declared, tc.schemaErr).Once()
+				s.service.entityTypeService = entityTypes
+			}
+
+			s.Equal(tc.want, s.service.ValidateRemoveUserCredential(context.Background(), "user-1", "password"))
+		})
+	}
+}
+
+func (s *UserCredentialUpdateSystemFlowTestSuite) invalidate() (string, *tidcommon.ServiceError) {
+	return s.service.RemoveUserCredential(context.Background(), "user-1", "password")
+}
+
+// expectRemovalCheck records the check that user-1's type declares password.
+func (s *UserCredentialUpdateSystemFlowTestSuite) expectRemovalCheck() {
+	entityTypes := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, mock.Anything,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Run(func(mock.Arguments) { s.order = append(s.order, "check") }).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}}, nil).Once()
+	s.service.entityTypeService = entityTypes
+}
+
+// expectRemoval records the removal of user-1's password, failed with err when it is set.
+func (s *UserCredentialUpdateSystemFlowTestSuite) expectRemoval(err error) {
+	marker := "2026-11-12T10:00:00.5Z"
+	if err != nil {
+		marker = ""
+	}
+	s.entities.On("RemoveCredential", mock.Anything, "user-1", "password").
+		Run(func(mock.Arguments) { s.order = append(s.order, "remove") }).Return(marker, err).Once()
 }

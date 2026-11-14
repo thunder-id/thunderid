@@ -1050,6 +1050,168 @@ func (s *ServiceTestSuite) TestValidateCredentials() {
 	}
 }
 
+// Removing a credential keeps the entity's other credentials and stamps the credential marker it returns, with
+// sub-second precision, keeping the other system attributes.
+func (s *ServiceTestSuite) TestRemoveCredential_RemovesOnlyThatCredentialAndStampsTheMarker() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-remove")
+	e.Type = testCredentialEntityType
+	e.SystemAttributes = json.RawMessage(`{"name":"kept"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}, {Attribute: "pin"}}, nil).Once()
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{Entity: e,
+		SchemaCredentials: json.RawMessage(`{"password":[{"hash":"p"}],"pin":[{"hash":"n"}]}`)}, nil).Once()
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, json.RawMessage(`{"pin":[{"hash":"n"}]}`)).
+		Return(nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	var stamped json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(args mock.Arguments) { stamped, _ = args.Get(2).(json.RawMessage) }).Return(nil).Once()
+	before := time.Now()
+
+	marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+	s.Require().NoError(err)
+	written, err := time.Parse(time.RFC3339Nano, marker)
+	s.Require().NoError(err, "the marker must be an RFC 3339 time")
+	s.False(written.Before(before.Truncate(time.Microsecond)), "the marker must be the time of the removal")
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(stamped, &attrs))
+	s.Equal(marker, attrs[authnprovidercm.SystemAttrCredentialUpdatedAt], "the stored marker must be returned")
+	s.Equal("kept", attrs["name"], "unrelated system attributes must survive the stamp")
+}
+
+// A credential that is already absent is removed again, and the marker still moves.
+func (s *ServiceTestSuite) TestRemoveCredential_AnAbsentCredentialStillMovesTheMarker() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-remove-absent")
+	e.Type = testCredentialEntityType
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, nil).Once()
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{Entity: e}, nil).Once()
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, json.RawMessage(`{}`)).Return(nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).Return(nil).Once()
+
+	marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+	s.Require().NoError(err)
+	s.NotEmpty(marker)
+}
+
+// A failed removal returns no marker, and a check that refuses it writes nothing.
+func (s *ServiceTestSuite) TestRemoveCredential_Failures() {
+	type stage int
+	const (
+		read stage = iota
+		declared
+		loaded
+		removed
+		stamped
+	)
+	for name, test := range map[string]struct {
+		fails    stage
+		declares []entitytype.AttributeInfo
+		wantIs   error
+	}{
+		"an unknown entity": {fails: read},
+		"an undeclared credential": {fails: declared, declares: []entitytype.AttributeInfo{{Attribute: "pin"}},
+			wantIs: ErrInvalidCredential},
+		"a type declaring none":     {fails: declared, wantIs: ErrInvalidCredential},
+		"a failed credentials read": {fails: loaded},
+		"a failed credential write": {fails: removed},
+		"a failed marker write":     {fails: stamped},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			e := testEntity("e-remove-fail")
+			e.Type = testCredentialEntityType
+			if test.fails == read {
+				s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
+			} else {
+				s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+				declares := test.declares
+				if test.fails > declared {
+					declares = []entitytype.AttributeInfo{{Attribute: "password"}}
+				}
+				ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+					entitytype.AttributeFilter{AllowCredential: true}).Return(declares, nil).Once()
+			}
+			if test.fails >= loaded {
+				var loadErr error
+				if test.fails == loaded {
+					loadErr = s.testErr
+				}
+				s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+					Return(&entityWithCredentials{Entity: e}, loadErr).Once()
+			}
+			if test.fails >= removed {
+				var writeErr error
+				if test.fails == removed {
+					writeErr = s.testErr
+				}
+				s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.Anything).Return(writeErr).Once()
+			}
+			if test.fails == stamped {
+				s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+				s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).Return(s.testErr).Once()
+			}
+
+			marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+			s.Empty(marker)
+			if test.wantIs != nil {
+				s.ErrorIs(err, test.wantIs)
+			} else {
+				s.ErrorIs(err, s.testErr)
+			}
+			if test.fails < removed {
+				s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+			}
+			if test.fails < stamped {
+				s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// The removal check reads the declared credentials and writes nothing.
+func (s *ServiceTestSuite) TestValidateCredentialRemoval() {
+	for name, test := range map[string]struct {
+		credential string
+		wantIs     error
+	}{
+		"a declared credential":    {credential: "password"},
+		"an undeclared credential": {credential: "passkey", wantIs: ErrInvalidCredential},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			e := testEntity("e-check-removal")
+			e.Type = testCredentialEntityType
+			s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+			ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+				entitytype.AttributeFilter{AllowCredential: true}).
+				Return([]entitytype.AttributeInfo{{Attribute: "password"}}, nil).Once()
+
+			err := svc.validateCredentialRemoval(s.ctx, e.ID, test.credential)
+
+			if test.wantIs == nil {
+				s.NoError(err)
+			} else {
+				s.ErrorIs(err, test.wantIs)
+			}
+			s.store.AssertNotCalled(s.T(), "GetEntityWithCredentials", mock.Anything, mock.Anything)
+			s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
 // A client secret rotation stamps the entity, in the same transaction as the credential write.
 func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOnClientSecretRotation() {
 	e := testEntity("e-cs")

@@ -128,6 +128,16 @@ paths:
                   inputs: {
                     "subject": "019fd0e4-de6c-7ea5-9541-7982f40beeb9"
                   }
+              adminInitiatedCredentialResetRequest:
+                summary: Administrator-initiated credential reset of the user's password
+                value:
+                  flowType: "ADMIN_INITIATED"
+                  handle: "default-admin-credential-reset-flow"
+                  verbose: true
+                  inputs: {
+                    "subject": "019fd0e4-de6c-7ea5-9541-7982f40beeb9",
+                    "credential": "password"
+                  }
               adminInitiatedFlowLinkRequest:
                 summary: The user continues an administrator-initiated flow from the emailed link
                 value:
@@ -471,14 +481,18 @@ components:
           description: >-
             Required handle of the `ADMIN_INITIATED` flow to execute. The server ships
             `default-admin-attribute-verification-flow`, which emails the user a link to verify
-            their email address.
+            their email address, and `default-admin-credential-reset-flow`, which emails the user a
+            link to set a new password or PIN and invalidates the current one once the email is sent.
           example: "default-admin-attribute-verification-flow"
         inputs:
           type: object
           description: >-
             Input data for the flow. The start binds the flow to the user whose ID the `subject` input
-            names; later requests cannot change it. The shipped flow verifies the email attribute the
-            `attribute` input names, `email` when it is absent.
+            names; later requests cannot change it. The shipped verification flow verifies the email
+            attribute the `attribute` input names, `email` when it is absent. The shipped credential
+            reset flow resets the credential the `credential` input names, such as `password` or `pin`,
+            which the user's type must declare. It refuses a start whose inputs name any attribute of the
+            user's type, since the link goes to the address stored on the user's profile.
           additionalProperties:
             type: string
           example: {subject: "019fd0e4-de6c-7ea5-9541-7982f40beeb9"}

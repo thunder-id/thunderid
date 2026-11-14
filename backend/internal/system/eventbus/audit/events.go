@@ -34,6 +34,9 @@ const (
 	// EventUserCredentialUpdate names an attempt to set credentials of a user. It never carries a
 	// credential or its type.
 	EventUserCredentialUpdate = "user.credential.update" //nolint:gosec // an event name, not a credential
+	// EventUserCredentialInvalidate names an attempt to invalidate a credential of a user. It carries the
+	// credential's type, never a value.
+	EventUserCredentialInvalidate = "user.credential.invalidate" //nolint:gosec // an event name, not a credential
 	// EventUserSharingPolicyCreate names an attempt to create a sharing policy of a user.
 	EventUserSharingPolicyCreate = "user.sharing_policy.create"
 	// EventUserSharingPolicyUpdate names an attempt to change a sharing policy of a user.
@@ -238,6 +241,9 @@ var principalTargetTypes = map[string]string{
 // DetailGrantType is the detail key of the grant type a token was requested with.
 const DetailGrantType = "grant_type"
 
+// DetailCredentialType is the detail key of the type of the credential an event acted on, such as password.
+const DetailCredentialType = "credential_type" //nolint:gosec // a detail key, not a credential
+
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
 
@@ -258,8 +264,9 @@ var auditedEvents = map[string][]string{
 	EventUserUpdate: nil,
 	EventUserDelete: nil,
 
-	EventUserCredentialEnroll: nil,
-	EventUserCredentialUpdate: nil,
+	EventUserCredentialEnroll:     nil,
+	EventUserCredentialUpdate:     nil,
+	EventUserCredentialInvalidate: {DetailCredentialType},
 
 	EventUserSharingPolicyCreate: nil,
 	EventUserSharingPolicyUpdate: nil,

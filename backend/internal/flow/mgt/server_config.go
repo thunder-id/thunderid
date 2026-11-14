@@ -85,6 +85,7 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
 		{cfg.AdminAttributeVerificationFlow, providers.FlowTypeAdminInitiated, "adminAttributeVerificationFlow"},
+		{cfg.AdminCredentialResetFlow, providers.FlowTypeAdminInitiated, "adminCredentialResetFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
 		{cfg.UserSuspendFlow, providers.FlowTypeAdministration, "userSuspendFlow"},
 		{cfg.UserUnsuspendFlow, providers.FlowTypeAdministration, "userUnsuspendFlow"},
@@ -129,6 +130,8 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		AgentOnboardingFlow: mergeFlowTypeConfig(ro.AgentOnboardingFlow, wr.AgentOnboardingFlow),
 		AdminAttributeVerificationFlow: mergeFlowTypeConfig(
 			ro.AdminAttributeVerificationFlow, wr.AdminAttributeVerificationFlow),
+		AdminCredentialResetFlow: mergeFlowTypeConfig(
+			ro.AdminCredentialResetFlow, wr.AdminCredentialResetFlow),
 
 		UserUnlockFlow:         mergeFlowTypeConfig(ro.UserUnlockFlow, wr.UserUnlockFlow),
 		UserSuspendFlow:        mergeFlowTypeConfig(ro.UserSuspendFlow, wr.UserSuspendFlow),

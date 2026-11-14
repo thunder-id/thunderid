@@ -539,11 +539,11 @@ func verificationClaimContacts(ctx context.Context, entityTypeService entitytype
 }
 
 // dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
-// way at the recovery plane, so recovery and registration challenges still go out; every other flow
-// is checked at the dispatch plane.
+// way at the recovery plane, so recovery, registration and administrator-initiated challenges still go out;
+// every other flow is checked at the dispatch plane.
 func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
 	switch flowType {
-	case providers.FlowTypeRecovery, providers.FlowTypeRegistration:
+	case providers.FlowTypeRecovery, providers.FlowTypeRegistration, providers.FlowTypeAdminInitiated:
 		return providers.AccessPlaneRecovery
 	default:
 		return providers.AccessPlaneDispatch

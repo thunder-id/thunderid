@@ -65,6 +65,11 @@ type UserServiceInterface interface {
 	GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
+	// ValidateRemoveUserCredential runs the checks of RemoveUserCredential, changing nothing.
+	ValidateRemoveUserCredential(ctx context.Context, userID, credentialType string) *tidcommon.ServiceError
+	// RemoveUserCredential removes one credential the user's type declares, so its value no longer
+	// authenticates, and returns the credential marker the removal wrote.
+	RemoveUserCredential(ctx context.Context, userID, credentialType string) (string, *tidcommon.ServiceError)
 	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ResolveUserOUHandle(ctx context.Context, user *providers.User) *tidcommon.ServiceError
@@ -1076,14 +1081,30 @@ func (us *userService) UpdateUserCredentials(
 	return svcErr
 }
 
+// credentialResetCompletionKey marks a context whose credential write completes a credential reset.
+type credentialResetCompletionKey struct{}
+
+// WithCredentialResetCompletion marks ctx as a user completing a credential reset an administrator started,
+// so the write is audited as the user's rather than as the caller's.
+func WithCredentialResetCompletion(ctx context.Context) context.Context {
+	return context.WithValue(ctx, credentialResetCompletionKey{}, true)
+}
+
+// IsCredentialResetCompletion reports whether ctx completes a credential reset.
+func IsCredentialResetCompletion(ctx context.Context) bool {
+	completion, _ := ctx.Value(credentialResetCompletionKey{}).(bool)
+	return completion
+}
+
 // publishCredentialUpdate publishes the audit event of an attempt to set a user's credentials. A flow on the
 // server's authority, such as a password reset through the recovery flow, runs with the subject of the
-// request it came in on, which a public path lets anyone's bearer token be. Its actor is therefore set
-// explicitly: the user whose credentials were set, or anonymous when they were not.
+// request it came in on, which a public path lets anyone's bearer token be. A user completing a reset an
+// administrator started runs as that administrator. In both cases the actor is set explicitly: the user whose
+// credentials were set, or anonymous when they were not. Any other caller is the actor.
 func (us *userService) publishCredentialUpdate(ctx context.Context, userID string, svcErr *tidcommon.ServiceError) {
 	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
 	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr)
-	if security.IsRuntimeContext(ctx) {
+	if security.IsRuntimeContext(ctx) || IsCredentialResetCompletion(ctx) {
 		actor := audit.Actor{Type: audit.ActorTypeAnonymous}
 		if svcErr == nil {
 			actor = audit.Actor{Type: audit.ActorTypeUser, ID: userID}
@@ -1250,6 +1271,118 @@ func (us *userService) credentialUpdateError(ctx context.Context, logger *log.Lo
 	}
 	return logErrorAndReturnServerError(ctx, logger, "Failed to update user credentials", err,
 		log.MaskedString(log.LoggerKeyUserID, userID))
+}
+
+// ValidateRemoveUserCredential checks whether the caller may invalidate the user's credential and whether
+// the user's type declares it, without changing persistent state.
+func (us *userService) ValidateRemoveUserCredential(ctx context.Context, userID,
+	credentialType string) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	return us.checkCredentialRemoval(ctx, logger, userID, credentialType)
+}
+
+// RemoveUserCredential removes the user's credential the way a direct change replaces one: the tokens and
+// sessions the user holds are revoked before the removal and again after it. When the post flow fails, the
+// credential is already removed.
+func (us *userService) RemoveUserCredential(ctx context.Context, userID,
+	credentialType string) (string, *tidcommon.ServiceError) {
+	var written bool
+	marker, svcErr := us.removeUserCredential(ctx, userID, credentialType, &written)
+	auditErr := svcErr
+	if written {
+		auditErr = nil
+	}
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
+	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, auditErr).
+		WithDetails(map[string]string{audit.DetailCredentialType: credentialType})
+	eventbus.TryPublish(ctx, us.bus, eventbus.NewEvent(ctx, audit.EventUserCredentialInvalidate).With(payload))
+	return marker, svcErr
+}
+
+// removeUserCredential removes the user's credential without publishing its audit event, and sets
+// written once it is removed, since a failure after that leaves it removed.
+func (us *userService) removeUserCredential(ctx context.Context, userID, credentialType string,
+	written *bool) (string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	if svcErr := us.checkCredentialRemoval(ctx, logger, userID, credentialType); svcErr != nil {
+		return "", svcErr
+	}
+
+	inputs := map[string]string{systemFlowInputSubject: userID}
+	shared, svcErr := us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePre, inputs, nil)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	marker, err := us.entityService.RemoveCredential(ctx, userID, credentialType)
+	if err != nil {
+		return "", us.credentialUpdateError(ctx, logger, userID, err)
+	}
+	*written = true
+	if _, svcErr = us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePost, inputs, shared); svcErr != nil {
+		return "", svcErr
+	}
+	logger.Debug(ctx, "Invalidated user credential", log.MaskedString(log.LoggerKeyUserID, userID),
+		log.String("credentialType", credentialType))
+	return marker, nil
+}
+
+// checkCredentialRemoval refuses an invalidation the caller may not make: an unknown user, a user the
+// caller may not update or control, a user a declaration or control plane owns, and a credential the user's
+// type does not declare, including a system-managed one such as a passkey.
+func (us *userService) checkCredentialRemoval(ctx context.Context, logger *log.Logger, userID,
+	credentialType string) *tidcommon.ServiceError {
+	if strings.TrimSpace(userID) == "" {
+		return &ErrorMissingUserID
+	}
+	if strings.TrimSpace(credentialType) == "" || CredentialType(credentialType).IsSystemManaged() {
+		return &ErrorInvalidCredential
+	}
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return &ErrorUserNotFound
+		}
+		return logErrorAndReturnServerError(ctx, logger, "Failed to retrieve user", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	if existingEntity.Category != providers.EntityCategoryUser {
+		return &ErrorUserNotFound
+	}
+	if svcErr := us.checkUserAccess(ctx, security.ActionUpdateUser, existingEntity.OUID, userID); svcErr != nil {
+		return us.sharedUserRefusal(ctx, userID, existingEntity.OUID, svcErr)
+	}
+	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
+		return svcErr
+	}
+	return us.checkDeclaredCredential(ctx, logger, existingEntity.Type, userID, credentialType)
+}
+
+// checkDeclaredCredential refuses a credential the user's type does not declare.
+func (us *userService) checkDeclaredCredential(ctx context.Context, logger *log.Logger, userType, userID,
+	credentialType string) *tidcommon.ServiceError {
+	if us.entityTypeService == nil {
+		logger.Error(ctx, "Entity type service is not configured for user operations")
+		return &tidcommon.InternalServerError
+	}
+	declared, svcErr := us.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {
+			return &ErrorEntityTypeNotFound
+		}
+		return logErrorAndReturnServerError(ctx, logger, "Failed to get credential attributes from schema",
+			fmt.Errorf("schema service error: %s", svcErr.ErrorDescription.DefaultValue),
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	for _, info := range declared {
+		if info.Attribute == credentialType {
+			return nil
+		}
+	}
+	return &ErrorInvalidCredential
 }
 
 // ValidateDeleteUser checks whether the caller may delete the user and whether the target is deletable,

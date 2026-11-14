@@ -1643,6 +1643,42 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 	}
 }
 
+// The credential setter's reset modes run only in an administrator-initiated flow; its set mode runs in any.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_CredentialSetter() {
+	type modeCase struct {
+		mode     string
+		flowType providers.FlowType
+		allowed  bool
+	}
+	cases := []modeCase{
+		{executor.ExecutorModeSet, providers.FlowTypeRecovery, true},
+		{executor.ExecutorModeSet, providers.FlowTypeAdminInitiated, true},
+		{"", providers.FlowTypeRegistration, true},
+		{executor.ExecutorModeValidate, providers.FlowTypeAdminInitiated, true},
+		{executor.ExecutorModeValidate, providers.FlowTypeRecovery, false},
+		{executor.ExecutorModeValidate, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeInvalidate, providers.FlowTypeAdminInitiated, true},
+		{executor.ExecutorModeInvalidate, providers.FlowTypeRecovery, false},
+		{executor.ExecutorModeInvalidate, providers.FlowTypeAdministration, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.mode+"/"+string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameCredentialSetter)
+			nodes[1].Executor.Mode = tc.mode
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
 // The access change validator plans a role permission change only in a system flow.
 func (s *ValidatorTestSuite) TestValidateModeFlowTypes_AccessChangeValidator() {
 	cases := []struct {

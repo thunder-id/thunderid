@@ -90,4 +90,7 @@ const (
 	ExecutorModeShare    = "share"
 	ExecutorModePrepare  = "prepare"
 	ExecutorModeRecord   = "record"
+
+	ExecutorModeSet        = "set"
+	ExecutorModeInvalidate = "invalidate"
 )

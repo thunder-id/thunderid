@@ -6690,6 +6690,13 @@ translations:
     forms.complete.message: Your password has been successfully reset. You can now sign in with your new password.
     forms.username.links.sign_in.prefix: Remember your password?
     forms.username.links.sign_in.label: Sign in
+    admin.reset.sent.title: Reset link sent
+    admin.reset.sent.message: We sent a reset link to the user's email address. Their current credential no longer works, and they set a new one from the link.
+    admin.reset.credential.title: Set a new credential
+    admin.reset.credential.subtitle: An administrator asked you to set a new value for this credential on your account.
+    admin.reset.submit: Save
+    admin.reset.complete.title: Reset complete
+    admin.reset.complete.message: Your new credential is saved. You can now sign in with it.
   elements:
     fields.usertype.label: User Type
     fields.usertype.placeholder: Select User Type
@@ -6804,6 +6811,12 @@ translations:
     adminEmailVerification.email.cta: "Verify email address"
     adminEmailVerification.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
     adminEmailVerification.email.ignore: "If you did not expect this request, you can ignore this email. The address stays unverified."
+    adminCredentialReset.email.subject: "Reset your sign-in credential"
+    adminCredentialReset.email.heading: "Reset your sign-in credential"
+    adminCredentialReset.email.intro: "An administrator started a reset of your sign-in credential. Your current credential no longer works. Open the link below to set a new one:"
+    adminCredentialReset.email.cta: "Set a new credential"
+    adminCredentialReset.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    adminCredentialReset.email.ignore: "If you did not expect this request, contact your administrator."
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000087
@@ -7898,6 +7911,37 @@ content:
     </body>
     </html>
 ---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b4
+channel: email
+handle: admin-credential-reset
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+displayName: Administrator Initiated Credential Reset
+description: Sent when an administrator asks a user to set a new sign-in credential.
+content:
+  subject: "{{t(adminCredentialReset.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(adminCredentialReset.email.heading)}}</h2>
+      <p>{{t(adminCredentialReset.email.intro)}}</p>
+      <p>
+        <a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 12px 24px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px; font-weight: bold;">
+          {{t(adminCredentialReset.email.cta)}}
+        </a>
+      </p>
+      <p>{{t(adminCredentialReset.email.linkFallback)}}</p>
+      <p style="word-break: break-all;">
+        <a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a>
+      </p>
+      <p>{{t(adminCredentialReset.email.ignore)}}</p>
+    </body>
+    </html>
+---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000008a
 ouHandle: default
@@ -8463,4 +8507,236 @@ nodes:
       height: 34
     position:
       x: 3532
+      y: 345
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008d
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: Default Admin Credential Reset Flow
+handle: default-admin-credential-reset-flow
+flowType: ADMIN_INITIATED
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 60
+      height: 34
+    position:
+      x: 62
+      y: 345
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user:update
+    - org:user:update
+  executor:
+    name: PermissionValidator
+  onSuccess: validate_reset
+  layout:
+    size:
+      width: 264
+      height: 113
+    position:
+      x: 218
+      y: 305
+- id: validate_reset
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+    mode: validate
+    inputs:
+    - identifier: credential
+      type: TEXT_INPUT
+      required: true
+  onSuccess: generate_link
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 578
+      y: 305
+- id: generate_link
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_link
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 914
+      y: 305
+- id: send_link
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: admin-credential-reset
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: invalidate_credential
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 1250
+      y: 305
+- id: invalidate_credential
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+    mode: invalidate
+  onSuccess: link_sent
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 1586
+      y: 305
+- id: link_sent
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: link_sent_heading
+      label: '{{ t(recovery:admin.reset.sent.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: link_sent_message
+      label: '{{ t(recovery:admin.reset.sent.message) }}'
+      variant: HEADING_6
+  next: verify_link
+  layout:
+    size:
+      width: 350
+      height: 350
+    position:
+      x: 1922
+      y: 187
+- id: verify_link
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_invite_token
+    identifier: inviteToken
+    type: HIDDEN
+    required: true
+  executor:
+    name: InviteExecutor
+    mode: verify
+  onSuccess: set_credential
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 2368
+      y: 305
+- id: prompt_new_credential
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: prompt_new_credential_heading
+      label: '{{ t(recovery:admin.reset.credential.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: prompt_new_credential_subtitle
+      label: '{{ t(recovery:admin.reset.credential.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_prompt_new_credential
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_credential_input
+      - type: ACTION
+        id: action_prompt_new_credential
+        label: '{{ t(recovery:admin.reset.submit) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_prompt_new_credential
+      nextNode: set_credential
+  layout:
+    size:
+      width: 350
+      height: 400
+    position:
+      x: 3040
+      y: 62
+- id: set_credential
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+  onSuccess: release_account_locks
+  onIncomplete: prompt_new_credential
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 3932
+      y: 305
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: reset_complete
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 4268
+      y: 305
+- id: reset_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: reset_complete_heading
+      label: '{{ t(recovery:admin.reset.complete.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: reset_complete_message
+      label: '{{ t(recovery:admin.reset.complete.message) }}'
+      variant: HEADING_6
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 325
+    position:
+      x: 4604
+      y: 199
+- id: end
+  type: END
+  layout:
+    size:
+      width: 50
+      height: 34
+    position:
+      x: 5050
       y: 345

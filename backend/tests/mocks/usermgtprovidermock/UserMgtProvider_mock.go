@@ -119,6 +119,80 @@ func (_c *UserMgtProviderMock_CreateUser_Call) RunAndReturn(run func(ctx context
 	return _c
 }
 
+// RemoveUserCredential provides a mock function for the type UserMgtProviderMock
+func (_mock *UserMgtProviderMock) RemoveUserCredential(ctx context.Context, userID string, credentialType string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, credentialType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveUserCredential")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, credentialType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = returnFunc(ctx, userID, credentialType)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, credentialType)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserMgtProviderMock_RemoveUserCredential_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveUserCredential'
+type UserMgtProviderMock_RemoveUserCredential_Call struct {
+	*mock.Call
+}
+
+// RemoveUserCredential is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - credentialType string
+func (_e *UserMgtProviderMock_Expecter) RemoveUserCredential(ctx any, userID any, credentialType any) *UserMgtProviderMock_RemoveUserCredential_Call {
+	return &UserMgtProviderMock_RemoveUserCredential_Call{Call: _e.mock.On("RemoveUserCredential", ctx, userID, credentialType)}
+}
+
+func (_c *UserMgtProviderMock_RemoveUserCredential_Call) Run(run func(ctx context.Context, userID string, credentialType string)) *UserMgtProviderMock_RemoveUserCredential_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserMgtProviderMock_RemoveUserCredential_Call) Return(s string, serviceError *common.ServiceError) *UserMgtProviderMock_RemoveUserCredential_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *UserMgtProviderMock_RemoveUserCredential_Call) RunAndReturn(run func(ctx context.Context, userID string, credentialType string) (string, *common.ServiceError)) *UserMgtProviderMock_RemoveUserCredential_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateUserCredentials provides a mock function for the type UserMgtProviderMock
 func (_mock *UserMgtProviderMock) UpdateUserCredentials(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError {
 	ret := _mock.Called(ctx, userID, credentials)
@@ -180,6 +254,71 @@ func (_c *UserMgtProviderMock_UpdateUserCredentials_Call) Return(serviceError *c
 }
 
 func (_c *UserMgtProviderMock_UpdateUserCredentials_Call) RunAndReturn(run func(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError) *UserMgtProviderMock_UpdateUserCredentials_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateRemoveUserCredential provides a mock function for the type UserMgtProviderMock
+func (_mock *UserMgtProviderMock) ValidateRemoveUserCredential(ctx context.Context, userID string, credentialType string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, credentialType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateRemoveUserCredential")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, credentialType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// UserMgtProviderMock_ValidateRemoveUserCredential_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateRemoveUserCredential'
+type UserMgtProviderMock_ValidateRemoveUserCredential_Call struct {
+	*mock.Call
+}
+
+// ValidateRemoveUserCredential is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - credentialType string
+func (_e *UserMgtProviderMock_Expecter) ValidateRemoveUserCredential(ctx any, userID any, credentialType any) *UserMgtProviderMock_ValidateRemoveUserCredential_Call {
+	return &UserMgtProviderMock_ValidateRemoveUserCredential_Call{Call: _e.mock.On("ValidateRemoveUserCredential", ctx, userID, credentialType)}
+}
+
+func (_c *UserMgtProviderMock_ValidateRemoveUserCredential_Call) Run(run func(ctx context.Context, userID string, credentialType string)) *UserMgtProviderMock_ValidateRemoveUserCredential_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserMgtProviderMock_ValidateRemoveUserCredential_Call) Return(serviceError *common.ServiceError) *UserMgtProviderMock_ValidateRemoveUserCredential_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *UserMgtProviderMock_ValidateRemoveUserCredential_Call) RunAndReturn(run func(ctx context.Context, userID string, credentialType string) *common.ServiceError) *UserMgtProviderMock_ValidateRemoveUserCredential_Call {
 	_c.Call.Return(run)
 	return _c
 }

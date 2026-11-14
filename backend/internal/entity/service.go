@@ -65,6 +65,9 @@ type EntityServiceInterface interface {
 		plaintextUpdates json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		plaintextUpdates json.RawMessage) error
+	// RemoveCredential removes the stored values of one declared credential and returns the credential
+	// marker it wrote.
+	RemoveCredential(ctx context.Context, entityID, credentialType string) (string, error)
 	// SetValidUntil sets the reserved validUntil system attribute alone. Only the service that owns
 	// the entity type calls it, today the agent service, after authorizing and validating the change.
 	SetValidUntil(ctx context.Context, entityID string, validUntil string) error
@@ -1359,6 +1362,62 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt,
 			time.Now().UTC().Format(time.RFC3339))
 	})
+}
+
+// validateCredentialRemoval checks that the entity's type declares credentialType as a credential. A
+// type that declares none, or an entity without a type, has nothing to remove.
+func (s *entityService) validateCredentialRemoval(ctx context.Context, entityID, credentialType string) error {
+	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	declared, err := s.declaredCredentialTypes(ctx, existing.Category, existing.Type)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(declared, credentialType) {
+		return fmt.Errorf("%w: %q is not a declared credential", ErrInvalidCredential, credentialType)
+	}
+	return nil
+}
+
+// RemoveCredential removes the stored values of credentialType, keeping every other credential, so the
+// removed value no longer authenticates. A credential already absent is removed again without error. The
+// credential marker is written with sub-second precision, so a later change in the same second still
+// moves it; the refresh grant reads it to the second.
+func (s *entityService) RemoveCredential(ctx context.Context, entityID, credentialType string) (string, error) {
+	if err := s.validateCredentialRemoval(ctx, entityID, credentialType); err != nil {
+		return "", err
+	}
+
+	marker := time.Now().UTC().Format(time.RFC3339Nano)
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := s.store.GetEntityWithCredentials(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+
+		creds := make(map[string]interface{})
+		if len(existing.SchemaCredentials) > 0 {
+			if err := json.Unmarshal(existing.SchemaCredentials, &creds); err != nil {
+				return fmt.Errorf("failed to unmarshal existing credentials: %w", err)
+			}
+		}
+		delete(creds, credentialType)
+
+		remaining, err := json.Marshal(creds)
+		if err != nil {
+			return fmt.Errorf("failed to marshal remaining credentials: %w", err)
+		}
+		if err := s.store.UpdateCredentials(txCtx, entityID, remaining); err != nil {
+			return err
+		}
+		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt, marker)
+	})
+	if err != nil {
+		return "", err
+	}
+	return marker, nil
 }
 
 // ValidateCredentials checks schema-defined credential updates the way UpdateCredentials does, without
