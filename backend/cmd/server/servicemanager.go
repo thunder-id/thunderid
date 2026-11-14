@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -451,10 +452,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	revocationEnforcer, revocationSvc, err := revocation.Initialize(oauthCfg, jwtService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize revocation service")
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
+	sessionChecker := sessionRevocationChecker{enforcer: revocationEnforcer}
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
 	sessionService, terminationHook, sessionCfg := initSessionService(ctx, serverConfigService,
-		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, logger)
+		runtime.Config.Server.Identifier, sessionRevoker, sessionChecker, ouProvider, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
@@ -773,12 +775,13 @@ func unregisterServices() {
 // builds the session service, returning the service, its termination hook, and the config so the caller
 // can thread the config into flowexec too.
 func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility, logger *log.Logger,
+	criteriaRevoker flowsession.CriteriaRevoker, revocationChecker flowsession.RevocationChecker,
+	ouEligibility flowsession.OUEligibility, logger *log.Logger,
 ) (flowsession.Service, flowsession.TerminationHook, flowsession.Config) {
 	cfg := readSessionConfig(ctx, svc, logger)
 	sessionService, terminationHook, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
 		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds,
-			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility)
+			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, revocationChecker, ouEligibility)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
 	return sessionService, terminationHook, cfg
 }
@@ -791,6 +794,23 @@ type sessionCriteriaRevoker struct {
 // RevokeTokenFamily revokes the given token family with the session-logout reason.
 func (a sessionCriteriaRevoker) RevokeTokenFamily(ctx context.Context, tokenFamilyID string) error {
 	return a.revoker.RevokeTokenFamily(ctx, tokenFamilyID, revocation.RevocationReasonSessionLogout)
+}
+
+// sessionRevocationChecker checks the session service's token families against the revocation deny list.
+type sessionRevocationChecker struct {
+	enforcer revocation.EnforcementServiceInterface
+}
+
+// IsTokenFamilyRevoked reports whether a grant issued now under the token family would be rejected as revoked.
+func (c sessionRevocationChecker) IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error) {
+	err := c.enforcer.EnsureNotRevoked(ctx, revocation.RevocationIdentity{
+		EstablishedAt: time.Now().UTC(),
+		Criteria:      []revocation.Criterion{{Type: revocation.CriterionTypeTokenFamily, Value: tokenFamilyID}},
+	})
+	if errors.Is(err, revocation.ErrTokenRevoked) {
+		return true, nil
+	}
+	return false, err
 }
 
 // readSessionConfig reads the effective SSO session lifetime configuration from the server-config

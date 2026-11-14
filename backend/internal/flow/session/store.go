@@ -277,16 +277,43 @@ func (st *store) buildSessionContextFromRow(row map[string]interface{}) (*Sessio
 	}, nil
 }
 
-// Record inserts or refreshes a participant under the upsert query.
-func (st *store) Record(ctx context.Context, p Participant) error {
-	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
-		_, err := dbClient.ExecuteContext(ctx, queryUpsertParticipant,
+// Record inserts or refreshes a participant under the upsert query and returns the token family id the
+// participant holds.
+func (st *store) Record(ctx context.Context, p Participant) (string, error) {
+	var tokenFamilyID string
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryUpsertParticipant,
 			p.SessionID, st.deploymentID, p.AppID, p.OUID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
 		if err != nil {
 			return fmt.Errorf("failed to record session participant: %w", err)
 		}
+		if len(results) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(results))
+		}
+		tokenFamilyID = parseNullableString(results[0]["tfid"])
 		return nil
 	})
+	return tokenFamilyID, err
+}
+
+// ReplaceTokenFamily moves the participant to p.TokenFamilyID while it still holds currentTokenFamilyID, and
+// returns the token family id it holds afterwards.
+func (st *store) ReplaceTokenFamily(ctx context.Context, p Participant, currentTokenFamilyID string) (
+	string, error) {
+	var tokenFamilyID string
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryReplaceParticipantTokenFamily,
+			currentTokenFamilyID, p.TokenFamilyID, p.SessionID, p.AppID, p.OUID, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to replace session participant token family: %w", err)
+		}
+		if len(results) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(results))
+		}
+		tokenFamilyID = parseNullableString(results[0]["tfid"])
+		return nil
+	})
+	return tokenFamilyID, err
 }
 
 // ListBySessionID returns the participants of a session, oldest first.
