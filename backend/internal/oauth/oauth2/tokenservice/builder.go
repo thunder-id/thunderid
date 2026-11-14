@@ -86,13 +86,13 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeAccess, tokenCtx.ValidityPeriod)
-	validityPeriod, capErr := tb.admitAndCap(ctx, tokenConfig.ValidityPeriod,
+	validityPeriod, lifespanEnds, capErr := tb.admitAndCapWithEnds(ctx, tokenConfig.ValidityPeriod,
 		accessTokenParties(tokenCtx, tokenConfig.Issuer)...)
 	if capErr != nil {
 		return nil, capErr
 	}
 
-	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx)
+	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx, lifespanEnds)
 	if claimsErr != nil {
 		return nil, fmt.Errorf("failed to build access token claims: %w", claimsErr)
 	}
@@ -235,10 +235,19 @@ func (tb *tokenBuilder) lookupCategory(ctx context.Context, entityID string) str
 // token that outlives an entity it names.
 func (tb *tokenBuilder) admitAndCap(ctx context.Context, validityPeriod int64,
 	entityIDs ...string) (int64, error) {
+	validityPeriod, _, err := tb.admitAndCapWithEnds(ctx, validityPeriod, entityIDs...)
+	return validityPeriod, err
+}
+
+// admitAndCapWithEnds is admitAndCap that also returns the lifespan end of each admitted entity that
+// has one, keyed by entity ID, so a caller can surface it on the token.
+func (tb *tokenBuilder) admitAndCapWithEnds(ctx context.Context, validityPeriod int64,
+	entityIDs ...string) (int64, map[string]time.Time, error) {
 	if tb.governance == nil {
-		return validityPeriod, nil
+		return validityPeriod, nil, nil
 	}
 	var notAfter time.Time
+	ends := make(map[string]time.Time)
 	seen := make(map[string]bool, len(entityIDs))
 	for _, entityID := range entityIDs {
 		if entityID == "" || seen[entityID] {
@@ -248,17 +257,21 @@ func (tb *tokenBuilder) admitAndCap(ctx context.Context, validityPeriod int64,
 
 		decision, svcErr := tb.evaluateIssuance(ctx, entityID)
 		if svcErr != nil {
-			return 0, fmt.Errorf("failed to evaluate issuance for an entity involved in the token: %s",
+			return 0, nil, fmt.Errorf("failed to evaluate issuance for an entity involved in the token: %s",
 				svcErr.Error.DefaultValue)
 		}
 		if !decision.Admitted {
-			return 0, ErrIssuanceRefused
+			return 0, nil, ErrIssuanceRefused
 		}
-		if !decision.NotAfter.IsZero() && (notAfter.IsZero() || decision.NotAfter.Before(notAfter)) {
-			notAfter = decision.NotAfter
+		if !decision.NotAfter.IsZero() {
+			ends[entityID] = decision.NotAfter
+			if notAfter.IsZero() || decision.NotAfter.Before(notAfter) {
+				notAfter = decision.NotAfter
+			}
 		}
 	}
-	return capAtLifespan(validityPeriod, notAfter)
+	validityPeriod, err := capAtLifespan(validityPeriod, notAfter)
+	return validityPeriod, ends, err
 }
 
 // evaluateIssuance returns the issuance decision for entityID, served from the request's memo when
@@ -383,6 +396,7 @@ func (tb *tokenBuilder) BuildIDJAG(
 // buildAccessTokenClaims builds the claims map for an access token.
 func (tb *tokenBuilder) buildAccessTokenClaims(
 	ctx *AccessTokenBuildContext,
+	lifespanEnds map[string]time.Time,
 ) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
@@ -437,6 +451,13 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 
 	if ctx.ActorClaims != nil {
 		actClaim := tb.buildActorClaim(ctx.ActorClaims)
+		if end, ok := lifespanEnds[actorEntityID(ctx)]; ok && !end.IsZero() {
+			// The acting agent's lifespan end, so a resource server that sees only this token can tell when
+			// the agent stops acting. Informational, like sub_valid_until on the agent's own token: validity
+			// still comes from exp, which issuance caps at this instant. It sits in act, where sub is the
+			// agent, and is left out for an actor with no lifespan end or no local identity.
+			actClaim[constants.ClaimSubValidUntil] = end.Unix()
+		}
 		claims["act"] = actClaim
 	}
 
@@ -492,6 +513,21 @@ func clientSubjectType(oauthApp *providers.OAuthClient) string {
 	default:
 		return ""
 	}
+}
+
+// actorEntityID returns the resource ID of the local entity acting for the subject, empty when the
+// grant did not resolve the actor to one. The client acting as the actor is named by its own ID.
+func actorEntityID(ctx *AccessTokenBuildContext) string {
+	if ctx.ActorClaims == nil {
+		return ""
+	}
+	if ctx.ActorClaims.EntityID != "" {
+		return ctx.ActorClaims.EntityID
+	}
+	if ctx.OAuthApp != nil && ctx.ActorClaims.Sub == ctx.OAuthApp.ID {
+		return ctx.OAuthApp.ID
+	}
+	return ""
 }
 
 // buildActorClaim builds the actor claim for token exchange.
