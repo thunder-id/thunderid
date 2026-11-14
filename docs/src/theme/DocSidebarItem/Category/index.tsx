@@ -10,7 +10,7 @@ import DocSidebarItems from '@theme/DocSidebarItems';
 import OriginalDocSidebarItemCategory from '@theme-original/DocSidebarItem/Category';
 import {Box} from '@wso2/oxygen-ui';
 import {Bot, ChevronDown, MonitorSmartphone, Server} from '@wso2/oxygen-ui-icons-react';
-import React, {useState} from 'react';
+import React, {useId, useRef, useState} from 'react';
 import {ConnectType, applyConnectType, useConnectType} from '@site/src/utils/connectType';
 
 type OriginalProps = Props;
@@ -163,12 +163,30 @@ function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
   const tabs = tabsOf(items);
   const activeTabIndex = tabs.findIndex(tab => isActiveSidebarItem(tab, rest.activePath));
   const [selectedTab, setSelectedTab] = useState(Math.max(activeTabIndex, 0));
-  // Follow navigation: opening a quickstart from the other tab selects that tab.
-  const [lastActiveTab, setLastActiveTab] = useState(activeTabIndex);
-  if (activeTabIndex !== lastActiveTab) {
-    setLastActiveTab(activeTabIndex);
+  // Follow navigation: opening a quickstart selects the tab that holds it, even after the other tab
+  // was picked by hand.
+  const [lastActivePath, setLastActivePath] = useState(rest.activePath);
+  if (rest.activePath !== lastActivePath) {
+    setLastActivePath(rest.activePath);
     if (activeTabIndex >= 0) setSelectedTab(activeTabIndex);
   }
+  const tabIdPrefix = useId();
+  const panelId = `${tabIdPrefix}-panel`;
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // Arrow keys, Home and End move between the tabs and select the one they land on.
+  const onTabKeyDown = (event: React.KeyboardEvent, index: number): void => {
+    const last = tabs.length - 1;
+    const next = {
+      ArrowRight: index === last ? 0 : index + 1,
+      ArrowLeft: index === 0 ? last : index - 1,
+      Home: 0,
+      End: last,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    setSelectedTab(next);
+    tabRefs.current[next]?.focus();
+  };
   const listItems = tabs.length > 0 ? tabs[selectedTab].items : items;
   const list = (
     <DocSidebarItems
@@ -218,19 +236,25 @@ function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
             {tabs.map((tab, index) => (
               <Box
                 key={tab.label}
+                ref={(element: HTMLButtonElement | null) => {
+                  tabRefs.current[index] = element;
+                }}
+                id={`${tabIdPrefix}-tab-${index}`}
                 component="button"
                 type="button"
                 role="tab"
                 aria-selected={index === selectedTab}
-                tabIndex={expanded ? 0 : -1}
+                aria-controls={panelId}
+                tabIndex={expanded && index === selectedTab ? 0 : -1}
                 onClick={() => setSelectedTab(index)}
+                onKeyDown={(event: React.KeyboardEvent) => onTabKeyDown(event, index)}
                 sx={{...tabSx, ...(index === selectedTab ? tabActiveSx : {})}}
               >
                 {tab.label}
               </Box>
             ))}
           </Box>
-          <ul className="menu__list" role="tabpanel">
+          <ul className="menu__list" role="tabpanel" id={panelId} aria-labelledby={`${tabIdPrefix}-tab-${selectedTab}`}>
             {list}
           </ul>
         </Collapsible>
