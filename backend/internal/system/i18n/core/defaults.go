@@ -2051,6 +2051,8 @@ var defaultMessages = map[string]string{
 	"error.variablestore.invalid_request_format_description": "The request body could not be read as a variable store request",
 	"error.variablestore.invalid_value": "Invalid value",
 	"error.variablestore.invalid_value_description": "A value is required and must be at most 8192 characters",
+	"error.variablestore.management_api_key_required": "Management API key required",
+	"error.variablestore.management_api_key_required_description": "Variables and secrets can only be managed with the management API key",
 	"error.variablestore.not_found": "Not found",
 	"error.variablestore.not_found_description": "Nothing of that name is stored",
 	"error.variablestore.reference_value": "A reference is not a value",

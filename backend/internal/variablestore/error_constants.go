@@ -168,6 +168,21 @@ var (
 		},
 	}
 
+	// ErrorManagementAPIKeyRequired refuses a call made with anything but the management API key, where
+	// one is configured. The control plane that holds the key is what keeps this store.
+	ErrorManagementAPIKeyRequired = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "VAR-1012",
+		Error: common.I18nMessage{
+			Key:          "error.variablestore.management_api_key_required",
+			DefaultValue: "Management API key required",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.variablestore.management_api_key_required_description",
+			DefaultValue: "Variables and secrets can only be managed with the management API key",
+		},
+	}
+
 	// ErrorInternalServerError is returned when the store cannot serve the request.
 	ErrorInternalServerError = common.ServiceError{
 		Type: common.ServerErrorType,

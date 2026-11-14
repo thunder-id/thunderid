@@ -10,6 +10,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // managementAPIKeySubject names the principal a management API key authenticates as: not a user
@@ -90,7 +91,9 @@ func (a *managementAPIKeyAuthenticator) trustsPath(path string) bool {
 	return false
 }
 
-// hasManagementAPIKey reports whether a management API key digest is configured at all.
-func hasManagementAPIKey(keyHash string) bool {
-	return utils.SanitizeString(keyHash) != ""
+// managementAPIKeyDigest normalizes a configured digest by the same rule the server uses to restrict
+// the APIs only the key may call, so a padded digest still matches the presented key's hash. It
+// returns "" when no key is configured.
+func managementAPIKeyDigest(keyHash string) string {
+	return engineconfig.SecurityConfig{ManagementAPIKeyHash: keyHash}.ManagementAPIKeyDigest()
 }

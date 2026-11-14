@@ -169,8 +169,19 @@ func TestNoConfiguredAPIKeyHandlesNothing(t *testing.T) {
 	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import/managed", "")))
 	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import/managed", "anything")))
 	// An empty configured digest must not be matched by an empty presented key.
-	assert.False(t, hasManagementAPIKey(""))
-	assert.False(t, hasManagementAPIKey("   "))
+	assert.Empty(t, managementAPIKeyDigest(""))
+	assert.Empty(t, managementAPIKeyDigest("   "))
+}
+
+// A digest configured with surrounding whitespace, as a YAML or environment value can carry, still
+// matches the key.
+func TestAPaddedDigestStillMatchesTheKey(t *testing.T) {
+	authenticator := newTestManagementAuthenticator(t,
+		managementAPIKeyDigest(" \t"+testManagementAPIKeyHash+"\r\n"))
+
+	_, err := authenticator.Authenticate(
+		requestWithAPIKey(http.MethodPost, "/import/managed", testManagementAPIKey))
+	assert.NoError(t, err)
 }
 
 func TestAuthenticateGrantsTheRootSystemPermission(t *testing.T) {

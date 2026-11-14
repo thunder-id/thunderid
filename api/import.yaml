@@ -297,7 +297,8 @@ components:
       description: >
         The deployment's management API key, whose SHA-256 digest is configured as
         `server.security.management_api_key_hash`. It opens the managed import, the plain import, and the
-        variable and secret stores. Only the managed import marks what it writes as read only.
+        variable and secret stores. Only the managed import marks what it writes as read only, and the
+        managed import and the variable and secret stores answer nothing but this key.
     OAuth2:
       type: oauth2
       flows:

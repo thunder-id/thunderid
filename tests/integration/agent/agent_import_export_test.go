@@ -586,9 +586,11 @@ func (s *AgentImportExportSuite) TestImportAgent_ResolvesAPasswordFromTheSecretS
 	agentName := "Agent Secret Password " + s.handleSuffix
 	secretName := "AGENT_SECRET_PASSWORD_" + s.handleSuffix
 	password := "Secret-Pass3!" + s.handleSuffix
-	s.Require().Equal(http.StatusCreated, s.send(http.MethodPost, "/secrets",
+	// The secret store answers only the management API key, as what deploys to a Data Plane holds.
+	keyClient := testutils.GetManagementAPIKeyHTTPClient()
+	s.Require().Equal(http.StatusCreated, s.sendWith(keyClient, http.MethodPost, "/secrets",
 		map[string]interface{}{"name": secretName, "value": password}))
-	defer func() { _ = s.send(http.MethodDelete, "/secrets/"+secretName, nil) }()
+	defer func() { _ = s.sendWith(keyClient, http.MethodDelete, "/secrets/"+secretName, nil) }()
 
 	importResp, err := s.importAgents(agentImportRequest{
 		Content: fmt.Sprintf("resource_type: agent\ntype: default\nouId: %s\nattributes:\n  name: %s\n"+
@@ -718,6 +720,10 @@ func (s *AgentImportExportSuite) installAgentType(systemAttributes *testutils.Us
 
 // send sends a JSON request to the server under test and returns the status.
 func (s *AgentImportExportSuite) send(method, path string, body interface{}) int {
+	return s.sendWith(testutils.GetHTTPClient(), method, path, body)
+}
+
+func (s *AgentImportExportSuite) sendWith(client *http.Client, method, path string, body interface{}) int {
 	var reader io.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
@@ -727,7 +733,7 @@ func (s *AgentImportExportSuite) send(method, path string, body interface{}) int
 	req, err := http.NewRequest(method, testServerURL+path, reader)
 	s.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := client.Do(req)
 	s.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode

@@ -108,6 +108,36 @@ func (ts *VariableStoreAPITestSuite) TestCreateReadAndDeleteAVariable() {
 	ts.getVariable(ts.name("API_URL"), http.StatusNotFound)
 }
 
+// With a management API key configured, the key keeps the store: an administrator's token, which holds
+// every permission, is refused on every API, and what the key stored is left as it was.
+func (ts *VariableStoreAPITestSuite) TestATokenIsRefusedWhereAManagementAPIKeyIsConfigured() {
+	ts.createVariable(ts.name("KEPT"), "by the key", "")
+	ts.createSecret(ts.name("KEPT_SECRET"), "by the key")
+
+	token := testutils.GetHTTPClient()
+	for _, call := range []struct{ method, path, body string }{
+		{http.MethodGet, "/variables", ""},
+		{http.MethodPost, "/variables", fmt.Sprintf(`{"name":%q,"value":"v"}`, ts.name("BY_TOKEN"))},
+		{http.MethodGet, "/variables/" + ts.name("KEPT"), ""},
+		{http.MethodPut, "/variables/" + ts.name("KEPT"), `{"value":"by a token"}`},
+		{http.MethodDelete, "/variables/" + ts.name("KEPT"), ""},
+		{http.MethodGet, "/secrets", ""},
+		{http.MethodPost, "/secrets", fmt.Sprintf(`{"name":%q,"value":"v"}`, ts.name("BY_TOKEN"))},
+		{http.MethodGet, "/secrets/" + ts.name("KEPT_SECRET"), ""},
+		{http.MethodPut, "/secrets/" + ts.name("KEPT_SECRET"), `{"value":"by a token"}`},
+		{http.MethodDelete, "/secrets/" + ts.name("KEPT_SECRET"), ""},
+	} {
+		status, body := ts.sendAs(token, call.method, call.path, call.body)
+
+		ts.Equal(http.StatusForbidden, status, "%s %s", call.method, call.path)
+		ts.Equal("VAR-1012", codeOf(ts.T(), body), "%s %s", call.method, call.path)
+	}
+
+	ts.Equal("by the key", ts.getVariable(ts.name("KEPT"), http.StatusOK).Value)
+	status, _ := ts.get("/secrets/" + ts.name("KEPT_SECRET"))
+	ts.Equal(http.StatusOK, status)
+}
+
 // Creating the same name twice is a conflict, not a silent overwrite.
 func (ts *VariableStoreAPITestSuite) TestCreatingAVariableTwiceConflicts() {
 	ts.createVariable(ts.name("DUPLICATE"), "first", "")
@@ -348,7 +378,14 @@ func (ts *VariableStoreAPITestSuite) do(method, path, body string) int {
 	return status
 }
 
+// send calls the store as what deploys to this server does, with the management API key: where one is
+// configured, as it is here, nothing else may call it.
 func (ts *VariableStoreAPITestSuite) send(method, path, body string) (int, string) {
+	ts.T().Helper()
+	return ts.sendAs(testutils.GetManagementAPIKeyHTTPClient(), method, path, body)
+}
+
+func (ts *VariableStoreAPITestSuite) sendAs(client *http.Client, method, path, body string) (int, string) {
 	ts.T().Helper()
 
 	var reader io.Reader
@@ -361,7 +398,7 @@ func (ts *VariableStoreAPITestSuite) send(method, path, body string) (int, strin
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := client.Do(req)
 	ts.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 
