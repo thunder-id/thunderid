@@ -19,7 +19,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const renderWithContext = (contextOverrides: Partial<ApplicationCreateContextType> = {}) => {
+const renderWithContext = (
+  contextOverrides: Partial<ApplicationCreateContextType> = {},
+  redirectUriRequired = true,
+) => {
   const baseContext: ApplicationCreateContextType = {
     currentStep: null as unknown as ApplicationCreateContextType['currentStep'],
     setCurrentStep: vi.fn(),
@@ -100,7 +103,7 @@ const renderWithContext = (contextOverrides: Partial<ApplicationCreateContextTyp
 
   return render(
     <ApplicationCreateContext.Provider value={baseContext}>
-      <ConfigureRedirectUris />
+      <ConfigureRedirectUris redirectUriRequired={redirectUriRequired} />
     </ApplicationCreateContext.Provider>,
   );
 };
@@ -286,5 +289,53 @@ describe('ConfigureRedirectUris', () => {
     await user.tab();
 
     expect(await screen.findByText('settings:cors.validation.invalidOrigin')).toBeInTheDocument();
+  });
+
+  it('flags a javascript: redirect URI as invalid on blur', async () => {
+    renderWithContext({
+      selectedTemplateConfig: expressTemplate,
+      redirectUris: ['javascript:alert(1)'],
+    });
+
+    await user.click(screen.getByDisplayValue('javascript:alert(1)'));
+    await user.tab();
+
+    expect(await screen.findByText('applications:edit.general.redirectUris.error.invalid')).toBeInTheDocument();
+  });
+
+  it('accepts a valid redirect URI on blur without flagging it', async () => {
+    renderWithContext({
+      selectedTemplateConfig: expressTemplate,
+      redirectUris: ['https://example.com/callback'],
+    });
+
+    await user.click(screen.getByDisplayValue('https://example.com/callback'));
+    await user.tab();
+
+    expect(screen.queryByText('applications:edit.general.redirectUris.error.invalid')).not.toBeInTheDocument();
+  });
+
+  it('marks the redirect URIs field as required and flags an empty row on blur when required', async () => {
+    renderWithContext({selectedTemplateConfig: reactTemplate});
+
+    expect(screen.getByText('applications:edit.general.redirectUris.title').closest('label')).toHaveTextContent('*');
+
+    await user.click(screen.getByPlaceholderText('applications:onboarding.configure.details.redirectUris.placeholder'));
+    await user.tab();
+
+    expect(await screen.findByText('applications:edit.general.redirectUris.error.empty')).toBeInTheDocument();
+  });
+
+  it('does not mark the redirect URIs field as required or flag an empty row when another field supplies one', async () => {
+    renderWithContext({selectedTemplateConfig: expressTemplate}, false);
+
+    expect(screen.getByText('applications:edit.general.redirectUris.title').closest('label')).not.toHaveTextContent(
+      '*',
+    );
+
+    await user.click(screen.getByPlaceholderText('applications:onboarding.configure.details.redirectUris.placeholder'));
+    await user.tab();
+
+    expect(screen.queryByText('applications:edit.general.redirectUris.error.empty')).not.toBeInTheDocument();
   });
 });

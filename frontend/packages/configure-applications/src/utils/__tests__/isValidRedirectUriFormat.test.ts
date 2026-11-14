@@ -28,4 +28,15 @@ describe('isValidRedirectUriFormat', () => {
     expect(isValidRedirectUriFormat('not a uri')).toBe(false);
     expect(isValidRedirectUriFormat('://missing-scheme')).toBe(false);
   });
+
+  it('rejects schemes that run or embed content in the browser', () => {
+    expect(isValidRedirectUriFormat('javascript:alert(1)')).toBe(false);
+    expect(isValidRedirectUriFormat(' JavaScript:alert(1)')).toBe(false);
+    expect(isValidRedirectUriFormat('data:text/html,hello')).toBe(false);
+    expect(isValidRedirectUriFormat('vbscript:msgbox(1)')).toBe(false);
+  });
+
+  it('accepts custom app schemes', () => {
+    expect(isValidRedirectUriFormat('myapp://callback')).toBe(true);
+  });
 });

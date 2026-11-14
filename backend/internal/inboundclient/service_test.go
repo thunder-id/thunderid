@@ -2095,6 +2095,21 @@ func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_SchemeWildc
 	assert.ErrorIs(suite.T(), validateRedirectURIs(p), ErrOAuthInvalidRedirectURI)
 }
 
+func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_DisallowedSchemeRejected() {
+	for _, uri := range []string{
+		"javascript:/alert(1)",
+		"JavaScript://example.com/%0aalert(1)",
+		"data:/text/html,hello",
+		"vbscript:/msgbox(1)",
+	} {
+		p := &providers.OAuthProfile{
+			RedirectURIs: []string{uri},
+			GrantTypes:   []string{"authorization_code"},
+		}
+		assert.ErrorIs(suite.T(), validateRedirectURIs(p), ErrOAuthInvalidRedirectURI, uri)
+	}
+}
+
 func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_FragmentRejected() {
 	p := &providers.OAuthProfile{
 		RedirectURIs: []string{"https://app/cb#frag"},

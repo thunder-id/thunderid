@@ -64,6 +64,27 @@ describe('OAuth2ConfigSection', () => {
     });
   });
 
+  describe('Redirect URIs Required Marker', () => {
+    const redirectUrisLabel = (): HTMLElement | null =>
+      screen.getByText('applications:edit.general.redirectUris.title').closest('label');
+
+    it('marks redirect URIs as required when the authorization code grant is enabled', () => {
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code'], redirectUris: []}}
+        />,
+      );
+
+      expect(redirectUrisLabel()).toHaveTextContent('*');
+    });
+
+    it('does not mark redirect URIs as required without the authorization code grant', () => {
+      render(<OAuth2ConfigSection oauth2Config={{grantTypes: ['client_credentials'], redirectUris: []}} />);
+
+      expect(redirectUrisLabel()).not.toHaveTextContent('*');
+    });
+  });
+
   describe('Grant Types Display', () => {
     it('should display all grant types as chips', () => {
       const oauth2Config: OAuth2Config = {
