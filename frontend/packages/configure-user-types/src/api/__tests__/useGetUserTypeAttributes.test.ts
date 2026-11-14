@@ -186,6 +186,42 @@ describe('useGetUserTypeAttributes', () => {
     expect(secrets.find((attribute) => !attribute.credential)?.userTypes).toEqual(['Customers']);
   });
 
+  it('should mark an attribute unique only when every declaring user type marks it unique', async () => {
+    mockRequests(
+      buildListResponse([
+        {id: '1', handle: 'person', displayName: 'Person'},
+        {id: '2', handle: 'customers', displayName: 'Customers'},
+      ]),
+      {
+        '1': {
+          id: '1',
+          handle: 'person',
+          displayName: 'Person',
+          ouId: 'root-ou',
+          allowSelfRegistration: false,
+          schema: {email: {type: 'string', unique: true}, username: {type: 'string', unique: true}},
+        },
+        '2': {
+          id: '2',
+          handle: 'customers',
+          displayName: 'Customers',
+          ouId: 'root-ou',
+          allowSelfRegistration: false,
+          schema: {email: {type: 'string'}, username: {type: 'string', unique: true}},
+        },
+      },
+    );
+
+    const {result} = renderHook(() => useGetUserTypeAttributes());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.attributes.find((attribute) => attribute.attribute === 'email')?.unique).toBe(false);
+    expect(result.current.attributes.find((attribute) => attribute.attribute === 'username')?.unique).toBe(true);
+  });
+
   it('should list a user type once when its schema flattens to the same attribute twice', async () => {
     mockRequests(buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}]), {
       '1': {
