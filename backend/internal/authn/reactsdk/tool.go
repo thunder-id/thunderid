@@ -21,6 +21,7 @@ func RegisterTools(server *mcp.Server) {
 			"or direct API calls for custom authentication UI.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Integrate React SDK",
+			ReadOnlyHint:   true,
 			IdempotentHint: true,
 		},
 	}, integrateReactSDK)

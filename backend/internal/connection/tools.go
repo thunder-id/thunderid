@@ -118,8 +118,9 @@ Rules:
 - Secrets are stored encrypted and are never returned; responses show them as ******. Never send ****** as a secret.`,
 		InputSchema: getCreateHTTPConnectionSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Create HTTP Connection",
-			IdempotentHint: false,
+			Title:           "Create HTTP Connection",
+			DestructiveHint: new(false),
+			IdempotentHint:  false,
 		},
 	}, tools.createHTTPConnection)
 
@@ -140,8 +141,9 @@ Secrets:
 			`under the same rule; a header left out is removed.`,
 		InputSchema: getUpdateHTTPConnectionSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Update HTTP Connection",
-			IdempotentHint: true,
+			Title:           "Update HTTP Connection",
+			DestructiveHint: new(true),
+			IdempotentHint:  true,
 		},
 	}, tools.updateHTTPConnection)
 }

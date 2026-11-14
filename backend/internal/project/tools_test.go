@@ -90,9 +90,13 @@ func (s *ProjectToolsTestSuite) TestRegisterMCPTools() {
 	s.Require().Contains(tools, "create_project")
 	s.False(tools["create_project"].Annotations.ReadOnlyHint)
 	s.False(tools["create_project"].Annotations.IdempotentHint)
+	s.Require().NotNil(tools["create_project"].Annotations.DestructiveHint)
+	s.False(*tools["create_project"].Annotations.DestructiveHint)
 	s.Require().Contains(tools, "update_project")
 	s.False(tools["update_project"].Annotations.ReadOnlyHint)
 	s.True(tools["update_project"].Annotations.IdempotentHint)
+	s.Require().NotNil(tools["update_project"].Annotations.DestructiveHint)
+	s.True(*tools["update_project"].Annotations.DestructiveHint)
 }
 
 func (s *ProjectToolsTestSuite) TestListProjects() {
