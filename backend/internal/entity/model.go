@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -124,4 +125,17 @@ type AttributeVerificationRecord struct {
 	Attribute      string
 	Value          string
 	VerifiedAt     time.Time
+}
+
+// ClientSecretRegeneration is a client secret just generated and stored. It is the only time the secret
+// can be read, since it is hashed on write.
+type ClientSecretRegeneration struct {
+	ClientSecret string
+	// Revoked reports that the system flows ran around the write and revoked what the old secret issued,
+	// up to the write. It is false where system flows are off, as on a control plane, and when the
+	// revocation after the write failed.
+	Revoked bool
+	// RevocationError is set when the secret is stored but revoking the tokens issued while it was written
+	// failed. Regenerating again revokes them.
+	RevocationError *tidcommon.ServiceError
 }

@@ -116,7 +116,6 @@ export const ExecutionTypes = {
   SSOCheck: 'SSOCheckExecutor',
   Session: 'SessionExecutor',
   SessionSignOut: 'SessionSignOutExecutor',
-  PreDelete: 'PreDeleteExecutor',
   PreSuspend: 'PreSuspendExecutor',
   ApplicationActionValidator: 'ApplicationActionValidator',
   CriteriaRevocation: 'CriteriaRevocationExecutor',

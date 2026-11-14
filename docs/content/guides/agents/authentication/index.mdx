@@ -26,7 +26,7 @@ A client secret is issued when the agent has an OAuth 2.0 configuration, which t
 - **Console:** on the **Credentials** tab, click **Regenerate secret**. The new secret is shown once, and the old one stops working immediately.
 - **API:** send `POST /agents/{id}/client-secret/regenerate`. The server generates the new secret and returns it once in the response. It needs the same permission as updating the agent.
 
-Regenerating the secret also revokes the tokens the old secret issued, as described in [Token Revocation](../../protocols/oauth-oidc/token-revocation.mdx#application-deletion-and-secret-regeneration). A personal agent's secret cannot be regenerated.
+When token revocation is on (`oauth.token_revocation.enabled`, the default), regenerating the secret also revokes the tokens the old secret issued, as described in [Token Revocation](../../protocols/oauth-oidc/token-revocation.mdx#client-deletion-and-secret-regeneration). With token revocation off, those tokens stay valid until they expire. A personal agent's secret cannot be regenerated.
 
 Rotating the secret refreshes the agent's credential only. It does not change the agent's identity, its ID, or the access it has been granted.
 

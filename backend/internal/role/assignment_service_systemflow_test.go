@@ -19,9 +19,9 @@ import (
 // the role holds the given assignments there, with the system flows mocked, and returns the request and
 // the flow engine.
 func (suite *RoleAssignmentServiceTestSuite) removalOf(held []RoleAssignment) (
-	[]RoleAssignment, *systemFlowProviderMock) {
-	flows := newSystemFlowProviderMock(suite.T())
-	suite.Require().NoError(SetAssignmentSystemFlowProvider(suite.service, flows))
+	[]RoleAssignment, *systemFlowRunnerMock) {
+	flows := newSystemFlowRunnerMock(suite.T())
+	suite.Require().NoError(SetAssignmentSystemFlowRunner(suite.service, flows))
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
 		Return([]providers.Entity{ownedUser()}, nil)
 	suite.ownedRole("role1")
@@ -103,8 +103,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_AnAssigneeNam
 func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_FailedPostFlowIsReported() {
 	const otherUser = "user2"
 	stored := append(heldByOwner(), RoleAssignment{ID: otherUser, Type: assigneeTypeEntity, OUID: testOwnerOU})
-	flows := newSystemFlowProviderMock(suite.T())
-	suite.Require().NoError(SetAssignmentSystemFlowProvider(suite.service, flows))
+	flows := newSystemFlowRunnerMock(suite.T())
+	suite.Require().NoError(SetAssignmentSystemFlowRunner(suite.service, flows))
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, mock.MatchedBy(func(ids []string) bool {
 		sorted := slices.Sorted(slices.Values(ids))
 		return slices.Equal(sorted, []string{testUserID1, otherUser})
@@ -157,7 +157,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_RefusedFlowRe
 // A failed read of the direct assignments removes nothing and runs no flow.
 func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_FailedHeldReadRemovesNothing() {
 	suite.Require().NoError(
-		SetAssignmentSystemFlowProvider(suite.service, newSystemFlowProviderMock(suite.T())))
+		SetAssignmentSystemFlowRunner(suite.service, newSystemFlowRunnerMock(suite.T())))
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
 		Return([]providers.Entity{ownedUser()}, nil)
 	suite.ownedRole("role1")
@@ -174,7 +174,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_FailedHeldRea
 // Adding an assignment revokes nothing, so no flow runs.
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_RunsNoFlow() {
 	suite.Require().NoError(
-		SetAssignmentSystemFlowProvider(suite.service, newSystemFlowProviderMock(suite.T())))
+		SetAssignmentSystemFlowRunner(suite.service, newSystemFlowRunnerMock(suite.T())))
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
 		Return([]providers.Entity{ownedUser()}, nil)
 	suite.ownedRole("role1")
@@ -187,10 +187,10 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_RunsNoFlow() {
 }
 
 // The provider is bound only to the service implementation.
-func (suite *RoleAssignmentServiceTestSuite) TestSetAssignmentSystemFlowProvider() {
-	provider := newSystemFlowProviderMock(suite.T())
+func (suite *RoleAssignmentServiceTestSuite) TestSetAssignmentSystemFlowRunner() {
+	provider := newSystemFlowRunnerMock(suite.T())
 
-	suite.NoError(SetAssignmentSystemFlowProvider(suite.service, provider))
+	suite.NoError(SetAssignmentSystemFlowRunner(suite.service, provider))
 	suite.Equal(provider, suite.service.(*roleAssignmentService).systemFlows)
-	suite.Error(SetAssignmentSystemFlowProvider(NewRoleAssignmentServiceInterfaceMock(suite.T()), provider))
+	suite.Error(SetAssignmentSystemFlowRunner(NewRoleAssignmentServiceInterfaceMock(suite.T()), provider))
 }

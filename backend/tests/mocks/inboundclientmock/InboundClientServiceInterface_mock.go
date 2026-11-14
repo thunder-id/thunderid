@@ -1253,6 +1253,46 @@ func (_c *InboundClientServiceInterfaceMock_RevalidateFKs_Call) RunAndReturn(run
 	return _c
 }
 
+// SetSystemFlowRunner provides a mock function for the type InboundClientServiceInterfaceMock
+func (_mock *InboundClientServiceInterfaceMock) SetSystemFlowRunner(runner inboundclient.SystemFlowRunnerInterface) {
+	_mock.Called(runner)
+	return
+}
+
+// InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowRunner'
+type InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowRunner is a helper method to define mock.On call
+//   - runner inboundclient.SystemFlowRunnerInterface
+func (_e *InboundClientServiceInterfaceMock_Expecter) SetSystemFlowRunner(runner any) *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call {
+	return &InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call{Call: _e.mock.On("SetSystemFlowRunner", runner)}
+}
+
+func (_c *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call) Run(run func(runner inboundclient.SystemFlowRunnerInterface)) *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 inboundclient.SystemFlowRunnerInterface
+		if args[0] != nil {
+			arg0 = args[0].(inboundclient.SystemFlowRunnerInterface)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call) Return() *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call) RunAndReturn(run func(runner inboundclient.SystemFlowRunnerInterface)) *InboundClientServiceInterfaceMock_SetSystemFlowRunner_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateInboundClient provides a mock function for the type InboundClientServiceInterfaceMock
 func (_mock *InboundClientServiceInterfaceMock) UpdateInboundClient(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error {
 	ret := _mock.Called(ctx, client, oauthProfile, hasClientSecret, oauthClientID)

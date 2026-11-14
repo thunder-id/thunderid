@@ -19,7 +19,7 @@ import (
 func (suite *RoleServiceTestSuite) recordSystemFlows(failing string, err *tidcommon.ServiceError,
 	order *[]string, times int) *[]*flowcommon.SystemFlowContext {
 	runs := &[]*flowcommon.SystemFlowContext{}
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
 			*tidcommon.ServiceError) {
@@ -30,7 +30,7 @@ func (suite *RoleServiceTestSuite) recordSystemFlows(failing string, err *tidcom
 			}
 			return &flowcommon.SystemFlowResult{RuntimeData: map[string]string{"plan": sysCtx.Handle}}, nil
 		}).Times(times)
-	suite.Require().NoError(SetSystemFlowProvider(suite.service, flows))
+	suite.Require().NoError(SetSystemFlowRunner(suite.service, flows))
 	return runs
 }
 
@@ -109,7 +109,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_FailedPostFlowIsReported() {
 
 // A role that is already gone runs no flow, so a retry after a partial delete revokes nothing again.
 func (suite *RoleServiceTestSuite) TestDeleteRole_MissingRoleRunsNoFlow() {
-	suite.Require().NoError(SetSystemFlowProvider(suite.service, newSystemFlowProviderMock(suite.T())))
+	suite.Require().NoError(SetSystemFlowRunner(suite.service, newSystemFlowRunnerMock(suite.T())))
 	suite.mockStore.On("GetRole", mock.Anything, "nonexistent").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
 	err := suite.service.DeleteRole(context.Background(), "nonexistent")
@@ -117,13 +117,13 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_MissingRoleRunsNoFlow() {
 	suite.Nil(err)
 }
 
-// permissionUpdate gives the service a system flow provider and readies role1, read once, to be updated
+// permissionUpdate gives the service a system flow runner and readies role1, read once, to be updated
 // to keep only the next permissions on rs1, while it currently holds the given ones, and returns the
 // provider and the update.
-func (suite *RoleServiceTestSuite) permissionUpdate(current, next []string) (*systemFlowProviderMock,
+func (suite *RoleServiceTestSuite) permissionUpdate(current, next []string) (*systemFlowRunnerMock,
 	RoleUpdateDetail) {
-	flows := newSystemFlowProviderMock(suite.T())
-	suite.Require().NoError(SetSystemFlowProvider(suite.service, flows))
+	flows := newSystemFlowRunnerMock(suite.T())
+	suite.Require().NoError(SetSystemFlowRunner(suite.service, flows))
 	request := RoleUpdateDetail{Name: "Role", OUID: "ou1"}
 	if len(next) > 0 {
 		request.Permissions = []ResourcePermissions{{ResourceServerID: "rs1", Permissions: next}}
@@ -142,12 +142,12 @@ func (suite *RoleServiceTestSuite) permissionUpdate(current, next []string) (*sy
 }
 
 // The server injects the flow engine once it exists; a service that cannot take it is reported.
-func (suite *RoleServiceTestSuite) TestSetSystemFlowProvider() {
-	provider := newSystemFlowProviderMock(suite.T())
+func (suite *RoleServiceTestSuite) TestSetSystemFlowRunner() {
+	provider := newSystemFlowRunnerMock(suite.T())
 
-	suite.NoError(SetSystemFlowProvider(suite.service, provider))
+	suite.NoError(SetSystemFlowRunner(suite.service, provider))
 	suite.Same(provider, suite.service.(*roleService).systemFlows)
-	suite.Error(SetSystemFlowProvider(NewRoleServiceInterfaceMock(suite.T()), provider))
+	suite.Error(SetSystemFlowRunner(NewRoleServiceInterfaceMock(suite.T()), provider))
 }
 
 // An update that drops a permission runs the pre flow with the role's new set before the write, and the

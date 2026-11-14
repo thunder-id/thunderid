@@ -24,7 +24,6 @@ import OUExecutorProperties from './execution-properties/OUExecutorProperties';
 import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
-import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
 import RoleExecutorProperties from './execution-properties/RoleExecutorProperties';
 import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
@@ -107,9 +106,6 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.PermissionValidator:
       executorSpecificProperties = <PermissionValidatorProperties resource={resource} onChange={onChange} />;
-      break;
-    case ExecutionTypes.PreDelete:
-      executorSpecificProperties = <PreDeleteProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.CriteriaRevocation:
       executorSpecificProperties = <CriteriaRevocationProperties resource={resource} onChange={onChange} />;

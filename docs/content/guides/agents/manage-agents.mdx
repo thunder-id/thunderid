@@ -312,7 +312,7 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 - **API:** call `DELETE /agents/<AGENT_ID>`. See the [Agents API Reference](../../../apis#tag/agents) for details.
 
 :::warning
-Deletion is permanent and revokes the agent's credentials. Tokens the agent was already issued stay valid until they expire, so keep agent token lifetimes short.
+Deletion is permanent. It revokes the agent's credentials and ends its sessions. When token revocation is on (`oauth.token_revocation.enabled`, the default), it also revokes the tokens issued to the agent, including user tokens issued through its OAuth client; with it off, those tokens stay valid until they expire. See [Token Revocation](../../protocols/oauth-oidc/token-revocation#deletion). A resource server that validates tokens locally, without introspection or the revocation list, still accepts them until they expire, so keep agent token lifetimes short.
 :::
 
 ## Scope agents to a project

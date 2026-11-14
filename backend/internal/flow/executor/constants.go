@@ -27,50 +27,48 @@ const (
 	ExecutorNameCredentialsAuth = executormeta.ExecutorNameCredentialsAuth
 	ExecutorNameMagicLink       = executormeta.ExecutorNameMagicLink
 	// nolint:gosec // G101: This is an executor name, not a credential
-	ExecutorNamePasskeyAuth                   = executormeta.ExecutorNamePasskeyAuth
-	ExecutorNameOAuth                         = executormeta.ExecutorNameOAuth
-	ExecutorNameOIDCAuth                      = executormeta.ExecutorNameOIDCAuth
-	ExecutorNameGitHubAuth                    = executormeta.ExecutorNameGitHubAuth
-	ExecutorNameGoogleAuth                    = executormeta.ExecutorNameGoogleAuth
-	ExecutorNameOpenID4VPVerify               = executormeta.ExecutorNameOpenID4VPVerify
-	ExecutorNameIdentifying                   = executormeta.ExecutorNameIdentifying
-	ExecutorNameAuthAssert                    = executormeta.ExecutorNameAuthAssert
-	ExecutorNameProvisioning                  = executormeta.ExecutorNameProvisioning
-	ExecutorNameAttributeCollect              = executormeta.ExecutorNameAttributeCollect
-	ExecutorNameAuthorization                 = executormeta.ExecutorNameAuthorization
-	ExecutorNameAuthorizationDetail           = executormeta.ExecutorNameAuthorizationDetail
-	ExecutorNamePermissionValidator           = executormeta.ExecutorNamePermissionValidator
-	ExecutorNameOUCreation                    = executormeta.ExecutorNameOUCreation
-	ExecutorNameHTTPRequest                   = executormeta.ExecutorNameHTTPRequest
-	ExecutorNameUserTypeResolver              = executormeta.ExecutorNameUserTypeResolver
-	ExecutorNameInviteExecutor                = executormeta.ExecutorNameInviteExecutor
-	ExecutorNameEmailExecutor                 = executormeta.ExecutorNameEmailExecutor
-	ExecutorNameCredentialSetter              = executormeta.ExecutorNameCredentialSetter
-	ExecutorNameConsent                       = executormeta.ExecutorNameConsent
-	ExecutorNameOUResolver                    = executormeta.ExecutorNameOUResolver
-	ExecutorNameAttributeUniquenessValidator  = executormeta.ExecutorNameAttributeUniquenessValidator
-	ExecutorNameSMSExecutor                   = executormeta.ExecutorNameSMSExecutor
-	ExecutorNameAccountLinking                = executormeta.ExecutorNameAccountLinking
-	ExecutorNameSSOCheck                      = executormeta.ExecutorNameSSOCheck
-	ExecutorNameSession                       = executormeta.ExecutorNameSession
-	ExecutorNameSessionSignOut                = executormeta.ExecutorNameSessionSignOut
-	ExecutorNameOTPExecutor                   = executormeta.ExecutorNameOTPExecutor
-	ExecutorNamePreDelete                     = executormeta.ExecutorNamePreDelete
-	ExecutorNamePreCredentialUpdate           = executormeta.ExecutorNamePreCredentialUpdate
-	ExecutorNameCriteriaRevocation            = executormeta.ExecutorNameCriteriaRevocation
-	ExecutorNameSessionRevocation             = executormeta.ExecutorNameSessionRevocation
-	ExecutorNameApplicationActionValidator    = executormeta.ExecutorNameApplicationActionValidator
-	ExecutorNameEntitySecretRotationValidator = executormeta.ExecutorNameEntitySecretRotationValidator
-	ExecutorNameAccessChangeValidator         = executormeta.ExecutorNameAccessChangeValidator
-	ExecutorNameRole                          = executormeta.ExecutorNameRole
-	ExecutorNameOwnerResolver                 = executormeta.ExecutorNameOwnerResolver
-	ExecutorNameAgentTypeResolver             = executormeta.ExecutorNameAgentTypeResolver
-	ExecutorNameAttributeVerification         = executormeta.ExecutorNameAttributeVerification
-	ExecutorNameIdentityGovernance            = executormeta.ExecutorNameIdentityGovernance
-	ExecutorNamePreSuspend                    = executormeta.ExecutorNamePreSuspend
-	ExecutorNameExtension                     = executormeta.ExecutorNameExtension
-	ExecutorNameSharing                       = executormeta.ExecutorNameSharing
-	ExecutorNameDeviceCode                    = executormeta.ExecutorNameDeviceCode
+	ExecutorNamePasskeyAuth                  = executormeta.ExecutorNamePasskeyAuth
+	ExecutorNameOAuth                        = executormeta.ExecutorNameOAuth
+	ExecutorNameOIDCAuth                     = executormeta.ExecutorNameOIDCAuth
+	ExecutorNameGitHubAuth                   = executormeta.ExecutorNameGitHubAuth
+	ExecutorNameGoogleAuth                   = executormeta.ExecutorNameGoogleAuth
+	ExecutorNameOpenID4VPVerify              = executormeta.ExecutorNameOpenID4VPVerify
+	ExecutorNameIdentifying                  = executormeta.ExecutorNameIdentifying
+	ExecutorNameAuthAssert                   = executormeta.ExecutorNameAuthAssert
+	ExecutorNameProvisioning                 = executormeta.ExecutorNameProvisioning
+	ExecutorNameAttributeCollect             = executormeta.ExecutorNameAttributeCollect
+	ExecutorNameAuthorization                = executormeta.ExecutorNameAuthorization
+	ExecutorNameAuthorizationDetail          = executormeta.ExecutorNameAuthorizationDetail
+	ExecutorNamePermissionValidator          = executormeta.ExecutorNamePermissionValidator
+	ExecutorNameOUCreation                   = executormeta.ExecutorNameOUCreation
+	ExecutorNameHTTPRequest                  = executormeta.ExecutorNameHTTPRequest
+	ExecutorNameUserTypeResolver             = executormeta.ExecutorNameUserTypeResolver
+	ExecutorNameInviteExecutor               = executormeta.ExecutorNameInviteExecutor
+	ExecutorNameEmailExecutor                = executormeta.ExecutorNameEmailExecutor
+	ExecutorNameCredentialSetter             = executormeta.ExecutorNameCredentialSetter
+	ExecutorNameConsent                      = executormeta.ExecutorNameConsent
+	ExecutorNameOUResolver                   = executormeta.ExecutorNameOUResolver
+	ExecutorNameAttributeUniquenessValidator = executormeta.ExecutorNameAttributeUniquenessValidator
+	ExecutorNameSMSExecutor                  = executormeta.ExecutorNameSMSExecutor
+	ExecutorNameAccountLinking               = executormeta.ExecutorNameAccountLinking
+	ExecutorNameSSOCheck                     = executormeta.ExecutorNameSSOCheck
+	ExecutorNameSession                      = executormeta.ExecutorNameSession
+	ExecutorNameSessionSignOut               = executormeta.ExecutorNameSessionSignOut
+	ExecutorNameOTPExecutor                  = executormeta.ExecutorNameOTPExecutor
+	ExecutorNamePreRevocation                = executormeta.ExecutorNamePreRevocation
+	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
+	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
+	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
+	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
+	ExecutorNameRole                         = executormeta.ExecutorNameRole
+	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
+	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameAttributeVerification        = executormeta.ExecutorNameAttributeVerification
+	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
+	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
+	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
+	ExecutorNameSharing                      = executormeta.ExecutorNameSharing
+	ExecutorNameDeviceCode                   = executormeta.ExecutorNameDeviceCode
 )
 
 // Executor mode constants
@@ -93,8 +91,12 @@ const (
 
 	ExecutorModeRevoke              = executormeta.ExecutorModeRevoke
 	ExecutorModeAdvanceCutoff       = executormeta.ExecutorModeAdvanceCutoff
-	ExecutorModeRevokeBeforeAction  = executormeta.ExecutorModeRevokeBeforeAction
 	ExecutorModeRevokeBeforeRemoval = executormeta.ExecutorModeRevokeBeforeRemoval
+
+	ExecutorModeEntityRemoval        = executormeta.ExecutorModeEntityRemoval
+	ExecutorModeClientRemoval        = executormeta.ExecutorModeClientRemoval
+	ExecutorModeClientSecretRotation = executormeta.ExecutorModeClientSecretRotation
+	ExecutorModeCredentialUpdate     = executormeta.ExecutorModeCredentialUpdate
 
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
@@ -139,6 +141,7 @@ const (
 	userInputConsentDecisions  = "consent_decisions"
 	userInputLoginHint         = "login_hint"
 	revocationInputSubject     = "subject"
+	revocationInputEntity      = "targetEntityId"
 	revocationInputApplication = "targetApplicationId"
 
 	revocationInputRole           = "targetRoleId"

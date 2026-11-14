@@ -67,8 +67,7 @@ type AgentServiceInterface interface {
 		*model.AgentCompleteResponse, *tidcommon.ServiceError)
 	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
 	RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *tidcommon.ServiceError)
-	ValidateClientSecretRegeneration(ctx context.Context, agentID string) (
-		*entity.ClientSecretProfile, *tidcommon.ServiceError)
+	ValidateClientSecretRegeneration(ctx context.Context, agentID string) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 	GetAgentGroups(ctx context.Context, agentID string, limit, offset int) (
 		*model.AgentGroupListResponse, *tidcommon.ServiceError)
@@ -1220,54 +1219,17 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 		return fail(svcErr)
 	}
 
-	resolvedClient, resolvedOAuth, svcErr := s.reconcileInboundForUpdate(
-		ctx, agentID, req, clientID, clientSecret)
-	if svcErr != nil {
-		return fail(svcErr)
-	}
-
-	if resolvedOAuth == nil {
-		clientID = ""
-		clientSecret = ""
-	}
-
-	updatedEntity := &providers.Entity{
-		ID:         agentID,
-		Category:   providers.EntityCategoryAgent,
-		Type:       req.Type,
-		State:      providers.EntityStateActive,
-		OUID:       ouID,
-		ProjectID:  projectID,
-		Attributes: req.Attributes,
-	}
-	// The agent kind is fixed when the agent is created, so the stored value is always kept.
-	updatedEntity.SystemAttributes = buildSystemAttributesJSON(model.AgentSystemAttributes{
-		Description: req.Description,
-		Owner:       owner,
-		ClientID:    clientID,
-		Kind:        currentSysAttrs.Kind,
-	}, "")
-
-	updated, err := s.writeAgentUpdate(ctx, agentID, updatedEntity, lifespan)
-	if err != nil {
-		if mapped := mapEntityError(err); mapped != nil {
-			return fail(mapped)
+	w := &agentUpdateWrite{agentID: agentID, req: req, clientID: clientID, clientSecret: clientSecret,
+		ouID: ouID, projectID: projectID, owner: owner, kind: currentSysAttrs.Kind, lifespan: lifespan, now: now}
+	if svcErr = s.applyAgentUpdate(ctx, w, existingOAuth); svcErr != nil {
+		if !w.lifespanDone {
+			s.failLifespanUpdate(ctx, agentID, lifespan, svcErr)
 		}
-		s.logger.Error(ctx, "Failed to update agent entity", log.String("agentID", agentID), log.Error(err))
-		return fail(&tidcommon.InternalServerError)
+		return nil, svcErr
 	}
-	currentValidUntil := s.completeLifespanUpdate(ctx, agentID, lifespan, now)
-
-	if clientSecret != "" {
-		sysCredsJSON, credErr := buildSystemCredentialsJSON(clientSecret)
-		if credErr == nil && sysCredsJSON != nil {
-			if err := s.entityService.UpdateSystemCredentials(ctx, agentID, sysCredsJSON); err != nil {
-				s.logger.Error(ctx, "Failed to update agent system credentials",
-					log.String("agentID", agentID), log.Error(err))
-				return nil, &tidcommon.InternalServerError
-			}
-		}
-	}
+	clientID, clientSecret = w.clientID, w.clientSecret
+	resolvedClient, resolvedOAuth, updated, currentValidUntil := w.resolvedClient, w.resolvedOAuth, w.updated,
+		w.currentValidUntil
 
 	authFlowID := resolvedClient.AuthFlowID
 	deviceGrantFlowID := resolvedClient.DeviceGrantFlowID
@@ -1334,8 +1296,9 @@ func (s *agentService) updateAgentCredentials(ctx context.Context, agentID strin
 	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
 		return svcErr
 	}
-	if svcErr := s.checkAgentAccess(
-		ctx, security.ActionUpdateAgent, existing.OUID, agentID, ""); svcErr != nil {
+	// Setting the agent's credentials lets the caller act as the agent, so the caller must hold every permission
+	// the agent holds.
+	if svcErr := s.checkAgentControl(ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
@@ -1379,55 +1342,52 @@ func (s *agentService) RegenerateAgentSecret(ctx context.Context, agentID string
 		RevocationIncomplete: regenerated.RevocationError != nil, Revoked: regenerated.Revoked}, nil
 }
 
-// ValidateClientSecretRegeneration reports whether the caller may regenerate the agent's client secret and
-// returns the profile of the artifacts its client has issued, without changing state. The entity service
-// asks it before a regeneration, and the flow run before the secret is replaced asks it again.
-func (s *agentService) ValidateClientSecretRegeneration(ctx context.Context, agentID string) (
-	*entity.ClientSecretProfile, *tidcommon.ServiceError) {
+// ValidateClientSecretRegeneration reports whether the caller may regenerate the agent's client secret,
+// without changing state. The entity service asks it before a regeneration.
+func (s *agentService) ValidateClientSecretRegeneration(ctx context.Context,
+	agentID string) *tidcommon.ServiceError {
 	if agentID == "" {
-		return nil, &ErrorMissingAgentID
+		return &ErrorMissingAgentID
 	}
 
 	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
-			return nil, &ErrorAgentNotFound
+			return &ErrorAgentNotFound
 		}
 		s.logger.Error(ctx, "Failed to retrieve agent entity for secret regeneration",
 			log.MaskedString("agentID", agentID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if existing.Category != providers.EntityCategoryAgent {
-		return nil, &ErrorAgentNotFound
+		return &ErrorAgentNotFound
 	}
 	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
-	if svcErr := s.checkAgentAccess(ctx, security.ActionUpdateAgent, existing.OUID, agentID, ""); svcErr != nil {
-		return nil, svcErr
+	// A new secret lets the caller act as the agent, so the caller must hold every permission the agent holds.
+	if svcErr := s.checkAgentControl(ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
+		return svcErr
 	}
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
 
 	sysAttrs := readSystemAttributes(existing.SystemAttributes)
 	if sysAttrs.Kind == providers.AgentKindPersonalAssistant {
-		return nil, &ErrorPersonalAgentSecretNotRegenerable
+		return &ErrorPersonalAgentSecretNotRegenerable
 	}
 	clientID := sysAttrs.ClientID
 	oauth, err := s.inboundClientService.GetOAuthProfileByEntityID(ctx, agentID)
 	if err != nil && !errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 		s.logger.Error(ctx, "Failed to load OAuth profile for secret regeneration",
 			log.MaskedString("agentID", agentID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if clientID == "" || !usesClientSecret(oauth) {
-		return nil, &ErrorClientSecretNotUsed
+		return &ErrorClientSecretNotUsed
 	}
-	return &entity.ClientSecretProfile{
-		ClientID:           clientID,
-		MaxLifetimeSeconds: int64(s.revocationTTL(ctx, clientID, 0) / time.Second),
-	}, nil
+	return nil
 }
 
 // captureRegeneratedSecret hands the agent, with the secret just written, to the value capturer, as an update
@@ -1457,6 +1417,132 @@ func (s *agentService) captureRegeneratedSecret(ctx context.Context, agentID, cl
 			OAuthConfig: oauthProfileToComplete(clientID, oauth),
 		}}, clientID, clientSecret),
 	}, nil, false)
+}
+
+// agentUpdateWrite is what a checked agent update writes, and what the writes resolve.
+type agentUpdateWrite struct {
+	agentID      string
+	req          *model.UpdateAgentRequest
+	clientID     string
+	clientSecret string
+	ouID         string
+	projectID    string
+	owner        *providers.AgentOwner
+	kind         providers.AgentKind
+	lifespan     lifespanUpdate
+	now          time.Time
+
+	resolvedClient    inboundmodel.InboundClient
+	resolvedOAuth     *providers.OAuthProfile
+	updated           *providers.Entity
+	currentValidUntil *lifespanEnd
+	// lifespanDone is set once the lifespan change is complete, after which a failure is not the lifespan's.
+	lifespanDone bool
+	// secretUnchanged is set when the client already holds the supplied secret, so it is not written again.
+	secretUnchanged bool
+}
+
+// applyAgentUpdate writes a checked update. A secret the client already holds is left as it is, since writing it
+// again would mark the credential as changed and cut off the refresh tokens issued before. A different secret for
+// a client that already authenticated with one replaces it, so the entity service revokes what the old secret
+// issued around the whole write. The revocation starts before the client is reconfigured, so it reaches the client
+// as it was, and a failure of the revocation after the write is reported as the update's failure, since the caller
+// chose the secret.
+func (s *agentService) applyAgentUpdate(ctx context.Context, w *agentUpdateWrite,
+	existingOAuth *providers.OAuthProfile) *tidcommon.ServiceError {
+	if w.clientSecret == "" || !usesClientSecret(existingOAuth) {
+		return s.writeAgentUpdateChanges(ctx, w)
+	}
+	held, svcErr := s.holdsClientSecret(ctx, w.agentID, w.clientSecret)
+	if svcErr != nil {
+		return svcErr
+	}
+	if held {
+		w.secretUnchanged = true
+		return s.writeAgentUpdateChanges(ctx, w)
+	}
+	svcErr, revocationErr := s.entityService.RotateClientSecret(ctx, w.agentID, func() *tidcommon.ServiceError {
+		return s.writeAgentUpdateChanges(ctx, w)
+	})
+	if svcErr != nil {
+		return svcErr
+	}
+	return revocationErr
+}
+
+// holdsClientSecret reports whether the agent's client already holds the supplied secret. The stored secret is a
+// hash, so the supplied one is checked against it the way the token endpoint authenticates the client.
+func (s *agentService) holdsClientSecret(ctx context.Context, agentID, clientSecret string) (
+	bool, *tidcommon.ServiceError) {
+	_, _, err := s.entityService.AuthenticateEntityByID(ctx, agentID,
+		map[string]interface{}{fieldClientSecret: clientSecret})
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, entity.ErrAuthenticationFailed):
+		return false, nil
+	default:
+		s.logger.Error(ctx, "Failed to compare the supplied client secret with the agent's",
+			log.MaskedString("agentID", agentID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+}
+
+// writeAgentUpdateChanges reconciles the agent's inbound client, writes its entity and completes its lifespan
+// change, then stores the client secret the update sets.
+func (s *agentService) writeAgentUpdateChanges(ctx context.Context, w *agentUpdateWrite) *tidcommon.ServiceError {
+	var svcErr *tidcommon.ServiceError
+	w.resolvedClient, w.resolvedOAuth, svcErr = s.reconcileInboundForUpdate(ctx, w.agentID, w.req, w.clientID,
+		w.clientSecret)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if w.resolvedOAuth == nil {
+		w.clientID = ""
+		w.clientSecret = ""
+	}
+
+	updatedEntity := &providers.Entity{
+		ID:         w.agentID,
+		Category:   providers.EntityCategoryAgent,
+		Type:       w.req.Type,
+		State:      providers.EntityStateActive,
+		OUID:       w.ouID,
+		ProjectID:  w.projectID,
+		Attributes: w.req.Attributes,
+	}
+	// The agent kind is fixed when the agent is created, so the stored value is always kept.
+	updatedEntity.SystemAttributes = buildSystemAttributesJSON(model.AgentSystemAttributes{
+		Description: w.req.Description,
+		Owner:       w.owner,
+		ClientID:    w.clientID,
+		Kind:        w.kind,
+	}, "")
+
+	var err error
+	w.updated, err = s.writeAgentUpdate(ctx, w.agentID, updatedEntity, w.lifespan)
+	if err != nil {
+		if mapped := mapEntityError(err); mapped != nil {
+			return mapped
+		}
+		s.logger.Error(ctx, "Failed to update agent entity", log.String("agentID", w.agentID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	w.currentValidUntil = s.completeLifespanUpdate(ctx, w.agentID, w.lifespan, w.now)
+	w.lifespanDone = true
+
+	if w.clientSecret != "" && !w.secretUnchanged {
+		sysCredsJSON, credErr := buildSystemCredentialsJSON(w.clientSecret)
+		if credErr == nil && sysCredsJSON != nil {
+			if err := s.entityService.UpdateSystemCredentials(ctx, w.agentID, sysCredsJSON); err != nil {
+				s.logger.Error(ctx, "Failed to update agent system credentials",
+					log.String("agentID", w.agentID), log.Error(err))
+				return &tidcommon.InternalServerError
+			}
+		}
+	}
+	return nil
 }
 
 // DeleteAgent removes the agent and its associated inbound client.
@@ -1742,7 +1828,7 @@ func (s *agentService) deletedWithOwner(e *providers.Entity) bool {
 }
 
 // CascadeDeleteDependencies implements resourcedependency.CascadeDeleter. It deletes the personal agents of a
-// deleted user, after revoking every token issued to their clients; other resource types have no agents to delete.
+// deleted user, which revokes what each was issued; other resource types have no agents to delete.
 // It returns how many agents it deleted, and fails on the first error so the user's deletion is aborted.
 func (s *agentService) CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error) {
 	if resourceType != resourcedependency.ResourceTypeUser {
@@ -1756,27 +1842,13 @@ func (s *agentService) CascadeDeleteDependencies(ctx context.Context, resourceTy
 	}
 
 	agentIDs := make([]string, 0, len(entities))
-	revocations := make([]revocation.CriteriaRevocation, 0, len(entities))
 	for i := range entities {
-		if !s.deletedWithOwner(&entities[i]) {
-			continue
-		}
-		agentIDs = append(agentIDs, entities[i].ID)
-		if clientID := readSystemAttributes(entities[i].SystemAttributes).ClientID; clientID != "" {
-			revocations = append(revocations, revocation.CriteriaRevocation{
-				Criterion: revocation.Criterion{Type: revocation.CriterionTypeApplicationKey, Value: clientID},
-				Mode:      revocation.ModeAll,
-				Reason:    revocation.ReasonUserDeleted,
-				TTL:       s.revocationTTL(ctx, clientID, 0),
-			})
-		}
-	}
-	if len(revocations) > 0 {
-		if svcErr := s.revoker.RevokeCriteriaBatch(ctx, revocations); svcErr != nil {
-			return 0, fmt.Errorf("failed to revoke the tokens of the user's agents: %s", svcErr.Code)
+		if s.deletedWithOwner(&entities[i]) {
+			agentIDs = append(agentIDs, entities[i].ID)
 		}
 	}
 
+	// Removing each agent's inbound client and entity revokes what the agent was issued.
 	for i, agentID := range agentIDs {
 		svcErr := s.removeAgent(ctx, agentID)
 		s.publishAgentEvent(ctx, audit.EventAgentDelete, audit.ActionDelete, agentID, svcErr)

@@ -474,7 +474,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			RoleAssignmentService:  roleAssignmentService,
 			PermissionResolver:     permissionResolver,
 			EntityProvider:         entityProvider,
-			EntityService:          entityService,
 			UserMgtProvider:        userMgtProvider,
 			AttributeCacheSvc:      attributeCacheService,
 			TemplateRenderer:       notifTemplateRenderer,
@@ -485,7 +484,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			OpenID4VPVerifierSvc:   openid4vpSvc,
 			SessionService:         sessionService,
 			ResourceService:        resourceServerProvider,
-			UserService:            userService,
 			CriteriaRevoker:        revocationSvc,
 			ResourceMgtService:     resourceService,
 			HTTPConnectionProvider: httpConnectionService,
@@ -669,21 +667,18 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowMgtService, flowMgtService, permissionResolver, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
-	err = application.SetSystemFlowProvider(applicationService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
-	entityService.SetSystemFlowProvider(flowExecService)
+	entityService.SetSystemFlowRunner(flowExecService)
+	inboundClientService.SetSystemFlowRunner(flowExecService)
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, true)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, true)
-	err = user.SetSystemFlowProvider(userService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the user service")
-	err = role.SetSystemFlowProvider(roleService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the role service")
-	err = group.SetSystemFlowProvider(groupService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the group service")
-	err = role.SetAssignmentSystemFlowProvider(roleAssignmentService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the role assignment service")
-	err = resource.SetSystemFlowProvider(resourceService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the resource service")
+	err = role.SetSystemFlowRunner(roleService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow runner into the role service")
+	err = group.SetSystemFlowRunner(groupService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow runner into the group service")
+	err = role.SetAssignmentSystemFlowRunner(roleAssignmentService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow runner into the role assignment service")
+	err = resource.SetSystemFlowRunner(resourceService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow runner into the resource service")
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,

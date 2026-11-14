@@ -19,8 +19,8 @@ const (
 	systemFlowInputGroup     = "targetGroupId"
 )
 
-// systemFlowProvider runs a system flow to completion. The flow engine implements it.
-type systemFlowProvider interface {
+// systemFlowRunner runs a system flow to completion. The flow engine implements it.
+type systemFlowRunner interface {
 	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
 		*tidcommon.ServiceError)
 }

@@ -267,27 +267,27 @@ func registerRoutes(mux *http.ServeMux, roleHandler *roleHandler) {
 		}, opts6))
 }
 
-// SetSystemFlowProvider gives the role service the engine that runs the system flows around its writes.
+// SetSystemFlowRunner gives the role service the engine that runs the system flows around its writes.
 // It is bound after the service, once the engine exists, and only on a server that issues tokens. A
 // service that cannot take it is reported rather than left without one.
-func SetSystemFlowProvider(service RoleServiceInterface, provider systemFlowProvider) error {
+func SetSystemFlowRunner(service RoleServiceInterface, runner systemFlowRunner) error {
 	rs, ok := service.(*roleService)
 	if !ok {
-		return fmt.Errorf("role service does not support system flow provider injection")
+		return fmt.Errorf("role service does not support system flow runner injection")
 	}
-	rs.systemFlows = provider
+	rs.systemFlows = runner
 	return nil
 }
 
-// SetAssignmentSystemFlowProvider gives the role assignment service the engine that runs the system flows around
+// SetAssignmentSystemFlowRunner gives the role assignment service the engine that runs the system flows around
 // its writes. It is bound after the service, once the engine exists, and only on a server that issues
 // tokens. A service that cannot take it is reported rather than left without one.
-func SetAssignmentSystemFlowProvider(service RoleAssignmentServiceInterface,
-	provider systemFlowProvider) error {
+func SetAssignmentSystemFlowRunner(service RoleAssignmentServiceInterface,
+	runner systemFlowRunner) error {
 	as, ok := service.(*roleAssignmentService)
 	if !ok {
-		return fmt.Errorf("role assignment service does not support system flow provider injection")
+		return fmt.Errorf("role assignment service does not support system flow runner injection")
 	}
-	as.systemFlows = provider
+	as.systemFlows = runner
 	return nil
 }

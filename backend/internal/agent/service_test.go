@@ -193,7 +193,7 @@ func regeneratesThroughTheHolder(svc *agentService, entities *entitymock.EntityS
 	entities.EXPECT().RegenerateClientSecret(mock.Anything, providers.EntityCategoryAgent, mock.Anything).
 		RunAndReturn(func(ctx context.Context, _ providers.EntityCategory, agentID string) (
 			*entity.ClientSecretRegeneration, *tidcommon.ServiceError) {
-			if _, svcErr := svc.ValidateClientSecretRegeneration(ctx, agentID); svcErr != nil {
+			if svcErr := svc.ValidateClientSecretRegeneration(ctx, agentID); svcErr != nil {
 				return nil, svcErr
 			}
 			if err := entities.UpdateSystemCredentials(ctx, agentID,
@@ -4288,6 +4288,127 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateSystemCredentialsFails
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+// secretRotationUpdate sets up an update that gives an agent whose client authenticates with a secret a new
+// one, recording in order the rotation's revocation before and after the change it wraps, the client's
+// reconfiguration and the secret's write. The rotation answers with refusal before the change, or with
+// revocationErr after it.
+func (suite *AgentServiceTestSuite) secretRotationUpdate(refusal, revocationErr *tidcommon.ServiceError) (
+	*agentService, *model.UpdateAgentRequest, *[]string) {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	order := &[]string{}
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "", "cid-1"), nil)
+	clearMockCalls(mockInbound, "GetOAuthProfileByEntityID")
+	mockInbound.On("GetOAuthProfileByEntityID", mock.Anything, testAgentID).Return(&providers.OAuthProfile{
+		GrantTypes:              []string{string(providers.GrantTypeClientCredentials)},
+		TokenEndpointAuthMethod: string(providers.TokenEndpointAuthMethodClientSecretBasic)}, nil)
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
+		Return(&inboundmodel.InboundClient{ID: testAgentID}, nil).Maybe()
+	clearMockCalls(mockInbound, "UpdateInboundClient")
+	mockInbound.On("UpdateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { *order = append(*order, "inbound") }).Return(nil).Maybe()
+	clearMockCalls(mockEntity, "UpdateSystemCredentials")
+	mockEntity.On("UpdateSystemCredentials", mock.Anything, testAgentID, mock.Anything).
+		Run(func(mock.Arguments) { *order = append(*order, "secret") }).Return(nil).Maybe()
+	mockEntity.On("AuthenticateEntityByID", mock.Anything, testAgentID,
+		map[string]interface{}{fieldClientSecret: "a-new-secret"}).
+		Return((*entity.AuthenticateResult)(nil), testAgentID, entity.ErrAuthenticationFailed).Maybe()
+	mockEntity.EXPECT().RotateClientSecret(mock.Anything, testAgentID, mock.Anything).RunAndReturn(
+		func(_ context.Context, _ string, write func() *tidcommon.ServiceError) (*tidcommon.ServiceError,
+			*tidcommon.ServiceError) {
+			*order = append(*order, "revoke-before")
+			if refusal != nil {
+				return refusal, nil
+			}
+			if svcErr := write(); svcErr != nil {
+				return svcErr, nil
+			}
+			*order = append(*order, "revoke-after")
+			return nil, revocationErr
+		}).Maybe()
+	req := &model.UpdateAgentRequest{
+		Type: testAgentType,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				ClientID:                "cid-1",
+				ClientSecret:            "a-new-secret",
+				GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+			},
+		}},
+	}
+	return svc, req, order
+}
+
+// A different secret for a client that authenticated with one replaces it, so the entity service revokes what the
+// old secret issued around the whole change, starting before the client is reconfigured.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ANewSecretRevokesAroundTheChange() {
+	svc, req, order := suite.secretRotationUpdate(nil, nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+
+	suite.Require().Nil(svcErr)
+	suite.NotNil(resp)
+	suite.Equal([]string{"revoke-before", "inbound", "secret", "revoke-after"}, *order)
+}
+
+// The secret the agent already has, as every apply of a configuration carries it, replaces nothing: nothing is
+// revoked, and it is not written again, which would cut off the refresh tokens issued before.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_TheSameSecretRevokesNothing() {
+	svc, req, order := suite.secretRotationUpdate(nil, nil)
+	req.InboundAuthConfig[0].OAuthConfig.ClientSecret = "the-same-secret"
+	entities := svc.entityService.(*entitymock.EntityServiceInterfaceMock)
+	entities.On("AuthenticateEntityByID", mock.Anything, testAgentID,
+		map[string]interface{}{fieldClientSecret: "the-same-secret"}).
+		Return(&entity.AuthenticateResult{EntityID: testAgentID}, "", nil).Once()
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal([]string{"inbound"}, *order, "the unchanged secret was revoked or written again")
+}
+
+// When the supplied secret cannot be compared with the stored one, the update is refused rather than guessed at.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_RefusedWhenTheSecretCannotBeCompared() {
+	svc, req, order := suite.secretRotationUpdate(nil, nil)
+	req.InboundAuthConfig[0].OAuthConfig.ClientSecret = "uncomparable-secret"
+	entities := svc.entityService.(*entitymock.EntityServiceInterfaceMock)
+	entities.On("AuthenticateEntityByID", mock.Anything, testAgentID,
+		map[string]interface{}{fieldClientSecret: "uncomparable-secret"}).
+		Return((*entity.AuthenticateResult)(nil), "", errors.New("store down")).Once()
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+
+	suite.Nil(resp)
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.Empty(*order, "something was written although the secret could not be compared")
+}
+
+// A rotation refused before the change changes nothing.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ARefusedRotationChangesNothing() {
+	svc, req, order := suite.secretRotationUpdate(&tidcommon.InternalServerError, nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+
+	suite.Nil(resp)
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.Equal([]string{"revoke-before"}, *order)
+}
+
+// The caller chose the secret, so a revocation that fails once it is written is reported as the update's failure.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_AFailedRevocationAfterTheSecretIsReported() {
+	svc, req, order := suite.secretRotationUpdate(nil, &tidcommon.InternalServerError)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+
+	suite.Nil(resp)
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+	suite.Equal([]string{"revoke-before", "inbound", "secret", "revoke-after"}, *order)
+}
+
 func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_NonTranslatableError() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
@@ -4796,6 +4917,46 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_GrantNotPermitted() {
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
 	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+// A new secret lets the caller act as the agent, so a caller who does not hold the agent's permissions cannot
+// regenerate it.
+func (suite *AgentServiceTestSuite) TestValidateClientSecretRegeneration_GrantNotPermitted() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testAgentID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-1"), nil)
+
+	svcErr := svc.ValidateClientSecretRegeneration(context.Background(), testAgentID)
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+// Setting the agent's credentials lets the caller act as the agent, so a caller who does not hold the agent's
+// permissions cannot set them.
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_GrantNotPermitted() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testAgentID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID,
+		json.RawMessage(`{"password":"N3w-agent-pa55word!"}`))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // An update that sets no secret can still hand the agent to new credentials, here a switch to
@@ -7128,24 +7289,17 @@ func (suite *AgentServiceTestSuite) TestGetAgentListByOwner() {
 	})
 }
 
-// The profile names the agent's client and how long its tokens can live, which the revocation around a
-// regeneration is kept for.
-func (suite *AgentServiceTestSuite) TestValidateClientSecretRegeneration_ReturnsTheClientAndItsLifetime() {
+// An agent whose client authenticates with a secret may have it regenerated.
+func (suite *AgentServiceTestSuite) TestValidateClientSecretRegeneration_AllowsAClientWithASecret() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
-	svc.resolveLifetime = func(*providers.OAuthClient) time.Duration { return 10 * time.Minute }
 	clearMockCalls(mockEntity, "GetEntityProfile")
 	clearMockCalls(mockInbound, "GetOAuthProfileByEntityID")
-	clearMockCalls(mockInbound, "GetOAuthClientByClientID")
 	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
 		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-1"), nil)
 	mockInbound.On("GetOAuthProfileByEntityID", mock.Anything, testAgentID).Return(&providers.OAuthProfile{
 		TokenEndpointAuthMethod: string(providers.TokenEndpointAuthMethodClientSecretBasic)}, nil)
-	mockInbound.On("GetOAuthClientByClientID", mock.Anything, "cid-1").Return(&providers.OAuthClient{}, nil)
 
-	profile, svcErr := svc.ValidateClientSecretRegeneration(context.Background(), testAgentID)
-
-	suite.Nil(svcErr)
-	suite.Equal(&entity.ClientSecretProfile{ClientID: "cid-1", MaxLifetimeSeconds: 600}, profile)
+	suite.Nil(svc.ValidateClientSecretRegeneration(context.Background(), testAgentID))
 }
 
 func (suite *AgentServiceTestSuite) TestRegenerateAgentSecret() {

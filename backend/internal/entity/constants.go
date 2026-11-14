@@ -34,3 +34,22 @@ const (
 
 // systemAttrAttributeVerification holds server-owned contact verification evidence.
 const systemAttrAttributeVerification = "attributeVerification"
+
+// The system flows the entity service runs around a change that revokes what was issued before it, and the
+// input naming the entity they act on. Each pre flow revokes up to a cutoff before the change is stored, and
+// its post flow moves the cutoff past the write, so an artifact issued while it ran is revoked too.
+const (
+	// systemFlowEntityDeletePre revokes what was issued to the entity as a subject and ends its sessions.
+	systemFlowEntityDeletePre = "system-entity-delete-pre"
+	// systemFlowCredentialUpdatePre revokes what was issued to the entity as a subject and ends its sessions,
+	// before a credential it holds is replaced.
+	systemFlowCredentialUpdatePre = "system-entity-credential-update-pre" //nolint:gosec // flow handle
+	// systemFlowCredentialUpdatePost also ends the sessions started while the credential was replaced.
+	systemFlowCredentialUpdatePost = "system-entity-credential-update-post" //nolint:gosec // flow handle
+	// systemFlowSecretRotatePre revokes what the entity's OAuth client issued before its secret is replaced.
+	systemFlowSecretRotatePre = "system-entity-secret-rotate-pre"
+	// systemFlowRevocationPost moves the cutoff past the write.
+	systemFlowRevocationPost = "system-revocation-post"
+	// systemFlowInputEntity names the entity the flows act on.
+	systemFlowInputEntity = "targetEntityId"
+)

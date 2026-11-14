@@ -32,16 +32,6 @@ const (
 // projectIDQueryParam is the query parameter that lists the applications of one project.
 const projectIDQueryParam = "projectId"
 
-// The system flows this service runs, by handle, before a change is written and after, and the input
-// naming the application they act on.
-const (
-	systemFlowApplicationDeletePre = "system-application-delete-pre"
-	// systemFlowRevocationPost follows every change whose pre flow revokes up to a cutoff, moving the
-	// cutoff past the write.
-	systemFlowRevocationPost   = "system-revocation-post"
-	systemFlowInputApplication = "targetApplicationId"
-)
-
 // clientSecretNotice is what the regenerate_application_secret tool says about the secret it returns.
 const clientSecretNotice = "This is the only time this client secret is shown, and no tool can return it again. " +
 	"Hand it to the administrator to keep in a secret manager, and don't repeat it in the conversation."

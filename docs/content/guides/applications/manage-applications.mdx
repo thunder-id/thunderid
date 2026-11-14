@@ -117,7 +117,7 @@ To update an application:
 2. Update the relevant settings. Learn more about each setting in [Application Settings](../application-settings).
 3. Click **Save**.
 
-Changes take effect immediately for new authentication requests. Active sessions and issued access tokens are not affected until they expire. Rotating the client secret is the exception: it also rejects refresh tokens issued before the rotation.
+Changes take effect immediately for new authentication requests. Active sessions and issued access tokens are not affected until they expire. Rotating the client secret is the exception: when token revocation is on (`oauth.token_revocation.enabled`, the default), it also revokes the tokens issued through the application's client ID before the rotation, access and refresh tokens alike. Active sessions are not ended.
 
 ## Suspend an Application
 
@@ -137,7 +137,7 @@ To delete an application:
 2. Click **Delete application** and confirm.
 
 :::warning
-Deleting an application is permanent. Any client using the application's Client ID will immediately lose the ability to authenticate. Issued tokens remain valid until they expire.
+Deleting an application is permanent. Any client using the application's Client ID will immediately lose the ability to authenticate, and the tokens already issued to the application or through its Client ID are revoked. See [Token Revocation](../../protocols/oauth-oidc/token-revocation#deletion).
 :::
 
 ## Scope Applications to a Project

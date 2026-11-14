@@ -13,10 +13,10 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// expectSystemFlows gives the service a mocked system flow provider and returns it.
-func (suite *ResourceServiceTestSuite) expectSystemFlows() *systemFlowProviderMock {
-	flows := newSystemFlowProviderMock(suite.T())
-	suite.Require().NoError(SetSystemFlowProvider(suite.service, flows))
+// expectSystemFlows gives the service a mocked system flow runner and returns it.
+func (suite *ResourceServiceTestSuite) expectSystemFlows() *systemFlowRunnerMock {
+	flows := newSystemFlowRunnerMock(suite.T())
+	suite.Require().NoError(SetSystemFlowRunner(suite.service, flows))
 	return flows
 }
 
@@ -32,12 +32,12 @@ func isHandle(handle string) interface{} {
 	return mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool { return c.Handle == handle })
 }
 
-func (suite *ResourceServiceTestSuite) TestSetSystemFlowProvider() {
-	flows := newSystemFlowProviderMock(suite.T())
+func (suite *ResourceServiceTestSuite) TestSetSystemFlowRunner() {
+	flows := newSystemFlowRunnerMock(suite.T())
 
-	suite.NoError(SetSystemFlowProvider(suite.service, flows))
+	suite.NoError(SetSystemFlowRunner(suite.service, flows))
 	suite.Same(flows, suite.service.(*resourceService).systemFlows)
-	suite.Error(SetSystemFlowProvider(NewResourceServiceInterfaceMock(suite.T()), flows))
+	suite.Error(SetSystemFlowRunner(NewResourceServiceInterfaceMock(suite.T()), flows))
 }
 
 // An action deletion runs the pre flow with the action as input before anything is removed, and the

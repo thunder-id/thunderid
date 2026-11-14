@@ -33,6 +33,9 @@ const (
 	ReasonOrganizationUnitChanged      Reason = "organization_unit_changed"
 	ReasonConsentRevoked               Reason = "consent_revoked"
 	ReasonUserDeleted                  Reason = "user_deleted"
+	ReasonEntityRemoved                Reason = "entity_removed"
+	ReasonClientRemoved                Reason = "client_removed"
+	ReasonClientSecretRotated          Reason = "client_secret_rotated" // #nosec G101 -- reason name, not a secret
 	ReasonIdentitySuspended            Reason = "identity_suspended"
 	ReasonCredentialUpdated            Reason = "credential_updated" // #nosec G101 -- reason name, not a secret
 )
@@ -105,6 +108,7 @@ type CriteriaRevocation struct {
 var boundaryReasons = []Reason{
 	ReasonIdentitySuspended,
 	ReasonApplicationRemoved,
+	// Nothing writes it any more; it stays so the rows already stored with it keep their bound until they expire.
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
 	ReasonRolePermissionRemoved,
@@ -115,6 +119,9 @@ var boundaryReasons = []Reason{
 	ReasonOrganizationUnitChanged,
 	ReasonConsentRevoked,
 	ReasonCredentialUpdated,
+	ReasonEntityRemoved,
+	ReasonClientRemoved,
+	ReasonClientSecretRotated,
 }
 
 // BoundaryReasons returns a copy of the boundary reasons, for callers that need the full set rather

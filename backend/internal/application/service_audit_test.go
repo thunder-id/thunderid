@@ -208,6 +208,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_PublishesTheSameNameWhenItF
 func (suite *ServiceTestSuite) TestUpdateApplication_PublishesTheUpdatedApplication() {
 	f := suite.newSecretUpdateFixture(testAuditSecretValue)
 	f.storedSecret(false)
+	recordSecretRotation(f.entities, nil, nil, &f.order)
 	bus, published := newRecordingBus(suite.T())
 	f.service.bus = bus
 
@@ -220,12 +221,12 @@ func (suite *ServiceTestSuite) TestUpdateApplication_PublishesTheUpdatedApplicat
 }
 
 // The application service has no access check of its own, so an update is denied only when a step it
-// runs, here the system flow before a secret rotation, refuses the caller. The flow runs once the
+// runs, here the entity service's secret rotation, refuses the caller. The rotation runs once the
 // application is found, so the denied event has it as subject.
 func (suite *ServiceTestSuite) TestUpdateApplication_PublishesARefusalAsDenied() {
 	f := suite.newSecretUpdateFixture(testAuditSecretValue)
 	f.storedSecret(false)
-	suite.recordSystemFlows(f.service, &tidcommon.ErrorUnauthorized, nil)
+	recordSecretRotation(f.entities, &tidcommon.ErrorUnauthorized, nil, &f.order)
 	bus, published := newRecordingBus(suite.T())
 	f.service.bus = bus
 
@@ -273,12 +274,13 @@ func (suite *ServiceTestSuite) TestDeleteApplication_PublishesOneEventPerAttempt
 			outcome: audit.OutcomeSucceeded,
 		},
 		{
-			name: "the system flow before the deletion refuses the caller",
-			arrange: func(service *applicationService, _ *inboundclientmock.InboundClientServiceInterfaceMock) {
+			name: "what the client issued cannot be revoked",
+			arrange: func(service *applicationService, store *inboundclientmock.InboundClientServiceInterfaceMock) {
 				existing(service)
-				suite.recordSystemFlows(service, &tidcommon.ErrorUnauthorized, nil)
+				store.On("DeleteInboundClient", mock.Anything, testServiceAppID).
+					Return(inboundclient.ErrRevocationFailed)
 			},
-			outcome: audit.OutcomeDenied("forbidden"),
+			outcome: audit.OutcomeFailed("sse_5000"),
 		},
 		{
 			name: "the application cannot be read",
@@ -399,7 +401,7 @@ func regeneratesThroughTheHolder(service *applicationService, entities *entitymo
 	entities.EXPECT().RegenerateClientSecret(mock.Anything, providers.EntityCategoryApp, mock.Anything).
 		RunAndReturn(func(ctx context.Context, _ providers.EntityCategory, appID string) (
 			*entity.ClientSecretRegeneration, *tidcommon.ServiceError) {
-			if _, svcErr := service.ValidateClientSecretRegeneration(ctx, appID); svcErr != nil {
+			if svcErr := service.ValidateClientSecretRegeneration(ctx, appID); svcErr != nil {
 				return nil, svcErr
 			}
 			if err := entities.UpdateSystemCredentials(ctx, appID,

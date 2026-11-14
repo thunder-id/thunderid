@@ -16,7 +16,9 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
+	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
@@ -148,17 +150,18 @@ type EntityServiceInterface interface {
 	// RegisterClientSecretHolder names the service that decides whether the client secret of an entity of
 	// the category may be regenerated.
 	RegisterClientSecretHolder(category providers.EntityCategory, holder ClientSecretHolderInterface)
-	// SetSystemFlowProvider gives the service the engine that runs the system flows around a client
-	// secret regeneration. Without one, as on a control plane, no system flow runs.
-	SetSystemFlowProvider(provider SystemFlowProviderInterface)
-	// ValidateClientSecretRegeneration reports whether the caller may regenerate the entity's client
-	// secret, and returns the profile the revocation around it is bounded by, without changing state.
-	ValidateClientSecretRegeneration(ctx context.Context, category providers.EntityCategory, entityID string) (
-		*ClientSecretProfile, *tidcommon.ServiceError)
+	// SetSystemFlowRunner gives the service the engine that runs the system flows around its changes.
+	// Without one, as on a control plane, no system flow runs.
+	SetSystemFlowRunner(runner SystemFlowRunnerInterface)
 	// RegenerateClientSecret replaces the entity's client secret with a generated one, revoking what the
 	// old one issued, and returns it.
 	RegenerateClientSecret(ctx context.Context, category providers.EntityCategory, entityID string) (
 		*ClientSecretRegeneration, *tidcommon.ServiceError)
+	// RotateClientSecret runs write, which replaces the entity's client secret, between the flows that revoke
+	// what the entity's OAuth client issued before it. A failure of the flow after the write is returned as
+	// revocationErr, since the secret is stored by then.
+	RotateClientSecret(ctx context.Context, entityID string, write func() *tidcommon.ServiceError) (
+		svcErr, revocationErr *tidcommon.ServiceError)
 
 	// Runtime state, used by the governance service.
 	GetGovernedEntity(ctx context.Context, entityID string,
@@ -193,6 +196,19 @@ type GroupMembershipProvider interface {
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 }
 
+// ClientSecretHolderInterface is implemented by the service that owns the entities of one category that
+// authenticate with a client secret. It decides whether the caller may regenerate an entity's secret: the
+// entity exists and is of its category, the caller may change it, and its client uses a secret.
+type ClientSecretHolderInterface interface {
+	ValidateClientSecretRegeneration(ctx context.Context, entityID string) *tidcommon.ServiceError
+}
+
+// SystemFlowRunnerInterface runs a system flow to completion. The flow engine implements it.
+type SystemFlowRunnerInterface interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
+}
+
 // entityService is the default implementation of EntityServiceInterface. The entity service trusts its
 // caller; the flow-facing provider and the domain services are the boundaries.
 type entityService struct {
@@ -210,7 +226,7 @@ type entityService struct {
 	// secretHolders decide, by entity category, whether a client secret may be regenerated.
 	secretHolders map[providers.EntityCategory]ClientSecretHolderInterface
 	// systemFlows is nil where system flows are off.
-	systemFlows SystemFlowProviderInterface
+	systemFlows SystemFlowRunnerInterface
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -558,24 +574,26 @@ func (s *entityService) UpdateEntity(
 	return &entities[0], nil
 }
 
-// DeleteEntity deletes an entity.
+// DeleteEntity deletes an entity, revoking what was issued to it as a subject and ending its sessions.
 // Uses a transaction to ensure the entity row and its indexed identifiers are deleted atomically.
 func (s *entityService) DeleteEntity(ctx context.Context, entityID string) error {
 	s.logger.Debug(ctx, "Deleting entity", log.MaskedString("id", entityID))
-	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		return s.store.DeleteEntity(txCtx, entityID)
-	})
-	if err != nil {
-		return err
-	}
+	return s.revokeAround(ctx, entityID, systemFlowEntityDeletePre, systemFlowRevocationPost, func() error {
+		err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+			return s.store.DeleteEntity(txCtx, entityID)
+		})
+		if err != nil {
+			return err
+		}
 
-	// Deleted after the entity commit, so a failed entity delete never loses its holds. A row left
-	// behind is reset by a later create at the same id.
-	if err := s.runtimeStore.DeleteRuntimeData(ctx, entityID); err != nil {
-		s.logger.Warn(ctx, "Failed to delete entity runtime data", log.MaskedString("id", entityID),
-			log.Error(err))
-	}
-	return nil
+		// Deleted after the entity commit, so a failed entity delete never loses its holds. A row left
+		// behind is reset by a later create at the same id.
+		if err := s.runtimeStore.DeleteRuntimeData(ctx, entityID); err != nil {
+			s.logger.Warn(ctx, "Failed to delete entity runtime data", log.MaskedString("id", entityID),
+				log.Error(err))
+		}
+		return nil
+	})
 }
 
 // UpdateAttributes updates only the schema attributes of an entity.
@@ -1325,7 +1343,9 @@ func (s *entityService) verifyOneCredential(ctx context.Context, credType, credV
 
 // UpdateCredentials updates schema-defined credentials (e.g., password) by hashing new
 // plaintext values and merging with existing stored credentials. Payload keys are
-// restricted to fields declared as credentials in the entity's schema.
+// restricted to fields declared as credentials in the entity's schema. An update that replaces a
+// credential the entity holds revokes what was issued to it as a subject and ends its sessions; one that
+// sets a credential for the first time replaces nothing, so it revokes nothing.
 func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	plaintextUpdates json.RawMessage) error {
 	if len(plaintextUpdates) == 0 {
@@ -1334,7 +1354,39 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	if err := s.ValidateCredentials(ctx, entityID, plaintextUpdates); err != nil {
 		return err
 	}
+	replaces, err := s.replacesHeldCredential(ctx, entityID, plaintextUpdates)
+	if err != nil {
+		return err
+	}
+	if !replaces {
+		return s.writeCredentials(ctx, entityID, plaintextUpdates)
+	}
+	return s.revokeAround(ctx, entityID, systemFlowCredentialUpdatePre, systemFlowCredentialUpdatePost,
+		func() error { return s.writeCredentials(ctx, entityID, plaintextUpdates) })
+}
 
+// replacesHeldCredential reports whether the update replaces a credential the entity already holds.
+func (s *entityService) replacesHeldCredential(ctx context.Context, entityID string,
+	plaintextUpdates json.RawMessage) (bool, error) {
+	var updates map[string]json.RawMessage
+	if err := json.Unmarshal(plaintextUpdates, &updates); err != nil {
+		return false, fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
+	}
+	held, err := s.GetHeldCredentialTypes(ctx, entityID)
+	if err != nil {
+		return false, err
+	}
+	for _, credType := range held {
+		if _, ok := updates[credType]; ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// writeCredentials hashes the validated plaintext credentials and merges them into the stored ones.
+func (s *entityService) writeCredentials(ctx context.Context, entityID string,
+	plaintextUpdates json.RawMessage) error {
 	// Hash new plaintext values.
 	hashedUpdates, err := s.hashPlaintextCredentials(plaintextUpdates)
 	if err != nil {
@@ -2533,4 +2585,124 @@ func startingRuntimeData(entity providers.Entity) entityRuntimeData {
 		state = providers.EntityStateActive
 	}
 	return entityRuntimeData{ID: entity.ID, State: state, Attributes: json.RawMessage(`{}`)}
+}
+
+// RegisterClientSecretHolder names the service that decides whether the client secret of an entity of the
+// category may be regenerated. It is called while the server starts, before any request is served.
+func (s *entityService) RegisterClientSecretHolder(category providers.EntityCategory,
+	holder ClientSecretHolderInterface) {
+	s.secretHolders[category] = holder
+}
+
+// validateClientSecretRegeneration asks the service that owns entities of the category whether the caller
+// may regenerate the entity's client secret.
+func (s *entityService) validateClientSecretRegeneration(ctx context.Context, category providers.EntityCategory,
+	entityID string) *tidcommon.ServiceError {
+	holder, ok := s.secretHolders[category]
+	if !ok {
+		s.logger.Error(ctx, "No service decides on client secret regeneration for the entity category",
+			log.String("category", string(category)))
+		return &tidcommon.InternalServerError
+	}
+	return holder.ValidateClientSecretRegeneration(ctx, entityID)
+}
+
+// RegenerateClientSecret replaces the entity's client secret with one generated here and returns it. The
+// system flows run around the write: the pre flow revokes what the old secret issued, and the post flow
+// moves the cutoff past the write. A refusal, or a failure before the write, stores nothing. A failure of
+// the post flow is returned in the result with the secret, since the secret is stored by then and nobody
+// could read it again.
+func (s *entityService) RegenerateClientSecret(ctx context.Context, category providers.EntityCategory,
+	entityID string) (*ClientSecretRegeneration, *tidcommon.ServiceError) {
+	if svcErr := s.validateClientSecretRegeneration(ctx, category, entityID); svcErr != nil {
+		return nil, svcErr
+	}
+
+	secret, err := oauthutils.GenerateOAuth2ClientSecret()
+	if err != nil {
+		s.logger.Error(ctx, "Failed to generate a client secret", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	credentials, err := json.Marshal(map[string]string{authnprovidercm.CredentialTypeClientSecret: secret})
+	if err != nil {
+		s.logger.Error(ctx, "Failed to build the client secret credential", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	svcErr, postErr := s.RotateClientSecret(ctx, entityID, func() *tidcommon.ServiceError {
+		if err := s.UpdateSystemCredentials(ctx, entityID, credentials); err != nil {
+			s.logger.Error(ctx, "Failed to store the regenerated client secret", log.Error(err),
+				log.MaskedString("entityID", entityID))
+			return &tidcommon.InternalServerError
+		}
+		return nil
+	})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if postErr != nil {
+		s.logger.Error(ctx, "The client secret was regenerated, but revoking the tokens issued while it was "+
+			"replaced failed; it is returned, and a token issued in that window can stay valid until it expires",
+			log.MaskedString("entityID", entityID), log.String("code", postErr.Code))
+	}
+	return &ClientSecretRegeneration{ClientSecret: secret, Revoked: s.systemFlows != nil && postErr == nil,
+		RevocationError: postErr}, nil
+}
+
+// RotateClientSecret runs write, which replaces the entity's client secret, between the system flows that
+// revoke what the entity's OAuth client issued before it. The pre flow runs first, so it resolves the client as
+// it was before anything changed. A failure before or in write is returned as svcErr, and nothing past it
+// runs. A failure of the post flow is returned as revocationErr, since the secret is stored by then.
+func (s *entityService) RotateClientSecret(ctx context.Context, entityID string,
+	write func() *tidcommon.ServiceError) (svcErr, revocationErr *tidcommon.ServiceError) {
+	inputs := map[string]string{systemFlowInputEntity: entityID}
+	shared, svcErr := s.runSystemFlow(ctx, systemFlowSecretRotatePre, inputs, nil)
+	if svcErr != nil {
+		return svcErr, nil
+	}
+	if writeErr := write(); writeErr != nil {
+		return writeErr, nil
+	}
+	_, revocationErr = s.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared)
+	return nil, revocationErr
+}
+
+// SetSystemFlowRunner gives the entity service the engine that runs the system flows around its changes. It
+// is bound after the service, once the engine exists, and only on a server that issues tokens.
+func (s *entityService) SetSystemFlowRunner(runner SystemFlowRunnerInterface) {
+	s.systemFlows = runner
+}
+
+// revokeAround runs the pre flow, then change, then the post flow, all for the entity. A failed pre flow
+// makes no change and is reported as ErrRevocationFailed. A failed post flow comes after the change is stored
+// and is reported as ErrRevocationIncomplete. Where system flows are off only the change runs.
+func (s *entityService) revokeAround(ctx context.Context, entityID, preFlow, postFlow string,
+	change func() error) error {
+	inputs := map[string]string{systemFlowInputEntity: entityID}
+	shared, svcErr := s.runSystemFlow(ctx, preFlow, inputs, nil)
+	if svcErr != nil {
+		return fmt.Errorf("%w: %s", ErrRevocationFailed, svcErr.Code)
+	}
+	if err := change(); err != nil {
+		return err
+	}
+	if _, svcErr = s.runSystemFlow(ctx, postFlow, inputs, shared); svcErr != nil {
+		return fmt.Errorf("%w: %s", ErrRevocationIncomplete, svcErr.Code)
+	}
+	return nil
+}
+
+// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
+// returns what this run shared. Where system flows are off it runs nothing.
+func (s *entityService) runSystemFlow(ctx context.Context, handle string,
+	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
+	if s.systemFlows == nil {
+		return nil, nil
+	}
+	result, svcErr := s.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return result.RuntimeData, nil
 }

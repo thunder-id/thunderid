@@ -1,20 +1,20 @@
 {
   "id": "019a1f40-6a1c-7000-8000-5e5713d00001",
-  "handle": "system-application-delete-pre",
-  "name": "Application deletion, before the change",
+  "handle": "system-inbound-client-delete-pre",
+  "name": "Inbound client deletion, before the change",
   "flowType": "SYSTEM",
   "nodes": [
     {
       "id": "start",
       "type": "START",
-      "onSuccess": "validate_application_deletion"
+      "onSuccess": "plan_revocation"
     },
     {
-      "id": "validate_application_deletion",
+      "id": "plan_revocation",
       "type": "TASK_EXECUTION",
       "executor": {
-        "name": "ApplicationActionValidator",
-        "mode": "revoke_before_removal"
+        "name": "PreRevocationExecutor",
+        "mode": "client_removal"
       },
       "onSuccess": "revoke_tokens"
     },

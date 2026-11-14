@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -55,6 +56,9 @@ type InboundClientServiceInterface interface {
 		oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error
 	// DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity.
 	DeleteInboundClient(ctx context.Context, entityID string) error
+	// SetSystemFlowRunner gives the service the engine that runs the system flows around a client's
+	// deletion. Without one, as on a control plane, no system flow runs.
+	SetSystemFlowRunner(runner SystemFlowRunnerInterface)
 	// Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 	Validate(ctx context.Context, client *inboundmodel.InboundClient,
 		oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error
@@ -104,6 +108,12 @@ type SharedTypeResolver interface {
 	GetSharedResourceType(category providers.EntityCategory) (sharing.ResourceType, bool)
 }
 
+// SystemFlowRunnerInterface runs a system flow to completion. The flow engine implements it.
+type SystemFlowRunnerInterface interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
+}
+
 type inboundClientService struct {
 	store          inboundClientStoreInterface
 	transactioner  providers.Transactioner
@@ -121,6 +131,8 @@ type inboundClientService struct {
 	logger         *log.Logger
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
+	// systemFlows is nil where system flows are off.
+	systemFlows SystemFlowRunnerInterface
 }
 
 // newInboundClientService creates and returns an inboundClientService with all dependencies wired.
@@ -454,11 +466,30 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	return clientIDFromEntity(e)
 }
 
-// DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity.
+// DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity. It
+// revokes what the client issued and detaches it from the sessions it took part in. A failure to revoke before
+// the deletion is reported as ErrRevocationFailed and deletes nothing; a failure after it is reported as
+// ErrRevocationIncomplete.
 func (s *inboundClientService) DeleteInboundClient(ctx context.Context, entityID string) error {
 	if s.store.IsDeclarative(ctx, entityID) {
 		return ErrCannotModifyDeclarative
 	}
+	inputs := map[string]string{systemFlowInputEntity: entityID}
+	shared, svcErr := s.runSystemFlow(ctx, systemFlowInboundClientDeletePre, inputs, nil)
+	if svcErr != nil {
+		return fmt.Errorf("%w: %s", ErrRevocationFailed, svcErr.Code)
+	}
+	if err := s.deleteInboundClient(ctx, entityID); err != nil {
+		return err
+	}
+	if _, svcErr = s.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+		return fmt.Errorf("%w: %s", ErrRevocationIncomplete, svcErr.Code)
+	}
+	return nil
+}
+
+// deleteInboundClient removes the inbound client, OAuth profile, and certificates in one transaction.
+func (s *inboundClientService) deleteInboundClient(ctx context.Context, entityID string) error {
 	// Capture OAuth client_id before the caller deletes the entity itself.
 	oauthClientID := s.resolveClientID(ctx, entityID)
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
@@ -2333,4 +2364,35 @@ func containsFlowType(targets []flowmgt.CallTarget, flowType providers.FlowType)
 		}
 	}
 	return false
+}
+
+// The system flows run around an inbound client's deletion, and the input naming the entity whose client it
+// is. The pre flow revokes what the client issued, up to a cutoff, and detaches it from the sessions it took
+// part in. The post flow moves the cutoff past the deletion, so an artifact issued while it ran is revoked too.
+const (
+	systemFlowInboundClientDeletePre = "system-inbound-client-delete-pre"
+	systemFlowRevocationPost         = "system-revocation-post"
+	systemFlowInputEntity            = "targetEntityId"
+)
+
+// SetSystemFlowRunner gives the inbound client service the engine that runs the system flows around a
+// client's deletion. It is bound after the service, once the engine exists, and only on a server that issues
+// tokens.
+func (s *inboundClientService) SetSystemFlowRunner(runner SystemFlowRunnerInterface) {
+	s.systemFlows = runner
+}
+
+// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
+// returns what this run shared. Where system flows are off it runs nothing.
+func (s *inboundClientService) runSystemFlow(ctx context.Context, handle string,
+	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
+	if s.systemFlows == nil {
+		return nil, nil
+	}
+	result, svcErr := s.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return result.RuntimeData, nil
 }

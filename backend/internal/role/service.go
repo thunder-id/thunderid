@@ -128,7 +128,7 @@ type roleService struct {
 	bus             eventbus.EventBusInterface
 	logger          *log.Logger
 	// systemFlows is nil where system flows are off.
-	systemFlows systemFlowProvider
+	systemFlows systemFlowRunner
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
 	// managed says which roles a control plane deployed, which stay read only here. Nil where nothing

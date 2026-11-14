@@ -22,7 +22,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
-	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -38,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
-	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -221,25 +219,22 @@ type artifactLifetimeResolver func(client *providers.OAuthClient) time.Duration
 
 // ExecutorDependencies holds service dependencies required to construct built-in executors.
 type ExecutorDependencies struct {
-	FlowFactory           core.FlowFactoryInterface
-	OUService             providers.OrganizationUnitProvider
-	IDPService            providers.IDPProvider
-	NotifSenderSvc        notification.NotificationSenderServiceInterface
-	JWTService            jwt.JWTServiceInterface
-	AuthAssertGen         assert.AuthAssertGeneratorInterface
-	ConsentEnforcer       providers.ConsentProvider
-	AuthnProvider         providers.AuthnProviderManager
-	OTPService            otp.OTPAuthnServiceInterface
-	MagicLinkService      magiclink.MagicLinkAuthnServiceInterface
-	AuthZService          providers.AuthorizationProvider
-	EntityTypeService     entitytype.EntityTypeServiceInterface
-	GroupService          group.GroupServiceInterface
-	RoleService           role.RoleServiceInterface
-	RoleAssignmentService role.RoleAssignmentServiceInterface
-	EntityProvider        entityprovider.EntityProviderInterface
-	// EntityService decides, through the service owning an entity, whether its client secret may be
-	// regenerated.
-	EntityService          entity.EntityServiceInterface
+	FlowFactory            core.FlowFactoryInterface
+	OUService              providers.OrganizationUnitProvider
+	IDPService             providers.IDPProvider
+	NotifSenderSvc         notification.NotificationSenderServiceInterface
+	JWTService             jwt.JWTServiceInterface
+	AuthAssertGen          assert.AuthAssertGeneratorInterface
+	ConsentEnforcer        providers.ConsentProvider
+	AuthnProvider          providers.AuthnProviderManager
+	OTPService             otp.OTPAuthnServiceInterface
+	MagicLinkService       magiclink.MagicLinkAuthnServiceInterface
+	AuthZService           providers.AuthorizationProvider
+	EntityTypeService      entitytype.EntityTypeServiceInterface
+	GroupService           group.GroupServiceInterface
+	RoleService            role.RoleServiceInterface
+	RoleAssignmentService  role.RoleAssignmentServiceInterface
+	EntityProvider         entityprovider.EntityProviderInterface
 	UserMgtProvider        providers.UserMgtProvider
 	AgentMgtProvider       providers.AgentMgtProvider
 	AttributeCacheSvc      attributecache.AttributeCacheServiceInterface
@@ -251,7 +246,6 @@ type ExecutorDependencies struct {
 	OpenID4VPVerifierSvc   openid4vp.OpenID4VPServiceInterface
 	SessionService         session.Service
 	ResourceService        providers.ResourceServerProvider
-	UserService            user.UserServiceInterface
 	CriteriaRevoker        revocation.CriteriaRevoker
 	ResourceMgtService     resource.ResourceServiceInterface
 	HTTPConnectionProvider httpconnection.HTTPConnectionProvider
@@ -403,12 +397,9 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider,
 				newAccessGuard(deps.IdentityGovernance)))
 		},
-		ExecutorNamePreDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePreDelete,
-				newPreDeleteExecutor(deps.FlowFactory, deps.UserService))
-		},
-		ExecutorNamePreCredentialUpdate: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePreCredentialUpdate, newPreCredentialUpdateExecutor(deps.FlowFactory))
+		ExecutorNamePreRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreRevocation,
+				newPreRevocationExecutor(deps.FlowFactory, deps.ArtifactLifetime, deps.EntityProvider))
 		},
 		ExecutorNameCriteriaRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCriteriaRevocation,
@@ -454,10 +445,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameApplicationActionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameApplicationActionValidator,
 				newApplicationActionValidator(deps.FlowFactory))
-		},
-		ExecutorNameEntitySecretRotationValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameEntitySecretRotationValidator,
-				newEntitySecretRotationValidator(deps.FlowFactory, deps.EntityService))
 		},
 		ExecutorNameExtension: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameExtension,

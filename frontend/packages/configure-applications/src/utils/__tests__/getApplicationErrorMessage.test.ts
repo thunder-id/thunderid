@@ -13,7 +13,7 @@ const LABELS: Record<string, string> = {
     "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
   'update.error': 'Failed to update the application.',
   'delete.error': 'Failed to delete application. Please try again.',
-  'common:errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
+  'common:errors.FET-1086': 'This application cannot be deleted in its current state.',
   'errors.FET-1090': 'A feature-namespace message for {{attribute}}.',
 };
 
@@ -65,10 +65,10 @@ describe('getApplicationErrorMessage', () => {
   // Without this the console shows the generic "Failed to delete application", hiding the actual
   // reason the flow refused.
   it('resolves a refused flow step from the shared catalog', () => {
-    const error = flowErrorFor('FET-1088');
+    const error = flowErrorFor('FET-1086');
 
     expect(getApplicationErrorMessage(error, t, 'delete.error')).toBe(
-      'This application authenticates without a client secret, so there is none to regenerate.',
+      'This application cannot be deleted in its current state.',
     );
   });
 

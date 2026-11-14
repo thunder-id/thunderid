@@ -576,8 +576,8 @@ func (s *ResourceServiceAuditTestSuite) TestDeleteAction_PublishesOneEventPerAtt
 		s.Run(tc.name, func() {
 			bus, published := newRecordingBus(s.T())
 			service := s.newService(bus)
-			flows := newSystemFlowProviderMock(s.T())
-			s.Require().NoError(SetSystemFlowProvider(service, flows))
+			flows := newSystemFlowRunnerMock(s.T())
+			s.Require().NoError(SetSystemFlowRunner(service, flows))
 			flows.EXPECT().ExecuteSystemFlow(mock.Anything, isHandle(systemFlowActionDeletePre)).
 				Return(&flowcommon.SystemFlowResult{}, tc.preErr).Once()
 			s.store.On("GetResourceServer", mock.Anything, testAuditServerID).Return(storedServer(), nil)

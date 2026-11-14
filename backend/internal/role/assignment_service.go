@@ -92,7 +92,7 @@ type roleAssignmentService struct {
 	bus               eventbus.EventBusInterface
 	logger            *log.Logger
 	// systemFlows is nil where system flows are off.
-	systemFlows systemFlowProvider
+	systemFlows systemFlowRunner
 	// managed says which assignments a control plane deployed, which stay read only here. Nil where
 	// nothing is deployed from one.
 	managed managedresource.StoreInterface

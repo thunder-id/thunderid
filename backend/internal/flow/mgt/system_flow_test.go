@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	testSystemFlowHandle = "system-application-delete-pre"
+	testSystemFlowHandle = "system-inbound-client-delete-pre"
 	testSystemFlowJSON   = `{"id": "019a1f40-6a1c-7000-8000-5e5713d0aaaa", "handle": "system-test", ` +
 		`"name": "Test", "flowType": "SYSTEM", "nodes": []}`
 )
@@ -60,28 +60,26 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, validator)
 
 	s.Require().NoError(err)
-	// Each pre flow takes the steps its administration flow runs between the permission check and the
-	// write, and the shared post flow takes the step those flows run after the write. A credential update's
-	// post flow also ends the user's sessions again, so a session started during the write is ended. An application
-	// deletion is the exception: its administration flow deletes the application within the flow, so
-	// it revokes everything, while a service deletes it after the flow and runs the post flow, so its pre
-	// flow revokes what was issued before the deletion.
+	// Each pre flow plans what the change revokes and revokes it, and the shared post flow moves the cutoff past
+	// the write. An entity's and an inbound client's deletion and a credential update also end or detach the
+	// sessions the plan names, and a credential update's post flow ends the sessions started during the write.
 	expected := map[string][]string{
-		"system-application-delete-pre": {
-			"ApplicationActionValidator:revoke_before_removal", "CriteriaRevocationExecutor:revoke",
+		"system-entity-delete-pre": {
+			"PreRevocationExecutor:entity_removal", "CriteriaRevocationExecutor:revoke",
+			"SessionRevocationExecutor:",
+		},
+		"system-inbound-client-delete-pre": {
+			"PreRevocationExecutor:client_removal", "CriteriaRevocationExecutor:revoke",
 			"SessionRevocationExecutor:",
 		},
 		"system-entity-secret-rotate-pre": {
-			"EntitySecretRotationValidator:revoke_before_action", "CriteriaRevocationExecutor:revoke",
+			"PreRevocationExecutor:client_secret_rotation", "CriteriaRevocationExecutor:revoke",
 		},
-		"system-user-delete-pre": {
-			"PreDeleteExecutor:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",
-		},
-		"system-user-credential-update-pre": {
-			"PreCredentialUpdateExecutor:revoke_before_action", "CriteriaRevocationExecutor:revoke",
+		"system-entity-credential-update-pre": {
+			"PreRevocationExecutor:credential_update", "CriteriaRevocationExecutor:revoke",
 			"SessionRevocationExecutor:",
 		},
-		"system-user-credential-update-post": {
+		"system-entity-credential-update-post": {
 			"CriteriaRevocationExecutor:advance_cutoff", "SessionRevocationExecutor:",
 		},
 		"system-role-delete-pre": {"AccessChangeValidator:role_deletion", "CriteriaRevocationExecutor:revoke"},

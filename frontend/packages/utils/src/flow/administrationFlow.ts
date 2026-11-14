@@ -129,7 +129,6 @@ export type AdministrationFlowConfigKeyValue =
  * the wrong place.
  */
 export const AdministrationFlowInput = {
-  APPLICATION: 'targetApplicationId',
   ATTRIBUTE: 'attribute',
   GROUP: 'targetGroupId',
   OPERATOR_NOTE: 'operatorNote',
