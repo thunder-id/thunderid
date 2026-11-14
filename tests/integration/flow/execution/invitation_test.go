@@ -258,8 +258,8 @@ func (ts *InvitationTestSuite) TestAdminWhoLostTheOrgPermission_AssignsNoRoles()
 	ts.NotContains(ts.assigneesInChild(ts.ownedRoleID), userID)
 }
 
-// A new user is created at acceptance in the user type's unit, then shared into the child with the role. The
-// type's unit is the child's parent, which only the deployment-wide permission reaches.
+// A new user is created at acceptance in the user type's unit, the child's parent, then shared into the child
+// with the role.
 func (ts *InvitationTestSuite) TestNewUser_CreatedAtAcceptanceInTheRoot() {
 	username, email := "invitation-new", "invitation-new@thunderid.test"
 	admin := ts.adminTokenOn(ts.childOUID, "new-user", []string{"system"}, ts.childRSID,
@@ -354,9 +354,44 @@ func (ts *InvitationTestSuite) TestAnonymousStart_Refused() {
 	ts.Equal(errCodeInvitationAuthRequired, errResp.Code)
 }
 
-// The template requires the org permission, so an admin holding only the user permission is refused at the start.
-func (ts *InvitationTestSuite) TestNarrowAdmin_RefusedByTheTemplatesValidator() {
-	step := ts.start(ts.limitedAdminToken, "invitation-narrow@thunderid.test")
+// An admin of a user type's child unit who may create users there, and nothing else, invites a new user: the
+// invitee accepts with no token, and the user is created in the type's unit and shared into the admin's.
+func (ts *InvitationTestSuite) TestUserCreateAdmin_InvitesANewUser() {
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "User Invitation creator RS", Identifier: invitationRSIdentifier("creator"), OUID: ts.childOUID,
+	}, nil)
+	ts.Require().NoError(err, "create the creator's resource server")
+	ts.rsIDs = append(ts.rsIDs, rsID)
+	orgID, err := testutils.CreateResource(rsID, "Organization", "org", "")
+	ts.Require().NoError(err, "create the org resource")
+	userResID, err := testutils.CreateResource(rsID, "user", "user", orgID)
+	ts.Require().NoError(err, "create the user resource")
+	_, err = testutils.CreateResourceAction(rsID, userResID, testutils.Action{Name: "create", Handle: "create"})
+	ts.Require().NoError(err, "create the user create action")
+	admin := ts.adminTokenOn(ts.childOUID, "creator", []string{"org:user:create"}, rsID,
+		invitationRSIdentifier("creator"))
+	username, email := "invitation-by-creator", "invitation-by-creator@thunderid.test"
+
+	executionID := ts.invite(admin.token, email, "", branchNew)
+	step := ts.accept(executionID, "action_accept_"+branchNew)
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "%+v", step)
+	step = ts.continueAsInvitee(executionID, step.ChallengeToken, "action_user_details",
+		map[string]string{"username": username, "password": invitationPassword})
+	ts.NotEqual("ERROR", step.FlowStatus, "%+v", step)
+
+	user := ts.findUser(username)
+	ts.Require().NotNil(user, "the user is created at acceptance")
+	ts.userIDs = append(ts.userIDs, user.ID)
+	ts.Equal(ts.parentOUID, user.OUID)
+	ts.Equal([]string{ts.childOUID}, ts.policyUnits(user.ID))
+}
+
+// An admin who may not create users is refused at the start by the template's validator.
+func (ts *InvitationTestSuite) TestAdminWhoMayNotCreateUsers_RefusedByTheTemplatesValidator() {
+	viewer := ts.adminTokenOn(ts.childOUID, "viewer", []string{"org:user:view"}, ts.childRSID,
+		invitationRSIdentifier("child"))
+
+	step := ts.start(viewer.token, "invitation-narrow@thunderid.test")
 
 	ts.Require().NotNil(step.Error, "%+v", step)
 	ts.Equal(errCodeInvitationInsufficientPerms, step.Error.Code)
@@ -423,33 +458,11 @@ func (ts *InvitationTestSuite) TestRoleNotAssignable_NotOffered() {
 // An admin who may invite but not change role assignments in their unit is offered no role, and the invite
 // is still sent.
 func (ts *InvitationTestSuite) TestAdminWhoMayNotAssignRoles_InvitesWithoutARole() {
-	nodes := ts.templateNodes()
-	for _, node := range nodes {
-		if node["id"] == "permission_validator" {
-			node["properties"].(map[string]interface{})["requiredScopes"] = []string{"org:user"}
-		}
-	}
-	flowID, err := testutils.CreateFlow(testutils.Flow{
-		Name: "User Invitation User Admin Flow", FlowType: "INVITATION", Handle: "invitation-user-admin-flow",
-		Nodes: nodes, OUID: ts.parentOUID,
-	})
-	ts.Require().NoError(err, "create the flow requiring only the user permission")
-	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteFlow(flowID)) })
-	status, raw := ts.request(testutils.GetHTTPClient(), http.MethodPost,
-		"/flows/"+flowID+"/sharing-policies", map[string]interface{}{
-			"childUnits": map[string]interface{}{"mode": "selected", "units": []map[string]interface{}{{
-				"ouId": ts.childOUID, "reach": "subtree",
-			}}},
-		})
-	ts.Require().Equal(http.StatusCreated, status, "share the flow with the child's subtree: %s", raw)
 	email := "invitation-no-roles@thunderid.test"
 	ts.createUser(ts.parentOUID, "invitation-no-roles", email)
 
-	status, step, errResp := ts.execute(ts.limitedAdminToken, map[string]interface{}{
-		"flowId": flowID, "action": "action_submit_email", "inputs": map[string]string{"email": email},
-	})
+	step := ts.start(ts.limitedAdminToken, email)
 
-	ts.Require().Equal(http.StatusOK, status, "%+v", errResp)
 	ts.Require().Nil(step.Error, "%+v", step)
 	ts.Empty(step.Data.AdditionalData["roleOptions"], "no role is offered")
 	emails := ts.smtp.GetEmails()

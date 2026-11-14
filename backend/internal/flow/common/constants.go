@@ -194,8 +194,9 @@ const (
 	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
 	// prompt.
 	RuntimeKeyOUID = "ouId"
-	// RuntimeKeyOUFixed marks a sign-in whose organization unit was fixed before the flow ran, by the request or by
-	// the application, so that no step of the flow may choose another.
+	// RuntimeKeyOUFixed marks a flow whose organization unit was fixed before the flow ran, so that no step of the
+	// flow may choose another: a sign-in's, by the request or by the application, and a user onboarding's, by a
+	// caller confined to their token's unit.
 	RuntimeKeyOUFixed = "ouFixed"
 	// RuntimeKeyInviter holds the subject that started an invitation flow.
 	RuntimeKeyInviter = "inviter"
@@ -379,6 +380,10 @@ const (
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
 	// concepts off the reusable engine contract.
 	RuntimeKeySSOSessionCleared = "ssoSessionCleared"
+	// EngineDataKeyApprovedActions is the ExecutorResponse EngineData key carrying, as JSON, the writes a step
+	// approves for the steps the caller who started the flow does not send. The engine keeps them only from a step
+	// that caller sent with their own token.
+	EngineDataKeyApprovedActions = "approvedActions"
 	// RuntimeKeyTokenFamilyID carries the token family id (tfid) minted once per login flow execution
 	// by the Session node. It is stamped onto the auth assertion, and from there onto the grant's
 	// access and refresh tokens, so revocation can target a whole family. It is deliberately excluded

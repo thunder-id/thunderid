@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
@@ -5783,6 +5784,78 @@ func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInDropsItsUserAndSe
 			s.Empty(ctx.Assertion)
 		})
 	}
+}
+
+// A completed step the flow's caller sent records the actions it approves; a failed step and a malformed list do not.
+func (s *EngineTestSuite) TestProcessNodeResponse_RecordsTheApprovedActions() {
+	security.InitControlPlanePermissions("")
+	approved := `[{"action":"user:create","ouId":"ou-2"}]`
+	newCtx := func() *EngineContext {
+		graph := coremock.NewGraphInterfaceMock(s.T())
+		graph.On("GetID").Return("onboarding").Maybe()
+		next := coremock.NewNodeInterfaceMock(s.T())
+		next.On("GetID").Return("next").Maybe()
+		graph.On("GetNode", "next").Return(next, true).Maybe()
+		current := coremock.NewNodeInterfaceMock(s.T())
+		current.On("GetID").Return("invite_generate").Maybe()
+		return &EngineContext{Context: authenticatedAdminContext([]string{"system:user:create"}),
+			FlowType: providers.FlowTypeUserOnboarding, Graph: graph, CurrentNode: current,
+			authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1", Approved: []security.ApprovedAction{}}}
+	}
+	fe := &flowEngine{logger: log.GetLogger()}
+
+	ctx := newCtx()
+	_, _, svcErr := fe.processNodeResponse(ctx, &common.NodeResponse{Status: common.NodeStatusComplete,
+		NextNodeID: "next", EngineData: map[string]string{common.EngineDataKeyApprovedActions: approved}},
+		&FlowStep{}, log.GetLogger())
+	s.Require().Nil(svcErr)
+	s.Equal([]security.ApprovedAction{{Action: security.ActionCreateUser, OUID: "ou-2"}}, ctx.authority.Approved)
+
+	ctx = newCtx()
+	_, _, svcErr = fe.processNodeResponse(ctx, &common.NodeResponse{Status: common.NodeStatusFailure,
+		EngineData: map[string]string{common.EngineDataKeyApprovedActions: approved}}, &FlowStep{}, log.GetLogger())
+	s.Require().Nil(svcErr)
+	s.Empty(ctx.authority.Approved)
+
+	_, _, svcErr = fe.processNodeResponse(newCtx(), &common.NodeResponse{Status: common.NodeStatusComplete,
+		EngineData: map[string]string{common.EngineDataKeyApprovedActions: "{"}}, &FlowStep{}, log.GetLogger())
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
+// A step limited to its approved writes keeps, on the flow's authority, the entities it created under them; a step
+// the caller sent with their token records none.
+func (s *EngineTestSuite) TestProcessNodeResponse_KeepsTheEntitiesAStepCreated() {
+	security.InitControlPlanePermissions("")
+	earlier := security.CreatedEntity{ResourceType: security.ResourceTypeAgent, ID: "agent-1"}
+	newCtx := func(caller context.Context) *EngineContext {
+		graph := coremock.NewGraphInterfaceMock(s.T())
+		graph.On("GetID").Return("onboarding").Maybe()
+		next := coremock.NewNodeInterfaceMock(s.T())
+		next.On("GetID").Return("next").Maybe()
+		graph.On("GetNode", "next").Return(next, true).Maybe()
+		current := coremock.NewNodeInterfaceMock(s.T())
+		current.On("GetID").Return("provisioning").Maybe()
+		return &EngineContext{Context: caller, FlowType: providers.FlowTypeUserOnboarding, Graph: graph,
+			CurrentNode: current, authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1",
+				Approved: []security.ApprovedAction{}, Created: []security.CreatedEntity{earlier}}}
+	}
+	fe := &flowEngine{logger: log.GetLogger()}
+
+	tokenless := security.WithApprovedActions(context.Background(), "admin-1", "ou-1", nil, nil,
+		[]security.CreatedEntity{earlier})
+	security.RecordCreated(tokenless, security.ResourceTypeUser, "user-1")
+	ctx := newCtx(tokenless)
+	_, _, svcErr := fe.processNodeResponse(ctx, &common.NodeResponse{Status: common.NodeStatusComplete,
+		NextNodeID: "next"}, &FlowStep{}, log.GetLogger())
+	s.Require().Nil(svcErr)
+	s.Equal([]security.CreatedEntity{earlier, {ResourceType: security.ResourceTypeUser, ID: "user-1"}},
+		ctx.authority.Created)
+
+	ctx = newCtx(authenticatedAdminContext([]string{"system:user:create"}))
+	_, _, svcErr = fe.processNodeResponse(ctx, &common.NodeResponse{Status: common.NodeStatusComplete,
+		NextNodeID: "next"}, &FlowStep{}, log.GetLogger())
+	s.Require().Nil(svcErr)
+	s.Equal([]security.CreatedEntity{earlier}, ctx.authority.Created)
 }
 
 // A sign-in callee refused at its assertion node fails to its caller like any failed callee, with no user,

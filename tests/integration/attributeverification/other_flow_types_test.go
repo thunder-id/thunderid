@@ -355,7 +355,23 @@ func (ts *OtherFlowTypesTestSuite) startOnboarding(address string) *common.FlowS
 		result.Body)
 	ts.Require().True(common.HasInput(result.Step.Data.Inputs, emailAttribute),
 		"the flow must ask for the invitee's address: %s", result.Body)
-	return ts.continueFlow(result.Step, map[string]string{emailAttribute: address}, actionSubmitEmail)
+	return ts.continueAsAdmin(result.Step, map[string]string{emailAttribute: address}, actionSubmitEmail)
+}
+
+// continueAsAdmin sends the administrator's next step with their token, so what it approves holds for the
+// invitee's steps.
+func (ts *OtherFlowTypesTestSuite) continueAsAdmin(step *common.FlowStep, inputs map[string]string,
+	action string) *common.FlowStep {
+	ts.T().Helper()
+
+	request := map[string]interface{}{"executionId": step.ExecutionID, "challengeToken": step.ChallengeToken,
+		"action": action}
+	if len(inputs) > 0 {
+		request["inputs"] = inputs
+	}
+	result := execute(ts.T(), adminToken(ts.T()), request)
+	ts.Require().Equal(http.StatusOK, result.StatusCode, "%s", result.Body)
+	return result.Step
 }
 
 // finishOnboarding opens the invite link as the invitee and submits the username.
@@ -375,7 +391,7 @@ func (ts *OtherFlowTypesTestSuite) TestOnboardingByEmailedInviteVerifiesTheNewUs
 	started := time.Now()
 
 	step := ts.startOnboarding(address)
-	step = ts.continueFlow(step, nil, actionSendInvite)
+	step = ts.continueAsAdmin(step, nil, actionSendInvite)
 	ts.Require().Equal(flowStatusIncomplete, step.FlowStatus, "the flow must wait for the invitee: %+v", step)
 	link := ts.fixture.awaitEmailTo(ts.T(), address).ExtractRecoveryLink()
 	ts.Require().NotEmpty(link, "the email must carry the invite link")
@@ -394,7 +410,7 @@ func (ts *OtherFlowTypesTestSuite) TestOnboardingByAReturnedLinkRecordsNothing()
 	username, address := ts.newUserDetails("onboarding_shared")
 
 	step := ts.startOnboarding(address)
-	step = ts.continueFlow(step, nil, actionShareInvite)
+	step = ts.continueAsAdmin(step, nil, actionShareInvite)
 	link := step.Data.AdditionalData["inviteLink"]
 	ts.Require().NotEmpty(link, "precondition: the administrator receives the invite link: %+v", step.Data)
 	ts.fixture.requireNoEmail(ts.T(), "precondition: no invite is emailed")
@@ -526,10 +542,16 @@ func onboardingFlow(userType, senderID string) []map[string]interface{} {
 	send["executor"].(map[string]interface{})["inputs"] = []map[string]interface{}{
 		{"identifier": emailAttribute, "type": "EMAIL_INPUT", "required": true}}
 	send["onSuccess"] = "email_invite_status"
+	// The invitee creates the user and records its verified address, so the invite approves both in the unit.
+	ouIDs := []string{"{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"}
+	approved := map[string]interface{}{"approvedActions": []map[string]interface{}{
+		{"action": "user:create", "ouId": ouIDs}, {"action": "user:update", "ouId": ouIDs}}}
 	generateEmail := taskNode("invite_generate_email", "InviteExecutor", "generate")
 	generateEmail["onSuccess"] = "send_invite_email"
+	generateEmail["properties"] = approved
 	generateManual := taskNode("invite_generate_manual", "InviteExecutor", "generate")
 	generateManual["onSuccess"] = "invite_link_status"
+	generateManual["properties"] = approved
 	verify := taskNode("invite_verify", "InviteExecutor", "verify")
 	verify["executor"].(map[string]interface{})["inputs"] = []map[string]interface{}{
 		{"ref": "input_invite_token", "identifier": "inviteToken", "type": "HIDDEN", "required": true}}

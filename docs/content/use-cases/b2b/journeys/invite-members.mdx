@@ -77,7 +77,7 @@ An invitation runs for the organization in the caller's token, and that organiza
 
 ## Start an Invitation
 
-Start the flow by its ID on `POST /flow/execute` on the Data Plane. It cannot be started by flow type. The caller's access token must carry the root `system` permission and name an organization in its `ouId` claim, and the invitation acts for that organization. An `ouId` sent as an input does not change it.
+Start the flow by its ID on `POST /flow/execute` on the Data Plane. It cannot be started by flow type. The caller's access token must carry `system:user:create`, or `org:user:create` for the organization it names, or a broader permission such as the root `system` permission, and name an organization in its `ouId` claim, and the invitation acts for that organization. An `ouId` sent as an input does not change it.
 
 ### Start It From Your Backend
 

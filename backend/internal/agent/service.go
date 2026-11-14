@@ -176,6 +176,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	var agentID string
 	if svcErr == nil {
 		agentID = created.ID
+		security.RecordCreated(ctx, security.ResourceTypeAgent, agentID)
 	}
 	s.publishAgentEvent(ctx, audit.EventAgentCreate, audit.ActionCreate, agentID, svcErr)
 	return created, svcErr

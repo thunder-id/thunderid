@@ -80,7 +80,9 @@ describe('invitation template', () => {
   it('should check the starter holds the permission it asks for first', () => {
     expect(node('start').onSuccess).toBe('permission_validator');
     expect(node('permission_validator').executor).toEqual({name: 'PermissionValidator'});
-    expect(node('permission_validator').properties).toEqual({requiredScopes: ['system', 'org']});
+    expect(node('permission_validator').properties).toEqual({
+      requiredScopes: ['system:user:create', 'org:user:create'],
+    });
     expect(node('permission_validator').onSuccess).toBe('resolve_user_type');
   });
 

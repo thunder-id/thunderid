@@ -135,8 +135,15 @@ func grantsPermission(permissions []ResourcePermissions, resourceServerID, permi
 // checkRoleAccess checks the caller may perform the action on a role of the organization unit.
 func checkRoleAccess(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
 	logger *log.Logger, action security.Action, ouID string) *tidcommon.ServiceError {
+	return checkRoleAccessOn(ctx, authzService, logger, action, ouID, "")
+}
+
+// checkRoleAccessOn checks the caller may perform the action on the role, or on a role of the organization unit when
+// roleID is empty.
+func checkRoleAccessOn(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
+	logger *log.Logger, action security.Action, ouID, roleID string) *tidcommon.ServiceError {
 	allowed, svcErr := authzService.IsActionAllowed(ctx, action,
-		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: ouID})
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: ouID, ResourceID: roleID})
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to check authorization for action",
 			log.String("action", string(action)), log.Any("error", svcErr))

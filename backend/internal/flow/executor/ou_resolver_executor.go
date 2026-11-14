@@ -108,7 +108,8 @@ func (e *ouResolverExecutor) applicationUsableFromOU(ctx *providers.NodeContext,
 //     checks for child OUs and prompts the user to select one if applicable.
 //   - "promptAll": shows the full OU tree from root, independent of UserTypeResolver.
 //
-// Inside a sign-in boundary, an OU the flow already decided is kept whatever the strategy.
+// Inside a sign-in boundary, an OU the flow already decided is kept whatever the strategy, and so is the unit
+// onboarding pins for a caller confined to their token's unit.
 //
 // Each read of the OU provider runs with the server's authority at its call site. Reading the units to choose
 // from grants nothing, and the entity the flow places there is authorized as the caller; the rest of the
@@ -127,6 +128,12 @@ func (e *ouResolverExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 	}
 	if bounded && ctx.RuntimeData[ouIDKey] != "" {
 		logger.Debug(ctx.Context, "OU already decided for the sign-in, skipping OU resolution")
+		return execResp, nil
+	}
+	// Onboarding by a caller confined to their token's unit starts with the unit pinned; no strategy may move it.
+	if ctx.FlowType == providers.FlowTypeUserOnboarding && ctx.RuntimeData[ouIDKey] != "" &&
+		security.IsConfinedToOrganizationUnit(ctx.Context) {
+		logger.Debug(ctx.Context, "OU pinned to the caller's unit, skipping OU resolution")
 		return execResp, nil
 	}
 

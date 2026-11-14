@@ -281,6 +281,11 @@ var (
 			{
 				"id":   "invite_generate",
 				"type": "TASK_EXECUTION",
+				"properties": map[string]interface{}{
+					"approvedActions": []map[string]interface{}{
+						{"action": "user:create", "ouId": []string{"{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"}},
+					},
+				},
 				"executor": map[string]interface{}{
 					"name": "InviteExecutor",
 					"mode": "generate",
@@ -835,8 +840,16 @@ func (ts *MultiOUSocialSignupTestSuite) inviteUser(user federatedUser, org testu
 		step.Error)
 	ts.Require().True(common.HasInput(step.Data.Inputs, "email"), "Expected an email input")
 
-	step = ts.continueFlow(step, map[string]string{"email": user.email}, sendInviteAction)
-	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Expected the flow to wait for the invitee")
+	// The admin sends the invite with their token, so the invite step's approval holds for the invitee.
+	token, err := testutils.GetAccessToken()
+	ts.Require().NoError(err)
+	result, err := common.ExecuteFlowWithToken(token, map[string]interface{}{"executionId": step.ExecutionID,
+		"challengeToken": step.ChallengeToken, "inputs": map[string]string{"email": user.email},
+		"action": sendInviteAction})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, result.StatusCode, "%s", string(result.Body))
+	step = result.Step
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Expected the flow to wait for the invitee: %+v", step.Error)
 
 	time.Sleep(1 * time.Second)
 	email := ts.mockSMTP.GetLastEmail()

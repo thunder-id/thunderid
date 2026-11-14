@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -30,7 +31,6 @@ const (
 
 	errCodeNarrowAuthRequired        = "FES-1017"
 	errCodeNarrowStartedByAnother    = "FES-1030"
-	errCodeNarrowInsufficientPerms   = "FET-1027"
 	errCodeNarrowCredentialSetFailed = "FET-1048"
 	errCodeNarrowOUCreationFailed    = "FET-1035"
 )
@@ -217,17 +217,46 @@ func (ts *NarrowAdminFlowTestSuite) TearDownSuite() {
 	}
 }
 
-// The shipped onboarding flow keeps the root permission, so an admin holding only the user create permission is
-// refused before any user is created.
-func (ts *NarrowAdminFlowTestSuite) TestCreator_RefusedByTheDefaultUserOnboardingFlow() {
+// An admin holding only the user create permission invites a user with the shipped onboarding flow. The flow
+// places the user in the admin's unit, and the invitee, who sends no token, creates the user only because the
+// admin's invite step approved that.
+func (ts *NarrowAdminFlowTestSuite) TestCreator_InvitesAUserIntoTheirUnitWithTheDefaultUserOnboardingFlow() {
+	username := common.GenerateUniqueUsername("narrow_invited")
 	step := ts.run(ts.creatorToken, map[string]interface{}{
 		"flowType": "USER_ONBOARDING",
-		"inputs":   map[string]string{"userType": narrowAdminUserType, "ouId": ts.ouID},
+		"inputs":   map[string]string{"userType": narrowAdminUserType},
 	})
+	ts.Require().Nil(step.Error, "%+v", step)
+	for _, next := range []map[string]interface{}{
+		{"action": "action_invite_user"},
+		{"action": "action_submit_email", "inputs": map[string]string{"email": username + "@narrow.test"}},
+		{"action": "action_share_manually"},
+	} {
+		next["executionId"], next["challengeToken"] = step.ExecutionID, step.ChallengeToken
+		step = ts.run(ts.creatorToken, next)
+		ts.Require().Nil(step.Error, "%+v", step)
+	}
 
-	ts.NotEqual("COMPLETE", step.FlowStatus)
-	ts.Require().NotNil(step.Error, "%+v", step)
-	ts.Equal(errCodeNarrowInsufficientPerms, step.Error.Code)
+	link, err := url.Parse(step.Data.AdditionalData["inviteLink"])
+	ts.Require().NoError(err)
+	inviteToken := link.Query().Get("inviteToken")
+	ts.Require().NotEmpty(inviteToken, "the admin gets the link to share: %+v", step)
+
+	step, err = common.CompleteFlow(step.ExecutionID, map[string]string{"inviteToken": inviteToken}, "", "")
+	ts.Require().NoError(err)
+	ts.Require().Nil(step.Error, "%+v", step)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"), "%+v", step)
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": username, "password": narrowAdminPassword}, "action_user_details",
+		step.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Nil(step.Error, "%+v", step)
+
+	user, err := testutils.FindUserByAttribute("username", username)
+	ts.Require().NoError(err)
+	ts.Require().NotNil(user, "the invitee's step creates the user")
+	ts.userIDs = append(ts.userIDs, user.ID)
+	ts.Equal(ts.ouID, user.OUID)
 }
 
 func (ts *NarrowAdminFlowTestSuite) TestUserOnboardingWithoutAToken_Refused() {
