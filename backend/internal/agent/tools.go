@@ -732,8 +732,8 @@ func (t *agentTools) rotateAgentCredentials(
 		case regenerated.Revoked:
 			notice = "The old secret no longer works, and the tokens it issued are revoked. " + secretNotice
 		case regenerated.RevocationIncomplete:
-			notice = "The old secret no longer works, but revoking the tokens it issued failed, so they can " +
-				"stay valid until they expire; rotating again revokes them. " + secretNotice
+			notice = "The old secret no longer works, but revoking the tokens issued while it was replaced " +
+				"failed, so those can stay valid until they expire; rotating again revokes them. " + secretNotice
 		default:
 			notice = "The old secret no longer works. Tokens it already issued were not revoked and stay " +
 				"valid until they expire. " + secretNotice

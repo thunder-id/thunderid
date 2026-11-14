@@ -221,14 +221,14 @@ func registerRoutes(mux *http.ServeMux, groupHandler *groupHandler) {
 		}, opts4))
 }
 
-// SetSystemFlowProvider gives the group service the engine that runs the system flows around its
+// SetSystemFlowRunner gives the group service the engine that runs the system flows around its
 // writes. It is bound after the service, once the engine exists, and only on a server that issues
 // tokens. A service that cannot take it is reported rather than left without one.
-func SetSystemFlowProvider(service GroupServiceInterface, provider systemFlowProvider) error {
+func SetSystemFlowRunner(service GroupServiceInterface, runner systemFlowRunner) error {
 	gs, ok := service.(*groupService)
 	if !ok {
-		return fmt.Errorf("group service does not support system flow provider injection")
+		return fmt.Errorf("group service does not support system flow runner injection")
 	}
-	gs.systemFlows = provider
+	gs.systemFlows = runner
 	return nil
 }

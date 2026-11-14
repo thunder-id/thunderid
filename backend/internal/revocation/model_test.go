@@ -41,6 +41,9 @@ var allReasons = map[Reason]bool{
 	ReasonConsentRevoked:          true,
 	ReasonIdentitySuspended:       true,
 	ReasonCredentialUpdated:       true,
+	ReasonEntityRemoved:           true,
+	ReasonClientRemoved:           true,
+	ReasonClientSecretRotated:     true,
 }
 
 func (s *RevocationModelTestSuite) TestIsBoundaryReason() {
@@ -63,7 +66,7 @@ func (s *RevocationModelTestSuite) TestIsBoundaryReasonUnknownIsTerminal() {
 // the former while the Resource Server cache classifies entries with the latter.
 func (s *RevocationModelTestSuite) TestBoundaryReasonsMatchesPredicate() {
 	boundary := BoundaryReasons()
-	s.Len(boundary, 12)
+	s.Len(boundary, 15)
 
 	for _, reason := range boundary {
 		s.True(IsBoundaryReason(reason), "%q is listed as boundary but not classified as one", reason)

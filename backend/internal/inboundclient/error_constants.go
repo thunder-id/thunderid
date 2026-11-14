@@ -28,6 +28,14 @@ var (
 	// SyncOAuthProfile/Delete) when the targeted entity is sourced from a declarative file.
 	// Callers translate this into their own "declarative resource is read-only" error.
 	ErrCannotModifyDeclarative = errors.New("cannot modify declarative inbound client")
+
+	// ErrRevocationFailed is returned when revoking what a client issued failed before its deletion. Nothing
+	// is deleted.
+	ErrRevocationFailed = errors.New("revocation before the inbound client deletion failed")
+
+	// ErrRevocationIncomplete is returned when a client is deleted, but revoking what it issued while it was
+	// being deleted failed.
+	ErrRevocationIncomplete = errors.New("revocation after the inbound client deletion failed")
 )
 
 var (

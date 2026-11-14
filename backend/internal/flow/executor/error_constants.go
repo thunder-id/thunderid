@@ -1182,20 +1182,6 @@ var (
 		},
 	}
 
-	// ErrUserDeletionNotAllowed is returned when the target user cannot be deleted.
-	ErrUserDeletionNotAllowed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1084",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_deletion_not_allowed",
-			DefaultValue: "User deletion not allowed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_deletion_not_allowed_desc",
-			DefaultValue: "The user cannot be deleted in the current state",
-		},
-	}
-
 	// ErrApplicationDeletionNotAllowed is returned when the target application cannot be deleted.
 	ErrApplicationDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -1207,20 +1193,6 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.application_deletion_not_allowed_desc",
 			DefaultValue: "The application cannot be deleted in the current state",
-		},
-	}
-
-	// ErrSecretRegenerationNotAllowed is returned when the target application has no rotatable secret.
-	ErrSecretRegenerationNotAllowed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1088",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_not_allowed",
-			DefaultValue: "Client secret regeneration not allowed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_not_allowed_desc",
-			DefaultValue: "The application has no client secret that can be regenerated",
 		},
 	}
 

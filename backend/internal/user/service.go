@@ -22,7 +22,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributeverification"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -66,7 +65,6 @@ type UserServiceInterface interface {
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
-	ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ResolveUserOUHandle(ctx context.Context, user *providers.User) *tidcommon.ServiceError
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetUserUsages(ctx context.Context, userID string) (
@@ -114,19 +112,11 @@ type userService struct {
 	sharingDeclaration *userSharingDeclaration
 	logger             *log.Logger
 	bus                eventbus.EventBusInterface
-	// systemFlows is nil where system flows are off.
-	systemFlows systemFlowProvider
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
 	// managed says which users a control plane deployed, which stay read only here, credentials included.
 	// Nil where nothing is deployed from one.
 	managed managedresource.StoreInterface
-}
-
-// systemFlowProvider runs a system flow to completion. The flow engine implements it.
-type systemFlowProvider interface {
-	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
-		*tidcommon.ServiceError)
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -1185,15 +1175,9 @@ func (us *userService) updateUserCredentials(
 		return us.credentialUpdateError(ctx, logger, userID, err)
 	}
 
-	replaces, svcErr := us.replacesHeldCredential(ctx, logger, userID, plaintextCreds)
-	if svcErr != nil {
-		return svcErr
-	}
-	if replaces {
-		if svcErr := us.replaceCredentials(ctx, logger, userID, plaintextJSON, written); svcErr != nil {
-			return svcErr
-		}
-	} else if err = us.entityService.UpdateCredentials(ctx, userID, plaintextJSON); err != nil {
+	// Replacing a credential the user holds revokes what they were given before it and ends their sessions.
+	if err = us.entityService.UpdateCredentials(ctx, userID, plaintextJSON); err != nil {
+		*written = errors.Is(err, entity.ErrRevocationIncomplete)
 		return us.credentialUpdateError(ctx, logger, userID, err)
 	}
 
@@ -1202,41 +1186,6 @@ func (us *userService) updateUserCredentials(
 		log.Int("credentialTypesCount", len(credentialsMap)))
 	us.captureCredentials(ctx, &existingUser, existingUser.Attributes, plaintextCreds)
 	return nil
-}
-
-// replacesHeldCredential reports whether the update replaces a credential the user already holds. A
-// credential set for the first time, such as on a user an import has just created, replaces nothing.
-func (us *userService) replacesHeldCredential(ctx context.Context, logger *log.Logger, userID string,
-	credentials map[string]string) (bool, *tidcommon.ServiceError) {
-	held, err := us.entityService.GetHeldCredentialTypes(ctx, userID)
-	if err != nil {
-		return false, logErrorAndReturnServerError(ctx, logger, "Failed to read the user's credential types", err,
-			log.MaskedString(log.LoggerKeyUserID, userID))
-	}
-	for _, credType := range held {
-		if _, ok := credentials[credType]; ok {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// replaceCredentials writes credentials that replace ones the user holds, revoking the tokens and ending
-// the sessions the user was given before the change. The post flow moves the cutoff past the write and
-// ends the sessions again, so a token or session issued while the credentials were changing is revoked too.
-func (us *userService) replaceCredentials(ctx context.Context, logger *log.Logger, userID string,
-	credentials json.RawMessage, written *bool) *tidcommon.ServiceError {
-	inputs := map[string]string{systemFlowInputSubject: userID}
-	shared, svcErr := us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePre, inputs, nil)
-	if svcErr != nil {
-		return svcErr
-	}
-	if err := us.entityService.UpdateCredentials(ctx, userID, credentials); err != nil {
-		return us.credentialUpdateError(ctx, logger, userID, err)
-	}
-	*written = true
-	_, svcErr = us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePost, inputs, shared)
-	return svcErr
 }
 
 // credentialUpdateError maps an entity service error from a credential update to the error it reports.
@@ -1250,36 +1199,6 @@ func (us *userService) credentialUpdateError(ctx context.Context, logger *log.Lo
 	}
 	return logErrorAndReturnServerError(ctx, logger, "Failed to update user credentials", err,
 		log.MaskedString(log.LoggerKeyUserID, userID))
-}
-
-// ValidateDeleteUser checks whether the caller may delete the user and whether the target is deletable,
-// without changing persistent state.
-func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError {
-	if userID == "" {
-		return &ErrorMissingUserID
-	}
-	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
-	if err != nil {
-		if errors.Is(err, entity.ErrEntityNotFound) {
-			return &ErrorUserNotFound
-		}
-		return &tidcommon.InternalServerError
-	}
-	if existingEntity.Category != providers.EntityCategoryUser {
-		return &ErrorUserNotFound
-	}
-	if svcErr := us.checkUserAccess(ctx, security.ActionDeleteUser,
-		entityToUser(existingEntity).OUID, userID); svcErr != nil {
-		return us.sharedUserRefusal(ctx, userID, existingEntity.OUID, svcErr)
-	}
-	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
-		return svcErr
-	}
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
-		return svcErr
-	}
-	return us.ensureNoBlockingDependencies(ctx, userID, logger)
 }
 
 // DeleteUser deletes the user with the given ID.
@@ -1332,13 +1251,6 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 		return svcErr
 	}
 
-	// Revokes every token issued to the user and ends the user's sessions before anything of the user
-	// is removed. The revocation has no cutoff, so nothing runs after the write.
-	if _, svcErr := us.runSystemFlow(ctx, systemFlowUserDeletePre,
-		map[string]string{systemFlowInputSubject: userID}, nil); svcErr != nil {
-		return svcErr
-	}
-
 	// Remove dependents that must be deleted with the user (e.g. role assignments). Run before the
 	// entity delete so a cleanup failure aborts the operation and leaves the user retriable. The
 	// registry is guaranteed non-nil here because ensureNoBlockingDependencies fails closed otherwise.
@@ -1354,6 +1266,7 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 		return translateSharingError(svcErr)
 	}
 
+	// Deleting the entity revokes what was issued to the user and ends their sessions.
 	err = us.entityService.DeleteEntity(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
@@ -1388,21 +1301,6 @@ func (us *userService) publishUserEvent(ctx context.Context, name string, action
 	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
 	eventbus.TryPublish(ctx, us.bus,
 		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
-}
-
-// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
-// returns what this run shared. With system flows off it runs nothing.
-func (us *userService) runSystemFlow(ctx context.Context, handle string,
-	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
-	if us.systemFlows == nil {
-		return nil, nil
-	}
-	result, svcErr := us.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
-		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
-	if svcErr != nil {
-		return nil, svcErr
-	}
-	return result.RuntimeData, nil
 }
 
 // ensureNoBlockingDependencies refuses deletion when other resources depend on the user in a way

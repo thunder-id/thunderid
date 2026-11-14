@@ -775,7 +775,6 @@ func TestUserService_UpdateUserCredentials_Succeeds(t *testing.T) {
 		Once()
 
 	userStoreMock.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-	userStoreMock.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil)
 	var capturedJSON json.RawMessage
 	userStoreMock.
 		On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
@@ -6272,25 +6271,6 @@ func deletingUserService(t *testing.T, bus eventbus.EventBusInterface, allowed b
 		service.sharingService = newPurgingSharing(t, svcTestUserID1)
 	}
 	return service
-}
-
-func (suite *UserServiceTestSuite) TestValidateDeleteUser_RefusesACallerWhoMayNotDelete() {
-	storeMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
-		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID,
-	}, nil).Once()
-	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
-	authzMock.On("IsActionAllowed", mock.Anything, security.ActionDeleteUser, &sysauthz.ActionContext{
-		ResourceType: security.ResourceTypeUser, OUID: testOrgID, ResourceID: svcTestUserID1,
-	}).Return(false, (*tidcommon.ServiceError)(nil)).Once()
-	authzMock.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
-	service := &userService{entityService: storeMock, authzService: authzMock}
-
-	svcErr := service.ValidateDeleteUser(context.Background(), svcTestUserID1)
-
-	suite.Require().NotNil(svcErr)
-	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
-	storeMock.AssertNotCalled(suite.T(), "IsEntityDeclarative", mock.Anything, mock.Anything)
 }
 
 func TestUserService_CreateUser_PublishesTheCreatedUser(t *testing.T) {

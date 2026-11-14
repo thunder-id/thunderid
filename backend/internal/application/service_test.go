@@ -23,7 +23,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/entity"
-	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -242,32 +241,6 @@ func (suite *ServiceTestSuite) withMutableRuntime() {
 	require.NoError(suite.T(), err)
 	suite.T().Cleanup(config.ResetServerRuntime)
 }
-
-// recordSystemFlows gives the service a system flow executor that answers every run with err, or else
-// shares the run's handle as its plan, and records each run. When order is given, each run appends its
-// handle to it.
-func (suite *ServiceTestSuite) recordSystemFlows(service *applicationService, err *tidcommon.ServiceError,
-	order *[]string) *[]*flowcommon.SystemFlowContext {
-	runs := &[]*flowcommon.SystemFlowContext{}
-	flows := newSystemFlowProviderMock(suite.T())
-	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
-			*tidcommon.ServiceError) {
-			*runs = append(*runs, sysCtx)
-			if order != nil {
-				*order = append(*order, sysCtx.Handle)
-			}
-			if err != nil {
-				return nil, err
-			}
-			return &flowcommon.SystemFlowResult{RuntimeData: map[string]string{"plan": sysCtx.Handle}}, nil
-		}).Maybe()
-	service.systemFlows = flows
-	return runs
-}
-
-// applicationInput is the input a system flow names the application by.
-var applicationInput = map[string]string{systemFlowInputApplication: testServiceAppID}
 
 // noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
 type noopDepRegistry struct{ cascadeErr error }
@@ -1311,17 +1284,15 @@ func (suite *ServiceTestSuite) TestDeleteApplication_Success() {
 	assert.Nil(suite.T(), svcErr)
 }
 
-// An application that exists has issued tokens and taken part in sessions, so its deletion runs the
-// deletion pre flow, with the application as the target, before anything of it is removed, and the post
-// flow, with what the pre flow shared, once its client is gone and before its record is.
-func (suite *ServiceTestSuite) TestDeleteApplication_RunsThePreAndPostFlowsAroundTheDeletion() {
+// Deleting an application removes its client before its record. The client's removal revokes what it issued
+// and the record's removal what was issued to the application, both in the services that own them.
+func (suite *ServiceTestSuite) TestDeleteApplication_RemovesTheClientBeforeTheRecord() {
 	suite.withMutableRuntime()
 	service, mockStore := suite.setupTestService()
 	ep := resetEntityServiceMethod(service, "GetEntityProfile")
 	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
 		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
 	var order []string
-	runs := suite.recordSystemFlows(service, nil, &order)
 	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
 		Run(func(mock.Arguments) { order = append(order, "client") }).Return(nil)
 	resetEntityServiceMethod(service, "DeleteEntity").On("DeleteEntity", mock.Anything, testServiceAppID).
@@ -1330,84 +1301,23 @@ func (suite *ServiceTestSuite) TestDeleteApplication_RunsThePreAndPostFlowsAroun
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), []string{systemFlowApplicationDeletePre, "client", systemFlowRevocationPost,
-		"entity"}, order, "the flows did not bracket the client's removal")
-	assert.Equal(suite.T(), []*flowcommon.SystemFlowContext{
-		{Handle: systemFlowApplicationDeletePre, Inputs: applicationInput},
-		{Handle: systemFlowRevocationPost, Inputs: applicationInput,
-			RuntimeData: map[string]string{"plan": systemFlowApplicationDeletePre}},
-	}, *runs)
+	assert.Equal(suite.T(), []string{"client", "entity"}, order)
 }
 
-// A post flow that fails once the client is gone is reported, and the record is kept, so deleting
-// again runs both flows and removes it.
-func (suite *ServiceTestSuite) TestDeleteApplication_FailedPostFlowIsReportedAndKeepsTheRecord() {
+// A client whose tokens could not be revoked is kept, and so is the record, so deleting again revokes them.
+func (suite *ServiceTestSuite) TestDeleteApplication_FailedClientRevocationKeepsTheRecord() {
 	suite.withMutableRuntime()
 	service, mockStore := suite.setupTestService()
 	ep := resetEntityServiceMethod(service, "GetEntityProfile")
 	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
 		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
-	flows := newSystemFlowProviderMock(suite.T())
-	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool {
-		return c.Handle == systemFlowApplicationDeletePre
-	})).Return(&flowcommon.SystemFlowResult{}, nil).Once()
-	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool {
-		return c.Handle == systemFlowRevocationPost
-	})).Return(nil, &tidcommon.InternalServerError).Once()
-	service.systemFlows = flows
-	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(inboundclient.ErrRevocationFailed)
 	entities := resetEntityServiceMethod(service, "DeleteEntity")
-	entities.On("DeleteEntity", mock.Anything, testServiceAppID).Return(nil).Maybe()
 
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 	entities.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, testServiceAppID)
-}
-
-// A system flow that refuses leaves the application as it was, and its refusal is what the caller
-// gets: a declared application, say, is reported as such rather than as a failed delete.
-func (suite *ServiceTestSuite) TestDeleteApplication_RefusedWhenTheSystemFlowRefuses() {
-	suite.withMutableRuntime()
-	service, mockStore := suite.setupTestService()
-	ep := resetEntityServiceMethod(service, "GetEntityProfile")
-	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
-		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
-	suite.recordSystemFlows(service, &ErrorCannotModifyDeclarativeResource, nil)
-
-	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
-
-	assert.Equal(suite.T(), &ErrorCannotModifyDeclarativeResource, svcErr)
-	mockStore.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
-	ep.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
-}
-
-// With system flows off, as on a plane that issues no tokens and holds no sessions, a deletion runs
-// none and goes ahead.
-func (suite *ServiceTestSuite) TestDeleteApplication_WithSystemFlowsOffRunsNone() {
-	suite.withMutableRuntime()
-	service, mockStore := suite.setupTestService()
-	ep := resetEntityServiceMethod(service, "GetEntityProfile")
-	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
-		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
-	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
-	resetEntityServiceMethod(service, "DeleteEntity").On("DeleteEntity", mock.Anything, testServiceAppID).
-		Return(nil)
-
-	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
-
-	assert.Nil(suite.T(), svcErr)
-	mockStore.AssertCalled(suite.T(), "DeleteInboundClient", mock.Anything, testServiceAppID)
-}
-
-// The server injects the flow engine once it exists; a service that cannot take it is reported.
-func (suite *ServiceTestSuite) TestSetSystemFlowProvider() {
-	service, _ := suite.setupTestService()
-	provider := newSystemFlowProviderMock(suite.T())
-
-	assert.NoError(suite.T(), SetSystemFlowProvider(service, provider))
-	assert.Same(suite.T(), provider, service.systemFlows)
-	assert.Error(suite.T(), SetSystemFlowProvider(NewApplicationServiceInterfaceMock(suite.T()), provider))
 }
 
 // Deletion must stay idempotent. On a retry after a partial delete the entity is already gone, and
@@ -1425,7 +1335,6 @@ func (suite *ServiceTestSuite) TestDeleteApplication_MissingEntityIsNonFatal() {
 	defer config.ResetServerRuntime()
 
 	service, mockStore := suite.setupTestService()
-	runs := suite.recordSystemFlows(service, nil, nil)
 	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
 
 	ep := resetEntityServiceMethod(service, "DeleteEntity")
@@ -1435,7 +1344,6 @@ func (suite *ServiceTestSuite) TestDeleteApplication_MissingEntityIsNonFatal() {
 
 	assert.Nil(suite.T(), svcErr, "a missing entity must not fail the delete")
 	ep.AssertExpectations(suite.T())
-	assert.Empty(suite.T(), *runs)
 }
 
 // TestDeleteApplication_OAuthCertError verifies that when the inbound-client layer reports an
@@ -5416,10 +5324,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicC
 	mockStore.On("GetOAuthClientByClientID", mock.Anything, "public-client").
 		Return(&providers.OAuthClient{PublicClient: true}, nil)
 
-	target, svcErr := service.ValidateClientSecretRegeneration(
-		context.Background(), testServiceAppID)
+	svcErr := service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 
-	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
 }
 
@@ -5427,10 +5333,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicC
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesApplicationWithoutClient() {
 	service, _ := suite.newFlowTargetTestService(&providers.Entity{Category: providers.EntityCategoryApp})
 
-	target, svcErr := service.ValidateClientSecretRegeneration(
-		context.Background(), testServiceAppID)
+	svcErr := service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 
-	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
 }
 
@@ -5442,11 +5346,7 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_ReturnsRevocat
 			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 		}, nil)
 
-	target, svcErr := service.ValidateClientSecretRegeneration(
-		context.Background(), testServiceAppID)
-
-	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), "secret-client", target.ClientID)
+	assert.Nil(suite.T(), service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID))
 }
 
 // A revocation is sized from the client id recorded in the entity's attributes. When that blob cannot be
@@ -5472,10 +5372,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesUncover
 		Return(&sysauthz.ErrorGrantNotPermitted).Once()
 	service.authzService = authzMock
 
-	target, svcErr := service.ValidateClientSecretRegeneration(
-		context.Background(), testServiceAppID)
+	svcErr := service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 
-	assert.Nil(suite.T(), target)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
 }
@@ -5529,11 +5427,7 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_AllowsUnspecif
 	mockStore.On("GetOAuthClientByClientID", mock.Anything, "unset-method-client").
 		Return(&providers.OAuthClient{}, nil)
 
-	target, svcErr := service.ValidateClientSecretRegeneration(
-		context.Background(), testServiceAppID)
-
-	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), "unset-method-client", target.ClientID)
+	assert.Nil(suite.T(), service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID))
 }
 
 // The rotation must be refused before anything is written when the application cannot be rotated,
@@ -6510,8 +6404,7 @@ func (suite *ServiceTestSuite) TestFlowValidations_RequireTheApplicationActionIn
 			return svcErr
 		}},
 		"secret regeneration": {security.ActionUpdateApplication, func(s *applicationService) *tidcommon.ServiceError {
-			_, svcErr := s.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
-			return svcErr
+			return s.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 		}},
 	}
 	for name, tc := range cases {

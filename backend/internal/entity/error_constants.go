@@ -32,6 +32,14 @@ var (
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
 
+	// ErrRevocationFailed is returned when revoking what was issued before a change failed. The change is
+	// not made.
+	ErrRevocationFailed = errors.New("revocation before the change failed")
+
+	// ErrRevocationIncomplete is returned when a change is stored, but revoking what was issued while it was
+	// being made failed.
+	ErrRevocationIncomplete = errors.New("revocation after the change failed")
+
 	// errInvalidAuthenticationMethod is returned when a lock write names a method outside the registry.
 	errInvalidAuthenticationMethod = errors.New("invalid authentication method")
 

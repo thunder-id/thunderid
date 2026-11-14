@@ -16,6 +16,7 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -4222,4 +4223,328 @@ func (s *ServiceTestSuite) TestGetEntityListByType() {
 	runtime.On("GetRuntimeData", mock.Anything, []string{failing.ID}).Return(nil, s.testErr)
 	_, err = svc.GetEntityListByType(s.ctx, providers.EntityCategoryAgent, "tools", 10)
 	s.ErrorIs(err, s.testErr, "runtime read error")
+}
+
+// flowRecorder records the system flows an entity service runs, in order with the store writes the tests
+// add to it, failing the run of the handle named failing.
+type flowRecorder struct {
+	flows   *SystemFlowRunnerInterfaceMock
+	order   []string
+	runs    []*flowcommon.SystemFlowContext
+	failing string
+}
+
+func (s *ServiceTestSuite) recordFlows(svc *entityService, failing string) *flowRecorder {
+	r := &flowRecorder{flows: NewSystemFlowRunnerInterfaceMock(s.T()), failing: failing}
+	r.flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+			*tidcommon.ServiceError) {
+			r.runs = append(r.runs, sysCtx)
+			r.order = append(r.order, sysCtx.Handle)
+			if sysCtx.Handle == r.failing {
+				return nil, &tidcommon.InternalServerError
+			}
+			return &flowcommon.SystemFlowResult{RuntimeData: map[string]string{"plan": sysCtx.Handle}}, nil
+		}).Maybe()
+	svc.SetSystemFlowRunner(r.flows)
+	return r
+}
+
+// Deleting an entity revokes what was issued to it before the row goes, and moves the cutoff past the delete
+// with what the first flow shared.
+func (s *ServiceTestSuite) TestDeleteEntity_RevokesAroundTheDelete() {
+	svc := s.svc.(*entityService)
+	r := s.recordFlows(svc, "")
+	s.store.On("DeleteEntity", mock.Anything, "del-flows").
+		Run(func(mock.Arguments) { r.order = append(r.order, "deleted") }).Return(nil).Once()
+
+	s.Require().NoError(svc.DeleteEntity(s.ctx, "del-flows"))
+
+	inputs := map[string]string{systemFlowInputEntity: "del-flows"}
+	s.Equal([]*flowcommon.SystemFlowContext{
+		{Handle: systemFlowEntityDeletePre, Inputs: inputs},
+		{Handle: systemFlowRevocationPost, Inputs: inputs,
+			RuntimeData: map[string]string{"plan": systemFlowEntityDeletePre}},
+	}, r.runs)
+	s.Equal([]string{systemFlowEntityDeletePre, "deleted", systemFlowRevocationPost}, r.order)
+}
+
+// A revocation that fails before the delete deletes nothing.
+func (s *ServiceTestSuite) TestDeleteEntity_RevocationFailureDeletesNothing() {
+	svc := s.svc.(*entityService)
+	s.recordFlows(svc, systemFlowEntityDeletePre)
+
+	s.ErrorIs(svc.DeleteEntity(s.ctx, "del-refused"), ErrRevocationFailed)
+	s.store.AssertNotCalled(s.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+// A revocation that fails after the delete is reported, though the entity is gone.
+func (s *ServiceTestSuite) TestDeleteEntity_FailedPostFlowIsReported() {
+	svc := s.svc.(*entityService)
+	s.recordFlows(svc, systemFlowRevocationPost)
+	s.store.On("DeleteEntity", mock.Anything, "del-post").Return(nil).Once()
+
+	s.ErrorIs(svc.DeleteEntity(s.ctx, "del-post"), ErrRevocationIncomplete)
+}
+
+// A failed delete runs no flow after it.
+func (s *ServiceTestSuite) TestDeleteEntity_FailedDeleteRunsNoPostFlow() {
+	svc := s.svc.(*entityService)
+	r := s.recordFlows(svc, "")
+	s.store.On("DeleteEntity", mock.Anything, "del-store").Return(s.testErr).Once()
+
+	s.ErrorIs(svc.DeleteEntity(s.ctx, "del-store"), s.testErr)
+	s.Equal([]string{systemFlowEntityDeletePre}, r.order)
+}
+
+// credentialUpdateFixture is an agent whose type declares a password, holding the stored credentials given.
+func (s *ServiceTestSuite) credentialUpdateFixture(id string, stored json.RawMessage) (*entityService, *flowRecorder,
+	json.RawMessage) {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity(id)
+	e.Category = providers.EntityCategoryAgent
+	e.Type = testCredentialEntityType
+	creds := json.RawMessage(`{"password":"long-enough"}`)
+	declaresCredentials(ets, entitytype.TypeCategoryAgent, testCredentialEntityType, "password")
+	ets.On("ValidateEntityValues", mock.Anything, entitytype.TypeCategoryAgent, testCredentialEntityType, creds).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: stored}, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Maybe()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Return(nil).Maybe()
+	r := s.recordFlows(svc, "")
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(mock.Arguments) { r.order = append(r.order, "written") }).Return(nil).Maybe()
+	return svc, r, creds
+}
+
+// Replacing a credential the entity holds revokes what was issued to it before the write, and once it is
+// written ends what was issued while it ran.
+func (s *ServiceTestSuite) TestUpdateCredentials_ReplacingAHeldCredentialRevokesAroundTheWrite() {
+	svc, r, creds := s.credentialUpdateFixture("e-replace", json.RawMessage(`{"password":[{"value":"h1"}]}`))
+
+	s.Require().NoError(svc.UpdateCredentials(s.ctx, "e-replace", creds))
+
+	inputs := map[string]string{systemFlowInputEntity: "e-replace"}
+	s.Equal([]*flowcommon.SystemFlowContext{
+		{Handle: systemFlowCredentialUpdatePre, Inputs: inputs},
+		{Handle: systemFlowCredentialUpdatePost, Inputs: inputs,
+			RuntimeData: map[string]string{"plan": systemFlowCredentialUpdatePre}},
+	}, r.runs)
+	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
+}
+
+// A credential set for the first time replaces nothing, so nothing is revoked.
+func (s *ServiceTestSuite) TestUpdateCredentials_FirstCredentialRevokesNothing() {
+	svc, r, creds := s.credentialUpdateFixture("e-first", nil)
+
+	s.Require().NoError(svc.UpdateCredentials(s.ctx, "e-first", creds))
+
+	s.Equal([]string{"written"}, r.order)
+}
+
+// A revocation that fails before the write writes nothing; one that fails after it is reported as
+// incomplete, since the credential is stored by then.
+func (s *ServiceTestSuite) TestUpdateCredentials_RevocationFailures() {
+	svc, r, creds := s.credentialUpdateFixture("e-fail", json.RawMessage(`{"password":[{"value":"h1"}]}`))
+
+	r.failing = systemFlowCredentialUpdatePre
+	s.ErrorIs(svc.UpdateCredentials(s.ctx, "e-fail", creds), ErrRevocationFailed)
+	s.Equal([]string{systemFlowCredentialUpdatePre}, r.order)
+
+	r.order, r.failing = nil, systemFlowCredentialUpdatePost
+	s.ErrorIs(svc.UpdateCredentials(s.ctx, "e-fail", creds), ErrRevocationIncomplete)
+	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
+}
+
+// regenerationFixture is an entity service with a holder for agents, whose system flows and secret write
+// are recorded in order.
+type regenerationFixture struct {
+	svc    *entityService
+	holder *ClientSecretHolderInterfaceMock
+	flows  *SystemFlowRunnerInterfaceMock
+	order  []string
+	runs   []*flowcommon.SystemFlowContext
+	stored json.RawMessage
+}
+
+const testSecretEntityID = "agent-1"
+
+// secretRotationInputs is what the flows around the agent's secret rotation are given.
+var secretRotationInputs = map[string]string{systemFlowInputEntity: testSecretEntityID}
+
+func (s *ServiceTestSuite) newRegenerationFixture() *regenerationFixture {
+	f := &regenerationFixture{svc: s.svc.(*entityService)}
+	f.holder = NewClientSecretHolderInterfaceMock(s.T())
+	f.svc.RegisterClientSecretHolder(providers.EntityCategoryAgent, f.holder)
+	f.flows = NewSystemFlowRunnerInterfaceMock(s.T())
+	f.svc.SetSystemFlowRunner(f.flows)
+
+	e := testEntity(testSecretEntityID)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil).Maybe()
+	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(args mock.Arguments) {
+			f.order = append(f.order, "secret")
+			f.stored, _ = args.Get(2).(json.RawMessage)
+		}).Return(nil).Maybe()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Maybe()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Return(nil).Maybe()
+	return f
+}
+
+// allows has the holder allow the regeneration.
+func (f *regenerationFixture) allows() {
+	f.holder.EXPECT().ValidateClientSecretRegeneration(mock.Anything, testSecretEntityID).Return(nil)
+}
+
+// recordsFlows records every system flow run, failing the run of the handle named failing with failure.
+func (f *regenerationFixture) recordsFlows(failing string, failure *tidcommon.ServiceError) {
+	f.flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+			*tidcommon.ServiceError) {
+			f.runs = append(f.runs, sysCtx)
+			f.order = append(f.order, sysCtx.Handle)
+			if sysCtx.Handle == failing {
+				return nil, failure
+			}
+			return &flowcommon.SystemFlowResult{RuntimeData: map[string]string{"plan": sysCtx.Handle}}, nil
+		})
+}
+
+// A regeneration revokes what the old secret issued before the new one is written, and once it is written
+// moves the cutoff past the write, with what the first flow shared.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_RevokesAroundTheWrite() {
+	f := s.newRegenerationFixture()
+	f.allows()
+	f.recordsFlows("", nil)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Nil(svcErr)
+	s.Require().NotNil(regenerated)
+	s.NotEmpty(regenerated.ClientSecret)
+	s.True(regenerated.Revoked)
+	s.Nil(regenerated.RevocationError)
+	s.Equal([]*flowcommon.SystemFlowContext{
+		{Handle: systemFlowSecretRotatePre, Inputs: secretRotationInputs},
+		{Handle: systemFlowRevocationPost, Inputs: secretRotationInputs,
+			RuntimeData: map[string]string{"plan": systemFlowSecretRotatePre}},
+	}, f.runs)
+	s.Equal([]string{systemFlowSecretRotatePre, "secret", systemFlowRevocationPost}, f.order,
+		"the secret was written before the revocation")
+	s.NotContains(string(f.stored), regenerated.ClientSecret, "the secret is stored hashed")
+}
+
+// A refusal of the service owning the entity runs no flow and writes nothing.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_HolderRefusalWritesNothing() {
+	f := s.newRegenerationFixture()
+	refusal := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AGT-1001"}
+	f.holder.EXPECT().ValidateClientSecretRegeneration(mock.Anything, testSecretEntityID).Return(refusal)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Equal(refusal, svcErr)
+	s.Nil(regenerated)
+	s.Empty(f.order)
+}
+
+// A refusal of the flow run before the write writes nothing.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_PreFlowRefusalWritesNothing() {
+	f := s.newRegenerationFixture()
+	f.allows()
+	refusal := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "FET-1088"}
+	f.recordsFlows(systemFlowSecretRotatePre, refusal)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Equal(refusal, svcErr)
+	s.Nil(regenerated)
+	s.Equal([]string{systemFlowSecretRotatePre}, f.order, "something was written after the refusal")
+}
+
+// A revocation that fails once the new secret is written still returns the secret, which is stored by then
+// and can never be read again, with the failure for the caller to report.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_FailedPostFlowStillReturnsTheSecret() {
+	f := s.newRegenerationFixture()
+	f.allows()
+	f.recordsFlows(systemFlowRevocationPost, &tidcommon.InternalServerError)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Nil(svcErr)
+	s.Require().NotNil(regenerated)
+	s.NotEmpty(regenerated.ClientSecret)
+	s.Equal(&tidcommon.InternalServerError, regenerated.RevocationError)
+	s.False(regenerated.Revoked)
+	s.Equal([]string{systemFlowSecretRotatePre, "secret", systemFlowRevocationPost}, f.order)
+}
+
+// A secret that cannot be stored is reported as a server error, and no flow runs after the failed write.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_FailedWriteRunsNoPostFlow() {
+	s.store.On("UpdateSystemCredentials", mock.Anything, testSecretEntityID, mock.IsType(json.RawMessage(nil))).
+		Return(s.testErr).Once()
+	f := s.newRegenerationFixture()
+	f.allows()
+	f.recordsFlows("", nil)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Nil(regenerated)
+	s.Equal([]string{systemFlowSecretRotatePre}, f.order, "a flow ran after the failed write")
+}
+
+// With system flows off, as on a control plane, the secret is still regenerated.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_WithSystemFlowsOff() {
+	f := s.newRegenerationFixture()
+	f.allows()
+	f.svc.systemFlows = nil
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Nil(svcErr)
+	s.Require().NotNil(regenerated)
+	s.NotEmpty(regenerated.ClientSecret)
+	s.False(regenerated.Revoked, "nothing was revoked with system flows off")
+	s.Equal([]string{"secret"}, f.order)
+}
+
+// A category no service decides for is a wiring fault: nothing runs and nothing is written.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_CategoryWithoutAHolder() {
+	f := s.newRegenerationFixture()
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryUser, testSecretEntityID)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Nil(regenerated)
+	s.Empty(f.order)
+}
+
+// A rotation whose write fails runs no flow after it, and reports the write's failure.
+func (s *ServiceTestSuite) TestRotateClientSecret_FailedWriteRunsNoPostFlow() {
+	f := s.newRegenerationFixture()
+	f.recordsFlows("", nil)
+
+	svcErr, revocationErr := f.svc.RotateClientSecret(s.ctx, testSecretEntityID, func() *tidcommon.ServiceError {
+		f.order = append(f.order, "write")
+		return &tidcommon.InternalServerError
+	})
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Nil(revocationErr)
+	s.Equal([]string{systemFlowSecretRotatePre, "write"}, f.order)
+}
+
+// With system flows off, as on a control plane, only the change runs.
+func (s *ServiceTestSuite) TestRevokeAround_WithSystemFlowsOff() {
+	svc := s.svc.(*entityService)
+	ran := false
+
+	s.NoError(svc.revokeAround(s.ctx, "e-off", systemFlowEntityDeletePre, systemFlowRevocationPost,
+		func() error { ran = true; return nil }))
+	s.True(ran)
 }

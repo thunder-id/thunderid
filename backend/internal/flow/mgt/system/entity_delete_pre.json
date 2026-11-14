@@ -1,20 +1,29 @@
 {
-  "id": "019a1f40-6a1c-7000-8000-5e5713d00012",
-  "handle": "system-user-credential-update-post",
-  "name": "User credential update, after the change",
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00003",
+  "handle": "system-entity-delete-pre",
+  "name": "Entity deletion, before the change",
   "flowType": "SYSTEM",
   "nodes": [
     {
       "id": "start",
       "type": "START",
-      "onSuccess": "advance_cutoff"
+      "onSuccess": "plan_revocation"
     },
     {
-      "id": "advance_cutoff",
+      "id": "plan_revocation",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "PreRevocationExecutor",
+        "mode": "entity_removal"
+      },
+      "onSuccess": "revoke_tokens"
+    },
+    {
+      "id": "revoke_tokens",
       "type": "TASK_EXECUTION",
       "executor": {
         "name": "CriteriaRevocationExecutor",
-        "mode": "advance_cutoff"
+        "mode": "revoke"
       },
       "onSuccess": "revoke_sessions"
     },

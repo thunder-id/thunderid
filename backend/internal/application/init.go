@@ -6,7 +6,6 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -175,16 +174,4 @@ func registerRoutes(mux *http.ServeMux, appHandler *applicationHandler) {
 		appHandler.HandleSharingPolicyPutRequest, opts4))
 	mux.HandleFunc(middleware.WithCORS("DELETE /applications/{id}/sharing-policies/{policyId}",
 		appHandler.HandleSharingPolicyDeleteRequest, opts4))
-}
-
-// SetSystemFlowProvider gives the application service the engine that runs the system flows around its
-// writes. It is bound after the service, once the engine exists, and only on a server that issues
-// tokens. A service that cannot take it is reported rather than left without one.
-func SetSystemFlowProvider(service ApplicationServiceInterface, provider systemFlowProvider) error {
-	as, ok := service.(*applicationService)
-	if !ok {
-		return fmt.Errorf("application service does not support system flow provider injection")
-	}
-	as.systemFlows = provider
-	return nil
 }

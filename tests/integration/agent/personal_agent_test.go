@@ -868,8 +868,9 @@ func (ts *PersonalAgentTestSuite) TestOrganizationSuspensionOfAPersonalAgent() {
 // --- owner deletion ---
 
 // ownerWithAgent creates an owner holding the suite's role, gives them a personal agent, and signs them in to it,
-// returning the owner, the agent and the agent's token for them.
-func (ts *PersonalAgentTestSuite) ownerWithAgent(prefix string) (string, ownedAgent, *testutils.TokenResponse) {
+// returning the owner and their username, the agent and the agent's token for them.
+func (ts *PersonalAgentTestSuite) ownerWithAgent(prefix string) (string, string, ownedAgent,
+	*testutils.TokenResponse) {
 	ts.T().Helper()
 	ownerID, username := ts.createUser(ts.seededPersonType(), prefix)
 	resp, err := doPost(testServerURL+"/roles/"+ts.roleID+"/assignments/add", map[string]interface{}{
@@ -883,7 +884,7 @@ func (ts *PersonalAgentTestSuite) ownerWithAgent(prefix string) (string, ownedAg
 	agent := ts.createAgentFor(ownerID, "authorization_code")
 	restore := ts.actAs(agent)
 	defer restore()
-	return ownerID, agent, ts.obtainToken(username)
+	return ownerID, username, agent, ts.obtainToken(username)
 }
 
 // agentExists reports whether an administrator can still read the agent.
@@ -898,7 +899,7 @@ func (ts *PersonalAgentTestSuite) agentExists(agentID string) bool {
 // Deleting an owner, which runs the user deletion flow, deletes their personal agents after revoking the agents'
 // tokens.
 func (ts *PersonalAgentTestSuite) TestDeletingAnOwnerDeletesTheirPersonalAgents() {
-	ownerID, agent, token := ts.ownerWithAgent("pa_deleted_owner")
+	ownerID, _, agent, token := ts.ownerWithAgent("pa_deleted_owner")
 	defer func() { _ = deleteAgent(agent.id) }()
 	ts.Require().True(ts.introspectAsSuiteApp(token.AccessToken), "the token works before the deletion")
 
@@ -906,6 +907,20 @@ func (ts *PersonalAgentTestSuite) TestDeletingAnOwnerDeletesTheirPersonalAgents(
 
 	ts.False(ts.agentExists(agent.id), "the owner's personal agent is deleted with them")
 	ts.False(ts.introspectAsSuiteApp(token.AccessToken), "the deleted agent's token no longer works")
+}
+
+// An owner deleting their personal agent revokes what was issued through it, their own delegated tokens included.
+func (ts *PersonalAgentTestSuite) TestOwnerDeletingTheirAgentRevokesItsTokens() {
+	ownerID, username, agent, token := ts.ownerWithAgent("pa_owner_deletes")
+	defer func() { _ = testutils.DeleteUser(ownerID) }()
+	defer func() { _ = deleteAgent(agent.id) }()
+	ts.Require().True(ts.introspectAsSuiteApp(token.AccessToken), "the token works before the deletion")
+
+	status, body := ts.selfServiceCall(http.MethodDelete, "/users/me/agents/"+agent.id, ts.userToken(username), "")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+
+	ts.False(ts.agentExists(agent.id), "the agent is gone")
+	ts.False(ts.introspectAsSuiteApp(token.AccessToken), "a token issued through the deleted agent still works")
 }
 
 // createOrdinaryAgentFor creates an agent owned by ownerID that is not a personal agent, and returns its ID.
@@ -1401,7 +1416,7 @@ func (ts *PersonalAgentTestSuite) postToken(form url.Values) (int, string) {
 // Suspending an owner suspends their personal agents alongside the organization's or the owner's own holds, and
 // unsuspending the owner lifts only that cascaded hold. The owner's other agents are not suspended.
 func (ts *PersonalAgentTestSuite) TestSuspendingAnOwnerSuspendsTheirPersonalAgents() {
-	ownerID, agent, token := ts.ownerWithAgent("pa_suspended_owner")
+	ownerID, _, agent, token := ts.ownerWithAgent("pa_suspended_owner")
 	defer func() { _ = deleteAgent(agent.id) }()
 	held := ts.createAgentFor(ownerID, "authorization_code")
 	defer func() { _ = deleteAgent(held.id) }()

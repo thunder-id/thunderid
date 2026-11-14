@@ -275,10 +275,7 @@ const translations = {
     'errors.FET-1024': 'Another {{entity}} with these details already exists in the selected organization unit.',
     'errors.FET-1061': 'Another {{entity}} already exists with the provided {{attribute}}.',
     'errors.FET-1080': 'Another {{entity}} with the same unique attribute value already exists.',
-    'errors.FET-1084': 'This user cannot be deleted in their current state.',
     'errors.FET-1086': 'This application cannot be deleted in its current state.',
-    'errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
-    'errors.FET-1089': 'The client secret could not be regenerated. Please try again.',
     'errors.FET-1098': 'This role assignment cannot be removed in its current state.',
     'errors.FET-1100': 'This role cannot be deleted in its current state.',
     'errors.FET-1102': 'The permissions of this role cannot be changed in its current state.',
@@ -4490,15 +4487,6 @@ const translations = {
     'core.executions.identifying.continueOnNoMatch.label': 'Continue when no user matches',
     'core.executions.identifying.continueOnNoMatch.hint':
       'Follow the incomplete path without an error when no user matches, keeping the entered value.',
-
-    // Administrative flow pre executor
-    'core.executions.preDelete.mode.revokeAll': 'Revoke all grants',
-    'core.executions.preDelete.mode.label': 'Revocation mode',
-    'core.executions.preDelete.mode.placeholder': 'Select a revocation mode',
-    'core.executions.preDelete.mode.hint':
-      'Applies to every grant the subject holds. The executors that follow act on this setting, so it cannot be changed per request.',
-    'core.executions.preDelete.description':
-      'Validate the target of an administrative operation and plan the revocation carried out by the executors that follow.',
 
     // Criteria revocation executor modes
     'core.executions.criteriaRevocation.mode.revoke': 'Revoke tokens',

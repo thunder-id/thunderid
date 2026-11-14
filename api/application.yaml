@@ -815,9 +815,11 @@ paths:
         generated secret, and returns it. The response is the only time the new secret can be read:
         it is stored hashed and no read returns it.
 
-        The old secret stops working at once. The tokens issued to the application up to the change
-        are revoked, as for an update that replaces the secret: before the new secret is written, and
-        again once it is, so a token issued while it was being written is revoked too. If the
+        The old secret stops working at once. When token revocation is on
+        (`oauth.token_revocation.enabled`, the default), the tokens issued to the application up to the
+        change are revoked, as for an update that replaces the secret: before the new secret is written,
+        and again once it is, so a token issued while it was being written is revoked too. With token
+        revocation off, or on a control plane, which issues no tokens, nothing is revoked. If the
         revocation before the write fails, the secret is not changed. If the one after the write
         fails, the new secret is stored and still returned, with `revocationIncomplete: true`: a token
         issued while it was being written may stay valid until it expires, and regenerating again

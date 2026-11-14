@@ -16,7 +16,7 @@ import (
 
 // deletableGroup returns a service around a group that may be deleted, with flows as its provider and
 // cascadeErr from the cascade, so a test sees whether the deletion went past the pre flow.
-func (suite *GroupServiceTestSuite) deletableGroup(flows systemFlowProvider, cascadeErr error) (
+func (suite *GroupServiceTestSuite) deletableGroup(flows systemFlowRunner, cascadeErr error) (
 	*groupService, *groupStoreInterfaceMock) {
 	storeMock := newGroupStoreInterfaceMock(suite.T())
 	storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
@@ -44,7 +44,7 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_RunsThePostFlowBeforeTheGrou
 	var order []string
 	inputs := map[string]string{systemFlowInputGroup: "grp-001"}
 	shared := map[string]string{"revocationPlan": "plan"}
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything,
 		&flowcommon.SystemFlowContext{Handle: systemFlowGroupDeletePre, Inputs: inputs}).
 		Run(func(context.Context, *flowcommon.SystemFlowContext) { order = append(order, "pre") }).
@@ -65,7 +65,7 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_RunsThePostFlowBeforeTheGrou
 
 // The pre flow runs before the cascade, which removes the group's role assignments.
 func (suite *GroupServiceTestSuite) TestDeleteGroup_RunsThePreFlowBeforeTheCascade() {
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, isHandle(systemFlowGroupDeletePre)).
 		Return(&flowcommon.SystemFlowResult{}, nil).Once()
 	service, storeMock := suite.deletableGroup(flows, errors.New("cascade reached"))
@@ -78,7 +78,7 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_RunsThePreFlowBeforeTheCasca
 
 // A failed post flow is reported and leaves the group in place, so the delete can be retried.
 func (suite *GroupServiceTestSuite) TestDeleteGroup_FailedPostFlowKeepsTheGroup() {
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, isHandle(systemFlowGroupDeletePre)).
 		Return(&flowcommon.SystemFlowResult{}, nil).Once()
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, isHandle(systemFlowRevocationPost)).
@@ -95,7 +95,7 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_FailedPostFlowKeepsTheGroup(
 // post flow.
 func (suite *GroupServiceTestSuite) TestDeleteGroup_RefusedFlowRemovesNothing() {
 	refusal := &tidcommon.ServiceError{Code: "FEX-1", Type: tidcommon.ClientErrorType}
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).Return(nil, refusal).Once()
 	// A cascade error would surface as a server error, so the refusal coming back proves it never ran.
 	service, storeMock := suite.deletableGroup(flows, errors.New("cascade reached"))
@@ -116,7 +116,7 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_MissingGroupRunsNoFlow() {
 		groupStore:         storeMock,
 		transactioner:      &stubTransactioner{},
 		dependencyRegistry: noopDepRegistry{},
-		systemFlows:        newSystemFlowProviderMock(suite.T()),
+		systemFlows:        newSystemFlowRunnerMock(suite.T()),
 		bus:                discardingBus{},
 	}
 
@@ -136,14 +136,14 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_NoProviderRunsNoFlow() {
 }
 
 // The server injects the flow engine once it exists; a service that cannot take it is reported.
-func (suite *GroupServiceTestSuite) TestSetSystemFlowProvider() {
+func (suite *GroupServiceTestSuite) TestSetSystemFlowRunner() {
 	service := &groupService{}
-	provider := newSystemFlowProviderMock(suite.T())
+	provider := newSystemFlowRunnerMock(suite.T())
 
-	suite.NoError(SetSystemFlowProvider(service, provider))
+	suite.NoError(SetSystemFlowRunner(service, provider))
 	suite.Same(provider, service.systemFlows)
-	suite.Error(SetSystemFlowProvider(NewGroupServiceInterfaceMock(suite.T()), provider))
-	suite.Error(SetSystemFlowProvider(nil, provider))
+	suite.Error(SetSystemFlowRunner(NewGroupServiceInterfaceMock(suite.T()), provider))
+	suite.Error(SetSystemFlowRunner(nil, provider))
 }
 
 // memberRemoval returns a fixture around grp-001 with the given members, usr-001 alone when none are
@@ -175,9 +175,9 @@ func (suite *GroupServiceTestSuite) memberRemoval(members ...Member) (*groupChan
 // recordFlows answers every run with err, or else shares the run's handle as its plan, and records each
 // run. When order is given, each run appends its handle to it.
 func (suite *GroupServiceTestSuite) recordFlows(err *tidcommon.ServiceError, order *[]string) (
-	*systemFlowProviderMock, *[]*flowcommon.SystemFlowContext) {
+	*systemFlowRunnerMock, *[]*flowcommon.SystemFlowContext) {
 	runs := &[]*flowcommon.SystemFlowContext{}
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
 			*tidcommon.ServiceError) {
@@ -234,7 +234,7 @@ func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_LooksUpEachMemberWith
 
 // A post flow that fails after the removal is written is reported, not passed over.
 func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_FailedPostFlowIsReported() {
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	f, _ := suite.memberRemoval()
 	f.service.systemFlows = flows
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool {
@@ -293,7 +293,7 @@ func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_RemovesEachMemberOnce
 	} {
 		suite.Run(name, func() {
 			f, _ := suite.memberRemoval()
-			flows := newSystemFlowProviderMock(suite.T())
+			flows := newSystemFlowRunnerMock(suite.T())
 			f.service.systemFlows = flows
 			flows.EXPECT().ExecuteSystemFlow(mock.Anything, flowFor(systemFlowGroupMembershipRemovalPre, "usr-001")).
 				Return(&flowcommon.SystemFlowResult{}, nil).Once()
@@ -315,7 +315,7 @@ func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_FailedMemberLookupRem
 	f.mayUpdateGroup()
 	f.knownUsers("usr-001")
 	f.store.On("GetGroupMember", mock.Anything, "grp-001", "usr-001").Return(nil, errors.New("db down")).Once()
-	f.service.systemFlows = newSystemFlowProviderMock(suite.T())
+	f.service.systemFlows = newSystemFlowRunnerMock(suite.T())
 
 	_, svcErr := f.service.RemoveGroupMembers(context.Background(), "grp-001",
 		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
@@ -328,7 +328,7 @@ func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_FailedMemberLookupRem
 func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_LaterRefusalRemovesNothing() {
 	f, _ := suite.memberRemoval(Member{ID: "usr-001", Type: memberTypeEntity},
 		Member{ID: "usr-002", Type: memberTypeEntity})
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	f.service.systemFlows = flows
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, flowFor(systemFlowGroupMembershipRemovalPre, "usr-001")).
 		Return(&flowcommon.SystemFlowResult{}, nil).Once()
@@ -346,7 +346,7 @@ func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_LaterRefusalRemovesNo
 func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_EveryPostFlowRunsAfterOneFails() {
 	f, _ := suite.memberRemoval(Member{ID: "usr-001", Type: memberTypeEntity},
 		Member{ID: "usr-002", Type: memberTypeEntity})
-	flows := newSystemFlowProviderMock(suite.T())
+	flows := newSystemFlowRunnerMock(suite.T())
 	f.service.systemFlows = flows
 	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool {
 		return c.Handle == systemFlowGroupMembershipRemovalPre
@@ -369,7 +369,7 @@ func (suite *GroupServiceTestSuite) declarativeGroupRemoval() *groupChangeFixtur
 	f.mayUpdateGroup()
 	f.knownUsers("usr-001")
 	f.store.On("IsGroupMemberDeclarative", mock.Anything, "grp-001", "usr-001").Return(true, nil).Maybe()
-	f.service.systemFlows = newSystemFlowProviderMock(suite.T())
+	f.service.systemFlows = newSystemFlowRunnerMock(suite.T())
 	return f
 }
 
@@ -413,7 +413,7 @@ func (suite *GroupServiceTestSuite) TestRemoveGroupMembers_DeclarationCheckFailu
 			arrange(f)
 			f.mayUpdateGroup()
 			f.knownUsers("usr-001")
-			f.service.systemFlows = newSystemFlowProviderMock(suite.T())
+			f.service.systemFlows = newSystemFlowRunnerMock(suite.T())
 
 			_, svcErr := f.service.RemoveGroupMembers(context.Background(), "grp-001",
 				[]Member{{ID: "usr-001", Type: MemberTypeUser}})

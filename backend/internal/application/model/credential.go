@@ -22,6 +22,9 @@ type ClientSecretResponse struct {
 	// RevocationIncomplete is set when the secret is stored but revoking the tokens issued while it was
 	// being written failed. Regenerating again revokes them.
 	RevocationIncomplete bool `json:"revocationIncomplete,omitempty"`
+	// Revoked reports that the tokens the old secret issued were revoked. It is false where the server runs no
+	// revocation, as on a control plane, and when the revocation was incomplete.
+	Revoked bool `json:"-"`
 }
 
 // RegenerateClientSecretOutput is what the regenerate_application_secret tool returns.

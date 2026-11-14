@@ -15,7 +15,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
-	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -62,8 +61,7 @@ type ApplicationServiceInterface interface {
 	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
 	ValidateDeleteApplication(ctx context.Context, appID string) (
 		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	ValidateClientSecretRegeneration(ctx context.Context, appID string) (
-		*entity.ClientSecretProfile, *tidcommon.ServiceError)
+	ValidateClientSecretRegeneration(ctx context.Context, appID string) *tidcommon.ServiceError
 	RegenerateClientSecret(ctx context.Context, appID string) (*model.ClientSecretResponse, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
@@ -116,18 +114,10 @@ type applicationService struct {
 	// projectRequired is set when a deployment that serves projects refuses an application created without
 	// one.
 	projectRequired bool
-	// systemFlows is nil where system flows are off.
-	systemFlows systemFlowProvider
-	bus         eventbus.EventBusInterface
+	bus             eventbus.EventBusInterface
 	// managed says which applications a control plane deployed, which stay read only here. Nil where
 	// nothing is deployed from one.
 	managed managedresource.StoreInterface
-}
-
-// systemFlowProvider runs a system flow to completion. The flow engine implements it.
-type systemFlowProvider interface {
-	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
-		*tidcommon.ServiceError)
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -792,7 +782,7 @@ func (as *applicationService) updateApplication(ctx context.Context, appID strin
 	if secretChange == clientSecretRotated {
 		// The caller chose the secret, so a failed post flow is reported as the update's failure.
 		var postErr *tidcommon.ServiceError
-		if svcErr, postErr = as.rotateClientSecret(ctx, appID, write); svcErr == nil {
+		if svcErr, postErr = as.entityService.RotateClientSecret(ctx, appID, write); svcErr == nil {
 			svcErr = postErr
 		}
 	} else {
@@ -980,9 +970,7 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		return &ErrorInvalidApplicationID
 	}
 
-	inputs := map[string]string{systemFlowInputApplication: appID}
-	var shared map[string]string
-	ranPreFlow := false
+	found := false
 	if existing, entErr := as.entityService.GetEntityProfile(ctx, appID); entErr != nil {
 		if !errors.Is(entErr, entity.ErrEntityNotFound) {
 			as.logger.Error(ctx, "Failed to load entity before delete",
@@ -1004,12 +992,7 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
 			return svcErr
 		}
-		// Revokes what the application issued before anything of it is removed.
-		var svcErr *tidcommon.ServiceError
-		if shared, svcErr = as.runSystemFlow(ctx, systemFlowApplicationDeletePre, inputs, nil); svcErr != nil {
-			return svcErr
-		}
-		ranPreFlow = true
+		found = true
 	}
 
 	// Remove dependents that must be deleted with the application (e.g. its role assignments and
@@ -1037,8 +1020,8 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		return translateSharingError(svcErr)
 	}
 
-	// Delete config. A missing inbound client is non-fatal (e.g. on a retry after a partial
-	// delete) so the remaining delete steps still run.
+	// Delete config, which revokes what the client issued. A missing inbound client is non-fatal (e.g.
+	// on a retry after a partial delete) so the remaining delete steps still run.
 	if appErr := as.inboundClientService.DeleteInboundClient(ctx, appID); appErr != nil &&
 		!errors.Is(appErr, inboundclient.ErrInboundClientNotFound) {
 		if svcErr := as.translateInboundClientError(ctx, appErr); svcErr != nil {
@@ -1047,16 +1030,8 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		as.logger.Error(ctx, "Failed to delete application", log.Error(appErr), log.String("appID", appID))
 		return &tidcommon.InternalServerError
 	}
-	// Nothing more can be issued to the client once it is gone, so the cutoff moves past that point
-	// here, while the entity still exists: a failure keeps the record, and deleting again runs both
-	// flows before removing it.
-	if ranPreFlow {
-		if _, svcErr := as.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared); svcErr != nil {
-			return svcErr
-		}
-	}
-	// Delete entity. A missing entity is non-fatal (e.g. on a retry after a partial delete) so the
-	// remaining delete steps still run.
+	// Delete entity, which revokes what was issued to it as a subject. A missing entity is non-fatal (e.g. on a
+	// retry after a partial delete) so the remaining delete steps still run.
 	if entErr := as.entityService.DeleteEntity(ctx, appID); entErr != nil &&
 		!errors.Is(entErr, entity.ErrEntityNotFound) {
 		if svcErr := mapEntityError(entErr); svcErr != nil {
@@ -1067,10 +1042,9 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		return &tidcommon.InternalServerError
 	}
 
-	if svcErr := as.deleteLocalizedVariants(ctx, appID); svcErr != nil || ranPreFlow {
+	if svcErr := as.deleteLocalizedVariants(ctx, appID); svcErr != nil || found {
 		return svcErr
 	}
-	// The pre-deletion flow runs only once the application is found.
 	return errApplicationNotFoundNoop
 }
 
@@ -1086,21 +1060,6 @@ func (as *applicationService) publishApplicationEvent(ctx context.Context, name 
 	target := audit.Ref{Type: audit.TargetTypeApplication, ID: appID}
 	eventbus.TryPublish(ctx, as.bus,
 		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
-}
-
-// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
-// returns what this run shared. With system flows off it runs nothing.
-func (as *applicationService) runSystemFlow(ctx context.Context, handle string,
-	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
-	if as.systemFlows == nil {
-		return nil, nil
-	}
-	result, svcErr := as.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
-		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
-	if svcErr != nil {
-		return nil, svcErr
-	}
-	return result.RuntimeData, nil
 }
 
 // ValidateDeleteApplication reports whether the application may be deleted and returns the profile of
@@ -1170,45 +1129,43 @@ func (as *applicationService) ensureNoBlockingDependencies(
 }
 
 // ValidateClientSecretRegeneration reports whether the caller may regenerate the application's client
-// secret and returns the profile of the artifacts its client has issued, without changing state. A client
-// that authenticates without a secret has nothing to rotate. The entity service asks it before a
-// regeneration, and the flow run before the secret is replaced asks it again.
-func (as *applicationService) ValidateClientSecretRegeneration(ctx context.Context, appID string) (
-	*entity.ClientSecretProfile, *tidcommon.ServiceError) {
+// secret, without changing state. A client that authenticates without a secret has nothing to rotate. The
+// entity service asks it before a regeneration.
+func (as *applicationService) ValidateClientSecretRegeneration(ctx context.Context,
+	appID string) *tidcommon.ServiceError {
 	existing, svcErr := as.loadApplicationEntity(ctx, appID)
 	if svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
 	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, existing.OUID); svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
 	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
 	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
 
 	clientID, err := clientIDFromEntity(existing)
 	if err != nil {
 		as.logger.Error(ctx, "Failed to read the application's OAuth client id",
 			log.String("appID", appID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if clientID == "" {
-		return nil, &ErrorApplicationHasNoClientSecret
+		return &ErrorApplicationHasNoClientSecret
 	}
 	client, err := as.inboundClientService.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil || client == nil {
 		as.logger.Error(ctx, "Failed to load OAuth client before secret regeneration",
 			log.String("appID", appID))
-		return nil, &tidcommon.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if !inboundclient.AuthMethodUsesClientSecret(client.PublicClient, client.TokenEndpointAuthMethod) {
-		return nil, &ErrorApplicationHasNoClientSecret
+		return &ErrorApplicationHasNoClientSecret
 	}
-	profile := as.artifactProfileForClient(clientID, client)
-	return &entity.ClientSecretProfile{ClientID: profile.ClientKey, MaxLifetimeSeconds: profile.MaxLifetimeSeconds}, nil
+	return nil
 }
 
 // RegenerateClientSecret replaces the application's client secret with one generated server-side and
@@ -1231,7 +1188,7 @@ func (as *applicationService) RegenerateClientSecret(ctx context.Context, appID 
 	}
 	as.captureRegeneratedSecret(ctx, appID, regenerated.ClientSecret)
 	return &model.ClientSecretResponse{ClientSecret: regenerated.ClientSecret,
-		RevocationIncomplete: regenerated.RevocationError != nil}, nil
+		RevocationIncomplete: regenerated.RevocationError != nil, Revoked: regenerated.Revoked}, nil
 }
 
 // captureRegeneratedSecret hands the application, with the secret just written, to the value capturer, as
@@ -1255,28 +1212,6 @@ func (as *applicationService) captureRegeneratedSecret(ctx context.Context, appI
 		}
 	}
 	as.valueCapturer.CaptureValues(ctx, resourceTypeApplication, app)
-}
-
-// rotateClientSecret writes a client secret the caller chose to replace the application's current one,
-// with the system flows a regeneration runs around its write: the pre flow revokes what the old secret
-// issued before it is replaced, and the post flow moves the cutoff past the write, so a token issued
-// while it ran is revoked too. A refusal of the pre flow writes nothing. A failure of the post flow is
-// returned as postErr, after the write, so the caller decides what it means.
-func (as *applicationService) rotateClientSecret(ctx context.Context, appID string,
-	write func() *tidcommon.ServiceError) (svcErr, postErr *tidcommon.ServiceError) {
-	inputs := map[string]string{
-		entity.SystemFlowInputEntity:         appID,
-		entity.SystemFlowInputEntityCategory: string(providers.EntityCategoryApp),
-	}
-	shared, svcErr := as.runSystemFlow(ctx, entity.SystemFlowSecretRotatePre, inputs, nil)
-	if svcErr != nil {
-		return svcErr, nil
-	}
-	if svcErr := write(); svcErr != nil {
-		return svcErr, nil
-	}
-	_, postErr = as.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared)
-	return nil, postErr
 }
 
 // resolveClientSecretDisposition tells what an update does with the supplied client secret. The stored
@@ -1345,15 +1280,6 @@ func (as *applicationService) artifactProfile(
 	return &model.ApplicationArtifactProfile{
 		ClientKey:          clientID,
 		MaxLifetimeSeconds: int64(as.resolveArtifactLifetime(ctx, clientID) / time.Second),
-	}
-}
-
-// artifactProfileForClient builds the same profile from a client the caller has already resolved.
-func (as *applicationService) artifactProfileForClient(
-	clientID string, client *providers.OAuthClient) *model.ApplicationArtifactProfile {
-	return &model.ApplicationArtifactProfile{
-		ClientKey:          clientID,
-		MaxLifetimeSeconds: int64(as.artifactLifetime(client) / time.Second),
 	}
 }
 

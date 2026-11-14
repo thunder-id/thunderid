@@ -147,7 +147,7 @@ type resourceService struct {
 	bus             eventbus.EventBusInterface
 	authzService    sysauthz.SystemAuthorizationServiceInterface
 	// systemFlows is nil where system flows are off.
-	systemFlows systemFlowProvider
+	systemFlows systemFlowRunner
 	// managed says which resource servers a control plane deployed, which stay read only here with their
 	// resources and actions. Nil where nothing is deployed from one.
 	managed managedresource.StoreInterface
@@ -158,8 +158,8 @@ type projectOUValidator interface {
 	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
-// systemFlowProvider runs a system flow to completion. The flow engine implements it.
-type systemFlowProvider interface {
+// systemFlowRunner runs a system flow to completion. The flow engine implements it.
+type systemFlowRunner interface {
 	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
 		*tidcommon.ServiceError)
 }

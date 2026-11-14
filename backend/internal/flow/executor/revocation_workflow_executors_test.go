@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 )
@@ -25,7 +26,8 @@ import (
 type RevocationWorkflowExecutorsTestSuite struct {
 	suite.Suite
 	factory core.FlowFactoryInterface
-	users   *userDeletionProviderMock
+	actors  *actorprovidermock.ActorProviderMock
+	planner *preRevocationExecutor
 }
 
 func TestRevocationWorkflowExecutorsTestSuite(t *testing.T) {
@@ -36,29 +38,37 @@ func (s *RevocationWorkflowExecutorsTestSuite) SetupTest() {
 	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
 	s.T().Cleanup(config.ResetServerRuntime)
 	s.factory, _ = core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
-	s.users = newUserDeletionProviderMock(s.T())
+	s.actors = actorprovidermock.NewActorProviderMock(s.T())
+	s.planner = newPreRevocationExecutor(s.factory, func(*providers.OAuthClient) time.Duration { return time.Hour },
+		nil)
+	s.planner.setActorProvider(s.actors)
 }
 
-func (s *RevocationWorkflowExecutorsTestSuite) TestUserDeletionFlow() {
-	s.users.EXPECT().ValidateDeleteUser(mock.Anything, "user-123").Return(nil)
-	validationResp, err := newPreDeleteExecutor(s.factory, s.users).Execute(&providers.NodeContext{
-		Context:     context.Background(),
-		UserInputs:  map[string]string{revocationInputSubject: "user-123"},
-		RuntimeData: map[string]string{},
+// plan runs the planner in the given mode for the entity and returns what it shared.
+func (s *RevocationWorkflowExecutorsTestSuite) plan(mode, entityID string) map[string]string {
+	resp, err := s.planner.Execute(&providers.NodeContext{
+		Context:      context.Background(),
+		ExecutorMode: mode,
+		UserInputs:   map[string]string{revocationInputEntity: entityID},
 	})
 	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, validationResp.Status)
-	s.NotEmpty(validationResp.SharedRuntimeData[common.RuntimeKeyRevocationPlan])
+	s.Require().Equal(providers.ExecComplete, resp.Status)
+	return resp.SharedRuntimeData
+}
+
+// The entity deletion flow revokes what was issued to the entity as a subject and ends its sessions.
+func (s *RevocationWorkflowExecutorsTestSuite) TestEntityDeletionFlow() {
+	shared := s.plan(ExecutorModeEntityRemoval, "user-123")
 
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
 	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything,
 		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
 			return len(batch) == 1 && batch[0].Criterion.Type == revocation.CriterionTypeSubject &&
-				batch[0].Criterion.Value == "user-123" && batch[0].Mode == revocation.ModeAll &&
-				batch[0].Reason == revocation.ReasonUserDeleted
+				batch[0].Criterion.Value == "user-123" && batch[0].Mode == revocation.ModeBeforeAction &&
+				batch[0].Reason == revocation.ReasonEntityRemoved
 		})).Return(nil)
 	criteriaResp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
-		Context: context.Background(), SharedRuntimeData: validationResp.SharedRuntimeData,
+		Context: context.Background(), SharedRuntimeData: shared,
 	})
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, criteriaResp.Status)
@@ -66,71 +76,39 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestUserDeletionFlow() {
 	sessions := sessionmock.NewServiceMock(s.T())
 	sessions.EXPECT().TerminateBySubject(mock.Anything, "user-123").Return(nil)
 	sessionResp, err := newSessionRevocationExecutor(s.factory, sessions).Execute(&providers.NodeContext{
-		Context: context.Background(), SharedRuntimeData: validationResp.SharedRuntimeData,
+		Context: context.Background(), SharedRuntimeData: shared,
 	})
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, sessionResp.Status)
 }
 
-func (s *RevocationWorkflowExecutorsTestSuite) TestValidationRequestsInputs() {
-	resp, err := newPreDeleteExecutor(s.factory, s.users).Execute(
-		&providers.NodeContext{Context: context.Background()})
-	s.Require().NoError(err)
-	s.Equal(providers.ExecUserInputRequired, resp.Status)
-	// Only the deletion target is requested at execution time. The revocation breadth is fixed by the
-	// flow definition, so it must never be surfaced as something the caller can supply.
-	s.Len(resp.Inputs, 1)
-	s.Equal(revocationInputSubject, resp.Inputs[0].Identifier)
-}
+// The inbound client deletion flow revokes what the client issued and detaches the entity from the
+// sessions it took part in, leaving the sessions themselves to their subjects.
+func (s *RevocationWorkflowExecutorsTestSuite) TestInboundClientDeletionFlow() {
+	s.actors.EXPECT().GetOAuthClientByID(mock.Anything, "agent-1").
+		Return(&providers.OAuthClient{ClientID: "client-1"}, nil)
+	shared := s.plan(ExecutorModeClientRemoval, "agent-1")
 
-// A mode the executor does not support is rejected. Flow creation validates the mode, so this only
-// guards a flow persisted before the mode was constrained.
-func (s *RevocationWorkflowExecutorsTestSuite) TestValidationRejectsUnsupportedMode() {
-	resp, err := newPreDeleteExecutor(s.factory, s.users).Execute(&providers.NodeContext{
-		Context:      context.Background(),
-		ExecutorMode: "revoke_before_action",
-		UserInputs:   map[string]string{revocationInputSubject: "user-123"},
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything,
+		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Criterion.Type == revocation.CriterionTypeApplicationKey &&
+				batch[0].Criterion.Value == "client-1" && batch[0].Reason == revocation.ReasonClientRemoved &&
+				batch[0].TTL == time.Hour
+		})).Return(nil)
+	criteriaResp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
+		Context: context.Background(), SharedRuntimeData: shared,
 	})
 	s.Require().NoError(err)
-	s.Equal(providers.ExecFailure, resp.Status)
-	s.Equal(ErrInvalidRevocationMode.Code, resp.Error.Code)
-}
+	s.Equal(providers.ExecComplete, criteriaResp.Status)
 
-// A node that omits the mode falls back to the executor's default rather than failing.
-func (s *RevocationWorkflowExecutorsTestSuite) TestValidationDefaultsModeWhenNodeOmitsIt() {
-	s.users.EXPECT().ValidateDeleteUser(mock.Anything, "user-123").Return(nil)
-
-	resp, err := newPreDeleteExecutor(s.factory, s.users).Execute(&providers.NodeContext{
-		Context:    context.Background(),
-		UserInputs: map[string]string{revocationInputSubject: "user-123"},
+	sessions := sessionmock.NewServiceMock(s.T())
+	sessions.EXPECT().DetachApplication(mock.Anything, "agent-1").Return(nil)
+	sessionResp, err := newSessionRevocationExecutor(s.factory, sessions).Execute(&providers.NodeContext{
+		Context: context.Background(), SharedRuntimeData: shared,
 	})
-
 	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-	plan, decodeErr := decodeRevocationPlan(resp.SharedRuntimeData)
-	s.Require().NoError(decodeErr)
-	s.Equal(revocation.ModeAll, plan.Mode)
-}
-
-// The caller cannot widen or narrow the revocation by supplying it as an input: the field is not a
-// declared input, so it is ignored and the flow-configured mode stands.
-func (s *RevocationWorkflowExecutorsTestSuite) TestValidationIgnoresModeSuppliedAsInput() {
-	s.users.EXPECT().ValidateDeleteUser(mock.Anything, "user-123").Return(nil)
-
-	resp, err := newPreDeleteExecutor(s.factory, s.users).Execute(&providers.NodeContext{
-		Context:      context.Background(),
-		ExecutorMode: string(revocation.ModeAll),
-		UserInputs: map[string]string{
-			revocationInputSubject: "user-123",
-			"revocationMode":       "revoke_before_action",
-		},
-	})
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-	plan, decodeErr := decodeRevocationPlan(resp.SharedRuntimeData)
-	s.Require().NoError(decodeErr)
-	s.Equal(revocation.ModeAll, plan.Mode)
+	s.Equal(providers.ExecComplete, sessionResp.Status)
 }
 
 func (s *RevocationWorkflowExecutorsTestSuite) TestCriteriaRevocationFailure() {
@@ -158,18 +136,7 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestRejectsMissingTrustedPlan() {
 	s.ErrorContains(err, "trusted revocation plan is missing")
 }
 
-// Flow-creation validation enforces the revocation breadth from this declaration, so the declared
-// modes are part of the executor's contract rather than an implementation detail.
-func (s *RevocationWorkflowExecutorsTestSuite) TestValidationExecutorDeclaresModeContract() {
-	meta := newPreDeleteExecutor(s.factory, s.users).GetMeta()
-
-	s.Require().NotNil(meta)
-	s.Equal(string(revocation.ModeAll), meta.DefaultMode)
-	s.Equal([]string{string(revocation.ModeAll)}, meta.SupportedModes)
-	s.Equal([]providers.FlowType{providers.FlowTypeSystem}, meta.SupportedFlowTypes)
-}
-
-// The breadth the pre-executor records must survive the hop to the node that writes the revocation.
+// The breadth the planner records must survive the hop to the node that writes the revocation.
 // This pins the consumer half of that path: whatever mode and cutoff the plan carries is what reaches
 // the revoker, so a future mode needs no further plumbing.
 func (s *RevocationWorkflowExecutorsTestSuite) TestCriteriaRevocationUsesPlanMode() {
@@ -196,31 +163,4 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestCriteriaRevocationUsesPlanMod
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, resp.Status)
-}
-
-// End to end across the two nodes: the mode configured on the pre-executor is the mode the revoker
-// receives, with no request input involved.
-func (s *RevocationWorkflowExecutorsTestSuite) TestConfiguredModeReachesRevoker() {
-	s.users.EXPECT().ValidateDeleteUser(mock.Anything, "user-123").Return(nil)
-	preResp, err := newPreDeleteExecutor(s.factory, s.users).Execute(&providers.NodeContext{
-		Context:      context.Background(),
-		ExecutorMode: string(revocation.ModeAll),
-		UserInputs:   map[string]string{revocationInputSubject: "user-123"},
-	})
-	s.Require().NoError(err)
-	s.Require().Equal(providers.ExecComplete, preResp.Status)
-
-	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything,
-		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
-			return len(batch) == 1 && batch[0].Mode == revocation.ModeAll
-		})).Return(nil)
-
-	revokeResp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
-		Context:           context.Background(),
-		SharedRuntimeData: preResp.SharedRuntimeData,
-	})
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, revokeResp.Status)
 }

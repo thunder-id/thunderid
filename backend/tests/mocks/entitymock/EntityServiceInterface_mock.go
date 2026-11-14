@@ -3623,6 +3623,82 @@ func (_c *EntityServiceInterfaceMock_ResolveLinkedAccounts_Call) RunAndReturn(ru
 	return _c
 }
 
+// RotateClientSecret provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) RotateClientSecret(ctx context.Context, entityID string, write func() *common.ServiceError) (*common.ServiceError, *common.ServiceError) {
+	ret := _mock.Called(ctx, entityID, write)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RotateClientSecret")
+	}
+
+	var r0 *common.ServiceError
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, func() *common.ServiceError) (*common.ServiceError, *common.ServiceError)); ok {
+		return returnFunc(ctx, entityID, write)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, func() *common.ServiceError) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID, write)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, func() *common.ServiceError) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, entityID, write)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_RotateClientSecret_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RotateClientSecret'
+type EntityServiceInterfaceMock_RotateClientSecret_Call struct {
+	*mock.Call
+}
+
+// RotateClientSecret is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - write func() *common.ServiceError
+func (_e *EntityServiceInterfaceMock_Expecter) RotateClientSecret(ctx any, entityID any, write any) *EntityServiceInterfaceMock_RotateClientSecret_Call {
+	return &EntityServiceInterfaceMock_RotateClientSecret_Call{Call: _e.mock.On("RotateClientSecret", ctx, entityID, write)}
+}
+
+func (_c *EntityServiceInterfaceMock_RotateClientSecret_Call) Run(run func(ctx context.Context, entityID string, write func() *common.ServiceError)) *EntityServiceInterfaceMock_RotateClientSecret_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 func() *common.ServiceError
+		if args[2] != nil {
+			arg2 = args[2].(func() *common.ServiceError)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_RotateClientSecret_Call) Return(svcErr *common.ServiceError, revocationErr *common.ServiceError) *EntityServiceInterfaceMock_RotateClientSecret_Call {
+	_c.Call.Return(svcErr, revocationErr)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_RotateClientSecret_Call) RunAndReturn(run func(ctx context.Context, entityID string, write func() *common.ServiceError) (*common.ServiceError, *common.ServiceError)) *EntityServiceInterfaceMock_RotateClientSecret_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SearchEntities provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error) {
 	ret := _mock.Called(ctx, filters)
@@ -3953,28 +4029,28 @@ func (_c *EntityServiceInterfaceMock_SetSuspension_Call) RunAndReturn(run func(c
 	return _c
 }
 
-// SetSystemFlowProvider provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) SetSystemFlowProvider(provider entity.SystemFlowProviderInterface) {
-	_mock.Called(provider)
+// SetSystemFlowRunner provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SetSystemFlowRunner(runner entity.SystemFlowRunnerInterface) {
+	_mock.Called(runner)
 	return
 }
 
-// EntityServiceInterfaceMock_SetSystemFlowProvider_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowProvider'
-type EntityServiceInterfaceMock_SetSystemFlowProvider_Call struct {
+// EntityServiceInterfaceMock_SetSystemFlowRunner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowRunner'
+type EntityServiceInterfaceMock_SetSystemFlowRunner_Call struct {
 	*mock.Call
 }
 
-// SetSystemFlowProvider is a helper method to define mock.On call
-//   - provider entity.SystemFlowProviderInterface
-func (_e *EntityServiceInterfaceMock_Expecter) SetSystemFlowProvider(provider any) *EntityServiceInterfaceMock_SetSystemFlowProvider_Call {
-	return &EntityServiceInterfaceMock_SetSystemFlowProvider_Call{Call: _e.mock.On("SetSystemFlowProvider", provider)}
+// SetSystemFlowRunner is a helper method to define mock.On call
+//   - runner entity.SystemFlowRunnerInterface
+func (_e *EntityServiceInterfaceMock_Expecter) SetSystemFlowRunner(runner any) *EntityServiceInterfaceMock_SetSystemFlowRunner_Call {
+	return &EntityServiceInterfaceMock_SetSystemFlowRunner_Call{Call: _e.mock.On("SetSystemFlowRunner", runner)}
 }
 
-func (_c *EntityServiceInterfaceMock_SetSystemFlowProvider_Call) Run(run func(provider entity.SystemFlowProviderInterface)) *EntityServiceInterfaceMock_SetSystemFlowProvider_Call {
+func (_c *EntityServiceInterfaceMock_SetSystemFlowRunner_Call) Run(run func(runner entity.SystemFlowRunnerInterface)) *EntityServiceInterfaceMock_SetSystemFlowRunner_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 entity.SystemFlowProviderInterface
+		var arg0 entity.SystemFlowRunnerInterface
 		if args[0] != nil {
-			arg0 = args[0].(entity.SystemFlowProviderInterface)
+			arg0 = args[0].(entity.SystemFlowRunnerInterface)
 		}
 		run(
 			arg0,
@@ -3983,12 +4059,12 @@ func (_c *EntityServiceInterfaceMock_SetSystemFlowProvider_Call) Run(run func(pr
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_SetSystemFlowProvider_Call) Return() *EntityServiceInterfaceMock_SetSystemFlowProvider_Call {
+func (_c *EntityServiceInterfaceMock_SetSystemFlowRunner_Call) Return() *EntityServiceInterfaceMock_SetSystemFlowRunner_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_SetSystemFlowProvider_Call) RunAndReturn(run func(provider entity.SystemFlowProviderInterface)) *EntityServiceInterfaceMock_SetSystemFlowProvider_Call {
+func (_c *EntityServiceInterfaceMock_SetSystemFlowRunner_Call) RunAndReturn(run func(runner entity.SystemFlowRunnerInterface)) *EntityServiceInterfaceMock_SetSystemFlowRunner_Call {
 	_c.Run(run)
 	return _c
 }
@@ -4447,82 +4523,6 @@ func (_c *EntityServiceInterfaceMock_UpdateSystemCredentials_Call) Return(err er
 }
 
 func (_c *EntityServiceInterfaceMock_UpdateSystemCredentials_Call) RunAndReturn(run func(ctx context.Context, entityID string, plaintextUpdates json.RawMessage) error) *EntityServiceInterfaceMock_UpdateSystemCredentials_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ValidateClientSecretRegeneration provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, category providers.EntityCategory, entityID string) (*entity.ClientSecretProfile, *common.ServiceError) {
-	ret := _mock.Called(ctx, category, entityID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ValidateClientSecretRegeneration")
-	}
-
-	var r0 *entity.ClientSecretProfile
-	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, string) (*entity.ClientSecretProfile, *common.ServiceError)); ok {
-		return returnFunc(ctx, category, entityID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, string) *entity.ClientSecretProfile); ok {
-		r0 = returnFunc(ctx, category, entityID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.ClientSecretProfile)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, category, entityID)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common.ServiceError)
-		}
-	}
-	return r0, r1
-}
-
-// EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateClientSecretRegeneration'
-type EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call struct {
-	*mock.Call
-}
-
-// ValidateClientSecretRegeneration is a helper method to define mock.On call
-//   - ctx context.Context
-//   - category providers.EntityCategory
-//   - entityID string
-func (_e *EntityServiceInterfaceMock_Expecter) ValidateClientSecretRegeneration(ctx any, category any, entityID any) *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
-	return &EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call{Call: _e.mock.On("ValidateClientSecretRegeneration", ctx, category, entityID)}
-}
-
-func (_c *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Run(run func(ctx context.Context, category providers.EntityCategory, entityID string)) *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 providers.EntityCategory
-		if args[1] != nil {
-			arg1 = args[1].(providers.EntityCategory)
-		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Return(clientSecretProfile *entity.ClientSecretProfile, serviceError *common.ServiceError) *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
-	_c.Call.Return(clientSecretProfile, serviceError)
-	return _c
-}
-
-func (_c *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, entityID string) (*entity.ClientSecretProfile, *common.ServiceError)) *EntityServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
 	_c.Call.Return(run)
 	return _c
 }

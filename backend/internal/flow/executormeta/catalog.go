@@ -178,19 +178,9 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "requiredScopes"},
 		},
 	},
-	ExecutorNamePreDelete: {
-		DefaultMode:        "revoke_all",
-		SupportedModes:     []string{"revoke_all"},
-		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
-	},
-	ExecutorNameEntitySecretRotationValidator: {
-		DefaultMode:        ExecutorModeRevokeBeforeAction,
-		SupportedModes:     []string{ExecutorModeRevokeBeforeAction},
-		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
-	},
-	ExecutorNamePreCredentialUpdate: {
-		DefaultMode:        ExecutorModeRevokeBeforeAction,
-		SupportedModes:     []string{ExecutorModeRevokeBeforeAction},
+	ExecutorNamePreRevocation: {
+		SupportedModes: []string{ExecutorModeEntityRemoval, ExecutorModeClientRemoval,
+			ExecutorModeClientSecretRotation, ExecutorModeCredentialUpdate},
 		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
 	},
 	ExecutorNamePreSuspend: {

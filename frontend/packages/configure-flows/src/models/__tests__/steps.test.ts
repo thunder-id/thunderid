@@ -191,10 +191,6 @@ describe('steps models', () => {
       expect(ExecutionTypes.Authorization).toBe('AuthorizationExecutor');
     });
 
-    it('should have PreDelete type', () => {
-      expect(ExecutionTypes.PreDelete).toBe('PreDeleteExecutor');
-    });
-
     it('should have OwnerResolver type', () => {
       expect(ExecutionTypes.OwnerResolver).toBe('OwnerResolver');
     });
@@ -225,8 +221,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.AttributeVerification).toBe('AttributeVerificationExecutor');
     });
 
-    it('should have exactly 39 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(39);
+    it('should have exactly 38 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(38);
     });
   });
 

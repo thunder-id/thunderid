@@ -34,6 +34,7 @@ const (
 	errCodeNarrowInsufficientPerms   = "FET-1027"
 	errCodeNarrowCredentialSetFailed = "FET-1048"
 	errCodeNarrowOUCreationFailed    = "FET-1035"
+	errCodeNarrowGrantNotPermitted   = "SAZ-4030"
 )
 
 // NarrowAdminFlowTestSuite runs administration and onboarding flows as admins who each hold one fine-grained
@@ -438,6 +439,34 @@ func (ts *NarrowAdminFlowTestSuite) TestViewersOwnFlow_ServicesRefuseRoleResourc
 			ts.Require().NotNil(step.Error, "%+v", step)
 		})
 	}
+}
+
+// regenerateAgentSecret asks for a new client secret for the agent with token, and returns the status and body.
+func (ts *NarrowAdminFlowTestSuite) regenerateAgentSecret(token, agentID string) (int, string) {
+	req, err := http.NewRequest(http.MethodPost,
+		testutils.TestServerURL+"/agents/"+agentID+"/client-secret/regenerate", nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	return resp.StatusCode, string(body)
+}
+
+// A new secret lets its caller act as the agent, so an admin who may update agents but lacks a permission the
+// agent holds cannot regenerate its secret. The same admin gets past that check for an unprivileged agent, which
+// is then refused only because it authenticates without a secret.
+func (ts *NarrowAdminFlowTestSuite) TestAgentAdmin_CannotRegenerateAPrivilegedAgentsSecret() {
+	status, body := ts.regenerateAgentSecret(ts.agentAdminToken, ts.privAgentID)
+	ts.Equal(http.StatusForbidden, status, body)
+	ts.Contains(body, errCodeNarrowGrantNotPermitted)
+	ts.NotContains(body, "clientSecret")
+
+	status, body = ts.regenerateAgentSecret(ts.agentAdminToken, ts.agentID)
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Contains(body, "AGT-1052")
 }
 
 // Creating an agent needs no permission to view agent types, so an admin who may only create agents can.

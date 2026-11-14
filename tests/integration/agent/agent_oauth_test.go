@@ -192,6 +192,149 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_TokenIssuance() {
 	ts.Assert().Equal("Bearer", tokenResult.Token.TokenType)
 }
 
+// revocationAgent is a client_credentials agent with a token issued to it, and an application that introspects the
+// token. Introspection reads the deny list directly, so its answer is immediate, and it is asked by an application
+// because an agent whose client is gone can no longer authenticate.
+type revocationAgent struct {
+	id             string
+	clientID       string
+	clientSecret   string
+	observerID     string
+	observerSecret string
+	token          string
+}
+
+func (ts *AgentOAuthFlowsTestSuite) newRevocationAgent(prefix string) *revocationAgent {
+	ts.T().Helper()
+	a := &revocationAgent{
+		clientID:       prefix + "_agent_client",
+		clientSecret:   prefix + "_agent_secret",
+		observerID:     prefix + "_observer_client",
+		observerSecret: prefix + "_observer_secret",
+	}
+	agentID, err := createAgent(Agent{
+		OUID:              ts.ouID,
+		Type:              "default",
+		Attributes:        agentAttrs(prefix+"-agent", nil),
+		AuthFlowID:        ts.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{Type: "oauth2", Config: a.oauthConfig(a.clientSecret)}},
+	})
+	ts.Require().NoError(err)
+	a.id = agentID
+	ts.T().Cleanup(func() { _ = deleteAgent(agentID) })
+
+	observerAppID, err := testutils.CreateApplication(testutils.Application{
+		Name: prefix + "_observer",
+		OUID: ts.ouID,
+		Type: "fullstack",
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId":                a.observerID,
+			"clientSecret":            a.observerSecret,
+			"redirectUris":            []string{"https://localhost:3000"},
+			"grantTypes":              []string{"client_credentials"},
+			"tokenEndpointAuthMethod": "client_secret_basic",
+		}}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(observerAppID) })
+
+	a.token = ts.issueToken(a.clientID, a.clientSecret)
+	ts.Require().True(ts.active(a, a.token), "the token should be active before the change")
+	return a
+}
+
+func (a *revocationAgent) oauthConfig(secret string) *OAuthAgentConfig {
+	return &OAuthAgentConfig{
+		ClientID:                a.clientID,
+		ClientSecret:            secret,
+		GrantTypes:              []string{"client_credentials"},
+		TokenEndpointAuthMethod: "client_secret_basic",
+	}
+}
+
+// issueToken obtains a client_credentials token for the agent's client.
+func (ts *AgentOAuthFlowsTestSuite) issueToken(clientID, clientSecret string) string {
+	ts.T().Helper()
+	issued, err := testutils.RequestTokenWithResource(clientID, clientSecret, "", "", "client_credentials",
+		agentOAuthDefaultRSIdentifier)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, issued.StatusCode, "Token request failed: %s", string(issued.Body))
+	return issued.Token.AccessToken
+}
+
+func (ts *AgentOAuthFlowsTestSuite) active(a *revocationAgent, token string) bool {
+	ts.T().Helper()
+	active, err := testutils.IntrospectToken(token, a.observerID, a.observerSecret)
+	ts.Require().NoError(err)
+	return active
+}
+
+// updateAgent replaces the agent's configuration, with the OAuth configuration given, or with no inbound client
+// settings at all, which removes its client.
+func (ts *AgentOAuthFlowsTestSuite) updateAgent(a *revocationAgent, prefix string, oauth *OAuthAgentConfig) {
+	ts.T().Helper()
+	body := map[string]interface{}{
+		"ouId":       ts.ouID,
+		"type":       "default",
+		"attributes": json.RawMessage(agentAttrs(prefix+"-agent", nil)),
+	}
+	if oauth != nil {
+		body["authFlowId"] = ts.authFlowID
+		body["inboundAuthConfig"] = []InboundAuthConfig{{Type: "oauth2", Config: oauth}}
+	}
+	resp, err := putAgentRaw(a.id, body)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+}
+
+// Deleting an agent revokes the tokens issued to it, as deleting an application does.
+func (ts *AgentOAuthFlowsTestSuite) TestDeleteAgent_RevokesItsTokens() {
+	a := ts.newRevocationAgent("delete_revokes")
+
+	ts.Require().NoError(deleteAgent(a.id))
+
+	ts.False(ts.active(a, a.token), "A token issued to a deleted agent was still active")
+	getResp, err := doGet(testServerURL + agentBasePath + "/" + a.id)
+	ts.Require().NoError(err)
+	defer getResp.Body.Close()
+	ts.Equal(http.StatusNotFound, getResp.StatusCode)
+}
+
+// An update with a different client secret replaces the agent's secret, so the tokens the old one issued are
+// revoked, and the new one issues tokens.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_ADifferentSecretRevokesItsTokens() {
+	const prefix = "update_secret_revokes"
+	a := ts.newRevocationAgent(prefix)
+
+	ts.updateAgent(a, prefix, a.oauthConfig(prefix+"_rotated_secret"))
+
+	ts.False(ts.active(a, a.token), "A token the replaced secret issued was still active")
+	ts.NotEmpty(ts.issueToken(a.clientID, prefix+"_rotated_secret"), "The new secret did not issue tokens")
+}
+
+// An update that carries the secret the agent already has, as every apply of a configuration does, replaces
+// nothing, so nothing is revoked.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_TheSameSecretRevokesNothing() {
+	const prefix = "update_same_secret"
+	a := ts.newRevocationAgent(prefix)
+
+	ts.updateAgent(a, prefix, a.oauthConfig(a.clientSecret))
+
+	ts.True(ts.active(a, a.token), "An update with the same secret revoked the agent's token")
+}
+
+// An update that leaves the agent no inbound client settings removes its client, which revokes what the client
+// issued.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_RemovingItsClientRevokesItsTokens() {
+	const prefix = "update_removes_client"
+	a := ts.newRevocationAgent(prefix)
+
+	ts.updateAgent(a, prefix, nil)
+
+	ts.False(ts.active(a, a.token), "A token the removed client issued was still active")
+}
+
 // TestAgentCC_ClientSecretPost verifies a CC token can be obtained when credentials
 // are passed as form body parameters (client_secret_post) rather than HTTP Basic Auth.
 func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_ClientSecretPost() {
