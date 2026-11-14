@@ -114,10 +114,14 @@ func setManagedStore(service EntityTypeServiceInterface, managed managedresource
 
 // managedType is the type a control plane marks the types of a category with.
 func managedType(category TypeCategory) string {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return managedresource.TypeAgentType
+	case TypeCategoryOU:
+		return managedresource.TypeOUType
+	default:
+		return managedresource.TypeUserType
 	}
-	return managedresource.TypeUserType
 }
 
 // refuseManaged refuses a change to a type a control plane deployed, unless the change is the managed
@@ -1100,10 +1104,14 @@ func (us *entityTypeService) populateEntityTypeOUHandles(
 
 // pathForCategory returns the public API base path for a given schema category.
 func pathForCategory(category TypeCategory) string {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return "/agent-types"
+	case TypeCategoryOU:
+		return "/organization-unit-types"
+	default:
+		return "/user-types"
 	}
-	return "/user-types"
 }
 
 // validateCategory ensures the supplied category is one of the supported values.
@@ -1190,36 +1198,52 @@ func resourceTypeForCategory(category TypeCategory) security.ResourceType {
 // createEventForCategory returns the audit event of an attempt to create an entity type of the given
 // category.
 func createEventForCategory(category TypeCategory) string {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return audit.EventAgentTypeCreate
+	case TypeCategoryOU:
+		return audit.EventOUTypeCreate
+	default:
+		return audit.EventUserTypeCreate
 	}
-	return audit.EventUserTypeCreate
 }
 
 // updateEventForCategory returns the audit event of an attempt to change an entity type of the given
 // category.
 func updateEventForCategory(category TypeCategory) string {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return audit.EventAgentTypeUpdate
+	case TypeCategoryOU:
+		return audit.EventOUTypeUpdate
+	default:
+		return audit.EventUserTypeUpdate
 	}
-	return audit.EventUserTypeUpdate
 }
 
 // deleteEventForCategory returns the audit event of an attempt to delete an entity type of the given
 // category.
 func deleteEventForCategory(category TypeCategory) string {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return audit.EventAgentTypeDelete
+	case TypeCategoryOU:
+		return audit.EventOUTypeDelete
+	default:
+		return audit.EventUserTypeDelete
 	}
-	return audit.EventUserTypeDelete
 }
 
 // auditTargetTypeForCategory returns the audit target type of an entity type of the given category.
 func auditTargetTypeForCategory(category TypeCategory) string {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return audit.TargetTypeAgentType
+	case TypeCategoryOU:
+		return audit.TargetTypeOUType
+	default:
+		return audit.TargetTypeUserType
 	}
-	return audit.TargetTypeUserType
 }
 
 // buildPaginationLinks builds pagination links for the response.
@@ -1329,7 +1353,7 @@ func validateSystemAttributes(
 		return nil, svcErr
 	}
 
-	if category == TypeCategoryAgent {
+	if category != TypeCategoryUser {
 		if attrs.PrimaryEmail != "" || attrs.PrimaryMobile != "" {
 			return nil, &ErrorPrimaryContactNotSupported
 		}

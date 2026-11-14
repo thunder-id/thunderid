@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -3012,6 +3013,49 @@ func (s *EntityTypeServiceTestSuite) TestValidateEntityTypeDefinition_PrimaryCon
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorPrimaryContactNotSupported.Code, svcErr.Code)
+}
+
+func (s *EntityTypeServiceTestSuite) TestValidateEntityTypeDefinition_PrimaryContactNotSupportedForOUTypes() {
+	_, svcErr := s.validateContactDefinition(
+		TypeCategoryOU, primaryContactTestSchema, &SystemAttributes{PrimaryMobile: "phone"})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorPrimaryContactNotSupported.Code, svcErr.Code)
+}
+
+func (s *EntityTypeServiceTestSuite) TestValidateEntityTypeDefinition_OUTypeWithoutCredentials() {
+	resolved, svcErr := s.validateContactDefinition(TypeCategoryOU,
+		`{"registrationNo":{"type":"string","required":true,"unique":true},"tier":{"type":"number"}}`, nil)
+
+	s.Require().Nil(svcErr)
+	s.Nil(resolved)
+}
+
+func (s *EntityTypeServiceTestSuite) TestCategoryPathAndAuditHelpers() {
+	cases := []struct {
+		category   TypeCategory
+		path       string
+		create     string
+		update     string
+		delete     string
+		targetType string
+	}{
+		{TypeCategoryUser, "/user-types", audit.EventUserTypeCreate, audit.EventUserTypeUpdate,
+			audit.EventUserTypeDelete, audit.TargetTypeUserType},
+		{TypeCategoryAgent, "/agent-types", audit.EventAgentTypeCreate, audit.EventAgentTypeUpdate,
+			audit.EventAgentTypeDelete, audit.TargetTypeAgentType},
+		{TypeCategoryOU, "/organization-unit-types", audit.EventOUTypeCreate, audit.EventOUTypeUpdate,
+			audit.EventOUTypeDelete, audit.TargetTypeOUType},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.category), func() {
+			s.Equal(tc.path, pathForCategory(tc.category))
+			s.Equal(tc.create, createEventForCategory(tc.category))
+			s.Equal(tc.update, updateEventForCategory(tc.category))
+			s.Equal(tc.delete, deleteEventForCategory(tc.category))
+			s.Equal(tc.targetType, auditTargetTypeForCategory(tc.category))
+		})
+	}
 }
 
 func (s *EntityTypeServiceTestSuite) TestCreateEntityType_StoresDefaultPrimaryContacts() {

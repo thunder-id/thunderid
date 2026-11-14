@@ -10,6 +10,7 @@ const (
 	TypeProject                 = "project"
 	TypeUserType                = "user_type"
 	TypeAgentType               = "agent_type"
+	TypeOUType                  = "ou_type"
 	TypeResourceServer          = "resource_server"
 	TypeAuthorizationDetailType = "authorization_detail_type"
 	TypeRole                    = "role"

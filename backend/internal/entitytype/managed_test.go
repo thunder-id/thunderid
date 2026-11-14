@@ -63,3 +63,10 @@ func TestADeployedTypeReadsAsReadOnly(t *testing.T) {
 	setManagedStore(other, store)
 	assert.Same(t, store, other.managed)
 }
+
+// Each category's types are marked under their own type.
+func TestManagedTypeForCategory(t *testing.T) {
+	assert.Equal(t, managedresource.TypeUserType, managedType(TypeCategoryUser))
+	assert.Equal(t, managedresource.TypeAgentType, managedType(TypeCategoryAgent))
+	assert.Equal(t, managedresource.TypeOUType, managedType(TypeCategoryOU))
+}
