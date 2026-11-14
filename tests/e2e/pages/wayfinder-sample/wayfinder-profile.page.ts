@@ -18,6 +18,7 @@ import { Timeouts } from "../../constants/timeouts";
 export class WayfinderProfilePage extends BasePage {
   readonly heading: Locator;
   readonly saveChangesButton: Locator;
+  readonly currentPasswordInput: Locator;
   readonly newPasswordInput: Locator;
   readonly confirmPasswordInput: Locator;
   readonly updatePasswordButton: Locator;
@@ -26,6 +27,7 @@ export class WayfinderProfilePage extends BasePage {
     super(page);
     this.heading = page.getByRole("heading", { name: /^profile$/i });
     this.saveChangesButton = page.getByRole("button", { name: /save changes/i });
+    this.currentPasswordInput = page.getByLabel("Current password", { exact: true });
     this.newPasswordInput = page.getByLabel("New password", { exact: true });
     this.confirmPasswordInput = page.getByLabel("Confirm new password");
     this.updatePasswordButton = page.getByRole("button", { name: /update password/i });
@@ -55,7 +57,8 @@ export class WayfinderProfilePage extends BasePage {
   }
 
   /** Set a new password and save. Verifies the "Password updated." confirmation. */
-  async changePassword(newPassword: string) {
+  async changePassword(currentPassword: string, newPassword: string) {
+    await this.currentPasswordInput.fill(currentPassword);
     await this.newPasswordInput.fill(newPassword);
     await this.confirmPasswordInput.fill(newPassword);
     await this.updatePasswordButton.click();

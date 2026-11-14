@@ -101,6 +101,14 @@ type UpdateSelfUserRequest struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }
 
+// UpdateSelfCredentialRequest represents the request body for the authenticated user setting one of their
+// own credentials.
+type UpdateSelfCredentialRequest struct {
+	Name         string `json:"name"`
+	CurrentValue string `json:"currentValue,omitempty"`
+	NewValue     string `json:"newValue"`
+}
+
 // UpdateUserCredentialsRequest represents the request body for updating user credentials by an admin.
 type UpdateUserCredentialsRequest struct {
 	Credentials json.RawMessage `json:"credentials,omitempty"`

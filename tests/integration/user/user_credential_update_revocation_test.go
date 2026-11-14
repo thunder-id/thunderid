@@ -129,8 +129,8 @@ func (ts *UserAPITestSuite) TestCredentialUpdateBySelf_RevokesTheirTokens() {
 	otherToken := ts.signIn(u, password)
 	token := ts.signIn(u, password)
 
-	payload, err := json.Marshal(map[string]interface{}{
-		"attributes": map[string]string{"password": newPassword},
+	payload, err := json.Marshal(map[string]string{
+		"name": "password", "currentValue": password, "newValue": newPassword,
 	})
 	ts.Require().NoError(err)
 	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/update-credentials",

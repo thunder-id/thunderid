@@ -547,6 +547,34 @@ var (
 			DefaultValue: "Credentials cannot be changed with a delegated token",
 		},
 	}
+	// ErrorInvalidCurrentCredential is the error returned when the current value of the credential being
+	// changed is missing or doesn't match.
+	ErrorInvalidCurrentCredential = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_current_credential",
+			DefaultValue: "Invalid current credential",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_current_credential_description",
+			DefaultValue: "Provide the current value of the credential to change it",
+		},
+	}
+	// ErrorCredentialSetNotAllowed is the error returned when a user who holds a credential tries to set
+	// one they don't hold yet.
+	ErrorCredentialSetNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.credential_set_not_allowed",
+			DefaultValue: "Credential cannot be set",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.credential_set_not_allowed_description",
+			DefaultValue: "A new credential cannot be added to an account that already holds a credential",
+		},
+	}
 )
 
 // Error variables

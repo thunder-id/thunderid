@@ -232,6 +232,7 @@ function Profile({ getAccessToken }) {
 }
 
 function PasswordSection({ getAccessTokenRef, disabled }) {
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -255,7 +256,8 @@ function PasswordSection({ getAccessTokenRef, disabled }) {
     setIsSaving(true);
     try {
       const accessToken = await getAccessTokenRef.current();
-      await updateMyCredentials(accessToken, { password });
+      await updateMyCredentials(accessToken, "password", currentPassword, password);
+      setCurrentPassword("");
       setPassword("");
       setConfirm("");
       setMessage("Password updated.");
@@ -284,6 +286,19 @@ function PasswordSection({ getAccessTokenRef, disabled }) {
       )}
       <form onSubmit={handleSubmit}>
         <div style={rowGridStyle}>
+          <label style={fieldStyle}>
+            <span style={fieldLabelStyle}>Current password</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              disabled={disabled || isSaving}
+              style={inputStyle}
+            />
+          </label>
+        </div>
+        <div style={{ ...rowGridStyle, marginTop: 16 }}>
           <label style={fieldStyle}>
             <span style={fieldLabelStyle}>New password</span>
             <input
