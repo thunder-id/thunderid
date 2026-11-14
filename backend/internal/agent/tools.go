@@ -789,10 +789,11 @@ func (t *agentTools) rotateKeySet(ctx context.Context, current *model.AgentGetRe
 	}, nil
 }
 
-// nameAttribute returns the agent type attribute that holds an agent's name, its display attribute.
+// nameAttribute returns the agent type attribute that holds an agent's name, its display attribute. The
+// agent service authorizes each tool's agent action, so reading the type needs no permission of its own.
 func (t *agentTools) nameAttribute(ctx context.Context) (string, *tidcommon.ServiceError) {
 	agentType, svcErr := t.entityTypeService.GetEntityTypeByHandle(
-		ctx, entitytype.TypeCategoryAgent, entitytype.DefaultAgentTypeHandle)
+		security.WithRuntimeContext(ctx), entitytype.TypeCategoryAgent, entitytype.DefaultAgentTypeHandle)
 	if svcErr != nil {
 		return "", svcErr
 	}
