@@ -5,7 +5,6 @@ package audit
 
 import (
 	"encoding/json"
-	"net/http"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
@@ -62,10 +61,10 @@ func (ts *AuditLogTestSuite) TestAPasswordResetThroughRecoveryNamesTheResetUserA
 	adminToken, err := testutils.GetAccessToken()
 	ts.Require().NoError(err)
 
-	_, step := ts.executeRecovery(adminToken, appID, map[string]interface{}{
+	_, step := ts.executeFlow(adminToken, appID, map[string]interface{}{
 		"applicationId": appID, "flowType": "RECOVERY",
 	})
-	_, step = ts.executeRecovery(adminToken, appID, map[string]interface{}{
+	_, step = ts.executeFlow(adminToken, appID, map[string]interface{}{
 		"executionId": step.ExecutionID, "challengeToken": step.ChallengeToken,
 		"inputs": map[string]string{"username": username}, "action": "action_submit_username",
 	})
@@ -76,13 +75,13 @@ func (ts *AuditLogTestSuite) TestAPasswordResetThroughRecoveryNamesTheResetUserA
 	}, 10*time.Second, 100*time.Millisecond, "the recovery email was not sent")
 	inviteToken := testutils.ExtractQueryParam(email.ExtractRecoveryLink(), "inviteToken")
 	ts.Require().NotEmpty(inviteToken, "the recovery email carries no recovery link")
-	_, step = ts.executeRecovery(adminToken, appID, map[string]interface{}{
+	_, step = ts.executeFlow(adminToken, appID, map[string]interface{}{
 		"executionId": step.ExecutionID, "challengeToken": step.ChallengeToken,
 		"inputs": map[string]string{"inviteToken": inviteToken},
 	})
 	ts.Require().True(common.HasInput(step.Data.Inputs, "password"), "the flow must prompt for the new password")
 	newPassword := credentialMarker + "After1!"
-	reset, step := ts.executeRecovery(adminToken, appID, map[string]interface{}{
+	reset, step := ts.executeFlow(adminToken, appID, map[string]interface{}{
 		"executionId": step.ExecutionID, "challengeToken": step.ChallengeToken,
 		"inputs": map[string]string{"password": newPassword}, "action": "action_submit_password",
 	})
@@ -102,25 +101,6 @@ func (ts *AuditLogTestSuite) TestAPasswordResetThroughRecoveryNamesTheResetUserA
 	for _, other := range written {
 		ts.requireNoCredentialValue(other, "a password reset through recovery")
 	}
-}
-
-// executeRecovery posts one recovery flow request with the bearer token and the application's Flow
-// Secret, and returns the response and the step it got after checking the request was accepted.
-func (ts *AuditLogTestSuite) executeRecovery(token, appID string, request map[string]interface{}) (
-	*http.Response, *common.FlowStep) {
-	ts.T().Helper()
-	payload, err := json.Marshal(request)
-	ts.Require().NoError(err)
-	header := http.Header{"Authorization": {"Bearer " + token}}
-	if secret := testutils.GetFlowSecret(appID); secret != "" {
-		header.Set(testutils.FlowSecretHeaderName, secret)
-	}
-	response, body := ts.post(testutils.GetRawHTTPClient(), "/flow/execute", payload, header)
-	ts.Require().Equal(http.StatusOK, response.StatusCode, string(body))
-	var step common.FlowStep
-	ts.Require().NoError(json.Unmarshal(body, &step))
-	ts.Require().NotEqual("ERROR", step.FlowStatus, string(body))
-	return response, &step
 }
 
 // emailLinkRecoveryFlow is a recovery flow that identifies the user by username, emails a recovery link,

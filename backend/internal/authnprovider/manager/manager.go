@@ -441,22 +441,33 @@ func (m *authnProviderManager) publishEnrollment(ctx context.Context, stored *pr
 // that authenticated them.
 func (m *authnProviderManager) LinkAccount(ctx context.Context, authUser providers.AuthUser,
 	idpID, sub string) *tidcommon.ServiceError {
+	userID, stored, svcErr := m.linkAccount(ctx, authUser, idpID, sub)
+	if stored || svcErr != nil {
+		m.publishAccountLink(ctx, userID, idpID, svcErr)
+	}
+	return svcErr
+}
+
+// linkAccount records the link without publishing its audit event. It returns the ID of the user the
+// link is for once known, and whether the provider stored the link.
+func (m *authnProviderManager) linkAccount(ctx context.Context, authUser providers.AuthUser,
+	idpID, sub string) (userID string, stored bool, svcErr *tidcommon.ServiceError) {
 	if idpID == "" || sub == "" {
 		m.logger.Debug(ctx, "link requested without a connection id or subject")
-		return &ErrorInvalidRequest
+		return "", false, &ErrorInvalidRequest
 	}
 
 	providerName, ok := m.linkTargetProvider(authUser)
 	if !ok {
 		m.logger.Debug(ctx, "link requested but the authUser carries no provider state")
-		return &ErrorAuthenticationFailed
+		return "", false, &ErrorAuthenticationFailed
 	}
 
 	selectedProvider, ok := m.authnProviders[providerName]
 	if !ok || selectedProvider == nil {
 		m.logger.Error(ctx, "authUser state names a provider that is not registered",
 			log.String("providerName", providerName))
-		return &tidcommon.InternalServerError
+		return "", false, &tidcommon.InternalServerError
 	}
 
 	state, _ := authUser.StateFor(providerName)
@@ -465,30 +476,50 @@ func (m *authnProviderManager) LinkAccount(ctx context.Context, authUser provide
 		// GetEntityReference replaces a resolved token with the reference itself.
 		if state.EntityReference == nil || state.EntityReference.EntityID == "" {
 			m.logger.Debug(ctx, "link requested but the provider state names no entity")
-			return &ErrorInvalidRequest
+			return "", false, &ErrorInvalidRequest
 		}
-		token = map[string]interface{}{authnprovidercm.UserAttributeUserID: state.EntityReference.EntityID}
+		userID = state.EntityReference.EntityID
+		token = map[string]interface{}{authnprovidercm.UserAttributeUserID: userID}
 	}
 
-	svcErr := selectedProvider.StoreAccountLink(ctx, token, idpID, sub)
+	svcErr = selectedProvider.StoreAccountLink(ctx, token, idpID, sub)
 	if svcErr == nil {
-		return nil
+		return userID, true, nil
 	}
 	if svcErr.Type == tidcommon.ServerErrorType {
 		m.logger.Error(ctx, "provider returned server error while linking an account",
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
-		return &tidcommon.InternalServerError
+		return userID, false, &tidcommon.InternalServerError
 	}
 	if svcErr.Code == authnprovidercm.ErrorCodeNotImplemented {
 		// The provider does not store account links. There is nothing to record, and failing the
 		// sign-in over it would break every sign-in through that provider that needs a link.
 		m.logger.Debug(ctx, "provider does not store account links",
 			log.String("providerName", providerName))
-		return nil
+		return userID, false, nil
 	}
 	m.logger.Debug(ctx, "provider rejected the account link",
 		log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-	return &ErrorLinkAccountFailed
+	return userID, false, &ErrorLinkAccountFailed
+}
+
+// publishAccountLink publishes the audit event of an attempt to link a federated identity to the user
+// with userID, which is empty when the attempt ended before the user was known. The actor is the user
+// when one is known and anonymous otherwise, never the request's subject; the connection is recorded,
+// never the identity's sub at it.
+func (m *authnProviderManager) publishAccountLink(ctx context.Context, userID, idpID string,
+	svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
+	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+	if userID != "" {
+		actor = audit.Actor{Type: audit.ActorTypeUser, ID: userID}
+	}
+	payload := audit.ChangePayload(ctx, target, audit.ActionCreate, svcErr)
+	if idpID != "" {
+		payload = payload.WithDetails(map[string]string{audit.DetailConnection: idpID})
+	}
+	eventbus.TryPublish(ctx, m.bus, eventbus.NewEvent(ctx, audit.EventUserLinkedAccountCreate).
+		With(payload.WithActor(actor)))
 }
 
 // linkTargetProvider picks the provider that should store an account link. With one provider in
