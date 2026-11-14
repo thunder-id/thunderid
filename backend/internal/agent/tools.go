@@ -317,8 +317,8 @@ It changes only what you send. actsForUsers, when sent, is the complete set, so 
 			`secret, returned once, and the old one stops working at once. For a registered key set, addKey ` +
 			`adds the agent's new public key next to the current ones, and removeKeyId retires an old key once ` +
 			`the agent signs with the new one. For a key set URI, rotate the keys at that URI; there is nothing ` +
-			`to change here. Access tokens already issued stay valid until they expire. Refresh tokens ` +
-			`issued before a secret rotation stop working.`,
+			`to change here. Where the server revokes tokens, a secret rotation also revokes the tokens ` +
+			`the old secret issued, and the notice says whether it did.`,
 		InputSchema: tool.GenerateSchema[rotateAgentCredentialsMCPInput](),
 		Annotations: &mcp.ToolAnnotations{
 			Title:           "Rotate Agent Credentials",
@@ -732,8 +732,8 @@ func (t *agentTools) rotateAgentCredentials(
 		case regenerated.Revoked:
 			notice = "The old secret no longer works, and the tokens it issued are revoked. " + secretNotice
 		case regenerated.RevocationIncomplete:
-			notice = "The old secret no longer works, but revoking the tokens it issued failed, so they can " +
-				"stay valid until they expire; rotating again revokes them. " + secretNotice
+			notice = "The old secret no longer works, but revoking the tokens issued while it was replaced " +
+				"failed, so those can stay valid until they expire; rotating again revokes them. " + secretNotice
 		default:
 			notice = "The old secret no longer works. Tokens it already issued were not revoked and stay " +
 				"valid until they expire. " + secretNotice

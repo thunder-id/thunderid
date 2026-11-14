@@ -10,7 +10,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/agent/model"
-	"github.com/thunder-id/thunderid/internal/entity"
 	model0 "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -1873,33 +1872,22 @@ func (_c *AgentServiceInterfaceMock_ValidateAgent_Call) RunAndReturn(run func(ct
 }
 
 // ValidateClientSecretRegeneration provides a mock function for the type AgentServiceInterfaceMock
-func (_mock *AgentServiceInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, agentID string) (*entity.ClientSecretProfile, *common.ServiceError) {
+func (_mock *AgentServiceInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, agentID string) *common.ServiceError {
 	ret := _mock.Called(ctx, agentID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateClientSecretRegeneration")
 	}
 
-	var r0 *entity.ClientSecretProfile
-	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entity.ClientSecretProfile, *common.ServiceError)); ok {
-		return returnFunc(ctx, agentID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entity.ClientSecretProfile); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, agentID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.ClientSecretProfile)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, agentID)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common.ServiceError)
-		}
-	}
-	return r0, r1
+	return r0
 }
 
 // AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateClientSecretRegeneration'
@@ -1932,12 +1920,12 @@ func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Run(r
 	return _c
 }
 
-func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Return(clientSecretProfile *entity.ClientSecretProfile, serviceError *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
-	_c.Call.Return(clientSecretProfile, serviceError)
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*entity.ClientSecretProfile, *common.ServiceError)) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, agentID string) *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
 	_c.Call.Return(run)
 	return _c
 }

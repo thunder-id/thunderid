@@ -125,6 +125,18 @@ var actingModeGrantTypes = map[actingMode]providers.GrantType{
 // maxKeySetLength is the longest key set value the certificate store accepts.
 const maxKeySetLength = 4096
 
+// clientSecretDisposition is what an update does with the agent's client secret.
+type clientSecretDisposition int
+
+const (
+	// clientSecretUnchanged: no secret was supplied, or the one supplied is the one the agent already has.
+	clientSecretUnchanged clientSecretDisposition = iota
+	// clientSecretSet: the agent's client had no secret and gets one, so nothing was issued under one.
+	clientSecretSet
+	// clientSecretRotated: the supplied secret replaces the one the agent has.
+	clientSecretRotated
+)
+
 // agentDetail is a section get_agent adds to an agent only when asked.
 type agentDetail string
 

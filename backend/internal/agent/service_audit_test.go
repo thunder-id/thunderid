@@ -576,6 +576,23 @@ func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_PublishesOneEven
 	}
 }
 
+// The credentials are already replaced when the revocation after the write fails, so the attempt is recorded
+// as succeeded while the caller still gets the failure.
+func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_RecordsReplacedCredentialsWhenThePostFlowFails() {
+	credentials := json.RawMessage(`{"password":"rotated"}`)
+	published := s.record()
+	s.existing()
+	s.access(true)
+	s.entities.On("UpdateCredentials", mock.Anything, testAgentID, credentials).
+		Return(fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete)).Once()
+
+	svcErr := s.service.UpdateAgentCredentials(adminContext(), testAgentID, credentials)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.requireOnlyEvent(published(), audit.EventAgentCredentialUpdate, audit.ActionUpdate, testAgentID,
+		audit.OutcomeSucceeded)
+}
+
 // A bus that cannot take the event never fails the change it describes.
 func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_SucceedsWhenTheBusRefusesTheEvent() {
 	failing := eventbusmock.NewEventBusInterfaceMock(s.T())

@@ -656,3 +656,11 @@ func entityScopeCriterion(entityID string, scope revocation.AudienceScope) revoc
 	return revocation.Criterion{Type: revocation.CriterionTypeEntityScope,
 		Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope)}
 }
+
+// isClientDeletionPlan reports whether the plan removes a client, the only case that detaches session
+// participation: an inbound client's deletion, or an application deletion an administration flow plans. A secret
+// rotation does not: the session is still legitimately the user's.
+func isClientDeletionPlan(plan revocationPlan) bool {
+	return plan.TargetID != "" &&
+		(plan.Reason == revocation.ReasonClientRemoved || plan.Reason == revocation.ReasonApplicationRemoved)
+}

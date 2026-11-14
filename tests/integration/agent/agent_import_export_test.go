@@ -580,6 +580,78 @@ func (s *AgentImportExportSuite) TestImportAgent_UpsertReplacesThePassword() {
 		"an empty password replaced the one the agent had")
 }
 
+// Replacing an agent's password through import revokes the tokens issued to the agent before it, as an
+// administrator's password change does for a user. Its client credentials token names the agent as subject.
+func (s *AgentImportExportSuite) TestImportAgent_ReplacingThePasswordRevokesItsTokens() {
+	agentName := "Agent Password Revokes " + s.handleSuffix
+	clientID := "agent-pw-revokes-client-" + s.handleSuffix
+	clientSecret := "agent-pw-revokes-secret-" + s.handleSuffix
+	observerID := "agent-pw-revokes-observer-" + s.handleSuffix
+	observerSecret := "agent-pw-revokes-observer-secret-" + s.handleSuffix
+
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Attributes: agentAttrs(agentName, map[string]interface{}{"password": "Original-Pass4!" + s.handleSuffix}),
+		InboundAuthConfig: []InboundAuthConfig{{Type: "oauth2", Config: &OAuthAgentConfig{
+			ClientID:                clientID,
+			ClientSecret:            clientSecret,
+			GrantTypes:              []string{"client_credentials"},
+			TokenEndpointAuthMethod: "client_secret_basic",
+		}}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = s.deleteAgent(createdID) }()
+
+	observerAppID, err := testutils.CreateApplication(testutils.Application{
+		Name: "agent_pw_revokes_observer_" + s.handleSuffix,
+		OUID: s.ouID,
+		Type: "fullstack",
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId":                observerID,
+			"clientSecret":            observerSecret,
+			"redirectUris":            []string{"https://localhost:3000"},
+			"grantTypes":              []string{"client_credentials"},
+			"tokenEndpointAuthMethod": "client_secret_basic",
+		}}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(observerAppID) }()
+
+	issueToken := func() string {
+		issued, err := testutils.RequestToken(clientID, clientSecret, "", "", "client_credentials")
+		s.Require().NoError(err)
+		s.Require().Equal(http.StatusOK, issued.StatusCode, "token request failed: %s", string(issued.Body))
+		return issued.Token.AccessToken
+	}
+	active := func(token string) bool {
+		isActive, err := testutils.IntrospectToken(token, observerID, observerSecret)
+		s.Require().NoError(err)
+		return isActive
+	}
+	token := issueToken()
+	s.Require().True(active(token), "the token should be active before the import")
+
+	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
+	s.Require().NoError(err)
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: exportResp.Resources,
+		Options: agentImportOptions{Upsert: true, Target: "runtime"},
+		Variables: s.extractTemplateVariables(exportResp.Resources, map[string]interface{}{
+			"clientId":     clientID,
+			"clientSecret": clientSecret,
+			"password":     "Rotated-Pass4!" + s.handleSuffix,
+		}),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+
+	s.False(active(token), "a token issued before the password was replaced was still active")
+	// A token's iat has second granularity while the cutoff is sub-second, and the comparison is at or before.
+	time.Sleep(1100 * time.Millisecond)
+	s.True(active(issueToken()), "a token issued after the password was replaced was not active")
+}
+
 // A Data Plane imports what a Control Plane exports: a password named as a secret the Data Plane
 // holds, which the import fills in before the agent service stores it.
 func (s *AgentImportExportSuite) TestImportAgent_ResolvesAPasswordFromTheSecretStore() {

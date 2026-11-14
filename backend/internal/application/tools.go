@@ -113,7 +113,8 @@ application in its project.`,
 
 Behavior:
 - Only an application that authenticates with a client secret has one to regenerate.
-- The old secret stops working at once, and the tokens it issued are revoked.
+- The old secret stops working at once. Where the server revokes tokens, the tokens it issued are revoked too,
+  and the notice says whether they were.
 - The new secret is returned only this once.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Regenerate Application Secret",
@@ -246,8 +247,19 @@ func (t *applicationTools) regenerateApplicationSecret(
 		return nil, nil, fmt.Errorf("failed to regenerate application secret: %s", svcErr.ErrorDescription)
 	}
 
+	var notice string
+	switch {
+	case regenerated.Revoked:
+		notice = "The old secret no longer works, and the tokens it issued are revoked. " + clientSecretNotice
+	case regenerated.RevocationIncomplete:
+		notice = "The old secret no longer works, but revoking the tokens issued while it was replaced failed, so " +
+			"those can stay valid until they expire; regenerating again revokes them. " + clientSecretNotice
+	default:
+		notice = "The old secret no longer works. Tokens it already issued were not revoked and stay valid until " +
+			"they expire. " + clientSecretNotice
+	}
 	return nil, &model.RegenerateClientSecretOutput{ClientSecret: regenerated.ClientSecret,
-		RevocationIncomplete: regenerated.RevocationIncomplete, Notice: clientSecretNotice}, nil
+		RevocationIncomplete: regenerated.RevocationIncomplete, Notice: notice}, nil
 }
 
 // getApplicationTemplates handles the get_application_templates tool call.
