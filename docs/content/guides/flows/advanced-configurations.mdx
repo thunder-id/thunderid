@@ -1454,6 +1454,7 @@ Looks up an existing user in the store by a submitted identifier (email, usernam
 |---|---|---|---|---|
 | `boundToUserType` | Bound to the user type | No | `false` | Accept only a user of the user type the flow resolved earlier, for example with **User Type Resolver**. A user of another type fails with `FET-1054`. If the flow resolved no user type, the execution fails with an error instead of following `onFailure` |
 | `continueOnNoMatch` | Continue when no user matches | No | `false` | When no user matches, follow `onIncomplete` without an error, keeping the submitted identifier for later steps. Without it, the prompt shows the "not found" error and the identifier is cleared |
+| `loginHintAttribute` | Identify from a CIBA login hint, then Login hint attribute | No | - | Applies only to [backchannel authentication (CIBA)](../../protocols/oauth-oidc/backchannel-authentication#configure-how-the-login-hint-identifies-the-user) requests, and other requests ignore it. The user attribute the `login_hint` value is matched against, such as `email` or `username`, or `userID` for `id_token_hint` requests. In a CIBA request, the step ignores its configured inputs, and a lookup with no match fails instead of prompting again. Selecting **Identify from a CIBA login hint** sets it to `username`, and clearing the checkbox unsets it. The checkbox is offered in `identify` mode, but the property applies in every mode |
 
 **Failure conditions:**
 - No user found matching the submitted identifier (routes to **incomplete**: use this path to branch to registration)

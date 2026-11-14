@@ -4485,6 +4485,13 @@ const translations = {
     'core.executions.identifying.continueOnNoMatch.label': 'Continue when no user matches',
     'core.executions.identifying.continueOnNoMatch.hint':
       'Follow the incomplete path without an error when no user matches, keeping the entered value.',
+    'core.executions.identifying.cibaLoginHint.label': 'Identify from a CIBA login hint',
+    'core.executions.identifying.cibaLoginHint.hint':
+      'For backchannel (CIBA) sign-in. The user is matched by the login hint the client sends instead of the step inputs.',
+    'core.executions.identifying.loginHintAttribute.label': 'Login hint attribute',
+    'core.executions.identifying.loginHintAttribute.hint':
+      'The unique user attribute the login hint is matched against, such as username.',
+    'core.executions.identifying.loginHintAttribute.placeholder': 'username',
 
     // Administrative flow pre executor
     'core.executions.preDelete.mode.revokeAll': 'Revoke all grants',

@@ -32,6 +32,11 @@ const ATTRIBUTE_STALE_TIME: number = 5 * 60 * 1000;
 export interface AggregatedUserTypeAttribute extends FlattenedAttribute {
   /** Display names of the user types declaring this attribute. */
   userTypes: string[];
+  /**
+   * Whether every user type declaring this attribute marks it unique. A type that does not can hold
+   * users sharing a value, so a lookup on the attribute is unique only when all of them do.
+   */
+  unique: boolean;
 }
 
 /**
@@ -74,7 +79,7 @@ function aggregateAttributes(results: UseQueryResult<ApiUserType>[]): Aggregated
       continue;
     }
 
-    for (const {attribute, credential} of flattenSchemaAttributes(userType.schema)) {
+    for (const {attribute, credential, unique} of flattenSchemaAttributes(userType.schema)) {
       // User types can disagree on whether an attribute is a credential, and each variant belongs
       // to a different field control, so they are kept as separate suggestions.
       const key = `${credential ? 'credential' : 'standard'}:${attribute}`;
@@ -84,8 +89,9 @@ function aggregateAttributes(results: UseQueryResult<ApiUserType>[]): Aggregated
         if (!existing.userTypes.includes(userType.displayName)) {
           existing.userTypes.push(userType.displayName);
         }
+        existing.unique = existing.unique && unique;
       } else {
-        aggregated.set(key, {attribute, credential, userTypes: [userType.displayName]});
+        aggregated.set(key, {attribute, credential, unique, userTypes: [userType.displayName]});
       }
     }
   }

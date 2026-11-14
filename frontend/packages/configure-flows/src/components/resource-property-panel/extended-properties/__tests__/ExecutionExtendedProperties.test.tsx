@@ -88,6 +88,12 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   useConnectionInstances: () => ({data: [], isLoading: false, isSuccess: true, error: null, refetch: vi.fn()}),
 }));
 
+// Backs the Identify User login hint attribute suggestions.
+vi.mock('@thunderid/configure-user-types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-user-types')>()),
+  useGetUserTypeAttributes: () => ({attributes: [], isLoading: false, error: null, refetch: vi.fn()}),
+}));
+
 // Mock useGetAllGroups + useGetAllRoles, which back the Provisioning group and role pickers.
 vi.mock('../../../../api/useGetAllGroups', () => ({
   default: () => ({

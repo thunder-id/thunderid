@@ -219,6 +219,54 @@ func identifyCheckStateFlowNodes() []map[string]interface{} {
 	}
 }
 
+// identifyLoginHintFlowNodes builds a flow that identifies a user by email, with the CIBA login hint attribute
+// set on the identifying node, and lands on a prompt once the user is identified.
+func identifyLoginHintFlowNodes() []map[string]interface{} {
+	identify := identifyNode("identify", "prompt_identified", "prompt_email")
+	identify["properties"] = map[string]interface{}{"loginHintAttribute": "username"}
+	return []map[string]interface{}{
+		{
+			"id":        "start",
+			"type":      "START",
+			"onSuccess": "prompt_email",
+		},
+		{
+			"id":   "prompt_email",
+			"type": "PROMPT",
+			"prompts": []map[string]interface{}{
+				{
+					"inputs": []map[string]interface{}{
+						{
+							"ref":        "input_email",
+							"identifier": "email",
+							"type":       "TEXT_INPUT",
+							"required":   true,
+						},
+					},
+					"action": map[string]interface{}{
+						"ref":      "action_email",
+						"nextNode": "identify_user",
+					},
+				},
+			},
+		},
+		identify,
+		markerPrompt("prompt_identified", "identified_marker", "auth_assert", nil),
+		{
+			"id":   "auth_assert",
+			"type": "TASK_EXECUTION",
+			"executor": map[string]interface{}{
+				"name": "AuthAssertExecutor",
+			},
+			"onSuccess": "end",
+		},
+		{
+			"id":   "end",
+			"type": "END",
+		},
+	}
+}
+
 type IdentifyModesTestSuite struct {
 	suite.Suite
 	config *common.TestSuiteConfig
@@ -227,6 +275,7 @@ type IdentifyModesTestSuite struct {
 	userTypeID      string
 	resolveAppID    string
 	checkStateAppID string
+	loginHintAppID  string
 }
 
 func TestIdentifyModesTestSuite(t *testing.T) {
@@ -302,10 +351,31 @@ func (ts *IdentifyModesTestSuite) SetupSuite() {
 		AuthFlowID:       checkStateFlowID,
 	})
 	ts.Require().NoError(err, "Failed to create check state mode application")
+
+	loginHintFlowID, err := testutils.CreateFlow(testutils.Flow{
+		Name:     "Identify Login Hint Test Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_identify_login_hint_test",
+		Nodes:    identifyLoginHintFlowNodes(),
+	})
+	ts.Require().NoError(err, "Failed to create login hint flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, loginHintFlowID)
+
+	ts.loginHintAppID, err = testutils.CreateApplication(testutils.Application{
+		Name:             "Identify Login Hint Test Application",
+		Description:      "Application for testing the CIBA login hint attribute outside CIBA",
+		ClientID:         "identify_login_hint_test_client",
+		ClientSecret:     "identify_login_hint_test_secret",
+		RedirectURIs:     []string{"http://localhost:3000/callback"},
+		OUID:             ouID,
+		AllowedUserTypes: []string{identifyTestUserType.Handle},
+		AuthFlowID:       loginHintFlowID,
+	})
+	ts.Require().NoError(err, "Failed to create login hint application")
 }
 
 func (ts *IdentifyModesTestSuite) TearDownSuite() {
-	for _, appID := range []string{ts.resolveAppID, ts.checkStateAppID} {
+	for _, appID := range []string{ts.resolveAppID, ts.checkStateAppID, ts.loginHintAppID} {
 		if appID == "" {
 			continue
 		}
@@ -412,4 +482,18 @@ func (ts *IdentifyModesTestSuite) TestCheckState_ReportsEachMatchState() {
 				"The flow should branch to the prompt for the %s state", tc.name)
 		})
 	}
+}
+
+// The CIBA login hint attribute applies only to CIBA requests. An interactive sign-in through the same flow
+// identifies the user from the step's inputs, and asks for them again when no user matches.
+func (ts *IdentifyModesTestSuite) TestIdentify_LoginHintAttributeIgnoredOutsideCIBA() {
+	step := ts.submitEmail(ts.loginHintAppID, uniqueIdentifyEmail)
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should continue past the identifying node")
+	ts.NotNil(findInput(step.Data.Inputs, "identified_marker"),
+		"The user should be identified from the email input")
+
+	step = ts.submitEmail(ts.loginHintAppID, absentIdentifyEmail)
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "No match should ask again rather than fail the flow")
+	ts.NotNil(findInput(step.Data.Inputs, "email"), "The flow should ask for the email again")
+	ts.Nil(findInput(step.Data.Inputs, "login_hint"), "The flow should not ask for a login hint")
 }
