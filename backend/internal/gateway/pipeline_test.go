@@ -80,7 +80,7 @@ func (s *PipelineTestSuite) TestPipelineFollowsTheConfiguredOrder() {
 func (s *PipelineTestSuite) TestGetPipelineReadsTheRegisteredGateways() {
 	store := &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dev.test", Key: "sealed",
 		IsDefault: true}}}
-	svc := newService(store, newPipeline())
+	svc := newService(store, newPipeline(), discardingBus{})
 
 	p, svcErr := svc.GetPipeline(context.Background())
 

@@ -147,6 +147,44 @@ func (ts *AuditLogTestSuite) TestEveryApplyAndRevertPathRecordsItsOutcome() {
 	}
 }
 
+// A capture that stores a new version writes one line naming the version by its hash; a capture of a
+// configuration a version already holds stores nothing and writes no line. Neither the name nor the note
+// the caller gave the version appears in the line.
+func (ts *AuditLogTestSuite) TestACaptureWritesALineOnlyWhenItStoresAVersion() {
+	// A unit of this run's own makes the configuration one no earlier version holds.
+	ts.createOrganizationUnit("capture")
+	versionName := ts.prefix + "audit-version-name"
+	versionNote := "Audit capture note " + ts.prefix
+	captureBody := ts.jsonBody(map[string]any{"name": versionName, "note": versionNote})
+
+	captured, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, "/configuration-versions",
+		captureBody)
+	ts.Require().Equal(http.StatusCreated, captured.StatusCode, string(body))
+	var version struct {
+		Version string `json:"version"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &version))
+	ts.Require().NotEmpty(version.Version)
+	unchanged := ts.gatewayCall(http.MethodPost, "/configuration-versions", captureBody, http.StatusOK)
+
+	written := ts.linesPerCall(captured, unchanged)
+	ts.Require().Len(written[0], 1, "a capture that stored a version wrote one line")
+	ts.Empty(written[1], "a capture of a configuration already held writes no line")
+	line := written[0][0]
+	versionRef := testutils.AuditRef{Type: "configuration_version", ID: version.Version}
+	ts.Equal(lineKeys, ts.keys(line.Raw))
+	ts.Equal("configuration_version.create", line.Event)
+	ts.Equal("create", line.Action)
+	ts.Equal(versionRef, line.Target)
+	ts.Equal(versionRef, line.Subject)
+	ts.Equal(testutils.AuditRef{Type: "user", ID: ts.adminUserID()}, line.Actor)
+	ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome)
+	ts.Nil(line.Client, "a loopback peer is not recorded")
+	ts.NotContains(line.Raw, versionName, "the name of a version is not recorded")
+	ts.NotContains(line.Raw, versionNote, "the note of a version is not recorded")
+	ts.NotContains(line.Raw, ts.prefix, "nothing of the configuration is recorded")
+}
+
 // registerSelfAsGateway registers this server as a gateway of itself, removed when the test ends, and
 // returns its ID and the certificate it is trusted by.
 func (ts *AuditLogTestSuite) registerSelfAsGateway() (string, string) {
@@ -154,22 +192,24 @@ func (ts *AuditLogTestSuite) registerSelfAsGateway() (string, string) {
 	certificate, err := os.ReadFile(filepath.Join(testutils.GetExtractedProductHome(), "config", "certs",
 		"server.cert"))
 	ts.Require().NoError(err, "the server certificate is what this gateway is trusted by")
-	body, err := json.Marshal(map[string]string{
+	_, gatewayID := ts.registerAuditGateway(map[string]any{
 		"name":          fmt.Sprintf("audit-self-%d", time.Now().UnixNano()),
 		"baseUrl":       testutils.TestServerURL,
 		"key":           auditGatewayKey,
 		"caCertificate": string(certificate),
 	})
-	ts.Require().NoError(err)
-	resp, raw := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, "/gateways", string(body))
+	return gatewayID, string(certificate)
+}
+
+// registerAuditGateway registers a gateway as the admin, removed when the test ends, and returns the
+// response and the gateway's ID.
+func (ts *AuditLogTestSuite) registerAuditGateway(registration map[string]any) (*http.Response, string) {
+	ts.T().Helper()
+	resp, raw := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, "/gateways", ts.jsonBody(registration))
 	ts.Require().Equal(http.StatusCreated, resp.StatusCode, string(raw))
-	var registered struct {
-		ID string `json:"id"`
-	}
-	ts.Require().NoError(json.Unmarshal(raw, &registered))
-	ts.Require().NotEmpty(registered.ID)
-	ts.T().Cleanup(func() { ts.send(http.MethodDelete, "/gateways/"+registered.ID, "") })
-	return registered.ID, string(certificate)
+	gatewayID := ts.idOf(raw)
+	ts.T().Cleanup(func() { ts.send(http.MethodDelete, "/gateways/"+gatewayID, "") })
+	return resp, gatewayID
 }
 
 // captureVersion captures the server's configuration as a version and returns its hash.

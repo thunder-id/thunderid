@@ -19,13 +19,15 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 )
 
 const testAuditAdminID = "admin-1"
 
-// publishedEvent is one audit event the version service published.
+// publishedEvent is one audit event a service published.
 type publishedEvent struct {
 	name    string
 	payload audit.Payload
@@ -87,10 +89,10 @@ func (s *VersionServiceAuditTestSuite) SetupTest() {
 	second.ID, second.Name = scopeTarget, testProdName
 	s.f.gateways.gateways = append(s.f.gateways.gateways, second)
 	s.svc = s.f.svc.(*versionService)
+	s.f.capture(s.T(), "ou-a")
 	var bus eventbus.EventBusInterface
 	bus, s.published = newRecordingBus(s.T())
 	s.svc.bus = bus
-	s.f.capture(s.T(), "ou-a")
 }
 
 func (s *VersionServiceAuditTestSuite) SetupSubTest() {
@@ -103,13 +105,13 @@ func adminContext() context.Context {
 		security.NewSecurityContextForTest(testAuditAdminID, "", "", nil, nil))
 }
 
-// requireOnlyEvent checks that exactly one event was published, named name, for an attempt by the admin
-// on the gateway with gatewayID. An attempt that succeeded names the gateway as subject too; a failed
-// one has no subject. No value of the version or of the gateway is recorded.
-func (s *VersionServiceAuditTestSuite) requireOnlyEvent(name string, action audit.Action, gatewayID string,
-	outcome audit.Outcome) {
+// requireOnlyGatewayEvent checks that exactly one event was published, named name, for an attempt by the
+// admin on the gateway with gatewayID. An attempt that succeeded names the gateway as subject too; a
+// failed one has no subject. Nothing of the registration or the version is recorded: no line of the
+// event carries any of the unrecorded values.
+func requireOnlyGatewayEvent(s *suite.Suite, events []publishedEvent, name string, action audit.Action,
+	gatewayID string, outcome audit.Outcome, unrecorded ...string) {
 	s.T().Helper()
-	events := s.published()
 	s.Require().Len(events, 1)
 	event := events[0]
 	gateway := audit.Ref{Type: audit.TargetTypeGateway, ID: gatewayID}
@@ -118,16 +120,25 @@ func (s *VersionServiceAuditTestSuite) requireOnlyEvent(name string, action audi
 	s.Equal(action, event.payload.Action())
 	s.Equal(outcome, event.payload.Outcome())
 	s.Equal(audit.Actor{Type: audit.ActorTypeUser, ID: testAuditAdminID}, event.payload.Actor())
-	s.Empty(event.payload.Details(), "no part of the version or the gateway is recorded")
+	s.Empty(event.payload.Details(), "no detail of the gateway or the version is recorded")
 	if outcome.Result == audit.ResultFailed {
 		s.Equal(audit.Ref{}, event.payload.Subject(), "a failed attempt may name no gateway")
 	} else {
 		s.Equal(gateway, event.payload.Subject())
 	}
 	recorded := fmt.Sprintf("%+v", event.payload)
-	s.NotContains(recorded, "the-key", "the gateway's key is never recorded")
-	s.NotContains(recorded, "ou-a", "the version's content is never recorded")
-	s.NotContains(recorded, "https://dp.test", "the gateway's address is not recorded")
+	for _, value := range unrecorded {
+		s.NotContains(recorded, value, "a value that must stay out of the audit event was recorded")
+	}
+}
+
+// requireOnlyEvent checks the one event the version service published; no value of the version or of the
+// gateway is recorded.
+func (s *VersionServiceAuditTestSuite) requireOnlyEvent(name string, action audit.Action, gatewayID string,
+	outcome audit.Outcome) {
+	s.T().Helper()
+	requireOnlyGatewayEvent(&s.Suite, s.published(), name, action, gatewayID, outcome,
+		"the-key", "ou-a", "https://dp.test")
 }
 
 func (s *VersionServiceAuditTestSuite) TestAnApplyRecordsItsOutcome() {
@@ -174,8 +185,10 @@ func (s *VersionServiceAuditTestSuite) TestARevertRecordsItsOutcome() {
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			if tc.applied {
-				s.f.capture(s.T(), "ou-b")
-				_, svcErr := s.svc.apply(adminContext(), "gw-1", ApplyRequest{Version: s.f.hash(1)})
+				s.f.exporter.response = exportOf("", "ou-b")
+				_, svcErr := s.svc.capture(adminContext(), CaptureRequest{})
+				s.Require().Nil(svcErr)
+				_, svcErr = s.svc.apply(adminContext(), "gw-1", ApplyRequest{Version: s.f.hash(1)})
 				s.Require().Nil(svcErr)
 				_, svcErr = s.svc.apply(adminContext(), "gw-1", ApplyRequest{Version: s.f.hash(2)})
 				s.Require().Nil(svcErr)
@@ -285,4 +298,129 @@ func (s *VersionServiceAuditTestSuite) TestInitializeRefusesANilEventBus() {
 
 	s.Require().ErrorIs(err, errNilEventBus)
 	s.Nil(service)
+}
+
+// A capture of a changed configuration creates a version, named by its hash.
+func (s *VersionServiceAuditTestSuite) TestACaptureRecordsTheVersionItCreates() {
+	s.f.exporter.response = exportOf("", "ou-b")
+
+	version, svcErr := s.svc.Capture(adminContext(), CaptureRequest{Name: "release-candidate", Note: "ou-b"})
+
+	s.Require().Nil(svcErr)
+	events := s.published()
+	s.Require().Len(events, 1)
+	captured := audit.Ref{Type: audit.TargetTypeConfigurationVersion, ID: version.Hash}
+	s.Equal(audit.EventConfigurationVersionCreate, events[0].name)
+	s.Equal(captured, events[0].payload.Target())
+	s.Equal(captured, events[0].payload.Subject())
+	s.Equal(audit.ActionCreate, events[0].payload.Action())
+	s.Equal(audit.OutcomeSucceeded, events[0].payload.Outcome())
+	s.Equal(audit.Actor{Type: audit.ActorTypeUser, ID: testAuditAdminID}, events[0].payload.Actor())
+	s.Empty(events[0].payload.Details())
+	recorded := fmt.Sprintf("%+v", events[0].payload)
+	s.NotContains(recorded, "release-candidate", "the version's name is not recorded")
+	s.NotContains(recorded, "ou-b", "the configuration is not recorded")
+}
+
+// A capture that matches the version already held creates nothing, so it records nothing.
+func (s *VersionServiceAuditTestSuite) TestACaptureOfAnUnchangedConfigurationPublishesNothing() {
+	version, svcErr := s.svc.Capture(adminContext(), CaptureRequest{})
+
+	s.Require().Nil(svcErr)
+	s.True(version.Unchanged)
+	s.Empty(s.published())
+}
+
+func (s *VersionServiceAuditTestSuite) TestAFailedCaptureIsRecorded() {
+	cases := []struct {
+		name    string
+		arrange func()
+		req     CaptureRequest
+		outcome audit.Outcome
+	}{
+		{
+			name:    "the export fails",
+			arrange: func() { s.f.exporter.err = &tidcommon.InternalServerError },
+			outcome: audit.OutcomeFailed("sse_5000"),
+		},
+		{
+			name: "the configuration holds a secret outside a credential field",
+			arrange: func() {
+				s.f.exporter.response = &export.ExportResponse{Files: []export.ExportFile{
+					{Content: application("app-1", "sec:APP_SECRET", "sec:APP_SECRET")},
+				}}
+			},
+			outcome: audit.OutcomeFailed("gtw_1026"),
+		},
+		{
+			name: "the version store cannot be read",
+			arrange: func() {
+				s.f.exporter.response = exportOf("", "ou-b")
+				s.f.versions.err = errors.New("database is down")
+			},
+			outcome: audit.OutcomeFailed("sse_5000"),
+		},
+		{
+			name: "the store refuses to replace the current version",
+			arrange: func() {
+				s.f.exporter.response = exportOf("", "ou-b")
+				s.f.versions.replaceErr = errors.New("database is down")
+			},
+			req:     CaptureRequest{Current: true},
+			outcome: audit.OutcomeFailed("sse_5000"),
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			tc.arrange()
+
+			_, svcErr := s.svc.Capture(adminContext(), tc.req)
+
+			s.Require().NotNil(svcErr)
+			events := s.published()
+			s.Require().Len(events, 1)
+			s.Equal(audit.EventConfigurationVersionCreate, events[0].name)
+			s.Equal(audit.Ref{Type: audit.TargetTypeConfigurationVersion}, events[0].payload.Target())
+			s.Equal(audit.Ref{}, events[0].payload.Subject())
+			s.Equal(audit.ActionCreate, events[0].payload.Action())
+			s.Equal(tc.outcome, events[0].payload.Outcome())
+			s.Empty(events[0].payload.Details())
+		})
+	}
+}
+
+// A capture as the current version replaces the one held in place, so the event names the version the
+// capture now holds, not the one it replaced.
+func (s *VersionServiceAuditTestSuite) TestACaptureThatReplacesTheCurrentVersionRecordsTheNewOne() {
+	s.f.exporter.response = exportOf("", "ou-b")
+	_, svcErr := s.svc.capture(adminContext(), CaptureRequest{Current: true})
+	s.Require().Nil(svcErr)
+	replaced := s.f.hash(2)
+	s.f.exporter.response = exportOf("", "ou-c")
+
+	version, svcErr := s.svc.Capture(adminContext(), CaptureRequest{Current: true})
+
+	s.Require().Nil(svcErr)
+	s.Require().Len(s.f.versions.versions, 2, "the current version was not replaced in place")
+	s.NotEqual(replaced, version.Hash)
+	events := s.published()
+	s.Require().Len(events, 1)
+	captured := audit.Ref{Type: audit.TargetTypeConfigurationVersion, ID: version.Hash}
+	s.Equal(audit.EventConfigurationVersionCreate, events[0].name)
+	s.Equal(captured, events[0].payload.Target())
+	s.Equal(captured, events[0].payload.Subject())
+	s.Equal(audit.OutcomeSucceeded, events[0].payload.Outcome())
+	s.NotContains(fmt.Sprintf("%+v", events[0].payload), replaced, "the replaced version is not recorded")
+}
+
+// The capture after each change is not an administrator's request, so it publishes nothing of its own,
+// even when it creates a version.
+func (s *VersionServiceAuditTestSuite) TestTheCaptureAfterAChangePublishesNothing() {
+	s.f.exporter.response = exportOf("", "ou-b")
+	changes := NewChangeCapture()
+	changes.bind(s.svc)
+
+	s.Require().NoError(changes.capture(adminContext()))
+
+	s.Empty(s.published())
 }
