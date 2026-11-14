@@ -1436,6 +1436,50 @@ func (_c *RoleServiceInterfaceMock_GetUserRoles_Call) RunAndReturn(run func(ctx 
 	return _c
 }
 
+// IsDeclarativeOnly provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) IsDeclarativeOnly() bool {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsDeclarativeOnly")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func() bool); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// RoleServiceInterfaceMock_IsDeclarativeOnly_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsDeclarativeOnly'
+type RoleServiceInterfaceMock_IsDeclarativeOnly_Call struct {
+	*mock.Call
+}
+
+// IsDeclarativeOnly is a helper method to define mock.On call
+func (_e *RoleServiceInterfaceMock_Expecter) IsDeclarativeOnly() *RoleServiceInterfaceMock_IsDeclarativeOnly_Call {
+	return &RoleServiceInterfaceMock_IsDeclarativeOnly_Call{Call: _e.mock.On("IsDeclarativeOnly")}
+}
+
+func (_c *RoleServiceInterfaceMock_IsDeclarativeOnly_Call) Run(run func()) *RoleServiceInterfaceMock_IsDeclarativeOnly_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_IsDeclarativeOnly_Call) Return(b bool) *RoleServiceInterfaceMock_IsDeclarativeOnly_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_IsDeclarativeOnly_Call) RunAndReturn(run func() bool) *RoleServiceInterfaceMock_IsDeclarativeOnly_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsRoleDeclarative provides a mock function for the type RoleServiceInterfaceMock
 func (_mock *RoleServiceInterfaceMock) IsRoleDeclarative(ctx context.Context, id string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)

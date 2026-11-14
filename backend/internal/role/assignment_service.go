@@ -57,6 +57,13 @@ type RoleAssignmentServiceInterface interface {
 	// ListAssignableRoles lists the roles the caller may assign in the organization unit: the ones it owns
 	// and the ones shared with it whose assignments it may change, as far as the caller may grant them.
 	ListAssignableRoles(ctx context.Context, ouID string) ([]Role, *tidcommon.ServiceError)
+	// AddAssigneeToExistingRoles assigns the roles that exist and can be assigned in the assignee's
+	// organization unit, skipping the rest.
+	AddAssigneeToExistingRoles(ctx context.Context, assignment RoleAssignment,
+		roleIDs []string) *tidcommon.ServiceError
+	// FilterRolesAssignableInOU returns the roles in roleIDs that still exist and can be assigned in the
+	// organization unit.
+	FilterRolesAssignableInOU(ctx context.Context, ouID string, roleIDs []string) ([]string, *tidcommon.ServiceError)
 	// AddAssigneesToRoles assigns each assignee to the roles in the organization unit it names, or in
 	// the one owning it when it names none. All are added or none is.
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
@@ -667,6 +674,61 @@ func (as *roleAssignmentService) addInEachOU(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// AddAssigneeToExistingRoles assigns assignment the roles in roleIDs that still exist and can be assigned in
+// its organization unit, skipping the rest. Nothing is written when roles are declarative-only, since the
+// declarative store holds no writable assignments.
+func (as *roleAssignmentService) AddAssigneeToExistingRoles(
+	ctx context.Context, assignment RoleAssignment, roleIDs []string,
+) *tidcommon.ServiceError {
+	if len(roleIDs) == 0 || isDeclarativeModeEnabled() {
+		return nil
+	}
+	ouIDs, _, svcErr := as.assignmentsByOU(ctx, []RoleAssignment{assignment})
+	if svcErr != nil {
+		return svcErr
+	}
+	assignable, svcErr := as.FilterRolesAssignableInOU(ctx, ouIDs[0], roleIDs)
+	if svcErr != nil {
+		return svcErr
+	}
+	if len(assignable) == 0 {
+		return nil
+	}
+	// The unit is already resolved, so the write doesn't look the assignee up again.
+	assignment.OUID = ouIDs[0]
+	return as.AddAssigneesToRoles(ctx, []RoleAssignment{assignment}, assignable)
+}
+
+// FilterRolesAssignableInOU returns the roles in roleIDs that still exist and can be assigned in the
+// organization unit, skipping the rest.
+func (as *roleAssignmentService) FilterRolesAssignableInOU(
+	ctx context.Context, ouID string, roleIDs []string,
+) ([]string, *tidcommon.ServiceError) {
+	assignable := make([]string, 0, len(roleIDs))
+	for _, roleID := range roleIDs {
+		role, err := as.roleStore.GetRole(ctx, roleID)
+		if errors.Is(err, ErrRoleNotFound) {
+			continue
+		}
+		if err != nil {
+			as.logger.Error(ctx, "Failed to retrieve role", log.String("id", roleID), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		if role.OUID != ouID {
+			if svcErr := as.requireAssignableInOU(ctx, roleID, ouID, true); svcErr != nil {
+				if svcErr.Code != ErrorRoleNotSharedToOU.Code && svcErr.Code != ErrorSharedRoleFieldNotEditable.Code {
+					return nil, svcErr
+				}
+				as.logger.Debug(ctx, "Skipping role not assignable in the organization unit",
+					log.String("id", roleID), log.String("ouID", ouID))
+				continue
+			}
+		}
+		assignable = append(assignable, roleID)
+	}
+	return assignable, nil
 }
 
 // prepareAssignments validates and normalizes assignments before a mutation, placing each in ouID,

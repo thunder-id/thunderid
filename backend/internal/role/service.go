@@ -70,6 +70,9 @@ type RoleServiceInterface interface {
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	// IsDeclarativeOnly reports whether roles are kept only in declarative files, which hold no
+	// writable assignments.
+	IsDeclarativeOnly() bool
 	// GetAuthorizedPermissionsByResourceServer counts only the assignments made in assignmentOUID
 	// when one is given, and assignments made anywhere otherwise.
 	GetAuthorizedPermissionsByResourceServer(
@@ -1368,6 +1371,12 @@ func (rs *roleService) IsRoleDeclarative(ctx context.Context, id string) (bool, 
 	}
 
 	return isDeclarative, nil
+}
+
+// IsDeclarativeOnly reports whether roles are kept only in declarative files, which hold no writable
+// assignments.
+func (rs *roleService) IsDeclarativeOnly() bool {
+	return isDeclarativeModeEnabled()
 }
 
 // ResolveRoleOUHandle resolves ou_handle to an OU ID on the given role in-place.

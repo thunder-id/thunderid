@@ -2553,6 +2553,28 @@ const translations = {
     'attributeMapping.linking.placeholder': 'e.g. email',
     'attributeMapping.linking.addAttribute': 'Add attribute',
     'attributeMapping.linking.and': 'AND',
+    // Section 4: sync
+    'attributeMapping.sync.title': 'Sync',
+    'attributeMapping.sync.description':
+      'How sign-ins through this connection keep the account in line with the provider.',
+    'attributeMapping.sync.attributes.label': 'Attributes sync',
+    'attributeMapping.sync.attributes.hint.override_received':
+      'Each sign-in updates the attributes in the attribute mappings when the provider sends them. Other attributes are kept.',
+    'attributeMapping.sync.attributes.hint.no_sync':
+      "The provider's attributes are stored when a sign-in creates the account, and are not updated after.",
+    'attributeMapping.sync.attributes.hint.session_only':
+      "The account stores only the required attributes and the values the user enters. The provider's other attributes apply to the session.",
+    'attributeMapping.sync.groupsAndRoles.label': 'Groups and roles sync',
+    'attributeMapping.sync.groupsAndRoles.hint.no_sync':
+      'The groups and roles the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after.',
+    'attributeMapping.sync.groupsAndRoles.hint.override_all':
+      "Each sign-in matches the account's groups and roles to the authorization mapping, removing ones assigned locally.",
+    'attributeMapping.sync.groupsAndRoles.hint.session_only':
+      'The groups and roles the authorization mapping resolves apply to the session and are not assigned to the account.',
+    'attributeMapping.sync.mode.no_sync': 'No sync',
+    'attributeMapping.sync.mode.session_only': 'Session only',
+    'attributeMapping.sync.mode.override_received': 'Override received',
+    'attributeMapping.sync.mode.override_all': 'Override all',
 
     // Authorization mapping (federated role, group, and permission assignment)
     'authorizationMapping.title': 'Authorization mapping',
@@ -4685,12 +4707,8 @@ const translations = {
     'core.executions.provisioning.assignRole.noOptions': 'No roles found',
     'core.executions.provisioning.assignRole.noneExist': 'No roles exist. Create one, then select it here.',
     'core.executions.provisioning.assignRole.loadError': 'Failed to load roles.',
-    'core.executions.provisioning.seedGroupsFromMapping.label': 'Seed groups from authorization mapping',
-    'core.executions.provisioning.seedGroupsFromMapping.hint':
-      "Assign groups the connection's authorization mapping resolved for this subject.",
-    'core.executions.provisioning.seedRolesFromMapping.label': 'Seed roles from authorization mapping',
-    'core.executions.provisioning.seedRolesFromMapping.hint':
-      "Assign roles the connection's authorization mapping resolved for this subject.",
+    'core.executions.provisioning.federatedOverrideWarning':
+      "With Override all sync, a federated sign-in removes groups and roles assigned here that the connection's authorization mapping doesn't resolve.",
 
     // Session sign out executor
     'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',
