@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.6
 
 ## Summary
 
@@ -529,6 +529,7 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 - **AC11.7:** Given more candidates than one page, when an administrator continues through a resource picker, then additional pages load through the shared SDK loader without changing the selected value.
 
 - **AC11.8:** Given a flow document with neither `ouId` nor `ouHandle`, when it is imported, loaded from a declarative or bootstrap file, or created through `POST /flows`, then it is refused, and given a flow that already has an owner, when an update names a different organization unit, then the update is refused.
+- **AC11.9:** Given a flow author adds a Date Time Input field, when the flow is saved, previewed, or deployed, then the field remains an input and uses the shared date-time picker at runtime.
 
 ## Change log
 
@@ -540,3 +541,4 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 | 0.3 | 2026-10-29 | Describe the complete administration onboarding design: management-provider creation, runtime category resolution, schema-based agent names, delegation and grant policy, reusable SDK and Console selectors, and the three onboarding templates. |
 | 0.4 | 2026-11-05 | The shipped flow no longer restricts `AgentTypeResolver` to the `default` agent type, since a deployment can hold one agent type per organization unit, and the agent service rejects an agent outside its agent type's organization unit tree (#6020). |
 | 0.5 | 2026-11-08 | A flow whose `AgentTypeResolver` lists `*` in `allowedAgentTypes` is rejected when it is saved (`FLM-1023`): the node reads entries as handles, and an empty list already allows every agent type. |
+| 0.6 | 2026-11-10 | Add Date Time Input to supported flow inputs, including save/load, backend validation, preview, and deployed rendering. |

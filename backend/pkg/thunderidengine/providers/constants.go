@@ -618,6 +618,8 @@ const (
 	InputTypeNumber = "NUMBER_INPUT"
 	// InputTypeDate represents a date input type.
 	InputTypeDate = "DATE_INPUT"
+	// InputTypeDateTime represents a date and time input type.
+	InputTypeDateTime = "DATE_TIME_INPUT"
 	// InputTypeBoolean represents a boolean (checkbox) input type.
 	InputTypeBoolean = "BOOLEAN_INPUT"
 	// InputTypeConnectionSelect is the type of a flow variable whose value is the identifier of a connection. It is
@@ -648,6 +650,7 @@ var ValidInputTypes = map[string]bool{
 	InputTypeRoleSelect:     true,
 	InputTypeNumber:         true,
 	InputTypeDate:           true,
+	InputTypeDateTime:       true,
 	InputTypeBoolean:        true,
 }
 

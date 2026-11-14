@@ -58,6 +58,8 @@ Select a template, or customize an existing agent onboarding Administration flow
 
 For custom attributes, update the [Agent Schema](../agent-schema) first. Add the fields to the flow's attribute form, or connect Provisioning's incomplete output to a dynamic input prompt that submits back to Provisioning. The executor requests missing required attributes and, with `includeOptional: true`, optional attributes.
 
+To ask for the agent's end date during onboarding, add a field for `validUntil` to **Agent Details**. See [Set a lifespan during onboarding](../agent-lifespan#set-a-lifespan-during-onboarding).
+
 For node properties and connections, see [Build an agent onboarding flow](../../flows/build-a-flow#build-an-agent-onboarding-flow).
 
 ### Configure onboarding for agents that act on behalf of users
@@ -293,7 +295,7 @@ The custom attributes an agent carries come from its agent type's schema. Each a
 
 ## Set a lifespan
 
-Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab or through the API. Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
+Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab, through the API, or in a [customized onboarding flow](../agent-lifespan#set-a-lifespan-during-onboarding). Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
 
 ## Suspend or unlock an agent
 

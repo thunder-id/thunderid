@@ -262,7 +262,7 @@ The builder provides one **Provisioning** step for users and agents. The precedi
 | Agent Type | Set `allowedAgentTypes` to `["default"]` for the built-in agent type. The resolver supplies `categoryName: agent` and `categoryType` for uniqueness validation and provisioning. |
 | Resolve OU | Resolve the target organization unit after the agent type. |
 | Owner | Offer a user selection. The Console preselects the signed-in administrator, and a submission without an owner also resolves to the authenticated caller. |
-| Agent Details | Collect schema attributes, including `name`. Add fields for custom attributes or use a dynamic input prompt on Provisioning's incomplete path. |
+| Agent Details | Collect schema attributes, including `name`. Add fields for custom attributes or use a dynamic input prompt on Provisioning's incomplete path. To collect the agent's lifespan, add a **Date Time Input** bound to `validUntil`. See [Set a lifespan during onboarding](../../agents/agent-lifespan#set-a-lifespan-during-onboarding). |
 | Validate Attribute Uniqueness | Use the category and type supplied by the **Agent Type** step. Route incomplete results back to **Agent Details**. |
 | Delegation settings | Add **Delegated Agent Details** to collect `redirectUris`, `authFlowId`, and `allowedUserTypes`, or **Choose Agent Mode** to collect these fields and `delegated`. Connect the widget after a successful uniqueness check and before Provisioning. |
 | Provisioning | Set `includeOptional: true`. Enable **Delegated mode** (`delegated: true`) for an OBO-only flow. With **Choose Agent Mode**, the collected `delegated` value overrides the node's fallback. |

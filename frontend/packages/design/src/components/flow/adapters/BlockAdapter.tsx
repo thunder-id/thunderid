@@ -7,6 +7,7 @@ import {Box, Button} from '@wso2/oxygen-ui';
 import {Fragment, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxAdapter from './CheckboxAdapter';
+import DateTimeInputAdapter from './DateTimeInputAdapter';
 import DividerAdapter from './DividerAdapter';
 import OtpInputAdapter from './OtpInputAdapter';
 import PasswordInputAdapter from './PasswordInputAdapter';
@@ -183,6 +184,10 @@ function renderFormSubComponent(
     sub.type === 'NUMBER_INPUT'
   ) {
     return <TextInputAdapter key={sub.id ?? compIndex} {...fieldProps} />;
+  }
+
+  if (sub.type === 'DATE_TIME_INPUT') {
+    return <DateTimeInputAdapter key={sub.id ?? compIndex} {...fieldProps} />;
   }
 
   if (
