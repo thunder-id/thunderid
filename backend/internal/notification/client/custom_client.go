@@ -92,10 +92,19 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 		}
 	}
 	client.authenticator = authenticator
+	// The custom notification webhook is admin-configured and may target an
+	// internal host, so it keeps no SSRF dial guard either way. With
+	// authentication enabled the client never follows redirects, so the
+	// authenticator's headers are not forwarded to a redirect target.
 	if config.Enabled() {
-		client.httpClient = syshttp.NewHTTPClientWithoutRedirects(httpClientTimeout, false)
+		client.httpClient = syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+			Timeout:          httpClientTimeout,
+			DisableRedirects: true,
+		})
 	} else {
-		client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+		client.httpClient = syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+			Timeout: httpClientTimeout,
+		})
 	}
 
 	return client, nil
