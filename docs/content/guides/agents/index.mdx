@@ -6,7 +6,7 @@ persona: iam
 description: Agents in {{ProductName}} are first-class machine identities. Onboard an agent, give it a schema and credentials, scope its access, and issue tokens for how it acts.
 ---
 
-import {Bot, KeyRound, ShieldCheck, UserCheck} from '@wso2/oxygen-ui-icons-react';
+import {Bot, CircleUser, KeyRound, ShieldCheck, UserCheck} from '@wso2/oxygen-ui-icons-react';
 import {AgentDocCards, AgentDocCard} from '@site/src/components/AgentDocCards';
 
 # Agents
@@ -42,6 +42,13 @@ Assign roles and groups so the agent reaches only the resources its work needs.
 Request a token for the agent's own work, for acting on behalf of a user, or for delegating a task to another agent.
 
 [Agent Token](authentication/agent-own-token) · [On behalf of users](authentication/on-behalf-of-user) · [Agent-to-agent delegation](authentication/agent-to-agent)
+
+</AgentDocCard>
+<AgentDocCard title="Let users bring their own" icon={<CircleUser size={22} />}>
+
+Let one of your users register a personal agent that acts only for them, and manage it themselves.
+
+[Personal Agents](personal-agents)
 
 </AgentDocCard>
 </AgentDocCards>

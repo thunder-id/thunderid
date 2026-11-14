@@ -1,0 +1,426 @@
+---
+title: Register Personal Agents
+docType: guide
+sidebar_position: 10
+persona: iam
+description: Register personal agents in {{ProductName}} through a registration flow started by the user or the agent, or register one for a user as an administrator.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Register Personal Agents
+
+A personal agent is registered through a registration flow of one of your applications. The flow collects the agent's details, signs the user in, and creates the agent with that user as its owner. Either side can start it: the user from your application, or the agent itself through the Flow Execution API. The user signs in either way.
+
+You design the flow, so it can sign the user in with any authentication method your organization uses. The example below is for a bank whose customers register their own agents: the agent starts the registration, and the flow signs the customer in with a magic link emailed to them. An administrator can also register a personal agent for a user, through the agent management API or a declarative file.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../../getting-started/get-thunderid).
+- An application registered in <ProductName />. Personal agents are registered through this application's registration flow. See [Manage Applications](../../../applications/manage-applications).
+
+The magic link example also needs:
+
+- An email provider, which sends the user the link. See [Configure an Email Provider](../../../notifications/email-providers).
+- Users with an email address, since the link goes to the owner's email.
+
+## How registration works
+
+A personal agent is registered through the application's `REGISTRATION` flow.
+
+- **Who starts it.** The user can start it from your application, such as a customer portal they already sign in to. The agent can start it through the Flow Execution API, with the application's `applicationId` and `flowType: REGISTRATION`. Registration flows need no Flow Secret or administrative permission. See the [Flow Execution API Reference](../../../../apis#tag/flow-execution).
+- **How the user signs in.** Add a sign-in step that calls any authentication flow you choose, or let your application send the token of a user already signed in to it. See [Decide who becomes the owner](#decide-who-becomes-the-owner).
+- **When the agent starts it.** Use a sign-in that moves the flow to the user, such as a link emailed to them that continues the flow in their browser.
+- **What it collects.** You decide which of the agent's details the flow asks for. It must collect at least one redirect URI (`redirectUris`), which the authorization code grant needs.
+- **What it creates.** A registration flow creates only personal agents, so it never creates an agent that acts on its own authority.
+
+### Decide who becomes the owner
+
+<ProductName /> needs to know the owner by the time the flow creates the agent, and takes them from one of two places, in this order:
+
+1. **A user who signed in during the flow.** When the flow has a sign-in step, the user who signs in there becomes the owner, whoever runs the remaining steps. Add the step before the agent is created, as a `CALL` node to the application's sign-in flow. The step works whoever starts the flow, and it is the only option when the agent starts it, since an agent has no user token to send.
+2. **The caller's access token.** When the flow has no sign-in step, the caller of the request that creates the agent becomes the owner. Your application sends the signed-in user's access token in the `Authorization` header of each flow request. <ProductName /> accepts the token only when it is the user's own token, issued to the application whose registration flow is running. A delegated token, such as an agent's token for its owner, does not count.
+
+If neither supplies a user, the flow fails and creates nothing.
+
+## Example: an agent registers itself
+
+In the bank's registration, the agent starts the flow and the customer finishes it in <ProductName />'s sign-in pages:
+
+1. The agent starts the application's `REGISTRATION` flow and submits its name, redirect URI, and JWKS URI.
+2. The agent submits the customer's email address. The flow emails the customer a one-time magic link, and the agent's part ends there.
+3. The customer opens the link. <ProductName />'s sign-in pages verify it, sign the customer in, and continue the same flow in the customer's browser.
+4. The customer approves the agent. <ProductName /> creates it with the customer as its owner and shows its client ID.
+5. The customer passes the client ID to the agent, which then gets tokens as described in [Personal Agent Sign-In and Tokens](../sign-in-and-tokens).
+
+The agent never sees the link or holds a token of the customer's. Registering it grants it nothing: the first time it needs access, the customer signs in again and approves what it asks for.
+
+Customers can also start the same registration from your application. The application runs the flow and renders its prompts, and the customer enters the agent's details. Keep the magic link, or use your usual sign-in flow in place of the approval flow, both as the application's sign-in flow and in the registration flow's `CALL` node.
+
+### Build the approval flow
+
+In this scenario, the approval flow signs the customer in from an emailed link. It is an `AUTHENTICATION` flow that the registration flow calls. It asks for the owner's email, generates a magic link for it, emails the link, and waits for the link's token:
+
+```json
+{
+  "name": "Personal Agent Registration Approval",
+  "handle": "personal-agent-registration-approval-flow",
+  "flowType": "AUTHENTICATION",
+  "ouId": "<organization-unit-id>",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "prompt_email" },
+    {
+      "id": "prompt_email",
+      "type": "PROMPT",
+      "prompts": [
+        {
+          "inputs": [{ "ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true }],
+          "action": { "ref": "action_send_link", "nextNode": "generate_link" }
+        }
+      ]
+    },
+    {
+      "id": "generate_link",
+      "type": "TASK_EXECUTION",
+      "properties": { "tokenExpiry": 300 },
+      "executor": {
+        "name": "MagicLinkExecutor",
+        "mode": "generate",
+        "inputs": [{ "identifier": "email", "type": "EMAIL_INPUT", "required": true }]
+      },
+      "onSuccess": "send_link"
+    },
+    {
+      "id": "send_link",
+      "type": "TASK_EXECUTION",
+      "properties": { "emailTemplate": "magic-link", "senderId": "<email-provider-id>" },
+      "executor": {
+        "name": "EmailExecutor",
+        "mode": "send",
+        "inputs": [{ "identifier": "email", "type": "EMAIL_INPUT", "required": true }]
+      },
+      "onSuccess": "verify_link"
+    },
+    {
+      "id": "verify_link",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "MagicLinkExecutor", "mode": "verify" },
+      "onSuccess": "auth_assert"
+    },
+    {
+      "id": "auth_assert",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "AuthAssertExecutor" },
+      "onSuccess": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+Replace `<organization-unit-id>` with the ID of the organization unit the flow belongs to, and `<email-provider-id>` with the ID of your email provider. Create the flow with the [Flow Management API](../../../../apis#tag/flow-management) and note its ID.
+
+- **`generate_link`** creates a link that lasts 5 minutes (`tokenExpiry`, in seconds). Without `magicLinkURL`, the link opens <ProductName />'s sign-in pages, which verify it and continue the flow there.
+- **`send_link`** emails the link to the owner.
+- **`verify_link`** waits for the link's token, which the sign-in pages submit when the owner opens the link, and signs in the user the link was sent to.
+
+An email address that belongs to no user gets no link, so the agent cannot tell whether an address belongs to a user. See [Magic Link](../../../flows/advanced-configurations#magic-link) for different modes of the executor.
+
+### Build the registration flow
+
+The registration flow collects the agent's details, calls the approval flow, asks the owner to approve, and creates the agent:
+
+```json
+{
+  "name": "Personal Agent Self Registration",
+  "handle": "personal-agent-self-registration-flow",
+  "flowType": "REGISTRATION",
+  "ouId": "<organization-unit-id>",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "prompt_agent_details" },
+    {
+      "id": "prompt_agent_details",
+      "type": "PROMPT",
+      "prompts": [
+        {
+          "inputs": [
+            { "ref": "input_name", "identifier": "name", "type": "TEXT_INPUT", "required": true },
+            { "ref": "input_redirect_uris", "identifier": "redirectUris", "type": "TEXT_INPUT", "required": true },
+            { "ref": "input_jwks_uri", "identifier": "jwksUri", "type": "TEXT_INPUT", "required": true }
+          ],
+          "action": { "ref": "action_agent_details", "nextNode": "call_owner_approval" }
+        }
+      ]
+    },
+    {
+      "id": "call_owner_approval",
+      "type": "CALL",
+      "flow": { "ref": "<approval-flow-id>" },
+      "onSuccess": "prompt_approve"
+    },
+    {
+      "id": "prompt_approve",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "type": "TEXT", "id": "text_approve_heading", "label": "Approve your agent", "variant": "HEADING_1" },
+          {
+            "type": "TEXT",
+            "id": "text_approve_message",
+            "label": "An agent asked to be registered as yours. Approve only if you asked it to.",
+            "variant": "BODY_1"
+          },
+          {
+            "type": "BLOCK",
+            "id": "block_approve",
+            "components": [
+              { "type": "ACTION", "id": "action_approve", "label": "Approve", "variant": "PRIMARY", "eventType": "SUBMIT" },
+              { "type": "ACTION", "id": "action_decline", "label": "Decline", "variant": "OUTLINED", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_approve", "nextNode": "user_type_resolution" } },
+        { "inputs": [], "action": { "ref": "action_decline", "nextNode": "registration_declined" } }
+      ]
+    },
+    {
+      "id": "user_type_resolution",
+      "type": "TASK_EXECUTION",
+      "condition": { "key": "never", "value": "always", "onSkip": "agent_type_resolution" },
+      "executor": { "name": "UserTypeResolver" },
+      "onSuccess": "agent_type_resolution"
+    },
+    {
+      "id": "agent_type_resolution",
+      "type": "TASK_EXECUTION",
+      "properties": { "allowedAgentTypes": ["default"] },
+      "executor": { "name": "AgentTypeResolver" },
+      "onSuccess": "agent_provisioning"
+    },
+    {
+      "id": "agent_provisioning",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "ProvisioningExecutor",
+        "inputs": [
+          { "identifier": "kind", "type": "TEXT_INPUT", "required": true, "defaultValue": "personal-assistant", "constant": true },
+          {
+            "identifier": "authFlowHandle",
+            "type": "TEXT_INPUT",
+            "required": true,
+            "defaultValue": "default-personal-agent-auth-flow",
+            "constant": true
+          },
+          {
+            "identifier": "alwaysPromptConsent",
+            "type": "TEXT_INPUT",
+            "required": true,
+            "defaultValue": "true",
+            "constant": true
+          }
+        ]
+      },
+      "onSuccess": "agent_registered",
+      "onIncomplete": "fix_agent_details",
+      "onFailure": "fix_agent_details"
+    },
+    {
+      "id": "fix_agent_details",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "type": "TEXT", "id": "text_fix_heading", "label": "Check your agent's details", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_fix",
+            "components": [
+              { "type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_agent_inputs" },
+              { "type": "TEXT_INPUT", "id": "input_fix_name", "ref": "name", "label": "Name", "required": true },
+              { "type": "ACTION", "id": "action_fix", "label": "Register agent", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [{ "ref": "input_fix_name", "identifier": "name", "type": "TEXT_INPUT", "required": true }],
+          "action": { "ref": "action_fix", "nextNode": "agent_provisioning" }
+        }
+      ]
+    },
+    {
+      "id": "agent_registered",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "type": "TEXT", "id": "text_registered_heading", "label": "Your agent is registered", "variant": "HEADING_1" },
+          {
+            "type": "TEXT",
+            "id": "text_registered_message",
+            "label": "Copy the agent identifier and give it to your agent.",
+            "variant": "BODY_1"
+          },
+          { "type": "COPYABLE_TEXT", "id": "copy_client_id", "label": "Agent identifier", "source": "clientId" }
+        ]
+      },
+      "message": "Agent registered",
+      "next": "end"
+    },
+    {
+      "id": "registration_declined",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "type": "TEXT", "id": "text_declined_heading", "label": "Registration declined", "variant": "HEADING_1" }
+        ]
+      },
+      "message": "Registration declined",
+      "next": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+Replace `<organization-unit-id>` with the ID of the organization unit the flow belongs to, and `<approval-flow-id>` with the ID of the approval flow. Create the flow with the Flow Management API. Then, on the application, select the approval flow as its sign-in flow and this flow as its registration flow, and turn registration on. See [Configure Sign-In, Registration, Recovery, and Device Authorization Flows](../../../applications/application-settings#configure-sign-in-registration-recovery-and-device-authorization-flows).
+
+The `agent_provisioning` node creates the agent. See [Fixed values](#fixed-values) for its constant inputs. A few other nodes need care when you adapt this flow:
+
+- **`prompt_agent_details`** takes the details the agent submits through the Flow Execution API. Only the owner-facing prompts carry `meta`, since the agent reads the returned inputs instead of a rendered page.
+- **`call_owner_approval`** runs the approval flow. From here on, the flow runs in the owner's browser.
+- **`fix_agent_details`** lets the owner correct the details when the agent cannot be created with them, such as a name another agent already has.
+
+### Run the registration as the agent
+
+The agent starts the flow with the application's ID and sets `verbose` to `true`, although it reads only the returned inputs. The customer's sign-in pages continue the same flow and draw each prompt from its `meta` components, which the flow returns only when it was started with `verbose` set to `true`.
+
+```bash
+curl -X POST https://localhost:8090/flow/execute \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "applicationId": "<application-id>",
+    "flowType": "REGISTRATION",
+    "verbose": true
+  }'
+```
+
+The response asks for the agent's details. The agent answers each step with the `executionId` and `challengeToken` from the previous response:
+
+```bash
+curl -X POST https://localhost:8090/flow/execute \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "executionId": "<execution-id>",
+    "challengeToken": "<challenge-token>",
+    "action": "action_agent_details",
+    "inputs": {
+      "name": "Spending Assistant",
+      "redirectUris": "https://assistant.example.com/callback",
+      "jwksUri": "https://assistant.example.com/.well-known/jwks.json"
+    }
+  }'
+```
+
+The next step asks for `email`, and the agent submits the customer's email address with `action_send_link` the same way. When the response asks for `token`, the link is on its way to the customer and the agent's part is done.
+
+## Fixed values
+
+Some values belong to your organization, not to whoever runs the flow. Set them on the `ProvisioningExecutor` node as constant inputs, as in the example. <ProductName /> applies a constant each time the node runs and ignores a submitted value for it. See [Default and Constant Input Values](../../../flows/advanced-configurations#default-and-constant-input-values).
+
+| Input | Value | Why fix it |
+|---|---|---|
+| `kind` | `personal-assistant` | A registration flow creates only personal agents. |
+| `authFlowHandle` | The handle of an authentication flow | Sets the sign-in flow the agent's authorizations run. Without it or `authFlowId`, the agent gets the shipped `default-personal-agent-auth-flow`. See [The sign-in flow](../sign-in-and-tokens#the-sign-in-flow). |
+| `authFlowId` | The ID of an authentication flow | Sets the sign-in flow by its ID instead of its handle. When both are given, `authFlowId` is used. |
+| `alwaysPromptConsent` | `true` or `false` | Whether the owner is asked for consent on every authorization. A personal agent gets `true` when no value is given. |
+
+A constant holds for every agent the flow registers, and a change to it applies only to agents registered afterward.
+
+## Choose the agent's credential
+
+The agent's credential follows from what the flow collects.
+
+| The flow collects | The agent authenticates with |
+|---|---|
+| A `jwksUri`, a public HTTPS URL that serves the agent's keys, or a `publicKey`, an inline JWKS document | `private_key_jwt`, verified against the registered keys (recommended) |
+| Neither | `client_secret_basic`, with a client secret <ProductName /> creates |
+
+When both `jwksUri` and `publicKey` are collected, the JWKS URI is used.
+
+Prefer a key pair, as the example does by requiring `jwksUri`. The agent generates the key pair itself and registers only the public key, so no secret is created, shown on a screen, or passed through the flow. A client secret is returned once, in the response to whoever runs the step that creates the agent, which here is the owner's browser. See [Use a private key JWT](../../authentication#use-a-private-key-jwt) for how the agent signs its assertion.
+
+## What the agent gets
+
+Every personal agent gets the same setup, whichever way it is registered:
+
+- **Grant types.** The authorization code grant, with response type `code` and PKCE required. A personal agent may hold only the authorization code, CIBA (`urn:openid:params:grant-type:ciba`), and refresh token grants. The owner adds CIBA and refresh tokens later. See [Owner Self-Service](../owner-self-service).
+- **Sign-in flow.** The flow's `authFlowHandle` or `authFlowId`, or `default-personal-agent-auth-flow` when neither is given.
+- **Consent.** Asked on every authorization, unless the flow sets `alwaysPromptConsent` to `false` or an administrator turns it off later.
+
+The agent never gets the client credentials, token exchange, or JWT bearer grants, so it cannot act on its own authority.
+
+## Register a personal agent for a user
+
+Only an administrator can register a personal agent for another user. The owner must be a user, and their account must not be suspended.
+
+<Tabs groupId="agent-config">
+<TabItem value="flow" label="Administration flow" default>
+
+Registering for another user takes an `ADMINISTRATION` flow. Add an `OwnerResolver` node, so the administrator selects the owner, and fix `kind` to `personal-assistant` on the provisioning node (see [Fixed values](#fixed-values)). The shipped `default-agent-onboarding-flow` shows the steps around them: `PermissionValidator`, which requires the `system:agent:create` or `org:agent:create` permission, then `AgentTypeResolver`, `OUResolverExecutor`, `OwnerResolver`, and provisioning.
+
+A registration flow cannot do this. It always registers the agent for the user who signs in during the flow, or whose access token runs it, and ignores any owner selected in it.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Create the agent with `kind` set to `personal-assistant` and `owner` set to the user's ID:
+
+```bash
+curl -X POST https://localhost:8090/agents \
+  -H 'Authorization: Bearer <ADMIN_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ouId": "<organization-unit-id>",
+    "type": "default",
+    "kind": "personal-assistant",
+    "owner": { "id": "<owner-user-id>" },
+    "attributes": { "name": "Spending Assistant" },
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["authorization_code"],
+          "responseTypes": ["code"],
+          "redirectUris": ["https://assistant.example.com/callback"],
+          "pkceRequired": true
+        }
+      }
+    ]
+  }'
+```
+
+`owner` is required when `kind` is `personal-assistant`. The agent gets a client secret unless the request includes a certificate. See the [Agents API Reference](../../../../apis#tag/agents).
+
+</TabItem>
+<TabItem value="declarative" label="Declarative file">
+
+Set `kind: personal-assistant` and `owner` in the agent's declarative file. A declarative personal agent cannot be changed or deleted at runtime, by the owner or by an administrator. See [Import Resources](../../../declarative-configurations/import-resources).
+
+</TabItem>
+</Tabs>
+
+## Troubleshooting
+
+| Error | Likely cause |
+|---|---|
+| User is not authenticated | No user signed in during the flow, and the request carried no usable access token. The token may be a delegated token, or one issued to a different application. |
+| Self-registration is not supported for agents | The flow tried to create an agent that is not a personal agent. Set `kind` to `personal-assistant` as a fixed value. |
+| Email provider is not configured | The approval flow's `send_link` node names no email provider, or one that does not exist. |
+| The owner never gets the email | The address belongs to no user. |
+| Invalid JWKS URI | The JWKS URI is not a publicly reachable HTTPS URL. |
+| Invalid public key | The public key is not a JWKS document with at least one key. |
+| Owner suspended | The owner's account is suspended, so no personal agent can be created for them. |
+| Grant type not allowed | A grant other than the authorization code, CIBA, and refresh token grants was requested for a personal agent. |

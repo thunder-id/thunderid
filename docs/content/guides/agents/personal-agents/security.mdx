@@ -1,0 +1,40 @@
+---
+title: Secure Personal Agents
+docType: guide
+sidebar_position: 14
+persona: iam
+description: Harden personal agents in {{ProductName}} with short-lived tokens, fixed registration values, consent, key pairs, suspension notes for owners, and end dates.
+---
+
+# Secure Personal Agents
+
+Your users register personal agents built by others, which your organization does not control. The settings below limit what such an agent gets without its owner's approval, and how long its tokens last.
+
+## Keep agents' access tokens short-lived
+
+An access token lets the agent act for its owner until the token expires. A short lifetime limits how long the agent can act before it has to come back to the owner.
+
+- **Every agent registered through a flow** gets the deployment's default lifetimes: `jwt.validity_period` for access tokens (3600 seconds by default) and `oauth.refresh_token.validity_period` for refresh tokens. These defaults apply to every client that sets no lifetime of its own. See [JWT Configuration](../../../../deployment/configuration#jwt-configuration).
+- **A single agent** can have its own access token lifetime. Set `token.accessToken.userConfig.validityPeriod` in its OAuth configuration through the agent management API.
+
+A refresh token lets the agent get new access tokens without the owner. Without the refresh token grant, the owner signs in and approves each new token.
+
+## Fix the values your organization decides
+
+Set the values your organization decides as constant inputs on the registration flow's `ProvisioningExecutor` node. These are the agent's `kind`, its sign-in flow (`authFlowHandle` or `authFlowId`), and `alwaysPromptConsent`. Whoever runs the flow cannot change a constant. See [Fixed values](../register#fixed-values).
+
+## Keep consent in every sign-in flow
+
+The owner approves an agent's access in the sign-in flow's consent step. When you build a sign-in flow for personal agents, keep `ConsentExecutor` after `AuthorizationExecutor`. Without it, the agent gets every permission it requests that the owner holds, and the owner is never asked. See [The sign-in flow](../sign-in-and-tokens#the-sign-in-flow).
+
+## Prefer a key pair to a client secret
+
+Collect a JWKS URI or a public key in the registration flow, so the agent authenticates with `private_key_jwt`. The private key stays with the agent, so no secret is shown on a screen or passed through the flow. See [Choose the agent's credential](../register#choose-the-agents-credential).
+
+## Write suspension notes for the owner
+
+When you suspend a personal agent, the owner can read your operator note. Write it for the owner: say why the agent is suspended and what they can do, such as updating the agent's software. Leave out internal case details, other users' data, and anything else you would not show the owner.
+
+## Give agents an end date
+
+An administrator can give a personal agent a lifespan, an end date and time after which it cannot authenticate or get tokens. Every token it gets expires no later than that date. The owner cannot change the lifespan. See [Set an Agent's Lifespan](../../agent-lifespan).
