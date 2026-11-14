@@ -20,6 +20,7 @@ Load only the guidance the task needs:
 | Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
 | A ThunderID client SDK or integration package | [.agent/skills/sdk-development/SKILL.md](.agent/skills/sdk-development/SKILL.md) |
 | Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |
+| Adding audit events (audit logs) to a service | [.agent/skills/audit-events/SKILL.md](.agent/skills/audit-events/SKILL.md) |
 | Browser automation / Console UI verification | [.agent/skills/console/SKILL.md](.agent/skills/console/SKILL.md) |
 | Resolving a pnpm/npm security advisory | [.agent/skills/fix-npm-vulnerability/SKILL.md](.agent/skills/fix-npm-vulnerability/SKILL.md) |
 | Auditing or pruning existing pnpm overrides | [.agent/skills/prune-npm-overrides/SKILL.md](.agent/skills/prune-npm-overrides/SKILL.md) |
