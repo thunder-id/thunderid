@@ -15,13 +15,20 @@ type ApplicationArtifactProfile struct {
 	MaxLifetimeSeconds int64
 }
 
-// CredentialAction names what an administration flow does to an application's credential. Regeneration
-// is the only action today; rotation with an overlap window and additional secrets are the shapes this
-// is expected to grow, and they arrive as further actions rather than further methods.
-type CredentialAction string
+// ClientSecretResponse carries a newly generated client secret. It is returned once, when the secret is
+// generated, and no read returns it again.
+type ClientSecretResponse struct {
+	ClientSecret string `json:"clientSecret"`
+	// RevocationIncomplete is set when the secret is stored but revoking the tokens issued while it was
+	// being written failed. Regenerating again revokes them.
+	RevocationIncomplete bool `json:"revocationIncomplete,omitempty"`
+}
 
-const (
-	// CredentialActionRegenerate replaces the application's credential with a newly generated value,
-	// leaving no window in which the previous one still authenticates.
-	CredentialActionRegenerate CredentialAction = "regenerate"
-)
+// RegenerateClientSecretOutput is what the regenerate_application_secret tool returns.
+type RegenerateClientSecretOutput struct {
+	ClientSecret string `json:"clientSecret" jsonschema:"The new client secret"`
+	// RevocationIncomplete is set when the tokens issued while the secret was replaced may not be revoked;
+	// regenerating again revokes them.
+	RevocationIncomplete bool   `json:"revocationIncomplete,omitempty" jsonschema:"Revoking recent tokens failed"`
+	Notice               string `json:"notice" jsonschema:"How to handle the new client secret"`
+}

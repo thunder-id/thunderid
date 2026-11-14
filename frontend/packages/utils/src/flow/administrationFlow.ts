@@ -110,7 +110,6 @@ export const FLOW_PAGE_SIZE = 100;
  * withholds them. Attribute verification names an `ADMIN_INITIATED` flow, which starts by handle.
  */
 export const AdministrationFlowConfigKey = {
-  SECRET_REGENERATION: 'secretRegenerationFlow',
   USER_UNLOCK: 'userUnlockFlow',
   USER_SUSPEND: 'userSuspendFlow',
   USER_UNSUSPEND: 'userUnsuspendFlow',
@@ -139,13 +138,11 @@ export const AdministrationFlowInput = {
 } as const;
 
 /**
- * Keys of values a flow returns; a regenerated client secret is readable only here. `emailSent` is
- * `"false"` when a best-effort email node sent nothing. `channel` and `maskedDestination` say where a
- * verification link went.
+ * Keys of values a flow returns. `emailSent` is `"false"` when a best-effort email node sent nothing.
+ * `channel` and `maskedDestination` say where a verification link went.
  */
 export const AdministrationFlowData = {
   CHANNEL: 'channel',
-  CLIENT_SECRET: 'clientSecret',
   EMAIL_SENT: 'emailSent',
   MASKED_DESTINATION: 'maskedDestination',
 } as const;

@@ -1,13 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  AdministrationFlowConfigKey,
-  AdministrationFlowData,
-  AdministrationFlowInput,
-  runAdministrationFlow,
-  type HttpLike,
-} from '@thunderid/utils';
+import type {HttpLike} from '@thunderid/utils';
 
 export type {HttpLike};
 
@@ -27,33 +21,25 @@ export async function deleteApplicationNatively(
 }
 
 /**
- * Regenerates an application's client secret through the configured regeneration flow, returning the
- * new secret, or null when no flow is configured.
+ * Regenerates an application's client secret through the native endpoint and returns the new secret.
  *
- * The flow's response is the only moment the secret is readable: no read path returns it afterwards.
+ * The response is the only moment the secret is readable: no read path returns it afterwards.
  */
-export async function regenerateClientSecretViaFlow(
+export async function regenerateClientSecretNatively(
   http: HttpLike,
   serverUrl: string,
   applicationId: string,
-): Promise<string | null> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.SECRET_REGENERATION,
-    {[AdministrationFlowInput.APPLICATION]: applicationId},
-    'client secret regeneration',
-  );
+): Promise<{clientSecret: string; revocationIncomplete: boolean}> {
+  const response = await http.request({
+    url: `${serverUrl}/applications/${applicationId}/client-secret/regenerate`,
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+  });
+  const data = response.data as {clientSecret?: string; revocationIncomplete?: boolean} | undefined;
 
-  if (result === null) {
-    return null;
+  if (!data?.clientSecret) {
+    throw new Error('The client secret regeneration completed without returning a secret');
   }
 
-  const secret = result[AdministrationFlowData.CLIENT_SECRET];
-
-  if (!secret) {
-    throw new Error('The client secret regeneration flow completed without returning a secret');
-  }
-
-  return secret;
+  return {clientSecret: data.clientSecret, revocationIncomplete: data.revocationIncomplete === true};
 }

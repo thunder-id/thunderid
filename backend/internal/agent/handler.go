@@ -187,6 +187,24 @@ func (h *agentHandler) HandleAgentDeleteRequest(w http.ResponseWriter, r *http.R
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// HandleClientSecretRegenerateRequest handles POST /agents/{id}/client-secret/regenerate. The new secret is
+// in the response, the only time it can be read.
+func (h *agentHandler) HandleClientSecretRegenerateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+	regenerated, svcErr := h.service.RegenerateAgentSecret(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, regenerated)
+}
+
 // HandleAgentGroupsRequest handles GET /agents/{id}/groups.
 func (h *agentHandler) HandleAgentGroupsRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

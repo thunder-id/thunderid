@@ -85,6 +85,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -394,6 +395,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		projectService, auditBus, nil, nil, agent.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+	// The application and agent services decide whether an entity's client secret may be regenerated.
+	entityService.RegisterClientSecretHolder(providers.EntityCategoryApp, applicationService)
+	entityService.RegisterClientSecretHolder(providers.EntityCategoryAgent, agentService)
 	// The control plane creates agents directly. The data plane creates them through its agent
 	// onboarding flow instead, which onboard_agents runs, so only this plane registers onboard_agent.
 	agent.RegisterOnboardAgentTool(mcpServer, agentService, entityService, entityTypeService, flowMgtService)

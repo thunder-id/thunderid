@@ -108,6 +108,20 @@ application in its project.`,
 	}, tools.updateApplication)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "regenerate_application_secret",
+		Description: `Replace an application's client secret with a newly generated one and return it.
+
+Behavior:
+- Only an application that authenticates with a client secret has one to regenerate.
+- The old secret stops working at once, and the tokens it issued are revoked.
+- The new secret is returned only this once.`,
+		Annotations: &mcp.ToolAnnotations{
+			Title:          "Regenerate Application Secret",
+			IdempotentHint: false,
+		},
+	}, tools.regenerateApplicationSecret)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_application_templates",
 		Description: `Get minimal OAuth configuration templates for common application types.
 
@@ -219,6 +233,21 @@ func (t *applicationTools) updateApplication(
 	}
 
 	return nil, updatedApp, nil
+}
+
+// regenerateApplicationSecret handles the regenerate_application_secret tool call.
+func (t *applicationTools) regenerateApplicationSecret(
+	ctx context.Context,
+	req *mcp.CallToolRequest,
+	input tool.IDInput,
+) (*mcp.CallToolResult, *model.RegenerateClientSecretOutput, error) {
+	regenerated, svcErr := t.appService.RegenerateClientSecret(ctx, input.ID)
+	if svcErr != nil {
+		return nil, nil, fmt.Errorf("failed to regenerate application secret: %s", svcErr.ErrorDescription)
+	}
+
+	return nil, &model.RegenerateClientSecretOutput{ClientSecret: regenerated.ClientSecret,
+		RevocationIncomplete: regenerated.RevocationIncomplete, Notice: clientSecretNotice}, nil
 }
 
 // getApplicationTemplates handles the get_application_templates tool call.

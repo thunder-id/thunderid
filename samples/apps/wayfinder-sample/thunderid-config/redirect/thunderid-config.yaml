@@ -2038,8 +2038,6 @@ value:
     expirySeconds: 1800
   userDeletionFlow:
     defaultHandle: default-user-deletion-flow
-  secretRegenerationFlow:
-    defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
   adminAttributeVerificationFlow:

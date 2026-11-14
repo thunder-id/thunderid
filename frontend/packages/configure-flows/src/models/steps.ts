@@ -119,7 +119,6 @@ export const ExecutionTypes = {
   PreDelete: 'PreDeleteExecutor',
   PreSuspend: 'PreSuspendExecutor',
   ApplicationActionValidator: 'ApplicationActionValidator',
-  ClientSecret: 'ClientSecretExecutor',
   CriteriaRevocation: 'CriteriaRevocationExecutor',
   AccessChangeValidator: 'AccessChangeValidator',
   RoleExecutor: 'RoleExecutor',

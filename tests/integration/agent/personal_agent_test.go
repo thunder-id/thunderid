@@ -643,6 +643,24 @@ func (ts *PersonalAgentTestSuite) TestOwnerUsagesListThePersonalAgent() {
 	ts.NotContains(usageIDs(ts.otherID), ts.agentID)
 }
 
+// --- secret regeneration ---
+
+// A personal agent's secret is not regenerated, not even by an administrator: the secret is the owner's.
+func (ts *PersonalAgentTestSuite) TestAdminCannotRegenerateAPersonalAgentsSecret() {
+	req, err := http.NewRequest(http.MethodPost,
+		testutils.TestServerURL+"/agents/"+ts.agentID+"/client-secret/regenerate", nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+
+	ts.Equal(http.StatusBadRequest, resp.StatusCode, string(body))
+	ts.Contains(string(body), "AGT-1059")
+	ts.NotContains(string(body), "clientSecret")
+}
+
 // --- owner suspension ---
 
 // introspectAsSuiteApp reports whether a token is still active, asked by the suite's own application rather

@@ -135,6 +135,7 @@ func (s *AgentServiceAuditTestSuite) reset() {
 		transactioner:        transaction.NewNoOpTransactioner(),
 		bus:                  discardingBus{},
 	}
+	regeneratesThroughTheHolder(s.service, s.entities)
 }
 
 // record replaces the service's bus with a recording one and returns what it published.

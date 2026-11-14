@@ -26,6 +26,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -1212,6 +1213,77 @@ func (suite *HandlerTestSuite) TestHandleApplicationDeleteRequest_ServiceError()
 	assert.Equal(suite.T(), http.StatusInternalServerError, w.Code)
 
 	mockService.AssertExpectations(suite.T())
+}
+
+// The new secret is returned once, in the body, and the response is not cached.
+func (suite *HandlerTestSuite) TestHandleClientSecretRegenerateRequest_Success() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("RegenerateClientSecret", mock.Anything, "test-app-id").
+		Return(&model.ClientSecretResponse{ClientSecret: "new-secret"}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/test-app-id/client-secret/regenerate", nil)
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	assert.Equal(suite.T(), "no-store", w.Header().Get("Cache-Control"))
+	var resp model.ClientSecretResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(suite.T(), "new-secret", resp.ClientSecret)
+	assert.NotContains(suite.T(), w.Body.String(), "revocationIncomplete", "a complete revocation is not flagged")
+}
+
+func (suite *HandlerTestSuite) TestHandleClientSecretRegenerateRequest_InvalidID() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	req := httptest.NewRequest(http.MethodPost, "/applications//client-secret/regenerate", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, errResp.Code)
+}
+
+// Each refusal of the service is answered with the status its kind calls for, and no secret.
+func (suite *HandlerTestSuite) TestHandleClientSecretRegenerateRequest_Errors() {
+	tests := []struct {
+		name   string
+		err    *tidcommon.ServiceError
+		status int
+	}{
+		{"not found", &ErrorApplicationNotFound, http.StatusNotFound},
+		{"no client secret", &ErrorApplicationHasNoClientSecret, http.StatusBadRequest},
+		{"declarative", &ErrorCannotModifyDeclarativeResource, http.StatusBadRequest},
+		{"not permitted", &sysauthz.ErrorGrantNotPermitted, http.StatusForbidden},
+		{"unauthorized", &tidcommon.ErrorUnauthorized, http.StatusForbidden},
+		{"server error", &tidcommon.InternalServerError, http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			handler := newApplicationHandler(mockService)
+			mockService.On("RegenerateClientSecret", mock.Anything, "test-app-id").Return(nil, tt.err).Once()
+
+			req := httptest.NewRequest(http.MethodPost, "/applications/test-app-id/client-secret/regenerate", nil)
+			req.SetPathValue("id", "test-app-id")
+			w := httptest.NewRecorder()
+
+			handler.HandleClientSecretRegenerateRequest(w, req)
+
+			assert.Equal(suite.T(), tt.status, w.Code)
+			var errResp apierror.ErrorResponse
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+			assert.Equal(suite.T(), tt.err.Code, errResp.Code)
+		})
+	}
 }
 
 func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_Success() {

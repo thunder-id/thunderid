@@ -166,6 +166,21 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 			w.WriteHeader(http.StatusNoContent)
 		}, itemOpts))
 
+	secretOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("POST /agents/{id}/client-secret/regenerate",
+		h.HandleClientSecretRegenerateRequest, secretOpts))
+	// Without its own preflight route this action falls to OPTIONS /agents/, which does not allow POST,
+	// and the browser blocks the request.
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /agents/{id}/client-secret/regenerate",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, secretOpts))
+
 	groupsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,

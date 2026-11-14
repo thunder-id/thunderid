@@ -130,15 +130,6 @@ func revocationPlanFor(data map[string]string, want revocation.Reason) (revocati
 	return plan, nil
 }
 
-// applicationTargetFromPlan returns the application the trusted plan acts on.
-func applicationTargetFromPlan(data map[string]string, want revocation.Reason) (string, error) {
-	plan, err := revocationPlanFor(data, want)
-	if err != nil {
-		return "", err
-	}
-	return plan.TargetID, nil
-}
-
 // getAuthnServiceName returns the authn service name for an executor.
 // Returns empty string if executor doesn't map to an authn service.
 func getAuthnServiceName(executorName string) string {

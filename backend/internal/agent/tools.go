@@ -723,15 +723,25 @@ func (t *agentTools) rotateAgentCredentials(
 			return nil, nil, errors.New("failed to rotate agent credentials: addKey and removeKeyId apply to a " +
 				"registered key set, and this agent uses a client secret")
 		}
-		secret, regenerateErr := t.agentService.RegenerateAgentSecret(ctx, current.ID)
+		regenerated, regenerateErr := t.agentService.RegenerateAgentSecret(ctx, current.ID)
 		if regenerateErr != nil {
 			return nil, nil, fmt.Errorf("failed to rotate agent credentials: %s", regenerateErr.ErrorDescription)
 		}
+		var notice string
+		switch {
+		case regenerated.Revoked:
+			notice = "The old secret no longer works, and the tokens it issued are revoked. " + secretNotice
+		case regenerated.RevocationIncomplete:
+			notice = "The old secret no longer works, but revoking the tokens it issued failed, so they can " +
+				"stay valid until they expire; rotating again revokes them. " + secretNotice
+		default:
+			notice = "The old secret no longer works. Tokens it already issued were not revoked and stay " +
+				"valid until they expire. " + secretNotice
+		}
 		return nil, &rotateAgentCredentialsMCPResponse{
 			Credential:   string(credentialClientSecret),
-			ClientSecret: secret,
-			Notice: "The old secret no longer works. " + secretNotice + " Access tokens already issued stay " +
-				"valid until they expire, and refresh tokens issued before now no longer work.",
+			ClientSecret: regenerated.ClientSecret,
+			Notice:       notice,
 		}, nil
 	case credentialPrivateKeyJWT:
 		return t.rotateKeySet(ctx, current, currentConfig, input)

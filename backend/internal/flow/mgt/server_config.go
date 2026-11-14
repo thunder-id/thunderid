@@ -82,7 +82,6 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.SignOutFlow, providers.FlowTypeSignOut, "signOutFlow"},
 		{cfg.SelfFlow, providers.FlowTypeSelf, "selfFlow"},
 		{cfg.AdminInitiatedFlow, providers.FlowTypeAdminInitiated, "adminInitiatedFlow"},
-		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
 		{cfg.AdminAttributeVerificationFlow, providers.FlowTypeAdminInitiated, "adminAttributeVerificationFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
@@ -117,15 +116,13 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 	ro, _ := readOnly.(flowconfig.FlowSectionConfig)
 	wr, _ := writable.(flowconfig.FlowSectionConfig)
 	return flowconfig.FlowSectionConfig{
-		AuthFlow:           mergeFlowTypeConfig(ro.AuthFlow, wr.AuthFlow),
-		RegistrationFlow:   mergeFlowTypeConfig(ro.RegistrationFlow, wr.RegistrationFlow),
-		UserOnboardingFlow: mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
-		RecoveryFlow:       mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
-		SignOutFlow:        mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
-		SelfFlow:           mergeFlowTypeConfig(ro.SelfFlow, wr.SelfFlow),
-		AdminInitiatedFlow: mergeFlowTypeConfig(ro.AdminInitiatedFlow, wr.AdminInitiatedFlow),
-		SecretRegenerationFlow: mergeFlowTypeConfig(
-			ro.SecretRegenerationFlow, wr.SecretRegenerationFlow),
+		AuthFlow:            mergeFlowTypeConfig(ro.AuthFlow, wr.AuthFlow),
+		RegistrationFlow:    mergeFlowTypeConfig(ro.RegistrationFlow, wr.RegistrationFlow),
+		UserOnboardingFlow:  mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
+		RecoveryFlow:        mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
+		SignOutFlow:         mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
+		SelfFlow:            mergeFlowTypeConfig(ro.SelfFlow, wr.SelfFlow),
+		AdminInitiatedFlow:  mergeFlowTypeConfig(ro.AdminInitiatedFlow, wr.AdminInitiatedFlow),
 		AgentOnboardingFlow: mergeFlowTypeConfig(ro.AgentOnboardingFlow, wr.AgentOnboardingFlow),
 		AdminAttributeVerificationFlow: mergeFlowTypeConfig(
 			ro.AdminAttributeVerificationFlow, wr.AdminAttributeVerificationFlow),

@@ -1224,20 +1224,6 @@ var (
 		},
 	}
 
-	// ErrSecretRegenerationFailed is returned when a permitted secret regeneration cannot be completed.
-	ErrSecretRegenerationFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1089",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_failed",
-			DefaultValue: "Client secret regeneration failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_failed_desc",
-			DefaultValue: "The client secret could not be regenerated",
-		},
-	}
-
 	// ErrOwnerNotFound is returned when the selected owner does not resolve to a known user.
 	ErrOwnerNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
