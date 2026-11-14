@@ -2112,15 +2112,15 @@ func (s *agentService) validateUpdatedPlacement(
 }
 
 // validateOrganizationUnitForAgentType ensures the organization unit is the agent type's organization unit
-// or one of its descendants. The agent type is read with the caller's access, and a type the caller cannot read is
-// reported the way an unknown type is, so the check reveals nothing about agent types out of the caller's
-// reach.
+// or one of its descendants. Callers authorize the agent action first, so reading the type it names needs no
+// permission of its own.
 func (s *agentService) validateOrganizationUnitForAgentType(
 	ctx context.Context, agentType, ouID string,
 ) *tidcommon.ServiceError {
-	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, entitytype.TypeCategoryAgent, agentType)
+	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(security.WithRuntimeContext(ctx),
+		entitytype.TypeCategoryAgent, agentType)
 	if svcErr != nil {
-		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code || svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {
 			return &ErrorAgentTypeNotFound
 		}
 		s.logger.Error(ctx, "Failed to retrieve agent type", log.String("agentType", agentType),
@@ -2141,9 +2141,25 @@ func (s *agentService) validateOrganizationUnitForAgentType(
 		return &tidcommon.InternalServerError
 	}
 	if !isParent {
-		return &ErrorOrganizationUnitMismatch
+		return s.agentTypeMisplacementError(ctx, agentType)
 	}
 	return nil
+}
+
+// agentTypeMisplacementError returns the error for an organization unit outside the agent type's. A type the
+// caller cannot read is reported the way an unknown type is, so the check reveals nothing about agent types
+// out of the caller's reach.
+func (s *agentService) agentTypeMisplacementError(ctx context.Context, agentType string) *tidcommon.ServiceError {
+	_, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, entitytype.TypeCategoryAgent, agentType)
+	if svcErr == nil {
+		return &ErrorOrganizationUnitMismatch
+	}
+	if svcErr.Code == tidcommon.ErrorUnauthorized.Code || svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {
+		return &ErrorAgentTypeNotFound
+	}
+	s.logger.Error(ctx, "Failed to retrieve agent type", log.String("agentType", agentType),
+		log.Any("error", svcErr))
+	return &tidcommon.InternalServerError
 }
 
 // checkProjectGiven refuses an agent created without a project where projects are served and one is

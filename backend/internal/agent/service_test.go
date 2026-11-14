@@ -3599,7 +3599,8 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleInternalError() {
 // organization unit tree is refused when the server loads it.
 func (suite *AgentServiceTestSuite) TestValidateAgent_OutsideAgentTypeTree() {
 	svc, _, _, mockOU, _ := suite.setupService()
-	svc.entityTypeService = suite.placementTypeMock(&entitytype.EntityType{Handle: testAgentType, OUID: "type-ou"}, nil)
+	svc.entityTypeService = suite.placementTypeMock(
+		&entitytype.EntityType{Handle: testAgentType, OUID: "type-ou"}, nil, nil)
 	clearMockCalls(mockOU, "IsParent")
 	mockOU.On("IsParent", mock.Anything, "type-ou", testOUID).Return(false, (*tidcommon.ServiceError)(nil))
 
@@ -3939,14 +3940,21 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOU_Error() {
 	assert.EqualError(suite.T(), err, "store error")
 }
 
-// placementTypeMock returns an entity type service that answers the agent type lookup with the given type
-// or error.
+// placementTypeMock returns an entity type service that answers the agent type lookup made with the server's
+// authority with the given type or error, and the lookup made with the caller's access with callerErr.
 func (suite *AgentServiceTestSuite) placementTypeMock(
-	agentType *entitytype.EntityType, svcErr *tidcommon.ServiceError,
+	agentType *entitytype.EntityType, svcErr, callerErr *tidcommon.ServiceError,
 ) *entitytypemock.EntityTypeServiceInterfaceMock {
 	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
-	mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, testAgentType).
-		Return(agentType, svcErr)
+	mockType.On("GetEntityTypeByHandle", mock.MatchedBy(security.IsRuntimeContext), entitytype.TypeCategoryAgent,
+		testAgentType).Return(agentType, svcErr)
+	callerType := agentType
+	if callerErr != nil {
+		callerType = nil
+	}
+	mockType.On("GetEntityTypeByHandle", mock.MatchedBy(func(ctx context.Context) bool {
+		return !security.IsRuntimeContext(ctx)
+	}), entitytype.TypeCategoryAgent, testAgentType).Return(callerType, callerErr).Maybe()
 	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
 		Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
 	return mockType
@@ -3958,15 +3966,20 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_AgentTypePlacement() {
 		name         string
 		agentType    *entitytype.EntityType
 		lookupErr    *tidcommon.ServiceError
+		callerErr    *tidcommon.ServiceError
 		isParent     bool
 		isParentErr  *tidcommon.ServiceError
 		expectedCode string
 	}{
 		{name: "type in an ancestor organization unit", agentType: otherTreeType, isParent: true},
+		{name: "type the caller cannot read in an ancestor organization unit", agentType: otherTreeType,
+			callerErr: &tidcommon.ErrorUnauthorized, isParent: true},
 		{name: "type in another tree", agentType: otherTreeType, expectedCode: ErrorOrganizationUnitMismatch.Code},
+		{name: "type the caller cannot read in another tree reads as unknown", agentType: otherTreeType,
+			callerErr: &tidcommon.ErrorUnauthorized, expectedCode: ErrorAgentTypeNotFound.Code},
+		{name: "type in another tree fails the caller's lookup", agentType: otherTreeType,
+			callerErr: &tidcommon.InternalServerError, expectedCode: tidcommon.InternalServerError.Code},
 		{name: "unknown type", lookupErr: &entitytype.ErrorAgentTypeNotFound,
-			expectedCode: ErrorAgentTypeNotFound.Code},
-		{name: "type the caller cannot read reads as unknown", lookupErr: &tidcommon.ErrorUnauthorized,
 			expectedCode: ErrorAgentTypeNotFound.Code},
 		{name: "type lookup fails", lookupErr: &tidcommon.InternalServerError,
 			expectedCode: tidcommon.InternalServerError.Code},
@@ -3979,7 +3992,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_AgentTypePlacement() {
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			svc, _, _, mockOU, _ := suite.setupService()
-			svc.entityTypeService = suite.placementTypeMock(tc.agentType, tc.lookupErr)
+			svc.entityTypeService = suite.placementTypeMock(tc.agentType, tc.lookupErr, tc.callerErr)
 			clearMockCalls(mockOU, "IsParent")
 			mockOU.On("IsParent", mock.Anything, "type-ou", testOUID).Return(tc.isParent, tc.isParentErr).Maybe()
 

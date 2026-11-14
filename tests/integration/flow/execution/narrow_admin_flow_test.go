@@ -4,6 +4,7 @@
 package execution
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,6 +54,7 @@ type NarrowAdminFlowTestSuite struct {
 	viewerToken      string
 	groupViewerToken string
 	agentAdminToken  string
+	agentCreator     string
 
 	promptFlowID string
 	resetFlowID  string
@@ -115,13 +117,14 @@ func (ts *NarrowAdminFlowTestSuite) SetupSuite() {
 	ts.addResource(orgID, "user", "view", "create", "update", "delete")
 	ts.addResource(orgID, "group", "view")
 	ts.addResource(orgID, "ou", "view", "create")
-	ts.addResource(orgID, "agent", "update")
+	ts.addResource(orgID, "agent", "create", "update")
 
 	ts.creatorToken = ts.adminToken("creator", "org:user:create")
 	ts.deleterToken = ts.adminToken("deleter", "org:user:delete")
 	ts.viewerToken = ts.adminToken("viewer", "org:user:view")
 	ts.groupViewerToken = ts.adminToken("group-viewer", "org:group:view")
 	ts.agentAdminToken = ts.adminToken("agent-admin", "org:user:view", "org:agent:update")
+	ts.agentCreator = ts.adminToken("agent-creator", "org:agent:create")
 	// The privileged agent holds a permission the agent admin lacks, so the admin may not take control of it.
 	createRole(&ts.Suite, &ts.roleIDs, ts.ouID, ts.rsID, "Narrow Admin Privileged Agent",
 		[]string{"org:group:view"}, testutils.Assignment{ID: ts.privAgentID, Type: "agent"})
@@ -437,6 +440,32 @@ func (ts *NarrowAdminFlowTestSuite) TestViewersOwnFlow_ServicesRefuseRoleResourc
 			ts.Require().NotNil(step.Error, "%+v", step)
 		})
 	}
+}
+
+// Creating an agent needs no permission to view agent types, so an admin who may only create agents can.
+func (ts *NarrowAdminFlowTestSuite) TestAgentCreator_CreatesAnAgent() {
+	body, err := json.Marshal(map[string]interface{}{
+		"type": narrowAdminAgentType, "ouId": ts.ouID,
+		"attributes": map[string]interface{}{"name": "narrow-admin-flow-bot-created"},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/agents", bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+ts.agentCreator)
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode, "%s", string(respBody))
+	var created struct {
+		ID string `json:"id"`
+	}
+	ts.Require().NoError(json.Unmarshal(respBody, &created))
+	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteAgent(created.ID)) })
 }
 
 // addResource adds a resource under parentID with the actions named.

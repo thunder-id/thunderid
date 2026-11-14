@@ -1007,6 +1007,22 @@ func (s *AgentToolsTestSuite) TestOnboardAgent_TokenGuideOnlyWhenAsked() {
 	s.Equal("s3cret", out.ClientSecret, "the secret is always returned, since it is shown only once")
 }
 
+// The name attribute is read with the server's authority, so a caller who may create agents but not view
+// agent types can still onboard one.
+func (s *AgentToolsTestSuite) TestNameAttribute_ReadsTheAgentTypeWithServerAuthority() {
+	entityTypes := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	entityTypes.On("GetEntityTypeByHandle", mock.MatchedBy(security.IsRuntimeContext), entitytype.TypeCategoryAgent,
+		entitytype.DefaultAgentTypeHandle).Return(&entitytype.EntityType{
+		Handle: entitytype.DefaultAgentTypeHandle, SystemAttributes: &entitytype.SystemAttributes{Display: "label"},
+	}, (*tidcommon.ServiceError)(nil)).Once()
+	tools := &agentTools{entityTypeService: entityTypes}
+
+	nameAttribute, svcErr := tools.nameAttribute(context.Background())
+
+	s.Nil(svcErr)
+	s.Equal("label", nameAttribute)
+}
+
 func (s *AgentToolsTestSuite) TestChangedFields() {
 	before := agentMCPDetails{ID: "a1", Name: "bot", Description: "old", Credential: "client_secret",
 		ActsForUsers: []string{}, RedirectURIs: []string{"https://a/cb"}}
