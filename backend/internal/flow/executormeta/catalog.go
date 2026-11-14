@@ -45,6 +45,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "timeout"},
 			{Property: "failOnDeny"},
+			{Property: "promptValidityPeriod"},
 		},
 	},
 	ExecutorNameCredentialSetter: {},

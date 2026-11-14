@@ -59,7 +59,7 @@ When the timeout expires, the prompt is submitted automatically as a denial. No 
 To set a timeout for user input in the consent flow:
 
 1. In the flow builder, select the **User Consent** node.
-2. In the node configuration panel, locate the **Consent Timeout** setting.
+2. In the node configuration panel, locate the **Consent prompt timeout (seconds)** setting.
 3. Enter the desired timeout duration in seconds (e.g., `60` for a 1-minute timeout).
 4. Expand the **Components** section, and drag and drop the **Timer** component into the **Consent View** step.
 5. Save the flow configuration.
@@ -104,6 +104,62 @@ curl --location -X POST 'https://localhost:8090/applications' \
 ```
 
 `validityPeriod` is specified in seconds (e.g., `120` for a 2-minute validity period). After this period expires, the user will be prompted to grant consent again during the next login attempt.
+
+### Let users choose the validity period
+
+By default, the validity period set on the application or agent decides how long consent lasts. To let each user choose, enable the option on the **User Consent** node. The validity period of the application or agent is the limit: no choice is longer than it.
+
+1. In the flow builder, select the **User Consent** node.
+2. Enable **Let the user choose the consent validity period**.
+3. Save the flow configuration.
+
+The consent screen then shows a **Remember my decision** checkbox, ticked at first:
+
+- **Ticked:** the user chooses how long in an **Ask me again** list. A sentence below says when the consent expires, such as **Your consent expires in 1 hour.** The sentence names a length of time and does not give a date. The first choice in the list is selected.
+- **Unticked:** the consent lasts 1 second, so the user is asked again at the next sign-in. The list disappears, and a sentence says so.
+
+The list draws from these periods, and the limit decides which of them appear:
+
+| Choice | Seconds |
+|---|---|
+| **1 minute** | `60` |
+| **5 minutes** | `300` |
+| **30 minutes** | `1800` |
+| **1 hour** | `3600` |
+| **6 hours** | `21600` |
+| **12 hours** | `43200` |
+| **24 hours** | `86400` |
+| **48 hours** | `172800` |
+| **30 days** | `2592000` |
+| **60 days** | `5184000` |
+| **No expiry** | Consent does not expire |
+
+- The list shows only the periods that are not longer than the limit. The limit is not listed as a choice, except as noted below.
+- **No expiry** appears only when the limit is `0` or not set.
+- The list has at most five choices. When more fit, it keeps the shortest and the longest and spreads three between them. A limit of 30 days offers **1 minute**, **30 minutes**, **6 hours**, **24 hours**, and **30 days**. A limit of `0` offers **1 minute**, **1 hour**, **12 hours**, **30 days**, and **No expiry**.
+- When fewer than three periods fit, the limit completes the list. It is shown in its largest whole unit and rounded down: seconds below a minute, minutes below an hour, hours below a day, and days from there. A limit of 10 minutes (`600` seconds) offers **1 minute**, **5 minutes**, and **10 minutes**. A limit of 252 seconds, which is 4.2 minutes, offers **1 minute** and **4 minutes**.
+- The shortest choice is selected when the screen opens, so a user who leaves the screen unchanged gets the shortest period, not the limit.
+- When the limit is 1 minute or shorter, it is the only period in the list. When it is 1 second or less, neither the checkbox nor the list appears.
+
+A user who wants another period enters a whole number and chooses its unit. The field accepts digits only, and <ProductName /> sends the period in seconds:
+
+- In the SDK consent components, the list ends with **Custom**. Choosing it shows a number field and a unit list below the list.
+- In the Gate, the list is also a text field. The user types the number in place of the period shown, and a unit list appears beside it.
+- The unit list offers **seconds**, **minutes**, **hours**, and **days**, without the units that are longer than the limit. A limit of 10000 seconds offers **seconds**, **minutes**, and **hours**.
+- A number that is above the limit becomes the most whole units that fit it. With a limit of 10000 seconds, **minutes** accepts up to `166`.
+- While the field is empty or holds no number from `1`, the shortest period stays in effect.
+
+The checkbox and the list do not appear for an application or agent with `loginConsent.alwaysPrompt` set to `true`, because consent is asked on every authorization and the choice would change nothing.
+
+The checkbox appears only when the user is asked for consent. A user whose earlier consent is still valid is not asked, so they do not see it. A user who is asked again before that consent expires, for example because the application now requests another attribute, sets the expiry of all their consent to that application with the period they choose then.
+
+A client that builds its own consent screen reads `promptConsentValidity` and `maxConsentValidity` from the additional data of the consent step. `promptConsentValidity` is `true` when the user can choose. `maxConsentValidity` is the limit in seconds, or `2147483647` when consent does not expire. The client sends the choice as `validityPeriod`, a number of seconds, in the `consent_decisions` input. <ProductName /> applies these rules to whatever it receives:
+
+- It rounds a fraction down.
+- It uses the validity period of the application or agent when the value is missing, zero, negative, or not a number.
+- It caps a value above the limit to the limit, and the sign-in does not fail.
+- It records a value of `2147483647` seconds, within the limit, as consent that does not expire.
+- It ignores the value when the option is off, and when the user denies the consent.
 
 ## Authorization Details Consent
 

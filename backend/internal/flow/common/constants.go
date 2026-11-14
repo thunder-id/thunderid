@@ -69,6 +69,12 @@ const (
 	DataIDPName = "idpName"
 	// DataConsentPrompt is the key used for the consent prompt data in the flow response.
 	DataConsentPrompt = "consentPrompt"
+	// DataPromptConsentValidity is set to "true" when the consent prompt lets the user choose how long their
+	// consent lasts.
+	DataPromptConsentValidity = "promptConsentValidity"
+	// DataMaxConsentValidity is the longest validity period, in seconds, the user can choose on the consent
+	// prompt. It is the largest period when the consent does not expire.
+	DataMaxConsentValidity = "maxConsentValidity"
 	// DataStepTimeout is the key used for the step expiry timestamp in the flow response.
 	DataStepTimeout = "stepTimeout"
 	// DataClientIDHost is the key used for the client ID host shown with the consent prompt.

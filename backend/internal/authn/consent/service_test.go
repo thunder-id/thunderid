@@ -11,8 +11,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"math"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -1275,6 +1277,36 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_WithValidityPeriod()
 	s.Nil(svcErr)
 	s.NotNil(result)
 	s.Equal("consent-timed", result.ID)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_ValidityPeriodIsCapped() {
+	sessionToken := buildTestSessionToken([]consentSessionPurpose{
+		{PurposeName: "purpose1", Optional: []string{"email"}},
+	})
+	decisions := &providers.ConsentDecisions{
+		Approved: true,
+		Purposes: []providers.PurposeDecision{
+			{PurposeName: "purpose1", Approved: true, Elements: []providers.ElementDecision{
+				{Name: "email", Approved: true},
+			}},
+		},
+	}
+	latest := time.Now().Unix() + MaxValidityPeriod + 5
+
+	s.mockJWTSvc.On("VerifyJWT", mock.Anything, sessionToken, consentSessionTokenAudience, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil))
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{}, nil)
+	s.mockConsentSvc.On("CreateConsent", mock.Anything,
+		mock.MatchedBy(func(req *consent.ConsentRequest) bool {
+			return req.ValidityTime > 0 && req.ValidityTime <= latest
+		})).Return(&consent.Consent{ID: "consent-capped"}, nil)
+
+	result, svcErr := s.service.RecordConsent(context.Background(), "ou1", "app1", "user1",
+		decisions, sessionToken, math.MaxInt64/2, nil)
+
+	s.Nil(svcErr)
+	s.NotNil(result)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_ZeroValidityPeriod() {

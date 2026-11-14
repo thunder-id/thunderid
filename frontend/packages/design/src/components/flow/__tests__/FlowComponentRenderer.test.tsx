@@ -185,6 +185,49 @@ describe('FlowComponentRenderer — COPYABLE_TEXT routing', () => {
   });
 });
 
+describe('FlowComponentRenderer — space above submit buttons', () => {
+  const render = (components: object[]) =>
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={{id: 'block_actions', type: 'BLOCK', components} as unknown as EmbeddedFlowComponent}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+      />,
+    );
+  const marginTop = (name: string): string => getComputedStyle(screen.getByRole('button', {name})).marginTop;
+  const gapBetween = (upper: string, lower: string): number =>
+    screen.getByRole('button', {name: lower}).getBoundingClientRect().top -
+    screen.getByRole('button', {name: upper}).getBoundingClientRect().bottom;
+
+  const deny = {id: 'action_deny', type: 'ACTION', eventType: 'SUBMIT', variant: 'SECONDARY', label: 'Deny'};
+  const allow = {id: 'action_allow', type: 'ACTION', eventType: 'SUBMIT', variant: 'PRIMARY', label: 'Allow'};
+
+  it('keeps the space above a single submit button', () => {
+    render([allow]);
+
+    expect(marginTop('Allow')).toBe('16px');
+  });
+
+  it('adds no space of its own above a submit button that follows another, so the buttons sit one gap apart', () => {
+    render([deny, allow]);
+
+    expect(marginTop('Deny')).toBe('16px');
+    expect(marginTop('Allow')).toBe('0px');
+    expect(gapBetween('Deny', 'Allow')).toBe(16);
+  });
+
+  it('keeps the space above side by side buttons in a row', () => {
+    render([{id: 'stack_row', type: 'STACK', direction: 'row', components: [deny, allow]}]);
+
+    expect(marginTop('Deny')).toBe('16px');
+    expect(marginTop('Allow')).toBe('16px');
+  });
+});
+
 describe('FlowComponentRenderer — BLOCK with STACK-nested actions', () => {
   const blockWithStackedActions = {
     id: 'block_onboarding_mode',
@@ -604,6 +647,8 @@ describe('FlowComponentRenderer — consent client hosts', () => {
           consent: {
             'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
             'client.deviceWarning': deviceWarning,
+            'validity.label': 'Ask me again',
+            'validity.remember': 'Remember my decision',
           },
         },
       },
@@ -652,6 +697,26 @@ describe('FlowComponentRenderer — consent client hosts', () => {
 
     expect(screen.getByText('Published by claude.ai. Returns to claude.ai.')).toBeTruthy();
     expect(screen.queryByText(deviceWarning)).toBeNull();
+  });
+
+  it('shows the validity input starting at the shortest period when the flow data asks for it', () => {
+    renderConsentBlock({consentPrompt, promptConsentValidity: 'true', maxConsentValidity: '86400'});
+
+    expect(screen.getByRole('checkbox', {name: 'Remember my decision'})).toBeChecked();
+    expect(screen.getByRole<HTMLInputElement>('combobox', {name: /Ask me again/}).value).toBe('1 minute');
+  });
+
+  it('shows the validity input when the flow data has no maximum', () => {
+    renderConsentBlock({consentPrompt, promptConsentValidity: 'true'});
+
+    expect(screen.getByRole<HTMLInputElement>('combobox', {name: /Ask me again/}).value).toBe('1 minute');
+  });
+
+  it('shows no validity input when the flow data does not ask for it', () => {
+    renderConsentBlock({consentPrompt, maxConsentValidity: '3600'});
+
+    expect(screen.queryByRole('checkbox', {name: 'Remember my decision'})).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 
   it('shows no hosts when the flow data has none', () => {

@@ -14,6 +14,7 @@ import type {StepData} from '../../../../models/steps';
 interface ConsentPropertyValues {
   timeout?: string;
   failOnDeny?: boolean;
+  promptValidityPeriod?: boolean;
 }
 
 function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -27,6 +28,8 @@ function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsIn
   const currentTimeout = properties.timeout ?? '0';
 
   const failOnDenyChecked = !!properties.failOnDeny;
+
+  const promptValidityPeriodChecked = !!properties.promptValidityPeriod;
 
   return (
     <Stack gap={2}>
@@ -75,6 +78,39 @@ function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsIn
               label={label}
             />
             <FormHelperText>{t('flows:core.executions.consent.failOnDeny.hint')}</FormHelperText>
+          </div>
+        )}
+      </VariableBinding>
+
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="promptValidityPeriod"
+        accepts={BOOLEAN_VARIABLES}
+        label={t(
+          'flows:core.executions.consent.promptValidityPeriod.label',
+          'Let the user choose the consent validity period',
+        )}
+      >
+        {({commit, label}) => (
+          <div>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={promptValidityPeriodChecked}
+                  onChange={(e) => commit(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={label}
+            />
+            <FormHelperText>
+              {t(
+                'flows:core.executions.consent.promptValidityPeriod.hint',
+                'The user picks a period or types their own, up to the application or agent period.',
+              )}
+            </FormHelperText>
           </div>
         )}
       </VariableBinding>

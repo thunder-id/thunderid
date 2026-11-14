@@ -2901,6 +2901,17 @@ const translations = {
     'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
     'client.deviceWarning':
       'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
+    'validity.label': 'Ask me again',
+    'validity.remember': 'Remember my decision',
+    'validity.optionNever': 'No expiry',
+    'validity.optionCustom': 'Custom',
+    'validity.customLabel': 'Custom validity',
+    'validity.customUnitLabel': 'Unit',
+    'validity.hintOnce': 'You will be asked again the next time you sign in.',
+    'validity.hintExpires': 'Your consent expires in {{duration}}.',
+    'validity.hintNever': 'You will not be asked again unless this application asks for more access.',
+    'validity.hintCustom': 'Enter a whole number.',
+    'validity.hintCustomMax': 'Enter a whole number, up to {{max}}.',
   },
 
   // ============================================================================
@@ -4465,12 +4476,15 @@ const translations = {
 
     // Consent executor
     'core.executions.consent.description': 'Configure the consent executor settings.',
-    'core.executions.consent.timeout.label': 'Consent timeout (seconds)',
+    'core.executions.consent.timeout.label': 'Consent prompt timeout (seconds)',
     'core.executions.consent.timeout.placeholder': '0',
     'core.executions.consent.timeout.hint': 'Time in seconds before the consent request expires. Use 0 for no timeout.',
     'core.executions.consent.failOnDeny.label': 'Fail flow when user denies consent',
     'core.executions.consent.failOnDeny.hint':
       'When enabled, the flow fails if the user denies the consent prompt or lets it time out, even if all requested attributes and permissions are optional.',
+    'core.executions.consent.promptValidityPeriod.label': 'Let the user choose the consent validity period',
+    'core.executions.consent.promptValidityPeriod.hint':
+      'The user picks a period or types their own, up to the application or agent period.',
 
     // Identifying executor modes
     'core.executions.identifying.mode.identify': 'Identify',
