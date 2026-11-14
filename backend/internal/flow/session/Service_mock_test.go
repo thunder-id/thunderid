@@ -222,6 +222,178 @@ func (_c *ServiceMock_FindCheckpoint_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// ListLiveByApp provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) ListLiveByApp(ctx context.Context, appID string, now time.Time, limit int, offset int) (*SessionPage, error) {
+	ret := _mock.Called(ctx, appID, now, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListLiveByApp")
+	}
+
+	var r0 *SessionPage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) (*SessionPage, error)); ok {
+		return returnFunc(ctx, appID, now, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) *SessionPage); ok {
+		r0 = returnFunc(ctx, appID, now, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*SessionPage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, int, int) error); ok {
+		r1 = returnFunc(ctx, appID, now, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ServiceMock_ListLiveByApp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListLiveByApp'
+type ServiceMock_ListLiveByApp_Call struct {
+	*mock.Call
+}
+
+// ListLiveByApp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - now time.Time
+//   - limit int
+//   - offset int
+func (_e *ServiceMock_Expecter) ListLiveByApp(ctx any, appID any, now any, limit any, offset any) *ServiceMock_ListLiveByApp_Call {
+	return &ServiceMock_ListLiveByApp_Call{Call: _e.mock.On("ListLiveByApp", ctx, appID, now, limit, offset)}
+}
+
+func (_c *ServiceMock_ListLiveByApp_Call) Run(run func(ctx context.Context, appID string, now time.Time, limit int, offset int)) *ServiceMock_ListLiveByApp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_ListLiveByApp_Call) Return(sessionPage *SessionPage, err error) *ServiceMock_ListLiveByApp_Call {
+	_c.Call.Return(sessionPage, err)
+	return _c
+}
+
+func (_c *ServiceMock_ListLiveByApp_Call) RunAndReturn(run func(ctx context.Context, appID string, now time.Time, limit int, offset int) (*SessionPage, error)) *ServiceMock_ListLiveByApp_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListLiveBySubject provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) ListLiveBySubject(ctx context.Context, subjectID string, now time.Time, limit int, offset int) (*SessionPage, error) {
+	ret := _mock.Called(ctx, subjectID, now, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListLiveBySubject")
+	}
+
+	var r0 *SessionPage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) (*SessionPage, error)); ok {
+		return returnFunc(ctx, subjectID, now, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) *SessionPage); ok {
+		r0 = returnFunc(ctx, subjectID, now, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*SessionPage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, int, int) error); ok {
+		r1 = returnFunc(ctx, subjectID, now, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ServiceMock_ListLiveBySubject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListLiveBySubject'
+type ServiceMock_ListLiveBySubject_Call struct {
+	*mock.Call
+}
+
+// ListLiveBySubject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - now time.Time
+//   - limit int
+//   - offset int
+func (_e *ServiceMock_Expecter) ListLiveBySubject(ctx any, subjectID any, now any, limit any, offset any) *ServiceMock_ListLiveBySubject_Call {
+	return &ServiceMock_ListLiveBySubject_Call{Call: _e.mock.On("ListLiveBySubject", ctx, subjectID, now, limit, offset)}
+}
+
+func (_c *ServiceMock_ListLiveBySubject_Call) Run(run func(ctx context.Context, subjectID string, now time.Time, limit int, offset int)) *ServiceMock_ListLiveBySubject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_ListLiveBySubject_Call) Return(sessionPage *SessionPage, err error) *ServiceMock_ListLiveBySubject_Call {
+	_c.Call.Return(sessionPage, err)
+	return _c
+}
+
+func (_c *ServiceMock_ListLiveBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string, now time.Time, limit int, offset int) (*SessionPage, error)) *ServiceMock_ListLiveBySubject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // LoadCheckpoint provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error) {
 	ret := _mock.Called(ctx, in)
