@@ -1,0 +1,75 @@
+---
+title: Design Decisions & Alternatives
+docType: use-case
+sidebar_position: 2
+description: The reasoning behind how contact verification works, and what to choose instead when your journeys, applications, or users need something different.
+---
+
+# Design Decisions & Alternatives
+
+You have seen how <ProductName /> answers [Confirm Users Control Their Email Address and Mobile Number](../overview). What follows is the reasoning behind those defaults, and what to choose when your product does not match the assumptions they make.
+
+The decisions fall into five groups:
+
+- Where in the customer's journey verification happens.
+- What proves control of the contact.
+- Where an application reads the status, and which source it trusts.
+- What an unverified contact is allowed to do.
+- What to plan for before production.
+
+## Choose Where Verification Happens
+
+The default places verification after sign-in, on the profile, because a contact can change long after sign-up and has to be proven again each time.
+
+- Use a **`SELF` flow from the profile** when signed-in users verify, or verify again after a change. <ProductName /> takes the user from the access token on the first request. Later requests need no access token. To submit a code, send `executionId` and `challengeToken` from the previous response, the named verify `action`, and `inputs.otp` with the code.
+- Use **registration** when a contact must be proven before the account is usable. The verification lands on the created user only if their stored value is still the one that received the code.
+- Use **recovery** when the recovery flow already sends a code to the contact. Recording it there saves the user a second confirmation.
+- Use **onboarding** with care. The onboarding invite link is also returned to the administrator who started onboarding, so a link-based proof there trusts that administrator. Send an independent code when the proof must reach the user alone.
+
+Verification runs as a flow, so you change the challenge, channel, or screens without changing the application. Each start names a flow by its `handle`. Point applications at your own `SELF` flow when the shipped `default-self-attribute-verification-flow` does not fit, or customize the shipped flow in place.
+
+A `SELF` flow can only be started by its handle with the user's access token. It cannot be started by flow ID.
+
+## Choose the Proof
+
+One flow serves both channels. The attribute's type in the user type decides whether the code goes by email or by SMS, so the application never names a channel. Each branch can use a different proof.
+
+- A **one-time code**, the shipped default, keeps the customer inside the application and works for both email and SMS. A code is valid for 5 minutes and accepts 3 wrong entries, and one flow execution issues at most 3 codes.
+- An **email link** suits customers who read email on another device. Build it with the `InviteExecutor` and `EmailExecutor` [executors](../../../guides/flows/advanced-configurations#executors) and an email template that carries the link. The link stays valid for the flow execution's lifetime.
+
+Mail scanners open links on their own, so a link flow needs a confirmation prompt between checking the link and recording verification. <ProductName /> does not enforce that prompt, so add it to every link flow you build.
+
+## Choose Where Applications Read the Status
+
+Applications can read the server's verification record through two paths, which trade freshness for convenience.
+
+- **Token claims** such as `email_verified` cost no extra call, but they are read at sign-in. A verification or a contact change after sign-in appears after the user signs in again.
+- The **user API** returns `verifiedAttributes` with the current state and the time of each verification. Read it before an action that depends on the address being right now, such as sending a receipt or a reset link to it.
+
+Some deployments already have a verification source, such as an external [identity provider](../../../guides/identity-providers/overview) that asserts `email_verified` when the user signs in through it. Define `email_verified` as an attribute on the user type to keep that source for token claims and UserInfo. <ProductName /> then releases the stored attribute instead of its own record, read at sign-in. A contact change does not clear that stored attribute. The user API's `verifiedAttributes` still reports only the server's verification record.
+
+The same choice covers migration. Imported users arrive unverified, because no request can set verification without a proof. Ask them to verify, or carry an earlier system's status in a schema-defined `_verified` attribute.
+
+## Decide What an Unverified Contact May Do
+
+<ProductName /> records and reports verification. It does not block sign-in or profile updates because a contact is unverified, and an administrator cannot mark a contact verified without the user's proof.
+
+That leaves enforcement to the application, which knows what each message is worth. A booking application might hold confirmations until `email_verified` is `true`, or ask the customer to verify right after a change. A sign-in that must wait for a verified contact belongs in your flow or application logic.
+
+Verification shows that the user received a message at an address at one moment, not who the person is. If you need that, add identity proofing, such as checking an identity document, on top of it.
+
+## Plan for Production
+
+Settle these before customers rely on the status:
+
+- **Senders.** The shipped flow sends through your configured providers. Without a provider for a channel, that branch fails at the send step and sends nothing. See [Configure an Email Provider](../../../guides/notifications/email-providers) and [Configure an SMS Provider](../../../guides/notifications/sms-providers).
+- **Sending limits.** The per-execution caps do not stop a caller from starting another execution. Configure rate limits for `/flow/execute` at your gateway, as [Configure Rate Limiting](../../../deployment/production-guidelines#configure-rate-limiting) describes for other public endpoints.
+- **Locked and suspended accounts.** A locked user can still verify, and verification codes neither count toward nor clear the sign-in lock. A suspended user is refused with **This account is suspended. Contact an administrator**.
+- **Flow lifetime.** Every `SELF` flow expires after 30 minutes by default, which also bounds an email link. Change it with `flow.selfFlow.expirySeconds` in [Flow Defaults](../../../deployment/configuration#flow-defaults).
+- **Audit.** <ProductName /> emits events when verification is requested, recorded, refused, or cleared by a contact change. They are disabled by default, in the `observability.administration` category, and never carry the code, the link, or the full address. See [Observability Configuration](../../../deployment/configuration#observability-configuration).
+
+## Expected Outcome
+
+With these settled, a verified contact means the same thing everywhere. It is one record on the user, proven against the stored value, cleared when that value changes, and read alike by every application.
+
+If one decision here does not fit, change only that one. Moving verification into registration, switching email to a link, or trusting a provider's claim leaves the rest of the pattern as it is.
