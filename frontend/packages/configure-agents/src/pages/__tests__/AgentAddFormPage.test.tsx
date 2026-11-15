@@ -90,12 +90,18 @@ interface RecordedRequest {
   data?: unknown;
 }
 
+// Two types, so the type is chosen from the select. A single type is used without asking.
 const agentTypes = {
-  totalResults: 1,
+  totalResults: 2,
   startIndex: 1,
-  count: 1,
-  types: [{id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-root'}],
+  count: 2,
+  types: [
+    {id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-root'},
+    {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-root'},
+  ],
 };
+
+const soleAgentType = {...agentTypes, totalResults: 1, count: 1, types: [agentTypes.types[0]]};
 
 const users = {
   totalResults: 1,
@@ -750,7 +756,7 @@ describe('AgentAddFormPage', () => {
       ...agentTypes,
       totalResults: 2,
       count: 2,
-      types: [...agentTypes.types, {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-root'}],
+      types: [agentTypes.types[0], {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-root'}],
     };
     const assistantType = {...defaultType, id: 'type-2', handle: 'assistant', displayName: 'Assistant'};
     h.http.request.mockImplementation((config: unknown) => {
@@ -803,7 +809,7 @@ describe('AgentAddFormPage', () => {
       ...agentTypes,
       totalResults: 2,
       count: 2,
-      types: [...agentTypes.types, {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-other'}],
+      types: [agentTypes.types[0], {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-other'}],
     };
     const assistantType = {
       ...defaultType,
@@ -1139,7 +1145,10 @@ describe('AgentAddFormPage', () => {
 
   it('names a type without a display name by its handle, and roots its picker at no organization unit', async () => {
     const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
-    const unnamed = {...agentTypes, types: [{id: 'type-1', handle: 'default', displayName: '', ouId: ''}]};
+    const unnamed = {
+      ...agentTypes,
+      types: [{id: 'type-1', handle: 'default', displayName: '', ouId: ''}, agentTypes.types[1]],
+    };
     h.http.request.mockImplementation((config: unknown) =>
       (config as RecordedRequest).url.includes('/agent-types?') ? Promise.resolve({data: unnamed}) : base(config),
     );
@@ -1149,6 +1158,60 @@ describe('AgentAddFormPage', () => {
     await chooseOption(user, 0, 'default');
 
     expect(await screen.findByTestId('ou-picker')).not.toHaveAttribute('data-root');
+  });
+
+  it('uses the only agent type without offering the choice', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types?') ? Promise.resolve({data: soleAgentType}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    // The type's organization unit is offered straight away, and the owner's is the only select left.
+    const picker = await screen.findByTestId('ou-picker');
+    expect(picker).toHaveAttribute('data-root', 'ou-root');
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    expect(screen.queryByText('agents:addForm.agentType')).not.toBeInTheDocument();
+
+    await user.click(picker);
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+        ouId: 'ou-child',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
+    });
+  });
+
+  it('uses the only agent type inside a project', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types?') ? Promise.resolve({data: soleAgentType}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AgentAddFormPage />
+      </ProjectScopeProvider>,
+    );
+
+    await fillAttributes(user);
+    expect(screen.queryByText('agents:addForm.agentType')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+        projectId: 'project-1',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
+    });
   });
 
   it('says so when no agent types exist', async () => {
