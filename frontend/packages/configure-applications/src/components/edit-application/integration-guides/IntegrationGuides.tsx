@@ -1,7 +1,6 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useQueries} from '@tanstack/react-query';
 import {
   AndroidLogo,
   AppleIcon,
@@ -22,13 +21,7 @@ import {
 import {GatePreview} from '@thunderid/configure-design';
 import {useGetFlowById} from '@thunderid/configure-flows';
 import {useGetOrganizationUnit} from '@thunderid/configure-organization-units';
-import {
-  type EnvironmentValue,
-  type RuntimeEnvironment,
-  useConfig,
-  useRuntimeEnvironments,
-  useRuntimeUrl,
-} from '@thunderid/contexts';
+import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {DefaultTheme, type Theme, useGetTheme} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
 import {
@@ -46,14 +39,12 @@ import {
   Typography,
   useColorScheme,
 } from '@wso2/oxygen-ui';
-import {ArrowRight, BookOpen, Check, Copy, Sparkles, TriangleAlert, X} from '@wso2/oxygen-ui-icons-react';
+import {ArrowRight, BookOpen, Check, Copy, Sparkles, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
-import {Link} from 'react-router';
 import EnvironmentClientIdField from './EnvironmentClientIdField';
-import EnvironmentPicker from './EnvironmentPicker';
 import QuickstartGuide, {type QuickstartGuideSource} from './QuickstartGuide';
-import ApplicationQueryKeys from '../../../constants/application-query-keys';
+import useResourceEnvironments from '../../../hooks/useResourceEnvironments';
 import type {Application} from '../../../models/application';
 import type {OAuth2Config} from '../../../models/oauth';
 import {getIntegrationGuideForTemplate} from '../../../utils/getIntegrationGuidesForTemplate';
@@ -62,6 +53,8 @@ import getQuickstartsForTemplate from '../../../utils/getQuickstartsForTemplate'
 import normalizeTemplateId from '../../../utils/normalizeTemplateId';
 import {hasUserAccess} from '../../../utils/oauth2Rules';
 import resolveTemplateLink from '../../../utils/resolveTemplateLink';
+import EnvironmentChoice from '../../environments/EnvironmentChoice';
+import EnvironmentNotDeployedNotice from '../../environments/EnvironmentNotDeployedNotice';
 
 /**
  * Props for the {@link IntegrationGuides} component.
@@ -312,55 +305,30 @@ export default function IntegrationGuides({
   const runtimeUrl = useRuntimeUrl();
   // Where the application is deployed to more than one environment, its client ID and endpoints differ in
   // each, so the details and endpoints show one chosen environment's: the first in the pipeline until
-  // another is chosen.
-  const runtimeEnvironments = useRuntimeEnvironments();
-  const environments: RuntimeEnvironment[] = runtimeEnvironments?.environments ?? [];
-  const [chosenEnvironmentId, setChosenEnvironmentId] = useState<string>();
-  const selectedEnvironment: RuntimeEnvironment | undefined =
-    environments.length > 1
-      ? (environments.find((environment) => environment.id === chosenEnvironmentId) ?? environments[0])
-      : undefined;
-  const endpointsBaseUrl = selectedEnvironment?.runtimeUrl ?? runtimeUrl;
-  // A single environment gives nothing to choose between, but the application may still not be in it.
-  const shownEnvironment: RuntimeEnvironment | undefined =
-    selectedEnvironment ?? (environments.length === 1 ? environments[0] : undefined);
-  // A deploy enters at the first environment; each later one is reached by promoting.
-  const selectedIsPromoted = Boolean(selectedEnvironment) && environments[0]?.id !== selectedEnvironment?.id;
-  const previousEnvironmentName =
-    environments[environments.findIndex((environment) => environment.id === selectedEnvironment?.id) - 1]?.name;
-  // Which environments the application is not deployed to is told on the picker, before one is chosen. It
-  // is read the way each environment's client ID is, under the same key, so neither is asked for twice.
-  const clientIdByEnvironment = useQueries({
-    queries: (shownEnvironment && oauth2Config?.clientId ? environments : []).map(
-      (environment: RuntimeEnvironment) => ({
-        queryKey: [ApplicationQueryKeys.ENVIRONMENT_VALUE, environment.id, application.id, 'clientId'],
-        queryFn: (): Promise<EnvironmentValue> =>
-          runtimeEnvironments!.getValue(environment.id, {
-            resourceType: 'application',
-            resourceId: application.id,
-            field: 'clientId',
-          }),
-        retry: false,
-      }),
-    ),
+  // another is chosen. An environment the application is not in has no client ID for it and its endpoints
+  // do not accept it, so neither is shown for it: the way to get the application there is, in their place.
+  const {
+    environments,
+    selectedEnvironment,
+    shownEnvironment,
+    selectEnvironment,
+    notDeployedIds,
+    isNotDeployed: selectedIsNotDeployed,
+    previousEnvironmentName,
+    selectedClientId: selectedClientIdValue,
+    getValue,
+    deployPath,
+  } = useResourceEnvironments({
+    resourceType: 'application',
+    resourceId: application.id,
+    hasClientId: Boolean(oauth2Config?.clientId),
   });
-  const notDeployedIds = environments
-    .filter(
-      (_environment: RuntimeEnvironment, index: number) => clientIdByEnvironment[index]?.data?.status === 'absent',
-    )
-    .map((environment: RuntimeEnvironment) => environment.id);
-  // An environment the application is not in has no client ID for it and its endpoints do not accept it, so
-  // neither is shown for it: the way to get the application there is, in their place. What is the same in
-  // every environment stays.
-  const selectedIsNotDeployed = Boolean(shownEnvironment) && notDeployedIds.includes(shownEnvironment!.id);
+  // A single environment's values are shown as one of several is, only with nothing to choose.
+  const endpointsBaseUrl = shownEnvironment?.runtimeUrl ?? runtimeUrl;
   // The integration guide and the coding agent prompt are for the environment chosen too. An environment
   // with no client ID for the application leaves the placeholder for the developer to fill in.
-  const selectedClientIdValue =
-    clientIdByEnvironment[
-      environments.findIndex((environment: RuntimeEnvironment) => environment.id === selectedEnvironment?.id)
-    ]?.data;
   let selectedClientId = oauth2Config?.clientId;
-  if (selectedEnvironment) {
+  if (shownEnvironment) {
     selectedClientId = selectedClientIdValue?.status === 'set' ? selectedClientIdValue.value : undefined;
   }
   const placeholderValues = {
@@ -526,12 +494,8 @@ export default function IntegrationGuides({
       <CopyableField label={t('applications:edit.general.labels.applicationId')} value={application.id} />
       {oauth2Config?.clientId &&
         !selectedIsNotDeployed &&
-        (selectedEnvironment && runtimeEnvironments ? (
-          <EnvironmentClientIdField
-            environment={selectedEnvironment}
-            applicationId={application.id}
-            getValue={runtimeEnvironments.getValue}
-          />
+        (shownEnvironment && getValue ? (
+          <EnvironmentClientIdField environment={shownEnvironment} resourceId={application.id} getValue={getValue} />
         ) : (
           <CopyableField
             label={t('applications:edit.general.labels.clientId', 'Client ID')}
@@ -570,122 +534,21 @@ export default function IntegrationGuides({
       }}
     >
       {selectedEnvironment && (
-        <>
-          <Typography
-            variant="caption"
-            component="h3"
-            sx={{
-              display: 'block',
-              fontWeight: 600,
-              letterSpacing: '0.03em',
-              color: 'text.secondary',
-              textTransform: 'uppercase',
-              mb: 1,
-            }}
-          >
-            {t('applications:edit.overview.environments.title', 'Environment')}
-          </Typography>
-          <EnvironmentPicker
-            environments={environments}
-            selectedId={selectedEnvironment.id}
-            onSelect={setChosenEnvironmentId}
-            notDeployedIds={notDeployedIds}
-          />
-          <Stack direction="row" alignItems="center" spacing={1} sx={{mt: 1.25}}>
-            <Box
-              aria-hidden
-              sx={(theme) => ({
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                flexShrink: 0,
-                bgcolor: selectedEnvironment.color?.light ?? 'text.secondary',
-                ...theme.applyStyles('dark', {bgcolor: selectedEnvironment.color?.dark ?? 'text.secondary'}),
-              })}
-            />
-            <Typography variant="body2" role="status">
-              <Trans
-                i18nKey="applications:edit.overview.environments.description"
-                defaults="Showing values for <strong>{{environment}}</strong>"
-                values={{environment: selectedEnvironment.name}}
-                components={{
-                  strong: (
-                    <Box
-                      component="strong"
-                      sx={(theme) => ({
-                        textTransform: 'uppercase',
-                        color: selectedEnvironment.color?.light ?? 'text.primary',
-                        ...theme.applyStyles('dark', {color: selectedEnvironment.color?.dark ?? 'text.primary'}),
-                      })}
-                    />
-                  ),
-                }}
-              />
-            </Typography>
-          </Stack>
-        </>
+        <EnvironmentChoice
+          environments={environments}
+          selectedEnvironment={selectedEnvironment}
+          onSelect={selectEnvironment}
+          notDeployedIds={notDeployedIds}
+        />
       )}
       {shownEnvironment && selectedIsNotDeployed && (
         <Box sx={{mt: selectedEnvironment ? 2 : 0, mb: selectedEnvironment ? 0 : 2.5}}>
-          <Stack
-            direction="row"
-            spacing={1.5}
-            sx={{
-              px: 2,
-              py: 1.5,
-              border: 1,
-              borderColor: 'warning.main',
-              borderStyle: 'dashed',
-              borderRadius: 1,
-              bgcolor: 'action.hover',
-              color: 'warning.main',
-            }}
-          >
-            <Box sx={{display: 'flex', flexShrink: 0, pt: 0.25}}>
-              <TriangleAlert size={18} aria-hidden />
-            </Box>
-            <Box sx={{minWidth: 0}}>
-              <Typography variant="body2" color="inherit">
-                <Box component="strong" sx={{fontWeight: 600, mr: 1}}>
-                  {selectedIsPromoted
-                    ? t(
-                        'applications:edit.overview.environments.notPromotedTitle',
-                        'Not promoted to {{environment}} yet',
-                        {environment: shownEnvironment.name},
-                      )
-                    : t(
-                        'applications:edit.overview.environments.notDeployedTitle',
-                        'Not deployed to {{environment}} yet',
-                        {environment: shownEnvironment.name},
-                      )}
-                </Box>
-                {selectedIsPromoted
-                  ? t(
-                      'applications:edit.overview.environments.notPromotedDetail',
-                      'There is no client ID or endpoints for {{name}} here. Promote it from {{previous}} to get them.',
-                      {name: application.name, previous: previousEnvironmentName},
-                    )
-                  : t(
-                      'applications:edit.overview.environments.notDeployedDetail',
-                      'There is no client ID or endpoints for {{name}} here. Deploy it to {{environment}} to get them.',
-                      {name: application.name, environment: shownEnvironment.name},
-                    )}
-              </Typography>
-              {runtimeEnvironments?.deployPath && (
-                <Button
-                  component={Link}
-                  to={runtimeEnvironments.deployPath}
-                  variant="outlined"
-                  color="warning"
-                  size="small"
-                  endIcon={<ArrowRight size={16} aria-hidden />}
-                  sx={{mt: 1.25}}
-                >
-                  {t('applications:edit.overview.environments.openPipeline', 'Open deployment pipeline')}
-                </Button>
-              )}
-            </Box>
-          </Stack>
+          <EnvironmentNotDeployedNotice
+            resourceName={application.name}
+            environmentName={shownEnvironment.name}
+            previousEnvironmentName={previousEnvironmentName}
+            deployPath={deployPath}
+          />
         </Box>
       )}
       {sectionTitle(t('applications:edit.overview.appDetails.title', 'Application details'))}

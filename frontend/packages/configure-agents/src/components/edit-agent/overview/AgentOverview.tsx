@@ -7,12 +7,18 @@ import {
   LangChainLogo,
   useExternalLinkConfirmation,
 } from '@thunderid/components';
-import {deriveOAuth2Flags} from '@thunderid/configure-applications';
+import {
+  deriveOAuth2Flags,
+  EnvironmentChoice,
+  EnvironmentClientIdField,
+  EnvironmentNotDeployedNotice,
+  useResourceEnvironments,
+} from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useGetUsers} from '@thunderid/configure-users';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {getUserTypeLabel} from '@thunderid/utils';
-import {Box, Button, Chip, Link, Paper, Stack, Typography} from '@wso2/oxygen-ui';
+import {Box, Button, Chip, Divider, Link, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {ArrowRight, ArrowUpRight} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -148,6 +154,22 @@ export default function AgentOverview({
   // The endpoints below are for someone to copy into their own agent, so they have to name
   // the deployment that answers them rather than the one the console is configured against.
   const runtimeUrl = useRuntimeUrl();
+  // Where the agent is deployed to more than one environment, its client ID and endpoints differ in each,
+  // so the details and endpoints show one chosen environment's. An environment the agent is not in has no
+  // client ID for it and its endpoints do not accept it, so neither is shown for it.
+  const {
+    environments,
+    selectedEnvironment,
+    shownEnvironment,
+    selectEnvironment,
+    notDeployedIds,
+    isNotDeployed,
+    previousEnvironmentName,
+    getValue,
+    deployPath,
+  } = useResourceEnvironments({resourceType: 'agent', resourceId: agent.id, hasClientId: Boolean(agent.clientId)});
+  // A single environment's values are shown as one of several is, only with nothing to choose.
+  const endpointsBaseUrl = shownEnvironment?.runtimeUrl ?? runtimeUrl;
   const quickstartDocsUrl = getDocumentationLink('agents.quickstarts.langchain.docs');
 
   const ownerLabel = useMemo(() => {
@@ -176,40 +198,82 @@ export default function AgentOverview({
     {
       key: 'wellknown',
       label: t('agents:edit.overview.endpoints.wellknown', 'OpenID configuration'),
-      url: `${runtimeUrl}/.well-known/openid-configuration`,
+      url: `${endpointsBaseUrl}/.well-known/openid-configuration`,
     },
     {
       key: 'authorization',
       label: t('agents:edit.overview.endpoints.authorization', 'Authorization endpoint'),
-      url: `${runtimeUrl}/oauth2/authorize`,
+      url: `${endpointsBaseUrl}/oauth2/authorize`,
     },
     {
       key: 'token',
       label: t('agents:edit.overview.endpoints.token', 'Token endpoint'),
-      url: `${runtimeUrl}/oauth2/token`,
+      url: `${endpointsBaseUrl}/oauth2/token`,
     },
     {
       key: 'userinfo',
       label: t('agents:edit.overview.endpoints.userinfo', 'Userinfo endpoint'),
-      url: `${runtimeUrl}/oauth2/userinfo`,
+      url: `${endpointsBaseUrl}/oauth2/userinfo`,
     },
     {
       key: 'jwks',
       label: t('agents:edit.overview.endpoints.jwks', 'JWKS URI'),
-      url: `${runtimeUrl}/oauth2/jwks`,
+      url: `${endpointsBaseUrl}/oauth2/jwks`,
     },
   ];
 
-  const detailsCard = (
-    <OverviewCard
-      title={t('agents:edit.overview.agentDetails.title', 'Agent details')}
-      description={t('agents:edit.overview.agentDetails.description', 'Identifiers used in your integration code.')}
-    >
+  const sectionHeader = (title: string, description: string): JSX.Element => (
+    <Box sx={{mt: 2.5, mb: 1.25, '&:first-child': {mt: 0}}}>
+      <Typography variant="subtitle1" component="h3" sx={{fontWeight: 600, mb: 0.25}}>
+        {title}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {description}
+      </Typography>
+    </Box>
+  );
+  const clientIdLabel = t('agents:edit.credentials.clientId.title', 'Client ID');
+
+  // The identifiers and the endpoints share one card, under the environments to choose between.
+  const detailsPanel = (
+    <Paper variant="outlined" sx={{borderRadius: '10px', p: 2.25}}>
+      {selectedEnvironment && (
+        <EnvironmentChoice
+          environments={environments}
+          selectedEnvironment={selectedEnvironment}
+          onSelect={selectEnvironment}
+          notDeployedIds={notDeployedIds}
+        />
+      )}
+      {shownEnvironment && isNotDeployed && (
+        <Box sx={{mt: selectedEnvironment ? 2 : 0, mb: selectedEnvironment ? 0 : 2.5}}>
+          <EnvironmentNotDeployedNotice
+            resourceName={agent.display ?? agent.id}
+            environmentName={shownEnvironment.name}
+            previousEnvironmentName={previousEnvironmentName}
+            deployPath={deployPath}
+          />
+        </Box>
+      )}
+      {sectionHeader(
+        t('agents:edit.overview.agentDetails.title', 'Agent details'),
+        t('agents:edit.overview.agentDetails.description', 'Identifiers used in your integration code.'),
+      )}
       <Box>
         <CopyableField label={t('agents:edit.general.labels.agentId', 'Agent ID')} value={agent.id} />
-        {agent.clientId && (
-          <CopyableField label={t('agents:edit.credentials.clientId.title', 'Client ID')} value={agent.clientId} />
-        )}
+        {agent.clientId &&
+          !isNotDeployed &&
+          (shownEnvironment && getValue ? (
+            <EnvironmentClientIdField
+              environment={shownEnvironment}
+              resourceType="agent"
+              resourceId={agent.id}
+              getValue={getValue}
+              label={clientIdLabel}
+            />
+          ) : (
+            <CopyableField label={clientIdLabel} value={agent.clientId} />
+          ))}
         {ownerLabel && (
           <CopyableField
             label={
@@ -233,23 +297,24 @@ export default function AgentOverview({
           />
         )}
       </Box>
-    </OverviewCard>
-  );
-
-  const endpointsCard = (
-    <OverviewCard
-      title={t('agents:edit.overview.endpoints.title', 'Useful endpoints')}
-      description={t(
-        'agents:edit.overview.endpoints.description',
-        'For authenticating this agent, on its own or on behalf of a user.',
+      {!isNotDeployed && (
+        <>
+          <Divider sx={{mt: 2.5}} />
+          {sectionHeader(
+            t('agents:edit.overview.endpoints.title', 'Useful endpoints'),
+            t(
+              'agents:edit.overview.endpoints.description',
+              'For authenticating this agent, on its own or on behalf of a user.',
+            ),
+          )}
+          <Box>
+            {endpoints.map((endpoint) => (
+              <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
+            ))}
+          </Box>
+        </>
       )}
-    >
-      <Box>
-        {endpoints.map((endpoint) => (
-          <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
-        ))}
-      </Box>
-    </OverviewCard>
+    </Paper>
   );
 
   const attributesCard = (
@@ -386,9 +451,8 @@ export default function AgentOverview({
       </Stack>
 
       {/* Right: identifiers and endpoints sidebar */}
-      <Stack spacing={1.75} sx={{flex: '1 0 280px', maxWidth: {xs: '100%', md: 320}}}>
-        {detailsCard}
-        {endpointsCard}
+      <Stack spacing={1.75} sx={{flex: '2 0 320px', maxWidth: {xs: '100%', md: 520}}}>
+        {detailsPanel}
       </Stack>
 
       <ExternalLinkConfirmDialog
