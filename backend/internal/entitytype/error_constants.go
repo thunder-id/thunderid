@@ -345,6 +345,20 @@ var (
 	}
 )
 
+// Descriptions of the invalid-request errors when the cause is known, which travels in the "detail" param.
+var (
+	invalidUserTypeRequestDetailDescription = tidcommon.I18nMessage{
+		Key: "error.entitytypeservice.invalid_user_type_request_detail_description",
+		DefaultValue: "The user type request contains invalid or missing required fields: " +
+			"{{param(detail)}}",
+	}
+	invalidAgentTypeRequestDetailDescription = tidcommon.I18nMessage{
+		Key: "error.entitytypeservice.invalid_agent_type_request_detail_description",
+		DefaultValue: "The agent type request contains invalid or missing required fields: " +
+			"{{param(detail)}}",
+	}
+)
+
 // entityTypeNotFoundErr returns the category-specific not-found ServiceError.
 func entityTypeNotFoundErr(category TypeCategory) *tidcommon.ServiceError {
 	if category == TypeCategoryAgent {
@@ -361,17 +375,16 @@ func entityTypeHandleConflictErr(category TypeCategory) *tidcommon.ServiceError 
 	return &ErrorUserTypeHandleConflict
 }
 
-// invalidEntityTypeRequestErr returns the category-specific invalid-request ServiceError,
-// with an optional detail appended to the description's default value.
+// invalidEntityTypeRequestErr returns the category-specific invalid-request ServiceError. An optional detail
+// fills the {{param(detail)}} placeholder of the description, so a client translating by key keeps the cause.
 func invalidEntityTypeRequestErr(category TypeCategory, detail string) *tidcommon.ServiceError {
-	var e tidcommon.ServiceError
+	e, detailDescription := ErrorInvalidUserTypeRequest, invalidUserTypeRequestDetailDescription
 	if category == TypeCategoryAgent {
-		e = ErrorInvalidAgentTypeRequest
-	} else {
-		e = ErrorInvalidUserTypeRequest
+		e, detailDescription = ErrorInvalidAgentTypeRequest, invalidAgentTypeRequestDetailDescription
 	}
 	if detail != "" {
-		e.ErrorDescription.DefaultValue += ": " + detail
+		e.ErrorDescription = detailDescription
+		e.ErrorDescription.Params = map[string]string{"detail": detail}
 	}
 	return &e
 }

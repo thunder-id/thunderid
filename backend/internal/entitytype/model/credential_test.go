@@ -148,3 +148,30 @@ func (s *CredentialTestSuite) TestCredentialFieldNotAllowedOnArray() {
 	s.Require().Error(err)
 	s.Require().Contains(err.Error(), "invalid field 'credential'")
 }
+
+func (s *CredentialTestSuite) TestHasCredentialAttribute() {
+	cases := []struct {
+		name   string
+		schema string
+		want   bool
+	}{
+		{"no credential", `{"name":{"type":"string"},` +
+			`"address":{"type":"object","properties":{"city":{"type":"string"}}},` +
+			`"tags":{"type":"array","items":{"type":"string"}}}`, false},
+		{"top-level credential", `{"apiKey":{"type":"string","credential":true}}`, true},
+		{"credential in an object", `{"contact":{"type":"object","properties":` +
+			`{"apiKey":{"type":"string","credential":true}}}}`, true},
+		{"credential in a nested object", `{"a":{"type":"object","properties":{"b":{"type":"object",` +
+			`"properties":{"pin":{"type":"number","credential":true}}}}}}`, true},
+		{"credential in array items", `{"keys":{"type":"array","items":{"type":"object","properties":` +
+			`{"secret":{"type":"string","credential":true}}}}}`, true},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			schema, err := CompileSchema(json.RawMessage(tc.schema))
+			s.Require().NoError(err)
+
+			s.Equal(tc.want, schema.HasCredentialAttribute())
+		})
+	}
+}
