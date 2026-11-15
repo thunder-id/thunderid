@@ -44,6 +44,10 @@ const (
 	ActionRevert Action = "revert"
 	// ActionEnroll registers a new credential, such as a passkey, for an identity.
 	ActionEnroll Action = "enroll"
+	// ActionReuse uses an existing session to satisfy a request without a credential check.
+	ActionReuse Action = "reuse"
+	// ActionEnd ends a session.
+	ActionEnd Action = "end"
 )
 
 // ActorType is the kind of principal that acted. The set is open.
@@ -80,8 +84,9 @@ const (
 
 	// reasonForbidden is the reason of an attempt denied because the caller lacks the permission for it.
 	reasonForbidden = "forbidden"
-	// reasonServerError is the reason of a service error code that cannot make a valid reason.
-	reasonServerError = "server_error"
+	// ReasonServerError is the reason of an attempt that failed for a cause the caller cannot act on, and of a
+	// service error code that cannot make a valid reason.
+	ReasonServerError = "server_error"
 	// reasonItemFailed is the reason of a request that completed with at least one of its items failed.
 	reasonItemFailed = "item_failed"
 )

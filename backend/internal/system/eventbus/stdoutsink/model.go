@@ -18,6 +18,8 @@ type line struct {
 	Action        string            `json:"action"`
 	Outcome       outcomeLine       `json:"outcome"`
 	Client        *clientLine       `json:"client,omitempty"`
+	Application   *applicationLine  `json:"application,omitempty"`
+	SessionRef    string            `json:"session_ref,omitempty"`
 	Details       map[string]string `json:"details,omitempty"`
 }
 
@@ -37,4 +39,9 @@ type outcomeLine struct {
 type clientLine struct {
 	Address   string `json:"address,omitempty"`
 	UserAgent string `json:"user_agent,omitempty"`
+}
+
+// applicationLine is the application the event ran for. It is an object so a field can be added to it.
+type applicationLine struct {
+	ID string `json:"id"`
 }

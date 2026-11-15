@@ -168,6 +168,12 @@ const (
 	EventProjectUpdate = "project.update"
 	// EventProjectDelete names an attempt to delete a project.
 	EventProjectDelete = "project.delete"
+	// EventSessionCreate names the establishing of a session.
+	EventSessionCreate = "session.create"
+	// EventSessionReuse names the use of an existing session to satisfy a request without a credential check.
+	EventSessionReuse = "session.reuse"
+	// EventSessionEnd names the ending of a session.
+	EventSessionEnd = "session.end"
 )
 
 const (
@@ -237,6 +243,9 @@ var principalTargetTypes = map[string]string{
 
 // DetailGrantType is the detail key of the grant type a token was requested with.
 const DetailGrantType = "grant_type"
+
+// DetailEndReason is the detail key of why a session ended.
+const DetailEndReason = "end_reason"
 
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
@@ -341,4 +350,8 @@ var auditedEvents = map[string][]string{
 	EventProjectCreate: nil,
 	EventProjectUpdate: nil,
 	EventProjectDelete: nil,
+
+	EventSessionCreate: nil,
+	EventSessionReuse:  nil,
+	EventSessionEnd:    {DetailEndReason},
 }
