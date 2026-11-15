@@ -45,6 +45,24 @@ describe('orderAgentAttributes', () => {
     ]);
   });
 
+  it('asks for the model provider before the model, then the function, however the schema arrives', () => {
+    const stored = {
+      function: {type: 'string'},
+      model: {type: 'string'},
+      modelProvider: {type: 'string'},
+      name: {type: 'string', required: true},
+      region: {type: 'string'},
+    };
+
+    expect(names(orderAgentAttributes(stored, 'name'))).toEqual([
+      'name',
+      'modelProvider',
+      'model',
+      'function',
+      'region',
+    ]);
+  });
+
   it('ignores a display attribute the schema does not hold, and drops nothing', () => {
     expect(names(orderAgentAttributes(schema, 'missing'))).toHaveLength(Object.keys(schema).length);
   });

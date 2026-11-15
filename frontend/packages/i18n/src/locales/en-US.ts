@@ -1217,9 +1217,6 @@ const translations = {
     'addForm.agentType': 'Agent type',
     'addForm.agentTypeSchemaError': 'The attributes of the selected agent type could not be loaded.',
     'addForm.agentTypesError': 'The agent types could not be loaded.',
-    'addForm.attributesStep.breadcrumb': 'Attributes',
-    'addForm.attributesStep.subtitle': 'Fill in the attributes the {{type}} agent type defines.',
-    'addForm.attributesStep.title': 'Agent attributes',
     'addForm.creating': 'Creating...',
     'addForm.description': 'Description',
     'addForm.descriptionPlaceholder': 'What this agent does',
@@ -1244,8 +1241,16 @@ const translations = {
     'addForm.organizationUnitHint':
       'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
     'addForm.selectAgentType': 'Select an agent type',
+    'addForm.steps.setup.breadcrumb': 'Type and owner',
+    'addForm.steps.setup.title': 'Choose an agent type and owner',
+    'addForm.steps.setup.subtitle': 'Pick the type whose schema describes this agent and who is responsible for it.',
+    'addForm.steps.setup.subtitleWithOrganizationUnit':
+      'Pick the type whose schema describes this agent, the organization unit it belongs to and who is responsible for it.',
+    'addForm.steps.details.breadcrumb': 'Details',
+    'addForm.steps.details.title': 'Agent details',
+    'addForm.steps.details.subtitle':
+      'Fill in the attributes the {{type}} agent type defines, and choose how the agent authenticates.',
     'addForm.submit': 'Create agent',
-    'addForm.subtitle': "Choose the agent's type, where it belongs and who owns it. You fill in its attributes next.",
     'addForm.typeOutsideProject':
       "Agents of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
     'addForm.placementsError': 'The organization units this agent can be placed in could not be loaded.',
