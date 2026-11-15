@@ -53,6 +53,7 @@ export type {GatewaysOverviewProps} from './components/GatewaysOverview';
 export {default as AutoApplySwitch} from './components/AutoApplySwitch';
 export {default as PipelineSteps} from './components/PipelineSteps';
 export type {PipelineStepsProps} from './components/PipelineSteps';
+export {default as RuntimeEnvironmentsProvider} from './components/RuntimeEnvironmentsProvider';
 export {default as ActorName} from './components/ActorName';
 export {default as useActorName} from './hooks/useActorName';
 
