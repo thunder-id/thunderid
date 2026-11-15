@@ -179,6 +179,52 @@ func (_c *OpenID4VPServiceInterfaceMock_GetResult_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetTrustAnchors provides a mock function for the type OpenID4VPServiceInterfaceMock
+func (_mock *OpenID4VPServiceInterfaceMock) GetTrustAnchors() []TrustAnchorInfo {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTrustAnchors")
+	}
+
+	var r0 []TrustAnchorInfo
+	if returnFunc, ok := ret.Get(0).(func() []TrustAnchorInfo); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]TrustAnchorInfo)
+		}
+	}
+	return r0
+}
+
+// OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTrustAnchors'
+type OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call struct {
+	*mock.Call
+}
+
+// GetTrustAnchors is a helper method to define mock.On call
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) GetTrustAnchors() *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	return &OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call{Call: _e.mock.On("GetTrustAnchors")}
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call) Run(run func()) *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call) Return(trustAnchorInfos []TrustAnchorInfo) *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	_c.Call.Return(trustAnchorInfos)
+	return _c
+}
+
+func (_c *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call) RunAndReturn(run func() []TrustAnchorInfo) *OpenID4VPServiceInterfaceMock_GetTrustAnchors_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Initiate provides a mock function for the type OpenID4VPServiceInterfaceMock
 func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, definitionID string) (*Initiation, *common0.ServiceError) {
 	ret := _mock.Called(ctx, definitionID)

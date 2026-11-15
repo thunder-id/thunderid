@@ -4,209 +4,163 @@
 package openid4vp
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-)
 
-const (
-	resultRedirectURIBase = "https://verifier.example/result"
+	vpprotocol "github.com/thunder-id/thunderid/internal/oauth/oauth2/openid4vp"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/openid4vpmock"
 )
 
 type OpenID4VPHandlerTestSuite struct {
 	suite.Suite
+	svc *openid4vpmock.OpenID4VPServiceInterfaceMock
+	h   *openID4VPHandler
+	mux *http.ServeMux
 }
 
 func TestOpenID4VPHandlerTestSuite(t *testing.T) {
 	suite.Run(t, new(OpenID4VPHandlerTestSuite))
 }
 
-func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObject() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
-	h := newOpenID4VPHandler(svc, svc)
-
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
-	suite.Require().Nil(svcErr)
-
-	suite.Run("success", func() {
-		req := httptest.NewRequest(http.MethodGet, "/openid4vp/request?state="+url.QueryEscape(init.State), nil)
-		rec := httptest.NewRecorder()
-		h.HandleRequestObject(rec, req)
-
-		suite.Equal(http.StatusOK, rec.Code)
-		suite.Equal(requestObjectContentType, rec.Header().Get("Content-Type"))
-		suite.Equal("no-store", rec.Header().Get("Cache-Control"))
-		suite.Len(strings.Split(rec.Body.String(), "."), 3)
-	})
-
-	suite.Run("missing state", func() {
-		req := httptest.NewRequest(http.MethodGet, "/openid4vp/request", nil)
-		rec := httptest.NewRecorder()
-		h.HandleRequestObject(rec, req)
-		suite.Equal(http.StatusBadRequest, rec.Code)
-		suite.Equal(ErrorInvalidRequest.Code, decodeErrorCode(suite.T(), rec))
-	})
-
-	suite.Run("unknown state", func() {
-		req := httptest.NewRequest(http.MethodGet, "/openid4vp/request?state=nope", nil)
-		rec := httptest.NewRecorder()
-		h.HandleRequestObject(rec, req)
-		suite.Equal(http.StatusNotFound, rec.Code)
-		suite.Equal(ErrorUnknownState.Code, decodeErrorCode(suite.T(), rec))
-	})
+func (suite *OpenID4VPHandlerTestSuite) SetupTest() {
+	suite.svc = openid4vpmock.NewOpenID4VPServiceInterfaceMock(suite.T())
+	suite.h = newOpenID4VPHandler(suite.svc)
+	suite.mux = http.NewServeMux()
+	Initialize(suite.mux, suite.svc)
 }
 
-func (suite *OpenID4VPHandlerTestSuite) TestHandleResponse() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, store := newTestService(t, b)
-	svc.cfg.ResultRedirectURIBase = resultRedirectURIBase
-	h := newOpenID4VPHandler(svc, svc)
-
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
-	suite.Require().Nil(svcErr)
-	rs := store[init.State]
-
-	presentation := b.build(rs.Nonce, map[string]interface{}{
-		"given_name": "Erika", "family_name": "Mustermann",
-	})
-	body, err := json.Marshal(map[string]interface{}{
-		"state":    init.State,
-		"vp_token": map[string]interface{}{credentialID: []string{presentation}},
-	})
-	suite.Require().NoError(err)
-	jweToken := fabricateResponseJWE(t, &rs.EphemeralKey.PublicKey, body)
-
-	suite.Run("success returns redirect_uri", func() {
-		form := url.Values{"state": {init.State}, "response": {jweToken}}
-		rec := postForm(h, form)
-		suite.Equal(http.StatusOK, rec.Code)
-
-		var resp map[string]string
-		suite.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
-		suite.Contains(resp["redirect_uri"], "state=")
-	})
-
-	suite.Run("missing fields", func() {
-		rec := postForm(h, url.Values{"state": {init.State}})
-		suite.Equal(http.StatusBadRequest, rec.Code)
-		suite.Equal(ErrorInvalidRequest.Code, decodeErrorCode(suite.T(), rec))
-	})
-}
-
-func (suite *OpenID4VPHandlerTestSuite) TestHandleResponseVerificationFailure() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, store := newTestService(t, b)
-	h := newOpenID4VPHandler(svc, svc)
-
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
-	suite.Require().Nil(svcErr)
-	rs := store[init.State]
-
-	// Presentation bound to the wrong nonce -> verification fails.
-	presentation := b.build("wrong-nonce", map[string]interface{}{"given_name": "Erika", "family_name": "M"})
-	body, err := json.Marshal(map[string]interface{}{
-		"state":    init.State,
-		"vp_token": map[string]interface{}{credentialID: []string{presentation}},
-	})
-	suite.Require().NoError(err)
-	jweToken := fabricateResponseJWE(t, &rs.EphemeralKey.PublicKey, body)
-
-	rec := postForm(h, url.Values{"state": {init.State}, "response": {jweToken}})
-	suite.Equal(http.StatusBadRequest, rec.Code)
-	suite.Equal(ErrorVerificationFailed.Code, decodeErrorCode(suite.T(), rec))
-}
-
-func (suite *OpenID4VPHandlerTestSuite) TestHandleTrustAnchors() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
-	h := newOpenID4VPHandler(svc, svc)
-
-	req := httptest.NewRequest(http.MethodGet, apiTrustAnchorsPath, nil)
+func (suite *OpenID4VPHandlerTestSuite) serve(method, target, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	rec := httptest.NewRecorder()
-	h.HandleTrustAnchors(rec, req)
-
-	suite.Require().Equal(http.StatusOK, rec.Code)
-	var anchors []TrustAnchorInfo
-	suite.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &anchors))
-	suite.Require().Len(anchors, 1)
-	suite.Equal("test-root", anchors[0].Name)
-	suite.NotEmpty(anchors[0].Subject)
-}
-
-func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObjectWriteError() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
-	h := newOpenID4VPHandler(svc, svc)
-
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
-	suite.Require().Nil(svcErr)
-
-	req := httptest.NewRequest(http.MethodGet, "/openid4vp/request?state="+url.QueryEscape(init.State), nil)
-	rec := &failingResponseWriter{header: http.Header{}}
-	h.HandleRequestObject(rec, req)
-
-	suite.Equal(http.StatusOK, rec.status)
-	suite.True(rec.writeCalled)
-}
-
-func (suite *OpenID4VPHandlerTestSuite) TestHandleResponseParseFormError() {
-	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, _ := newTestService(t, b)
-	h := newOpenID4VPHandler(svc, svc)
-
-	req := httptest.NewRequest(http.MethodPost, "/openid4vp/response", strings.NewReader("%zz"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	h.HandleResponse(rec, req)
-
-	suite.Equal(http.StatusBadRequest, rec.Code)
-	suite.Equal(ErrorInvalidRequest.Code, decodeErrorCode(suite.T(), rec))
-}
-
-// failingResponseWriter records the written status code and fails every Write.
-type failingResponseWriter struct {
-	header      http.Header
-	status      int
-	writeCalled bool
-}
-
-func (w *failingResponseWriter) Header() http.Header { return w.header }
-
-func (w *failingResponseWriter) Write([]byte) (int, error) {
-	w.writeCalled = true
-	return 0, errors.New("write failed")
-}
-
-func (w *failingResponseWriter) WriteHeader(code int) { w.status = code }
-
-func postForm(h *openID4VPHandler, form url.Values) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/openid4vp/response", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	h.HandleResponse(rec, req)
+	suite.mux.ServeHTTP(rec, req)
 	return rec
 }
 
-func decodeErrorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
-	t.Helper()
-	var resp struct {
-		Code string `json:"code"`
+func (suite *OpenID4VPHandlerTestSuite) decode(rec *httptest.ResponseRecorder) map[string]interface{} {
+	var resp map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	return resp
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleTrustAnchors() {
+	suite.svc.EXPECT().GetTrustAnchors().Return([]vpprotocol.TrustAnchorInfo{
+		{Name: "root-a", Subject: "CN=root-a"},
+	})
+
+	rec := suite.serve(http.MethodGet, "/openid4vp/trust-anchors", "")
+
+	suite.Require().Equal(http.StatusOK, rec.Code)
+	var anchors []vpprotocol.TrustAnchorInfo
+	suite.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &anchors))
+	suite.Require().Len(anchors, 1)
+	suite.Equal("root-a", anchors[0].Name)
+	suite.Equal("CN=root-a", anchors[0].Subject)
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleInitiateSuccess() {
+	expiresAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	suite.svc.EXPECT().Initiate(mock.Anything, "pid").Return(&vpprotocol.Initiation{
+		State: "txn-1", WalletURI: "openid4vp://?request_uri=x", ExpiresAt: expiresAt,
+	}, nil)
+
+	rec := suite.serve(http.MethodPost, "/openid4vp/initiate", `{"definition_id":"pid"}`)
+
+	suite.Require().Equal(http.StatusOK, rec.Code)
+	resp := suite.decode(rec)
+	suite.Equal("txn-1", resp["txn_id"])
+	suite.Equal("openid4vp://?request_uri=x", resp["wallet_url"])
+	suite.Equal("/openid4vp/status/txn-1", resp["status_url"])
+	suite.Equal("2026-01-02T03:04:05Z", resp["expires_at"])
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleInitiateMissingDefinitionID() {
+	rec := suite.serve(http.MethodPost, "/openid4vp/initiate", `{}`)
+	suite.Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleInitiateMalformedBody() {
+	rec := suite.serve(http.MethodPost, "/openid4vp/initiate", `{not json`)
+	suite.Equal(http.StatusBadRequest, rec.Code)
+	suite.Equal("INVALID_REQUEST", suite.decode(rec)["code"])
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleInitiateServiceErrors() {
+	suite.Run("client error", func() {
+		suite.SetupTest()
+		suite.svc.EXPECT().Initiate(mock.Anything, "pid").Return(nil, &vpprotocol.ErrorInvalidRequest)
+		rec := suite.serve(http.MethodPost, "/openid4vp/initiate", `{"definition_id":"pid"}`)
+		suite.Equal(http.StatusBadRequest, rec.Code)
+		suite.Equal(vpprotocol.ErrorInvalidRequest.Code, suite.decode(rec)["code"])
+	})
+
+	suite.Run("server error", func() {
+		suite.SetupTest()
+		suite.svc.EXPECT().Initiate(mock.Anything, "pid").Return(nil, &tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType, Code: "SSE-1",
+		})
+		rec := suite.serve(http.MethodPost, "/openid4vp/initiate", `{"definition_id":"pid"}`)
+		suite.Equal(http.StatusInternalServerError, rec.Code)
+	})
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleStatus() {
+	suite.Run("completed", func() {
+		suite.SetupTest()
+		suite.svc.EXPECT().GetResult(mock.Anything, "txn-1").Return(&vpprotocol.RequestState{
+			Status: vpprotocol.StatusCompleted, ResultToken: "token",
+		}, nil)
+		rec := suite.serve(http.MethodGet, "/openid4vp/status/txn-1", "")
+		suite.Require().Equal(http.StatusOK, rec.Code)
+		resp := suite.decode(rec)
+		suite.Equal(string(vpprotocol.StatusCompleted), resp["status"])
+		suite.Equal("token", resp["result_token"])
+		suite.NotContains(resp, "error")
+	})
+
+	suite.Run("failed", func() {
+		suite.SetupTest()
+		suite.svc.EXPECT().GetResult(mock.Anything, "txn-1").Return(&vpprotocol.RequestState{
+			Status: vpprotocol.StatusFailed, FailureReason: "access_denied",
+		}, nil)
+		rec := suite.serve(http.MethodGet, "/openid4vp/status/txn-1", "")
+		suite.Require().Equal(http.StatusOK, rec.Code)
+		resp := suite.decode(rec)
+		suite.Equal(string(vpprotocol.StatusFailed), resp["status"])
+		suite.Equal("access_denied", resp["error"])
+		suite.NotContains(resp, "result_token")
+	})
+
+	suite.Run("unknown state", func() {
+		suite.SetupTest()
+		suite.svc.EXPECT().GetResult(mock.Anything, "nope").Return(nil, &vpprotocol.ErrorUnknownState)
+		rec := suite.serve(http.MethodGet, "/openid4vp/status/nope", "")
+		suite.Equal(http.StatusNotFound, rec.Code)
+		suite.Equal(vpprotocol.ErrorUnknownState.Code, suite.decode(rec)["code"])
+	})
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestHandleStatusMissingTxnID() {
+	req := httptest.NewRequest(http.MethodGet, "/openid4vp/status/", nil)
+	rec := httptest.NewRecorder()
+	suite.h.HandleStatus(rec, req)
+	suite.Equal(http.StatusBadRequest, rec.Code)
+	suite.Equal("INVALID_REQUEST", suite.decode(rec)["code"])
+}
+
+func (suite *OpenID4VPHandlerTestSuite) TestPreflightRoutes() {
+	for _, target := range []string{"/openid4vp/trust-anchors", "/openid4vp/initiate", "/openid4vp/status/txn-1"} {
+		rec := suite.serve(http.MethodOptions, target, "")
+		suite.Equal(http.StatusNoContent, rec.Code, target)
 	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	return resp.Code
 }

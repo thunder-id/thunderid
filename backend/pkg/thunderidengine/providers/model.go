@@ -1574,3 +1574,29 @@ type PublicKeyInfo struct {
 	CertificateDER      []byte
 	CertificateChainDER [][]byte // leaf first, then intermediates; nil if not certificate-backed
 }
+
+// VCVerifierClient represents the configuration for a verifier client that can request and verify verifiable credentials (VCs).
+type VCVerifierClient struct {
+	VerifierID         string
+	ClientIDScheme     string            // "pre-registered" | "x509_hash" | "x509_san_dns" | "redirect_uri"; empty = engine default
+	ClientID           string            // only for pre-registered
+	CredentialType     string            // VCT
+	Format             string            // e.g. dc+sd-jwt
+	SubjectClaim       string            // VC claim path holding the individual ID
+	ClaimMappings      map[string]string // VC claim path -> OIDC user cliam
+	TrustedAuthorities []string
+	WalletURI          string // wallet deep-link base; empty = openid4vp://
+	ResponseMethod     string // direct_post.jwt | direct_post; empty = engine direct_post
+}
+
+// VerifiedCredential represents a verifiable credential that has been successfully verified, 
+// including its format, issuer, type, claims, disclosed paths, key binding thumbprint, and whether its status has been checked.
+type VerifiedCredential struct {
+	Format               string
+	Issuer               string
+	Type                 string
+	Claims               map[string]interface{}
+	DisclosedPaths       []string
+	KeyBindingThumbprint string
+	StatusChecked        bool
+}
