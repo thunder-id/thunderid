@@ -76,9 +76,15 @@ export default function UserAddFormPage(): JSX.Element {
   const hasProjectOus = (projectOus?.totalResults ?? 0) > 0;
 
   const [typeId, setTypeId] = useState<string>('');
-  const [ouId, setOuId] = useState<string>('');
+  const [chosenOuId, setOuId] = useState<string>('');
   const {data: typeList, isLoading: typesLoading} = useGetUserTypes({limit: 100, offset: 0});
-  const {data: userType} = useGetUserType(typeId || undefined);
+  const types: SchemaInterface[] = typeList?.types ?? [];
+  // With a single user type there is nothing to choose, so it is used without offering the choice.
+  const soleType: SchemaInterface | undefined = types.length === 1 ? types[0] : undefined;
+  const selectedType: SchemaInterface | undefined = soleType ?? types.find((type) => type.id === typeId);
+  // Outside a project the type's own organization unit starts selected, as it does when a type is chosen.
+  const ouId: string = chosenOuId || (soleType && !isInProject ? soleType.ouId : '');
+  const {data: userType} = useGetUserType(selectedType?.id);
 
   // A previously chosen type's fields are cleared when the type changes, so they are not posted.
   const {
@@ -88,8 +94,6 @@ export default function UserAddFormPage(): JSX.Element {
     reset,
   } = useForm<AttributeFormData>({mode: 'onBlur', shouldUnregister: true});
 
-  const types: SchemaInterface[] = typeList?.types ?? [];
-  const selectedType: SchemaInterface | undefined = types.find((type) => type.id === typeId);
   // A user of a type belongs to the type's organization unit or one beneath it, so inside a project only
   // the placements in that subtree are offered. None means the type cannot be used in this project.
   const {
@@ -209,32 +213,34 @@ export default function UserAddFormPage(): JSX.Element {
           }}
         >
           <Stack spacing={3}>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="user-type">{t('users:addForm.userType')}</FormLabel>
-              <Select
-                id="user-type"
-                value={typeId}
-                displayEmpty
-                onChange={(event) => {
-                  const nextTypeId = String(event.target.value);
-                  setTypeId(nextTypeId);
-                  // The type's own organization unit is the picker's root, so it starts selected. Inside a
-                  // project the picker selects the first placement the type allows instead.
-                  setOuId(isInProject ? '' : (types.find((type) => type.id === nextTypeId)?.ouId ?? ''));
-                  // Another type's schema can share a field name, so its values are not carried over.
-                  reset({});
-                }}
-              >
-                <MenuItem value="">
-                  <em>{t('users:addForm.selectUserType')}</em>
-                </MenuItem>
-                {types.map((type: SchemaInterface) => (
-                  <MenuItem key={type.id} value={type.id}>
-                    {resolveDisplayName(type.displayName) || type.handle}
+            {!soleType && (
+              <FormControl fullWidth required>
+                <FormLabel htmlFor="user-type">{t('users:addForm.userType')}</FormLabel>
+                <Select
+                  id="user-type"
+                  value={typeId}
+                  displayEmpty
+                  onChange={(event) => {
+                    const nextTypeId = String(event.target.value);
+                    setTypeId(nextTypeId);
+                    // The type's own organization unit is the picker's root, so it starts selected. Inside a
+                    // project the picker selects the first placement the type allows instead.
+                    setOuId(isInProject ? '' : (types.find((type) => type.id === nextTypeId)?.ouId ?? ''));
+                    // Another type's schema can share a field name, so its values are not carried over.
+                    reset({});
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>{t('users:addForm.selectUserType')}</em>
                   </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  {types.map((type: SchemaInterface) => (
+                    <MenuItem key={type.id} value={type.id}>
+                      {resolveDisplayName(type.displayName) || type.handle}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             {selectedType && !isInProject && (
               <FormControl fullWidth required>

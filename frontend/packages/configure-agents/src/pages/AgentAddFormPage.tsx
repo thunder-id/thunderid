@@ -110,7 +110,11 @@ export default function AgentAddFormPage(): JSX.Element {
   const {data: typeList, isLoading: typesLoading, error: typesError, refetch: refetchTypes} = useGetAllAgentTypes();
   // A failed refetch of agent types already read leaves them in place.
   const typesReadError = typesError && !typeList ? typesError : null;
-  const {data: agentType, error: agentTypeError, refetch: refetchAgentType} = useGetAgentType(typeId || undefined);
+  const types: AgentTypeListItem[] = typeList ?? [];
+  // With a single agent type there is nothing to choose, so it is used without offering the choice.
+  const soleType: AgentTypeListItem | undefined = types.length === 1 ? types[0] : undefined;
+  const selectedType: AgentTypeListItem | undefined = soleType ?? types.find((type) => type.id === typeId);
+  const {data: agentType, error: agentTypeError, refetch: refetchAgentType} = useGetAgentType(selectedType?.id);
   const {
     data: userList,
     isLoading: usersLoading,
@@ -135,8 +139,6 @@ export default function AgentAddFormPage(): JSX.Element {
     reset,
   } = useForm<AttributeFormData>({mode: 'onBlur', shouldUnregister: true});
 
-  const types: AgentTypeListItem[] = typeList ?? [];
-  const selectedType: AgentTypeListItem | undefined = types.find((type) => type.id === typeId);
   // An agent of a type belongs to the type's organization unit or one beneath it, so inside a project only
   // the placements in that subtree are offered. None means the type cannot be used in this project.
   const {
@@ -359,7 +361,7 @@ export default function AgentAddFormPage(): JSX.Element {
 
             {noAgentTypes && <Alert severity="info">{t('agents:addForm.noAgentTypes')}</Alert>}
 
-            {!typesLoading && !noAgentTypes && (
+            {!typesLoading && !noAgentTypes && !soleType && (
               <FormControl fullWidth required>
                 <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>
                 {typesReadError ? (
