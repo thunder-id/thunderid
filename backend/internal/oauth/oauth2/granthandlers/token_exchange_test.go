@@ -84,6 +84,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	// Explicit resource parameter resolves to an RS whose identifier equals the resource URI; an
 	// empty identifier resolves to the configured default resource server, as the default-aware
 	// provider does.
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return suite.mockResourceService.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			if identifier == "" {
@@ -633,7 +639,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PreservesOIDCSc
 	// The target RS defines only "read" (no OIDC scopes, no "write"). DownscopeToResourceServer must
 	// drop "write" and must never be asked to validate openid/profile.
 	suite.mockResourceService.ExpectedCalls = nil
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, resourceURI).
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, resourceURI, mock.Anything).
 		Return(&providers.ResourceServer{ID: resourceURI, Identifier: resourceURI}, (*tidcommon.ServiceError)(nil))
 	rsPermissions := map[string]struct{}{"read": {}}
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceURI, mock.Anything).
@@ -2471,6 +2477,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 	// Fresh resource mock so the default-resolution stub from SetupTest is not used; resolving the
 	// empty identifier yields a client error (no default RS configured), mapped to invalid_target.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return rsvc.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	h := &tokenExchangeGrantHandler{
@@ -2579,7 +2591,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	// Use a fresh resource service mock so the catch-all from SetupTest does not shadow
 	// the specific ValidatePermissions expectation.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS only defines [read, write]; ValidatePermissions returns the invalid one (admin).
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}).
@@ -2636,7 +2648,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 	// Use a fresh resource service mock so the catch-all from SetupTest does not shadow
 	// the specific ValidatePermissions expectation.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS defines [read] only; ValidatePermissions returns [write] as invalid.
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}).
@@ -2889,7 +2901,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DownscopeValida
 	tokenRequest.Resources = []string{"https://rs.example.com"}
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "https://rs.example.com").
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, "https://rs.example.com", mock.Anything).
 		Return(&providers.ResourceServer{ID: "rs-x", Identifier: "https://rs.example.com"}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
@@ -3611,7 +3623,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrant
 	tokenRequest.Scope = testScopeWrite
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil)
@@ -3676,7 +3688,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	tokenRequest.Scope = "read"
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil)
@@ -3729,7 +3741,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExternalSubject
 	tokenRequest.Scope = "openid read write"
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil)
@@ -3812,7 +3824,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DirectPermissio
 	tokenRequest.Scope = "read unmapped delete"
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil)

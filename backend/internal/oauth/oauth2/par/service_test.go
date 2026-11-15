@@ -78,6 +78,12 @@ func (s *ServiceTestSuite) newTestApp() *providers.OAuthClient {
 // not concerned with resource indicators don't need to script expectations.
 func (s *ServiceTestSuite) newPermissiveResourceMock() *resourcemock.ResourceServiceInterfaceMock {
 	m := resourcemock.NewResourceServiceInterfaceMock(s.T())
+	m.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return m.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	m.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
@@ -290,7 +296,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ValidResource_Success() {
 func (s *ServiceTestSuite) TestHandlePAR_UnregisteredResource_InvalidTarget() {
 	store := newParStoreInterfaceMock(s.T())
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
-	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "https://unknown.example.com").
+	rsMock.On("GetResourceServerByPermissions", mock.Anything, "https://unknown.example.com", mock.Anything).
 		Return((*providers.ResourceServer)(nil), &tidcommon.ServiceError{
 			Type: tidcommon.ClientErrorType,
 			Code: "RES-1001",
@@ -309,6 +315,12 @@ func (s *ServiceTestSuite) TestHandlePAR_UnregisteredResource_InvalidTarget() {
 func (s *ServiceTestSuite) TestHandlePAR_ResourceResolutionServerError() {
 	store := newParStoreInterfaceMock(s.T())
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
+	rsMock.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return rsMock.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return((*providers.ResourceServer)(nil), &tidcommon.ServiceError{
 			Type: tidcommon.ServerErrorType,
@@ -334,7 +346,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ValidatesResourceAndStoresRawScopes() {
 		}).Return("test-uri", nil)
 
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
-	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
+	rsMock.On("GetResourceServerByPermissions", mock.Anything, "https://api.example.com", mock.Anything).
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"},
 			(*tidcommon.ServiceError)(nil))
 
@@ -357,6 +369,12 @@ func (s *ServiceTestSuite) TestHandlePAR_NoResourceNoDefaultRejectsAtPush() {
 	store := newParStoreInterfaceMock(s.T())
 	// No default resource server configured: resolving the empty identifier reports not found.
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
+	rsMock.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return rsMock.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return((*providers.ResourceServer)(nil), &tidcommon.ServiceError{
 			Type: tidcommon.ClientErrorType,
@@ -384,6 +402,12 @@ func (s *ServiceTestSuite) TestHandlePAR_NoResourceWithDefaultSucceedsAtPush() {
 
 	// Default resource server configured: resolving the empty identifier returns it.
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
+	rsMock.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return rsMock.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://default.example.com"},
 			(*tidcommon.ServiceError)(nil))

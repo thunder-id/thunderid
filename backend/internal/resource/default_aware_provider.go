@@ -51,6 +51,21 @@ func (p *defaultAwareResourceServerProvider) GetResourceServerByIdentifier(
 	if identifier != "" {
 		return p.ResourceServerProvider.GetResourceServerByIdentifier(ctx, identifier)
 	}
+	return p.getDefaultResourceServer(ctx)
+}
+
+// GetResourceServerByPermissions resolves an explicit identifier by identifier only. ThunderID does not
+// resolve resource servers from permissions, so an empty identifier resolves the deployment's configured
+// default resource server.
+func (p *defaultAwareResourceServerProvider) GetResourceServerByPermissions(
+	ctx context.Context, resourceIdentifier string, _ []string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	return p.GetResourceServerByIdentifier(ctx, resourceIdentifier)
+}
+
+func (p *defaultAwareResourceServerProvider) getDefaultResourceServer(
+	ctx context.Context,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	merged, svcErr := p.serverConfigService.GetMergedConfig(
 		ctx, string(serverconfig.ConfigNameDefaultResourceServer))
 	if svcErr != nil {

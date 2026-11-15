@@ -39,14 +39,16 @@ func ValidateResourceURIs(resources []string) *model.ErrorResponse {
 
 // ResolveTargetResourceServer resolves the single target Resource Server for a token request.
 // At most one resource is allowed; more than one is invalid_target. When exactly one resource is
-// supplied it is resolved by identifier. When none is supplied an empty identifier is passed to the
-// provider, which (when default-aware) resolves the deployment's configured default resource server;
-// if no default is configured the request is rejected (invalid_target) — token issuance is bound to
+// supplied it is resolved by identifier only. When none is supplied the provider decides the resource
+// server from the permission scopes (ThunderID resolves the deployment's configured default resource
+// server); if none resolves, the request is rejected (invalid_target); if the permissions span more
+// than one resource server, it is rejected with invalid_scope (RFC 9068 §3). Token issuance is bound to
 // exactly one resource server.
 func ResolveTargetResourceServer(
 	ctx context.Context,
 	resourceService providers.ResourceServerProvider,
 	resources []string,
+	permissionScopes []string,
 ) (*providers.ResourceServer, *model.ErrorResponse) {
 	if errResp := ValidateResourceURIs(resources); errResp != nil {
 		return nil, errResp
@@ -70,8 +72,14 @@ func ResolveTargetResourceServer(
 		identifier = resources[0]
 		invalidTargetDescription = "The resource parameter does not match any registered resource server"
 	}
-	rs, svcErr := resourceService.GetResourceServerByIdentifier(ctx, identifier)
+	rs, svcErr := resourceService.GetResourceServerByPermissions(ctx, identifier, permissionScopes)
 	if svcErr != nil {
+		if svcErr.Code == tidcommon.ErrorAmbiguousPermissions.Code {
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidScope,
+				ErrorDescription: "The requested scopes are defined on more than one resource server",
+			}
+		}
 		return nil, resolveTargetError(svcErr, invalidTargetDescription)
 	}
 	return rs, nil
@@ -91,7 +99,7 @@ func ResolveAudienceBinding(
 	if len(resources) == 0 && len(permissionScopes) == 0 {
 		return nil, nil
 	}
-	return ResolveTargetResourceServer(ctx, resourceService, resources)
+	return ResolveTargetResourceServer(ctx, resourceService, resources, permissionScopes)
 }
 
 // resolveTargetError maps a resource-service error to invalid_target (client) or server_error.

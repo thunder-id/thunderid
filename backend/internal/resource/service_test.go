@@ -5270,6 +5270,23 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_StoreEr
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByPermissions_ByIdentifier() {
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "ident-1").
+		Return(providers.ResourceServer{ID: "rs-1"}, nil)
+
+	result, err := suite.service.GetResourceServerByPermissions(context.Background(), "ident-1", []string{"read"})
+
+	suite.Nil(err)
+	suite.Equal("rs-1", result.ID)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByPermissions_NoInputs() {
+	result, err := suite.service.GetResourceServerByPermissions(context.Background(), "", nil)
+
+	suite.Nil(result)
+	suite.Equal(ErrorResourceServerNotFound.Code, err.Code)
+}
+
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError() {
 	rs := providers.ResourceServer{
 		Name:       testUpdatedName,
