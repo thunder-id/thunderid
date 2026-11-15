@@ -41,6 +41,9 @@ const OrganizationUnitProvider = lazy(
   () => import('@thunderid/configure-organization-units/contexts/OrganizationUnitProvider'),
 );
 const RoleCreateProvider = lazy(() => import('@thunderid/configure-roles/contexts/RoleCreate/RoleCreateProvider'));
+const RuntimeEnvironmentsProvider = lazy(
+  () => import('@thunderid/configure-gateways/components/RuntimeEnvironmentsProvider'),
+);
 const TranslationCreateProvider = lazy(
   () => import('@thunderid/configure-translations/contexts/TranslationCreate/TranslationCreateProvider'),
 );
@@ -201,7 +204,15 @@ function projectDashboardRoutes(): JSX.Element {
   return (
     <>
       <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-      <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+      {/* An application's client ID and endpoints differ in each environment it is deployed to. */}
+      <Route
+        path={`${ROUTE_SEGMENTS.applications}/:applicationId`}
+        element={
+          <RuntimeEnvironmentsProvider>
+            <ApplicationEditPage />
+          </RuntimeEnvironmentsProvider>
+        }
+      />
       <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
       <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
       <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />

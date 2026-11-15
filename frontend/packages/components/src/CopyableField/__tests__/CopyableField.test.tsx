@@ -56,6 +56,12 @@ describe('CopyableField', () => {
     });
   });
 
+  it('names the value, which takes focus to be scrolled, after its label', () => {
+    render(<CopyableField label="Client ID" value="abc123" />);
+
+    expect(screen.getByRole('group', {name: 'Client ID'})).toHaveTextContent('abc123');
+  });
+
   it('uses a custom copy label for the button aria-label', () => {
     render(<CopyableField label="Client ID" value="abc123" copyLabel="Copy client ID" />);
 

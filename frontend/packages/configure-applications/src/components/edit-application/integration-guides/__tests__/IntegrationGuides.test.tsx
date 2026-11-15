@@ -3,7 +3,14 @@
 
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {render, screen, fireEvent, waitFor, within} from '@testing-library/react';
+import {
+  RuntimeEnvironmentsContext,
+  type EnvironmentValue,
+  type RuntimeEnvironment,
+  type RuntimeEnvironmentsContextType,
+} from '@thunderid/contexts';
 import {LoggerProvider, LogLevel} from '@thunderid/logger';
+import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
@@ -278,6 +285,7 @@ describe('IntegrationGuides', () => {
 
     expect(screen.getByRole('dialog', {name: 'Integration guide'})).toBeInTheDocument();
     expect(await screen.findByRole('button', {name: /Add the Provider/})).toBeInTheDocument();
+    expect(screen.queryByText(/^Values for/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: /Run Your App/})).toBeInTheDocument();
     // Creating the application is already done by the time someone reads its Overview tab.
     expect(screen.queryByText('Sign in to the Console.')).not.toBeInTheDocument();
@@ -506,6 +514,296 @@ describe('IntegrationGuides', () => {
       renderWithProviders(<IntegrationGuides application={mobileApplication} oauth2Config={oauth2Config} />);
 
       expect(screen.getByTestId('gate-preview')).toBeInTheDocument();
+    });
+  });
+
+  describe('environments', () => {
+    const development: RuntimeEnvironment = {
+      id: 'env-dev',
+      name: 'Development',
+      runtimeUrl: 'https://dev.example.com',
+      color: {light: '#0369A1', dark: '#5CD1FF'},
+    };
+    const production: RuntimeEnvironment = {id: 'env-prod', name: 'Production', runtimeUrl: 'https://prod.example.com'};
+    const getValue = vi.fn<RuntimeEnvironmentsContextType['getValue']>();
+
+    const renderWithEnvironments = (environments: RuntimeEnvironment[]) =>
+      renderWithProviders(
+        <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+          <RuntimeEnvironmentsContext.Provider value={{environments, getValue}}>
+            <IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />
+          </RuntimeEnvironmentsContext.Provider>
+        </QueryClientProvider>,
+      );
+
+    let clientIds: Record<string, EnvironmentValue>;
+
+    beforeEach(() => {
+      clientIds = {
+        'env-dev': {status: 'set', value: 'client-dev'},
+        'env-prod': {status: 'set', value: 'client-prod'},
+      };
+      getValue.mockReset().mockImplementation((environmentId: string) => Promise.resolve(clientIds[environmentId]));
+    });
+
+    it('shows no environment choice when the console deploys to a single environment', () => {
+      renderWithEnvironments([development]);
+
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+      expect(screen.getByText('client-123')).toBeInTheDocument();
+      expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+    });
+
+    it('shows no client ID or endpoints where the only environment does not have the application', async () => {
+      clientIds['env-dev'] = {status: 'absent'};
+      renderWithEnvironments([development]);
+
+      expect(await screen.findByText('Not deployed to Development yet')).toBeInTheDocument();
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+      expect(screen.queryByText('client-123')).not.toBeInTheDocument();
+      expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
+      expect(screen.getByText('app-123')).toBeInTheDocument();
+    });
+
+    it("shows the first environment's client ID and endpoints when there are several", async () => {
+      renderWithEnvironments([development, production]);
+
+      expect(screen.getByText('Environment')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Development'})).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', {name: 'Production'})).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('https://dev.example.com/oauth2/authorize')).toBeInTheDocument();
+      expect(await screen.findByText('client-dev')).toBeInTheDocument();
+      expect(screen.queryByText('client-123')).not.toBeInTheDocument();
+      expect(getValue).toHaveBeenCalledWith('env-dev', {
+        resourceType: 'application',
+        resourceId: 'app-123',
+        field: 'clientId',
+      });
+    });
+
+    it('shows the client ID and endpoints of the environment chosen', async () => {
+      renderWithEnvironments([development, production]);
+      await screen.findByText('client-dev');
+
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+
+      expect(await screen.findByText('client-prod')).toBeInTheDocument();
+      expect(screen.getByText('https://prod.example.com/oauth2/authorize')).toBeInTheDocument();
+      expect(screen.queryByText('https://dev.example.com/oauth2/authorize')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Production'})).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it("fills the integration guide and the coding agent prompt with the chosen environment's values", async () => {
+      promptFixtures[reactGuideUrl] = reactGuide;
+      renderWithEnvironments([development, production]);
+      await waitFor(() => expect(screen.getByLabelText('Client ID')).toHaveTextContent('client-dev'));
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+      await waitFor(() => expect(screen.getByLabelText('Client ID')).toHaveTextContent('client-prod'));
+
+      fireEvent.mouseOver(screen.getByRole('button', {name: /Copy prompt/i}));
+      expect(
+        await screen.findByText(
+          'Copy a ready-made prompt for Claude, Cursor, or any agent, with the values for Production.',
+        ),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', {name: /Copy prompt/i}));
+      await waitFor(() => {
+        expect(mockWriteText).toHaveBeenCalledWith(
+          'Integrate ThunderID at https://prod.example.com with clientId: client-prod',
+        );
+      });
+
+      fireEvent.click(screen.getByRole('button', {name: 'Open integration guide'}));
+      await screen.findByRole('button', {name: /Add the Provider/});
+      expect(screen.getByLabelText('src/main.jsx')).toHaveTextContent(
+        '<ThunderIDProvider clientId="client-prod" baseUrl="https://prod.example.com" />',
+      );
+      expect(
+        within(screen.getByRole('dialog', {name: 'Integration guide'})).getByText('Values for Production'),
+      ).toBeInTheDocument();
+
+      delete promptFixtures[reactGuideUrl];
+    });
+
+    it("fills the chosen environment's URL into a prompt that names a local instance", async () => {
+      const promptUrl = 'https://thunderid.dev/prompts/react/redirect-based.txt';
+      const original = promptFixtures[promptUrl];
+      promptFixtures[promptUrl] = 'Base URL: https://localhost:8090 (or your {{productName}} instance URL)';
+      renderWithEnvironments([development, production]);
+      await screen.findByText('client-dev');
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+      await screen.findByText('client-prod');
+
+      fireEvent.click(screen.getByRole('button', {name: /Copy prompt/i}));
+      await waitFor(() => {
+        expect(mockWriteText).toHaveBeenCalledWith(
+          'Base URL: https://prod.example.com (or your ThunderID instance URL)',
+        );
+      });
+
+      promptFixtures[promptUrl] = original;
+    });
+
+    it('leaves the client ID placeholder in the integration guide where the environment has none', async () => {
+      clientIds['env-prod'] = {status: 'absent'};
+      promptFixtures[reactGuideUrl] = reactGuide;
+      renderWithEnvironments([development, production]);
+      await waitFor(() => expect(screen.getByLabelText('Client ID')).toHaveTextContent('client-dev'));
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+      await screen.findByText('Not promoted to Production yet');
+
+      fireEvent.click(screen.getByRole('button', {name: /Copy prompt/i}));
+      await waitFor(() => {
+        expect(mockWriteText).toHaveBeenCalledWith(
+          'Integrate ThunderID at https://prod.example.com with clientId: <your-client-id>',
+        );
+      });
+
+      fireEvent.click(screen.getByRole('button', {name: 'Open integration guide'}));
+      await screen.findByRole('button', {name: /Add the Provider/});
+      expect(screen.getByLabelText('src/main.jsx')).toHaveTextContent(
+        '<ThunderIDProvider clientId="<your-client-id>" baseUrl="https://prod.example.com" />',
+      );
+
+      delete promptFixtures[reactGuideUrl];
+    });
+
+    it('says when the application is not deployed to an environment, or has no client ID there', async () => {
+      clientIds['env-prod'] = {status: 'absent'};
+      clientIds['env-dev'] = {status: 'unset'};
+      renderWithEnvironments([development, production]);
+
+      expect(await screen.findByText('No client ID is set in Development yet.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+      expect(await screen.findByText('Not promoted to Production yet')).toBeInTheDocument();
+    });
+
+    it('shows no client ID or endpoints for an environment the application is not in', async () => {
+      clientIds['env-prod'] = {status: 'absent'};
+      renderWithEnvironments([development, production]);
+      await screen.findByText('client-dev');
+
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+
+      expect(
+        await screen.findByText(
+          'There is no client ID or endpoints for Bifrost here. Promote it from Development to get them.',
+          {exact: false},
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Application details')).toBeInTheDocument();
+      expect(screen.queryByText('Client ID')).not.toBeInTheDocument();
+      expect(screen.queryByText('Useful endpoints')).not.toBeInTheDocument();
+      expect(screen.queryByText('https://prod.example.com/oauth2/authorize')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', {name: 'Development'}));
+
+      expect(await screen.findByText('client-dev')).toBeInTheDocument();
+      expect(screen.getByText('https://dev.example.com/oauth2/authorize')).toBeInTheDocument();
+    });
+
+    it('marks the environments the application is not deployed to on the picker', async () => {
+      clientIds['env-prod'] = {status: 'absent'};
+      renderWithEnvironments([development, production]);
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', {name: 'Production'})).toHaveAccessibleDescription(
+          'Not promoted to Production yet.',
+        ),
+      );
+      expect(screen.getByRole('button', {name: 'Development'})).not.toHaveAccessibleDescription(
+        'Not deployed to Development yet.',
+      );
+    });
+
+    it('offers the way to deploy where the application is not deployed to an environment yet', async () => {
+      clientIds['env-prod'] = {status: 'absent'};
+      renderWithProviders(
+        <MemoryRouter>
+          <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+            <RuntimeEnvironmentsContext.Provider
+              value={{environments: [development, production], getValue, deployPath: '/projects/default/pipeline'}}
+            >
+              <IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />
+            </RuntimeEnvironmentsContext.Provider>
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+      await screen.findByText('client-dev');
+      expect(screen.queryByRole('link', {name: 'Open deployment pipeline'})).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', {name: 'Production'}));
+
+      expect(await screen.findByRole('link', {name: 'Open deployment pipeline'})).toHaveAttribute(
+        'href',
+        '/projects/default/pipeline',
+      );
+    });
+
+    it('keeps environments that do not fit on one row that scrolls', async () => {
+      const many: RuntimeEnvironment[] = Array.from({length: 8}, (_unused, index) => ({
+        id: `env-${index}`,
+        name: `Environment number ${index}`,
+        runtimeUrl: `https://env-${index}.example.com`,
+      }));
+      many.forEach(({id}) => {
+        clientIds[id] = {status: 'set', value: `client-${id}`};
+      });
+      renderWithEnvironments(many);
+      await screen.findByText('client-env-0');
+
+      const picker = screen.getByRole('group', {name: 'Environment to show'});
+      const tops = within(picker)
+        .getAllByRole('button')
+        .map((button) => button.getBoundingClientRect().top);
+
+      expect(new Set(tops).size).toBe(1);
+      const scroller = picker.parentElement!;
+      expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
+      // More lies beyond the far edge, so that edge fades out under an arrow that scrolls that way.
+      await waitFor(() =>
+        expect(getComputedStyle(scroller).maskImage).toMatch(/(transparent|rgba\(0, 0, 0, 0\)) calc\(100% - 20px\)\)$/),
+      );
+      expect(screen.queryByRole('button', {name: 'Show earlier environments'})).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', {name: 'Show later environments'}));
+
+      expect(await screen.findByRole('button', {name: 'Show earlier environments'})).toBeInTheDocument();
+      expect(scroller.scrollLeft).toBeGreaterThan(0);
+    });
+
+    it('shows a failed read in place of a client ID read earlier', async () => {
+      const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+      renderWithProviders(
+        <QueryClientProvider client={client}>
+          <RuntimeEnvironmentsContext.Provider value={{environments: [development, production], getValue}}>
+            <IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />
+          </RuntimeEnvironmentsContext.Provider>
+        </QueryClientProvider>,
+      );
+      await screen.findByText('client-dev');
+
+      getValue.mockRejectedValue(new Error('forbidden'));
+      await client.refetchQueries();
+
+      expect(await screen.findByRole('button', {name: 'Refresh'})).toBeInTheDocument();
+      expect(screen.queryByText('client-dev')).not.toBeInTheDocument();
+    });
+
+    it('announces the environment whose values are shown', async () => {
+      renderWithEnvironments([development, production]);
+      await screen.findByText('client-dev');
+
+      expect(screen.getByRole('status')).toHaveTextContent('Showing values for Development');
+    });
+
+    it('offers to read the client ID again when it cannot be read', async () => {
+      getValue.mockRejectedValueOnce(new Error('forbidden'));
+      renderWithEnvironments([development, production]);
+
+      fireEvent.click(await screen.findByRole('button', {name: 'Refresh'}));
+
+      expect(await screen.findByText('client-dev')).toBeInTheDocument();
     });
   });
 });

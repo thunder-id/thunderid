@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useQueries} from '@tanstack/react-query';
 import {
   AndroidLogo,
   AppleIcon,
@@ -21,7 +22,13 @@ import {
 import {GatePreview} from '@thunderid/configure-design';
 import {useGetFlowById} from '@thunderid/configure-flows';
 import {useGetOrganizationUnit} from '@thunderid/configure-organization-units';
-import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
+import {
+  type EnvironmentValue,
+  type RuntimeEnvironment,
+  useConfig,
+  useRuntimeEnvironments,
+  useRuntimeUrl,
+} from '@thunderid/contexts';
 import {DefaultTheme, type Theme, useGetTheme} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
 import {
@@ -31,6 +38,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   Paper,
   Stack,
@@ -38,10 +46,14 @@ import {
   Typography,
   useColorScheme,
 } from '@wso2/oxygen-ui';
-import {ArrowRight, BookOpen, Check, Copy, Sparkles, X} from '@wso2/oxygen-ui-icons-react';
+import {ArrowRight, BookOpen, Check, Copy, Sparkles, TriangleAlert, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
+import {Link} from 'react-router';
+import EnvironmentClientIdField from './EnvironmentClientIdField';
+import EnvironmentPicker from './EnvironmentPicker';
 import QuickstartGuide, {type QuickstartGuideSource} from './QuickstartGuide';
+import ApplicationQueryKeys from '../../../constants/application-query-keys';
 import type {Application} from '../../../models/application';
 import type {OAuth2Config} from '../../../models/oauth';
 import {getIntegrationGuideForTemplate} from '../../../utils/getIntegrationGuidesForTemplate';
@@ -298,10 +310,63 @@ export default function IntegrationGuides({
   // The prompt and the endpoints below are for someone to copy into their own application, so they
   // have to name the deployment that answers them rather than the one the console is configured against.
   const runtimeUrl = useRuntimeUrl();
+  // Where the application is deployed to more than one environment, its client ID and endpoints differ in
+  // each, so the details and endpoints show one chosen environment's: the first in the pipeline until
+  // another is chosen.
+  const runtimeEnvironments = useRuntimeEnvironments();
+  const environments: RuntimeEnvironment[] = runtimeEnvironments?.environments ?? [];
+  const [chosenEnvironmentId, setChosenEnvironmentId] = useState<string>();
+  const selectedEnvironment: RuntimeEnvironment | undefined =
+    environments.length > 1
+      ? (environments.find((environment) => environment.id === chosenEnvironmentId) ?? environments[0])
+      : undefined;
+  const endpointsBaseUrl = selectedEnvironment?.runtimeUrl ?? runtimeUrl;
+  // A single environment gives nothing to choose between, but the application may still not be in it.
+  const shownEnvironment: RuntimeEnvironment | undefined =
+    selectedEnvironment ?? (environments.length === 1 ? environments[0] : undefined);
+  // A deploy enters at the first environment; each later one is reached by promoting.
+  const selectedIsPromoted = Boolean(selectedEnvironment) && environments[0]?.id !== selectedEnvironment?.id;
+  const previousEnvironmentName =
+    environments[environments.findIndex((environment) => environment.id === selectedEnvironment?.id) - 1]?.name;
+  // Which environments the application is not deployed to is told on the picker, before one is chosen. It
+  // is read the way each environment's client ID is, under the same key, so neither is asked for twice.
+  const clientIdByEnvironment = useQueries({
+    queries: (shownEnvironment && oauth2Config?.clientId ? environments : []).map(
+      (environment: RuntimeEnvironment) => ({
+        queryKey: [ApplicationQueryKeys.ENVIRONMENT_VALUE, environment.id, application.id, 'clientId'],
+        queryFn: (): Promise<EnvironmentValue> =>
+          runtimeEnvironments!.getValue(environment.id, {
+            resourceType: 'application',
+            resourceId: application.id,
+            field: 'clientId',
+          }),
+        retry: false,
+      }),
+    ),
+  });
+  const notDeployedIds = environments
+    .filter(
+      (_environment: RuntimeEnvironment, index: number) => clientIdByEnvironment[index]?.data?.status === 'absent',
+    )
+    .map((environment: RuntimeEnvironment) => environment.id);
+  // An environment the application is not in has no client ID for it and its endpoints do not accept it, so
+  // neither is shown for it: the way to get the application there is, in their place. What is the same in
+  // every environment stays.
+  const selectedIsNotDeployed = Boolean(shownEnvironment) && notDeployedIds.includes(shownEnvironment!.id);
+  // The integration guide and the coding agent prompt are for the environment chosen too. An environment
+  // with no client ID for the application leaves the placeholder for the developer to fill in.
+  const selectedClientIdValue =
+    clientIdByEnvironment[
+      environments.findIndex((environment: RuntimeEnvironment) => environment.id === selectedEnvironment?.id)
+    ]?.data;
+  let selectedClientId = oauth2Config?.clientId;
+  if (selectedEnvironment) {
+    selectedClientId = selectedClientIdValue?.status === 'set' ? selectedClientIdValue.value : undefined;
+  }
   const placeholderValues = {
     productName,
-    baseUrl: runtimeUrl,
-    clientId: oauth2Config?.clientId,
+    baseUrl: endpointsBaseUrl,
+    clientId: selectedClientId ?? '<your-client-id>',
     applicationId: application.id,
   };
 
@@ -321,7 +386,11 @@ export default function IntegrationGuides({
 
       const promptText = await response.text();
 
-      await navigator.clipboard.writeText(replacePlaceholders(promptText, placeholderValues));
+      // A prompt written before the base URL placeholder names a local instance, as the docs code samples do.
+      const filledPrompt = replacePlaceholders(promptText, placeholderValues);
+      await navigator.clipboard.writeText(
+        endpointsBaseUrl ? filledPrompt.replaceAll('https://localhost:8090', endpointsBaseUrl) : filledPrompt,
+      );
       setPromptCopied(true);
       setTimeout(() => setPromptCopied(false), 1500);
     } catch {
@@ -336,24 +405,24 @@ export default function IntegrationGuides({
     {
       key: 'flowExecute',
       label: t('applications:edit.overview.endpoints.flowExecute', 'Flow execution endpoint'),
-      url: `${runtimeUrl}/flow/execute`,
+      url: `${endpointsBaseUrl}/flow/execute`,
     },
     {
       key: 'flowMeta',
       label: t('applications:edit.overview.endpoints.flowMeta', 'Flow metadata endpoint'),
-      url: `${runtimeUrl}/flow/meta`,
+      url: `${endpointsBaseUrl}/flow/meta`,
     },
     ...(isDirectApiEnabled
       ? [
           {
             key: 'passkeyRegisterStart',
             label: t('applications:edit.overview.endpoints.passkeyRegisterStart', 'Passkey registration (start)'),
-            url: `${runtimeUrl}/register/passkey/start`,
+            url: `${endpointsBaseUrl}/register/passkey/start`,
           },
           {
             key: 'passkeyRegisterFinish',
             label: t('applications:edit.overview.endpoints.passkeyRegisterFinish', 'Passkey registration (finish)'),
-            url: `${runtimeUrl}/register/passkey/finish`,
+            url: `${endpointsBaseUrl}/register/passkey/finish`,
           },
         ]
       : []),
@@ -362,27 +431,27 @@ export default function IntegrationGuides({
     {
       key: 'wellknown',
       label: t('applications:edit.overview.endpoints.wellknown', 'OpenID configuration'),
-      url: `${runtimeUrl}/.well-known/openid-configuration`,
+      url: `${endpointsBaseUrl}/.well-known/openid-configuration`,
     },
     {
       key: 'authorization',
       label: t('applications:edit.overview.endpoints.authorization', 'Authorization endpoint'),
-      url: `${runtimeUrl}/oauth2/authorize`,
+      url: `${endpointsBaseUrl}/oauth2/authorize`,
     },
     {
       key: 'token',
       label: t('applications:edit.overview.endpoints.token', 'Token endpoint'),
-      url: `${runtimeUrl}/oauth2/token`,
+      url: `${endpointsBaseUrl}/oauth2/token`,
     },
     {
       key: 'userinfo',
       label: t('applications:edit.overview.endpoints.userinfo', 'Userinfo endpoint'),
-      url: `${runtimeUrl}/oauth2/userinfo`,
+      url: `${endpointsBaseUrl}/oauth2/userinfo`,
     },
     {
       key: 'jwks',
       label: t('applications:edit.overview.endpoints.jwks', 'JWKS URI'),
-      url: `${runtimeUrl}/oauth2/jwks`,
+      url: `${endpointsBaseUrl}/oauth2/jwks`,
     },
   ];
   // Apps with their own backend/native runtime ("App Native", per the Flow Execution API) drive
@@ -397,10 +466,20 @@ export default function IntegrationGuides({
   // The docs code samples are written against a local instance with placeholder identifiers.
   // Swapping in this application's values leaves the developer nothing to look up.
   const guideCodeValues = {
-    '<your-client-id>': oauth2Config?.clientId,
+    '<your-client-id>': selectedClientId,
     '<your-application-id>': application.id,
-    'https://localhost:8090': runtimeUrl,
+    'https://localhost:8090': endpointsBaseUrl,
   };
+  const promptDescription = selectedEnvironment
+    ? t(
+        'applications:edit.overview.agentPrompt.descriptionForEnvironment',
+        'Copy a ready-made prompt for Claude, Cursor, or any agent, with the values for {{environment}}.',
+        {environment: selectedEnvironment.name},
+      )
+    : t(
+        'applications:edit.overview.agentPrompt.description',
+        'Copy a ready-made prompt for Claude, Cursor, or any agent.',
+      );
   const renderCopyPromptButton = (variant: 'contained' | 'outlined'): JSX.Element => (
     <Button
       variant={variant}
@@ -415,7 +494,15 @@ export default function IntegrationGuides({
       {promptCopied ? t('common:actions.copied') : t('applications:edit.overview.agentPrompt.action', 'Copy prompt')}
     </Button>
   );
-  const endpointsCard = (showOAuthEndpoints || showFlowEndpoints) && (
+  const hasEndpoints = showOAuthEndpoints || showFlowEndpoints;
+  const endpointFields = (
+    <Box>
+      {endpoints.map((endpoint) => (
+        <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
+      ))}
+    </Box>
+  );
+  const endpointsCard = hasEndpoints && !selectedIsNotDeployed && (
     <OverviewCard
       title={t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints')}
       description={t(
@@ -423,11 +510,7 @@ export default function IntegrationGuides({
         'For driving sign-in and registration with a fully custom UI.',
       )}
     >
-      <Box>
-        {endpoints.map((endpoint) => (
-          <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
-        ))}
-      </Box>
+      {endpointFields}
     </OverviewCard>
   );
   // Sign-in-facing apps already fill the main column with a quickstart and a sizeable preview
@@ -438,31 +521,183 @@ export default function IntegrationGuides({
   const showEndpointsInSidebar = isSignInFacing;
   const hasMainContent = hasVisibleQuickstart || Boolean(promptUrl) || isSignInFacing || Boolean(endpointsCard);
 
-  const detailsCard = (
-    <OverviewCard
-      title={t('applications:edit.overview.appDetails.title', 'Application details')}
-      description={t('applications:edit.overview.appDetails.description', 'Identifiers used in your integration code.')}
-      sx={hasMainContent ? undefined : {flex: '1 1 320px', maxWidth: {xs: '100%', md: 320}}}
+  const detailsFields = (
+    <Box>
+      <CopyableField label={t('applications:edit.general.labels.applicationId')} value={application.id} />
+      {oauth2Config?.clientId &&
+        !selectedIsNotDeployed &&
+        (selectedEnvironment && runtimeEnvironments ? (
+          <EnvironmentClientIdField
+            environment={selectedEnvironment}
+            applicationId={application.id}
+            getValue={runtimeEnvironments.getValue}
+          />
+        ) : (
+          <CopyableField
+            label={t('applications:edit.general.labels.clientId', 'Client ID')}
+            value={oauth2Config.clientId}
+          />
+        ))}
+      {application.ouId && (
+        <CopyableField
+          label={t('applications:edit.overview.appDetails.organizationUnitId', 'Organization unit ID')}
+          value={application.ouId}
+        />
+      )}
+      {organizationUnit?.handle && (
+        <CopyableField
+          label={t('applications:edit.overview.appDetails.organizationUnitHandle', 'Organization unit handle')}
+          value={organizationUnit.handle}
+        />
+      )}
+    </Box>
+  );
+  // The identifiers and endpoints sit in one card. With several environments the choice of one leads it,
+  // so the card reads as one answer: this environment's identifiers and endpoints.
+  const sectionTitle = (title: string): JSX.Element => (
+    <Typography variant="subtitle1" component="h3" sx={{fontWeight: 600, mt: 2.5, mb: 1.25, '&:first-child': {mt: 0}}}>
+      {title}
+    </Typography>
+  );
+  const panelWidth = 520;
+  const detailsPanel = (
+    <Paper
+      variant="outlined"
+      sx={{
+        borderRadius: '10px',
+        p: 2.25,
+        ...(hasMainContent ? {} : {flex: `1 1 ${panelWidth}px`, maxWidth: {xs: '100%', md: panelWidth}}),
+      }}
     >
-      <Box>
-        <CopyableField label={t('applications:edit.general.labels.applicationId')} value={application.id} />
-        {oauth2Config?.clientId && (
-          <CopyableField label={t('applications:edit.general.labels.clientId')} value={oauth2Config.clientId} />
-        )}
-        {application.ouId && (
-          <CopyableField
-            label={t('applications:edit.overview.appDetails.organizationUnitId', 'Organization unit ID')}
-            value={application.ouId}
+      {selectedEnvironment && (
+        <>
+          <Typography
+            variant="caption"
+            component="h3"
+            sx={{
+              display: 'block',
+              fontWeight: 600,
+              letterSpacing: '0.03em',
+              color: 'text.secondary',
+              textTransform: 'uppercase',
+              mb: 1,
+            }}
+          >
+            {t('applications:edit.overview.environments.title', 'Environment')}
+          </Typography>
+          <EnvironmentPicker
+            environments={environments}
+            selectedId={selectedEnvironment.id}
+            onSelect={setChosenEnvironmentId}
+            notDeployedIds={notDeployedIds}
           />
-        )}
-        {organizationUnit?.handle && (
-          <CopyableField
-            label={t('applications:edit.overview.appDetails.organizationUnitHandle', 'Organization unit handle')}
-            value={organizationUnit.handle}
-          />
-        )}
-      </Box>
-    </OverviewCard>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{mt: 1.25}}>
+            <Box
+              aria-hidden
+              sx={(theme) => ({
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                flexShrink: 0,
+                bgcolor: selectedEnvironment.color?.light ?? 'text.secondary',
+                ...theme.applyStyles('dark', {bgcolor: selectedEnvironment.color?.dark ?? 'text.secondary'}),
+              })}
+            />
+            <Typography variant="body2" role="status">
+              <Trans
+                i18nKey="applications:edit.overview.environments.description"
+                defaults="Showing values for <strong>{{environment}}</strong>"
+                values={{environment: selectedEnvironment.name}}
+                components={{
+                  strong: (
+                    <Box
+                      component="strong"
+                      sx={(theme) => ({
+                        textTransform: 'uppercase',
+                        color: selectedEnvironment.color?.light ?? 'text.primary',
+                        ...theme.applyStyles('dark', {color: selectedEnvironment.color?.dark ?? 'text.primary'}),
+                      })}
+                    />
+                  ),
+                }}
+              />
+            </Typography>
+          </Stack>
+        </>
+      )}
+      {shownEnvironment && selectedIsNotDeployed && (
+        <Box sx={{mt: selectedEnvironment ? 2 : 0, mb: selectedEnvironment ? 0 : 2.5}}>
+          <Stack
+            direction="row"
+            spacing={1.5}
+            sx={{
+              px: 2,
+              py: 1.5,
+              border: 1,
+              borderColor: 'warning.main',
+              borderStyle: 'dashed',
+              borderRadius: 1,
+              bgcolor: 'action.hover',
+              color: 'warning.main',
+            }}
+          >
+            <Box sx={{display: 'flex', flexShrink: 0, pt: 0.25}}>
+              <TriangleAlert size={18} aria-hidden />
+            </Box>
+            <Box sx={{minWidth: 0}}>
+              <Typography variant="body2" color="inherit">
+                <Box component="strong" sx={{fontWeight: 600, mr: 1}}>
+                  {selectedIsPromoted
+                    ? t(
+                        'applications:edit.overview.environments.notPromotedTitle',
+                        'Not promoted to {{environment}} yet',
+                        {environment: shownEnvironment.name},
+                      )
+                    : t(
+                        'applications:edit.overview.environments.notDeployedTitle',
+                        'Not deployed to {{environment}} yet',
+                        {environment: shownEnvironment.name},
+                      )}
+                </Box>
+                {selectedIsPromoted
+                  ? t(
+                      'applications:edit.overview.environments.notPromotedDetail',
+                      'There is no client ID or endpoints for {{name}} here. Promote it from {{previous}} to get them.',
+                      {name: application.name, previous: previousEnvironmentName},
+                    )
+                  : t(
+                      'applications:edit.overview.environments.notDeployedDetail',
+                      'There is no client ID or endpoints for {{name}} here. Deploy it to {{environment}} to get them.',
+                      {name: application.name, environment: shownEnvironment.name},
+                    )}
+              </Typography>
+              {runtimeEnvironments?.deployPath && (
+                <Button
+                  component={Link}
+                  to={runtimeEnvironments.deployPath}
+                  variant="outlined"
+                  color="warning"
+                  size="small"
+                  endIcon={<ArrowRight size={16} aria-hidden />}
+                  sx={{mt: 1.25}}
+                >
+                  {t('applications:edit.overview.environments.openPipeline', 'Open deployment pipeline')}
+                </Button>
+              )}
+            </Box>
+          </Stack>
+        </Box>
+      )}
+      {sectionTitle(t('applications:edit.overview.appDetails.title', 'Application details'))}
+      {detailsFields}
+      {!selectedIsNotDeployed && hasEndpoints && showEndpointsInSidebar && (
+        <>
+          <Divider sx={{mt: 2.5}} />
+          {sectionTitle(t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints'))}
+          {endpointFields}
+        </>
+      )}
+    </Paper>
   );
 
   return (
@@ -495,7 +730,7 @@ export default function IntegrationGuides({
           )}
 
           {hasVisibleQuickstart && (
-            <Paper variant="outlined" sx={{p: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2}}>
+            <Paper variant="outlined" sx={{p: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2}}>
               <IconBadge>
                 {(quickstartGuides.length === 1 ? quickstartGuides[0].icon : undefined) ?? <BookOpen size={16} />}
               </IconBadge>
@@ -509,29 +744,24 @@ export default function IntegrationGuides({
                     'A step-by-step guide, with the values of this application already in the code samples.',
                   )}
                 </Typography>
-              </Box>
-              <Stack direction="row" flexWrap="wrap" gap={1}>
-                {/* The coding agent prompt is the quickest way in, so it is the primary action whenever
-                    the template has one. */}
-                <Button
-                  variant={promptUrl ? 'outlined' : 'contained'}
-                  size="small"
-                  startIcon={<BookOpen size={16} />}
-                  onClick={() => setIsGuideOpen(true)}
-                >
-                  {t('applications:edit.overview.guide.open', 'Open integration guide')}
-                </Button>
-                {promptUrl && (
-                  <Tooltip
-                    title={t(
-                      'applications:edit.overview.agentPrompt.description',
-                      'Copy a ready-made prompt for Claude, Cursor, or any agent.',
-                    )}
+                <Stack direction="row" flexWrap="wrap" gap={1} sx={{mt: 1.5}}>
+                  {/* The coding agent prompt is the quickest way in, so it is the primary action whenever
+                      the template has one. */}
+                  <Button
+                    variant={promptUrl ? 'outlined' : 'contained'}
+                    size="small"
+                    startIcon={<BookOpen size={16} />}
+                    onClick={() => setIsGuideOpen(true)}
                   >
-                    <span>{renderCopyPromptButton('contained')}</span>
-                  </Tooltip>
-                )}
-              </Stack>
+                    {t('applications:edit.overview.guide.open', 'Open integration guide')}
+                  </Button>
+                  {promptUrl && (
+                    <Tooltip title={promptDescription}>
+                      <span>{renderCopyPromptButton('contained')}</span>
+                    </Tooltip>
+                  )}
+                </Stack>
+              </Box>
             </Paper>
           )}
 
@@ -553,10 +783,7 @@ export default function IntegrationGuides({
                   />
                 </Stack>
               }
-              description={t(
-                'applications:edit.overview.agentPrompt.description',
-                'Copy a ready-made prompt for Claude, Cursor, or any agent.',
-              )}
+              description={promptDescription}
             >
               {renderCopyPromptButton('outlined')}
             </IconCard>
@@ -712,9 +939,11 @@ export default function IntegrationGuides({
 
       {/* Right: identifiers sidebar. Also holds the endpoints card for sign-in-facing apps, whose
           main column is already full without it. */}
-      <Stack spacing={1.75} sx={hasMainContent ? {flex: '1 0 280px', maxWidth: {xs: '100%', md: 320}} : undefined}>
-        {detailsCard}
-        {showEndpointsInSidebar && endpointsCard}
+      <Stack
+        spacing={1.75}
+        sx={hasMainContent ? {flex: '2 0 320px', maxWidth: {xs: '100%', md: panelWidth}} : undefined}
+      >
+        {detailsPanel}
       </Stack>
 
       {hasVisibleQuickstart && (
@@ -726,13 +955,39 @@ export default function IntegrationGuides({
           maxWidth="md"
           fullWidth
           keepMounted
-          aria-labelledby="integration-guide-title"
+          aria-labelledby="integration-guide-title-text"
         >
           <DialogTitle
             id="integration-guide-title"
             sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2}}
           >
-            {t('applications:edit.overview.guide.dialogTitle', 'Integration guide')}
+            <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1.5} sx={{minWidth: 0}}>
+              <span id="integration-guide-title-text">
+                {t('applications:edit.overview.guide.dialogTitle', 'Integration guide')}
+              </span>
+              {selectedEnvironment && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  icon={
+                    <Box
+                      aria-hidden
+                      sx={(theme) => ({
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: selectedEnvironment.color?.light ?? 'text.secondary',
+                        ...theme.applyStyles('dark', {bgcolor: selectedEnvironment.color?.dark ?? 'text.secondary'}),
+                      })}
+                    />
+                  }
+                  label={t('applications:edit.overview.environments.guideFor', 'Values for {{environment}}', {
+                    environment: selectedEnvironment.name,
+                  })}
+                  sx={{pl: 0.75}}
+                />
+              )}
+            </Stack>
             <IconButton
               size="small"
               aria-label={t('common:actions.close', 'Close')}

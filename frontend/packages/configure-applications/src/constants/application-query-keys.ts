@@ -17,6 +17,10 @@ const ApplicationQueryKeys = {
    * Key for a quickstart guide fetched from the docs site
    */
   QUICKSTART_GUIDE: 'application-quickstart-guide',
+  /**
+   * Key for what an application's field holds in one environment
+   */
+  ENVIRONMENT_VALUE: 'application-environment-value',
 } as const;
 
 export default ApplicationQueryKeys;
