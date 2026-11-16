@@ -3114,6 +3114,22 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			},
 			wantErr: &ErrorResultLimitExceeded,
 		},
+		{
+			name:   "list all count out of bounds",
+			limit:  10,
+			offset: 0,
+			setupAuthz: func(authz *sysauthzmock.SystemAuthorizationServiceInterfaceMock) {
+				authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+					Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).
+					Once()
+			},
+			setupStore: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).
+					Return(0, ErrResultLimitExceededInCompositeMode).
+					Once()
+			},
+			wantErr: &ErrorResultLimitExceeded,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -4141,6 +4157,19 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			Return(1, nil).Once()
 		store.On("GetOrganizationUnitChildrenListInProject", mock.Anything, testSystemOUID, testProjectID, 9, 0).
 			Return(nil, ErrResultLimitExceededInCompositeMode).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		_, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, testSystemOUID, 10, 0)
+
+		suite.Equal(&ErrorResultLimitExceeded, err)
+	})
+
+	suite.Run("refuses the units under the system one when counting them passes the composite store's limit", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+			Return(0, ErrResultLimitExceededInCompositeMode).Once()
 		service := suite.newProjectService(store, existingProject())
 
 		_, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, testSystemOUID, 10, 0)
