@@ -64,7 +64,7 @@ func (ts *AuditLogTestSuite) TestASignInItsSingleSignOnAndItsSignOutWriteOneSess
 	ts.Equal([]string{"session.end"}, sessionEvents(written[3]), "the sign-out ends one session")
 
 	created := ts.onlyLineOf(written[1], "session.create", "a sign-in")
-	ts.Equal(append(append([]string{}, lineKeys...), "application", "session_ref"), ts.keys(created.Raw),
+	ts.Equal(append(append([]string{}, lineKeys...), "application", "session_ref", "flow_ref"), ts.keys(created.Raw),
 		"a sign-in")
 	ts.Equal("create", created.Action)
 	ts.Equal(userRef, created.Actor, "the user who signed in is the actor, not the owner of the bearer token")
@@ -76,7 +76,7 @@ func (ts *AuditLogTestSuite) TestASignInItsSingleSignOnAndItsSignOutWriteOneSess
 	ts.Equal(map[string]string{"id": f.signInAppID}, created.Application, "the application signed in to is named")
 
 	reuse := ts.onlyLineOf(written[2], "session.reuse", "a single sign-on")
-	ts.Equal(append(append([]string{}, lineKeys...), "application", "session_ref"), ts.keys(reuse.Raw),
+	ts.Equal(append(append([]string{}, lineKeys...), "application", "session_ref", "flow_ref"), ts.keys(reuse.Raw),
 		"a single sign-on")
 	ts.Equal("reuse", reuse.Action)
 	ts.Equal(userRef, reuse.Actor, "the session's user is the actor, not the owner of the bearer token")
@@ -88,7 +88,9 @@ func (ts *AuditLogTestSuite) TestASignInItsSingleSignOnAndItsSignOutWriteOneSess
 	ts.Equal(map[string]string{"id": f.joiningAppID}, reuse.Application, "the joining application is named")
 
 	end := ts.onlyLineOf(written[3], "session.end", "a sign-out")
-	ts.Equal(append(append([]string{}, lineKeys...), "session_ref", "details"), ts.keys(end.Raw), "a sign-out")
+	ts.Equal(append(append([]string{}, lineKeys...), "application", "session_ref", "flow_ref", "details"),
+		ts.keys(end.Raw),
+		"a sign-out")
 	ts.Equal("end", end.Action)
 	ts.Equal(userRef, end.Actor, "the user signs out of the session, not the owner of the bearer token")
 	ts.Equal(userRef, end.Target)
@@ -96,12 +98,20 @@ func (ts *AuditLogTestSuite) TestASignInItsSingleSignOnAndItsSignOutWriteOneSess
 	ts.Equal(map[string]string{"result": "succeeded"}, end.Outcome)
 	ts.Equal(sid, end.SessionRef, "the ended session is the one the sign-in started")
 	ts.Equal(map[string]string{"end_reason": "sign_out"}, ts.details(end))
-	ts.Nil(end.Application, "a sign-out names no joining application")
+	ts.Equal(map[string]string{"id": f.signInAppID}, end.Application, "the flow's application is named")
 
+	ts.NotEmpty(created.FlowRef, "a sign-in names the flow it ran in")
+	ts.NotEqual(created.FlowRef, reuse.FlowRef, "each flow has its own reference")
+	ts.NotEqual(created.FlowRef, end.FlowRef, "each flow has its own reference")
 	for _, call := range written {
 		for _, line := range call {
 			ts.requireNoSessionCredential(line, held.SessionHandle,
 				signInFamily, joinedFamily, signedIn.Assertion, joined.Assertion, adminToken)
+			for _, executionID := range []string{signedIn.ExecutionID, joined.ExecutionID, signedOut.ExecutionID} {
+				ts.NotEmpty(executionID)
+				ts.NotContains(line.Raw, executionID, "the execution ID continues the flow and is never recorded")
+				ts.NotEqual(executionID, line.FlowRef, "the flow reference is not the execution ID")
+			}
 		}
 	}
 }

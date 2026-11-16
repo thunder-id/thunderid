@@ -59,11 +59,12 @@ type Payload struct {
 
 	sessionRef string
 	appID      string
+	flowRef    string
 }
 
 // NewPayload builds the audit payload of an attempt on target. The actor, the principal it acted
-// for and the client are resolved from ctx, which carries the verified security context and where the
-// request came from. Every ID is cut to 128 characters.
+// for, the client, and the flow and application the attempt ran in are resolved from ctx, which carries
+// the verified security context and where the request came from. Every ID is cut to 128 characters.
 func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome) Payload {
 	actor, onBehalfOf := resolveActor(ctx)
 	actor.ID = capID(actor.ID)
@@ -77,6 +78,8 @@ func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome)
 		action:     action,
 		outcome:    outcome,
 		client:     Client{Address: address, UserAgent: userAgent},
+		appID:      capID(syscontext.GetApplicationID(ctx)),
+		flowRef:    capID(syscontext.GetFlowRef(ctx)),
 	}
 }
 
@@ -162,7 +165,8 @@ func (p Payload) WithSessionRef(ref string) Payload {
 	return p
 }
 
-// WithApplication names the application the event ran for by its ID.
+// WithApplication names the application the event ran for by its ID. NewPayload also reads the application
+// from the context, and an explicit call replaces it, with none when id is empty.
 func (p Payload) WithApplication(id string) Payload {
 	p.appID = capID(id)
 	return p
@@ -218,6 +222,11 @@ func (p Payload) SessionRef() string {
 // Application returns the ID of the application the event ran for, empty when none.
 func (p Payload) Application() string {
 	return p.appID
+}
+
+// FlowRef returns the reference of the flow the event ran in, empty when none.
+func (p Payload) FlowRef() string {
+	return p.flowRef
 }
 
 // Details returns a copy of the facts specific to the event.

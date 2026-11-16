@@ -20,6 +20,7 @@ type line struct {
 	Client        *clientLine       `json:"client,omitempty"`
 	Application   *applicationLine  `json:"application,omitempty"`
 	SessionRef    string            `json:"session_ref,omitempty"`
+	FlowRef       string            `json:"flow_ref,omitempty"`
 	Details       map[string]string `json:"details,omitempty"`
 }
 

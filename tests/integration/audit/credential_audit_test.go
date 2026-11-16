@@ -324,6 +324,8 @@ func (ts *AuditLogTestSuite) TestASecretRegenerationIsRecorded() {
 	ts.Equal(appRef, line.Subject)
 	ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome)
 	ts.Nil(line.Client, "a loopback peer is not recorded")
+	ts.NotEmpty(line.FlowRef, "a change made by a flow names the flow")
+	ts.Nil(line.Application, "an administration flow runs for no application")
 	ts.Zero(countEvent(perCall[1], "application.update"),
 		"a rotation refused before the rotating node writes no line of its event")
 	for _, written := range perCall {
@@ -333,6 +335,35 @@ func (ts *AuditLogTestSuite) TestASecretRegenerationIsRecorded() {
 			ts.NotContains(other.Raw, clientID, "the client ID is not recorded")
 		}
 	}
+}
+
+// An administration flow started by its ID is never checked against an application, so the application the
+// request names is text the caller typed and no line may carry it.
+func (ts *AuditLogTestSuite) TestAFlowNeverNamesAnApplicationItDidNotResolve() {
+	ouID := ts.createOrganizationUnit("cred-forged-app")
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: ts.prefix + "cred-forged-app", OUID: ouID, Type: "fullstack",
+		ClientID: ts.prefix + "cred-forged-client", ClientSecret: credentialMarker + "ClientSecret0123456789",
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+	flowID, err := testutils.GetFlowIDByHandle(secretRegenerationFlowHandle, "ADMINISTRATION")
+	ts.Require().NoError(err)
+	token, err := testutils.GetAccessToken()
+	ts.Require().NoError(err)
+	forged := unusedID()
+	payload, err := json.Marshal(map[string]interface{}{"flowId": flowID, "applicationId": forged,
+		"inputs": map[string]string{"targetApplicationId": appID}})
+	ts.Require().NoError(err)
+
+	rotated, body := ts.post(testutils.GetRawHTTPClient(), "/flow/execute", payload,
+		http.Header{"Authorization": {"Bearer " + token}})
+
+	ts.Require().Equal(http.StatusOK, rotated.StatusCode, string(body))
+	line := ts.onlyLineOf(ts.linesPerCall(rotated)[0], "application.update", "a regenerated secret")
+	ts.Nil(line.Application, "the application the request named never resolved")
+	ts.NotContains(line.Raw, forged, "the text the request carried is not recorded")
+	ts.NotEmpty(line.FlowRef)
 }
 
 // importStep is a line an import must write, in order.
