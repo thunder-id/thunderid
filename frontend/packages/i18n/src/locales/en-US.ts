@@ -7764,6 +7764,7 @@ const translations = {
     'page.subtitle': 'Configurations that apply across your system.',
     'tabs.ariaLabel': 'Settings sections',
     'tabs.cors': 'CORS',
+    'tabs.csp': 'Content security policy',
     'tabs.accountSecurity': 'Account security',
     'cors.card.title': 'Allowed origins',
     'cors.card.description':
@@ -7790,6 +7791,36 @@ const translations = {
     'cors.load.error': 'Failed to load allowed origins.',
     'cors.save.success': 'Allowed origins updated.',
     'cors.save.error': 'Failed to update allowed origins.',
+
+    // Content security policy
+    'csp.reportOnly.title': 'Report only',
+    'csp.reportOnly.description':
+      'When on, browsers report content the policy would block instead of blocking it. Use it to test changes before enforcing them.',
+    'csp.card.title': 'Directives',
+    'csp.card.description':
+      'The directives sent to the Console and Gate. Changing a directive overrides its default value.',
+    'csp.scope.label': 'Applies to',
+    'csp.scope.all': 'All pages',
+    'csp.directive.label': 'Directive',
+    'csp.sources.label': 'Sources for {{directive}}',
+    'csp.sourcesPlaceholder': 'Add a source and press Enter',
+    'csp.addDirective': 'Add directive',
+    'csp.removeDirective': 'Remove directive',
+    'csp.resetDirective': 'Reset to default',
+    'csp.validation.invalidSource': "A source can't contain a semicolon or comma.",
+    'csp.validation.noSources': 'Add at least one source, or reset the directive to its default.',
+    'csp.validation.noneWithOthers': "'none' can't be combined with other sources.",
+    'csp.header.label': 'Header sent for {{scope}}',
+    'csp.header.nonceHint':
+      "Each response also adds a one-time nonce to script-src and style-src-elem, unless they allow 'unsafe-inline'.",
+    'csp.unsavedChanges': 'You have unsaved changes',
+    'csp.reset': 'Reset',
+    'csp.save': 'Save changes',
+    'csp.saving': 'Saving...',
+    'csp.load.error': 'Failed to load the content security policy.',
+    'csp.save.success': 'Content security policy updated.',
+    'csp.save.error': 'Failed to update the content security policy.',
+    'csp.errors.SCF-1003': 'One or more directives are not valid. Check the directive names and sources.',
 
     // Backend error code translations (per server-config service error envelope).
     'errors.SCF-1003': 'One or more origins are not valid. Enter a valid URL or regular expression.',
