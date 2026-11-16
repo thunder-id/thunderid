@@ -114,6 +114,8 @@ Both TLS modes require TLS 1.2 or later and check the server certificate against
 
 <ProductName /> opens a fresh SMTP connection for every email. It waits up to 30 seconds to connect, and up to 60 seconds for the whole exchange to finish.
 
+An SMTP `host` on a private address, such as `localhost`, is refused by default. See [Private Addresses](../../../deployment/configuration#private-addresses).
+
 ### Authentication
 
 Use the `authentication` object to tell <ProductName /> how to authenticate to the SMTP server. Set the method in `type` and its fields in `properties`. SMTP providers support two methods:

@@ -2632,10 +2632,13 @@ In addition to these fields, any value present in runtime data (set by prior exe
 
 Credential-bearing data is stripped at capture and is never available through this syntax: the headers `Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `Flow-Secret`, and `Attestation-Token`, and the client-credential query parameters `client_secret`, `client_assertion`, and `client_assertion_type`. If a request, header, or query parameter is not present, or the selector is malformed (for example `{{request(header)}}` with no name, or `{{request(notaselector)}}`), the placeholder is kept as-is.
 
+A redirect response (3xx) is not followed, since the step's headers can carry a credential that a redirect would resend to another host, and it is handled as an error status. Configure the final URL of the endpoint.
+
 **Failure conditions:**
 - URL not configured or invalid
+- URL host is, or resolves to, a private address (see [Private Addresses](../../../deployment/configuration#private-addresses))
 - HTTP request timeout
-- HTTP error status code (4xx, 5xx) when `failOnError: true`
+- HTTP redirect or error status code (3xx, 4xx, 5xx) when `failOnError: true`
 - Retries exhausted
 - Response body cannot be parsed as JSON
 - Response mapping references non-existent fields

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 )
 
 type InitTestSuite struct {
@@ -34,7 +35,7 @@ func (s *InitTestSuite) TearDownTest() {
 func (s *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
-	svc := Initialize(mux)
+	svc := Initialize(mux, syshttp.Initialize(false))
 
 	s.Require().NotNil(svc)
 	options := httptest.NewRecorder()

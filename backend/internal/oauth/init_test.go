@@ -27,7 +27,7 @@ func (s *InitTestSuite) TestInitialize_RefusesANilEventBus() {
 	mux := http.NewServeMux()
 
 	validator, dispatcher, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, oauthconfig.Config{}, nil)
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, oauthconfig.Config{}, nil, nil, nil)
 
 	s.ErrorIs(err, errNilEventBus)
 	s.Nil(validator)

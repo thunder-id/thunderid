@@ -308,7 +308,7 @@ func (c *gatewayClient) callStore(ctx context.Context, gw *Gateway, key, method,
 	}
 	httpReq.Header.Set(constants.APIKeyHeaderName, key)
 
-	client, err := httpClientFor(gw, storeTimeout)
+	client, err := c.httpClientFor(gw, storeTimeout)
 	if err != nil {
 		return 0, err
 	}

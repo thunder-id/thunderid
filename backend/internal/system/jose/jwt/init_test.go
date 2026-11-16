@@ -18,6 +18,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
@@ -102,7 +103,7 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 		}}, nil)
 	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return([]string{string(cryptolib.AlgorithmRS256)})
 
-	jwtService, err := Initialize(cryptoMock, cfg)
+	jwtService, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true), httpservice.Initialize(false))
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
 	assert.Implements(suite.T(), (*JWTServiceInterface)(nil), jwtService)
@@ -120,7 +121,7 @@ func (suite *InitTestSuite) TestInitialize_PublicKeyRetrievalError() {
 		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{KeyID: "test-kid"}).
 		Return(nil, errors.New("provider unavailable"))
 
-	jwtService, err := Initialize(cryptoMock, cfg)
+	jwtService, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true), httpservice.Initialize(false))
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), jwtService)
 	assert.Contains(suite.T(), err.Error(), "failed to retrieve public key")
@@ -144,7 +145,7 @@ func (suite *InitTestSuite) TestInitialize_WithoutPreferredKeyID() {
 		}}, nil)
 	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return([]string{string(cryptolib.AlgorithmRS256)})
 
-	jwtService, err := Initialize(cryptoMock, cfg)
+	jwtService, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true), httpservice.Initialize(false))
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
 }

@@ -170,6 +170,15 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
 
   Once the sample is running, open `http://localhost:8788` to view captured emails in the inbox UI.
 
+- Allow the Data Plane to reach the local SMTP server. By default ThunderID refuses to connect to a loopback, link-local or private address for an administrator-configured destination such as an email provider. The quickstart pack already allows it. Otherwise, set `allow_private_addresses` in the `server` section of the Data Plane's `deployment.yaml` and restart it:
+
+  ```yaml
+  server:
+    allow_private_addresses: true
+  ```
+
+  The same setting is needed for a local SMS gateway or any other provider on `localhost`. Leave it off when the sample uses only public providers.
+
 - Configure the Direct Auth Secret used by AuthZEN mode. Keep the file-backed setting in `deployment.yaml` unchanged:
 
   ```yaml

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -18,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 )
 
@@ -43,6 +45,22 @@ func TestMain(m *testing.M) {
 	cmodels.SetConfigCryptoProvider(cfgCryptoSvc)
 	config.ResetServerRuntime()
 	os.Exit(m.Run())
+}
+
+// privateAllowed lets the clients under test reach the loopback servers the tests start.
+var privateAllowed = syshttp.Initialize(true)
+
+// privateTargets are hosts the outbound guard refuses: a loopback and a private address, the
+// link-local metadata address, and a hostname that resolves to loopback.
+var privateTargets = []string{"127.0.0.1", "10.0.0.1", "169.254.169.254", "localhost"}
+
+// testSMSMessage is the message the outbound guard tests send.
+var testSMSMessage = common.MessageData{Recipient: "+15559876543", Body: `{"message":"hi"}`}
+
+// loopbackURLs returns serverURL as httptest gives it, on 127.0.0.1, and on localhost, which resolves
+// to loopback.
+func loopbackURLs(serverURL string) []string {
+	return []string{serverURL, strings.Replace(serverURL, "127.0.0.1", "localhost", 1)}
 }
 
 type TwilioClientTestSuite struct {
@@ -82,7 +100,7 @@ func (suite *TwilioClientTestSuite) getValidTwilioSender() common.NotificationSe
 func (suite *TwilioClientTestSuite) TestNewTwilioClient_Success() {
 	sender := suite.getValidTwilioSender()
 
-	client, err := newTwilioClient(context.Background(), sender)
+	client, err := newTwilioClient(context.Background(), sender, privateAllowed)
 
 	suite.NoError(err)
 	suite.NotNil(client)
@@ -91,7 +109,7 @@ func (suite *TwilioClientTestSuite) TestNewTwilioClient_Success() {
 
 func (suite *TwilioClientTestSuite) TestGetName() {
 	sender := suite.getValidTwilioSender()
-	client, _ := newTwilioClient(context.Background(), sender)
+	client, _ := newTwilioClient(context.Background(), sender, privateAllowed)
 
 	name := client.GetName()
 
@@ -126,7 +144,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Success() {
 		createProperty("sender_id", "+15551234567", false),
 	}
 
-	client, _ := newTwilioClient(context.Background(), sender)
+	client, _ := newTwilioClient(context.Background(), sender, privateAllowed)
 
 	// Replace the Twilio URL with test server URL
 	twilioClient := client.(*TwilioClient)
@@ -144,7 +162,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Success() {
 
 func (suite *TwilioClientTestSuite) TestSendSMS_Error() {
 	sender := suite.getValidTwilioSender()
-	client, _ := newTwilioClient(context.Background(), sender)
+	client, _ := newTwilioClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +190,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Error() {
 
 func (suite *TwilioClientTestSuite) TestSendSMS_NetworkError() {
 	sender := suite.getValidTwilioSender()
-	client, _ := newTwilioClient(context.Background(), sender)
+	client, _ := newTwilioClient(context.Background(), sender, privateAllowed)
 
 	// Use an invalid URL to force a network error
 	twilioClient := client.(*TwilioClient)
@@ -192,7 +210,7 @@ func (suite *TwilioClientTestSuite) TestNewTwilioClient_WithUnknownProperty() {
 	sender := suite.getValidTwilioSender()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := newTwilioClient(context.Background(), sender)
+	client, err := newTwilioClient(context.Background(), sender, privateAllowed)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)
@@ -203,4 +221,42 @@ func (suite *TwilioClientTestSuite) TestNewTwilioClient_WithUnknownProperty() {
 func createProperty(name, value string, isSecret bool) cmodels.Property {
 	prop, _ := cmodels.NewProperty(name, value, isSecret)
 	return *prop
+}
+
+// guardTestClient builds a Twilio client with clients, pointed at url.
+func (suite *TwilioClientTestSuite) guardTestClient(clients syshttp.OutboundClientFactoryInterface,
+	url string) MessageClientInterface {
+	client, err := newTwilioClient(context.Background(), common.NotificationSenderDTO{
+		Name:     "twilio",
+		Provider: common.NotificationProviderTypeTwilio,
+		Properties: []cmodels.Property{
+			createProperty(common.TwilioPropKeyAccountSID, "AC00112233445566778899aabbccddeeff", true),
+			createProperty(common.TwilioPropKeyAuthToken, "token", true),
+			createProperty(common.TwilioPropKeySenderID, "+15551234567", false),
+		},
+	}, clients)
+	suite.Require().NoError(err)
+	client.(*TwilioClient).url = url
+	return client
+}
+
+func (suite *TwilioClientTestSuite) TestSend_RefusesPrivateAddresses() {
+	for _, host := range privateTargets {
+		err := suite.guardTestClient(syshttp.Initialize(false), "http://"+host+":8080/sms").
+			Send(context.Background(), common.ChannelTypeSMS, testSMSMessage)
+		suite.ErrorIs(err, syshttp.ErrPrivateAddress, "reached %s", host)
+	}
+}
+
+func (suite *TwilioClientTestSuite) TestSend_ReachesPrivateAddressesWhenAllowed() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	for _, url := range loopbackURLs(server.URL) {
+		err := suite.guardTestClient(syshttp.Initialize(true), url).
+			Send(context.Background(), common.ChannelTypeSMS, testSMSMessage)
+		suite.NoError(err, url)
+	}
 }

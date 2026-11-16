@@ -324,7 +324,7 @@ func verifyAssertionSignature(ctx context.Context,
 	jwtService jwt.JWTServiceInterface,
 	issuer, clientID, clientAssertion string) error {
 	if oauthApp.Certificate.Type == cert.CertificateTypeJWKSURI {
-		if err := jwtService.VerifyJWTWithJWKS(ctx, clientAssertion, oauthApp.Certificate.Value, issuer,
+		if err := jwtService.VerifyJWTWithClientJWKS(ctx, clientAssertion, oauthApp.Certificate.Value, issuer,
 			clientID); err != nil {
 			return fmt.Errorf("client assertion verification with JWKS URI failed: %v", err.Error)
 		}

@@ -249,7 +249,6 @@ type ExecutorDependencies struct {
 	CriteriaRevoker        revocation.CriteriaRevoker
 	ResourceMgtService     resource.ResourceServiceInterface
 	HTTPConnectionProvider httpconnection.HTTPConnectionProvider
-	ExtensionHTTPClient    httpservice.HTTPClientInterface
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	AttributeVerification  providers.AttributeVerificationProvider
@@ -259,6 +258,10 @@ type ExecutorDependencies struct {
 	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
+
+	// OutboundClients builds the clients HTTP request and extension steps reach their configured
+	// endpoints with. Neither executor is registered without it.
+	OutboundClients httpservice.OutboundClientFactoryInterface
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -331,8 +334,13 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				deps.FlowFactory, deps.AuthzDetailProvider, deps.AuthnProvider))
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			// Without outbound clients a step could not send its request, so the executor is left
+			// unregistered and registration fails rather than the first HTTP step.
+			if deps.OutboundClients == nil {
+				return
+			}
 			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,
-				deps.AuthnProvider))
+				deps.AuthnProvider, deps.OutboundClients))
 		},
 		ExecutorNameUserTypeResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserTypeResolver, newUserTypeResolver(
@@ -449,9 +457,14 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newApplicationActionValidator(deps.FlowFactory))
 		},
 		ExecutorNameExtension: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			if deps.OutboundClients == nil {
+				return
+			}
+			// The request carries the connection's credentials, so a redirect is not followed: it could
+			// resend them to another host. The connection's own timeout bounds each call.
 			reg.RegisterExecutor(ExecutorNameExtension,
-				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider, deps.ExtensionHTTPClient,
-					deps.ObservabilitySvc))
+				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider,
+					deps.OutboundClients.NewHTTPClientWithoutRedirects(0), deps.ObservabilitySvc))
 		},
 		ExecutorNameSharing: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSharing, newSharingExecutor(deps.FlowFactory, deps.SharingService))

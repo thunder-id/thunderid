@@ -43,6 +43,9 @@ type DispatcherTestSuite struct {
 	clients *actorprovidermock.ActorProviderMock
 	events  *observabilityprovidermock.ObservabilityProviderMock
 	d       *dispatcher
+	// rejectPrivate builds the dispatcher's client as server.allow_private_addresses: false does. Off,
+	// the tests reach their loopback test servers.
+	rejectPrivate bool
 
 	mu        sync.Mutex
 	published []*providers.Event
@@ -66,6 +69,7 @@ func (s *DispatcherTestSuite) SetupTest() {
 	s.clients = actorprovidermock.NewActorProviderMock(s.T())
 	s.events = observabilityprovidermock.NewObservabilityProviderMock(s.T())
 	s.d = nil
+	s.rejectPrivate = false
 	s.published = nil
 	s.events.On("IsEnabled").Return(true).Maybe()
 	s.events.On("PublishEvent", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -88,14 +92,12 @@ func (s *DispatcherTestSuite) SetupSubTest() {
 }
 
 func testConfig() engineconfig.BackchannelLogoutConfig {
-	reject := false
 	return engineconfig.BackchannelLogoutConfig{
-		RequestTimeout:         2,
-		MaxAttempts:            3,
-		RetryDelay:             2,
-		MaxInFlight:            16,
-		QueueSize:              16,
-		RejectPrivateAddresses: &reject,
+		RequestTimeout: 2,
+		MaxAttempts:    3,
+		RetryDelay:     2,
+		MaxInFlight:    16,
+		QueueSize:      16,
 	}
 }
 
@@ -109,8 +111,8 @@ func (s *DispatcherTestSuite) build(cfg engineconfig.BackchannelLogoutConfig) {
 // buildWithTokens creates a stopped dispatcher with the token builder expectations already set. The
 // retry delay and shutdown budget are shortened so the tests run in milliseconds.
 func (s *DispatcherTestSuite) buildWithTokens(cfg engineconfig.BackchannelLogoutConfig) {
-	httpClient := syshttp.NewHTTPClientWithoutRedirects(
-		time.Duration(cfg.RequestTimeout)*time.Second, cfg.RejectsPrivateAddresses())
+	httpClient := syshttp.Initialize(!s.rejectPrivate).NewHTTPClientWithoutRedirects(
+		time.Duration(cfg.RequestTimeout) * time.Second)
 	s.d = newDispatcher(cfg, s.tokens, s.clients, httpClient, s.events)
 	s.d.retryDelay = 10 * time.Millisecond
 	s.d.shutdownBudget = time.Second
@@ -333,8 +335,7 @@ func (s *DispatcherTestSuite) TestUnreachableEndpointExhaustsAttempts() {
 func (s *DispatcherTestSuite) TestPrivateAddressIsTerminal() {
 	srv, calls := s.statusServer(http.StatusOK)
 	cfg := testConfig()
-	reject := true
-	cfg.RejectPrivateAddresses = &reject
+	s.rejectPrivate = true
 	s.build(cfg)
 	s.withClient("app-1", srv.URL)
 	s.start()
@@ -710,7 +711,7 @@ func (s *DispatcherTestSuite) TestTimeoutBoundsEachAttempt() {
 	s.tokens.On("BuildLogoutToken", mock.Anything, mock.Anything).
 		Return(&oauth2model.TokenDTO{Token: "logout-token"}, nil)
 	s.d = newDispatcher(testConfig(), s.tokens, s.clients,
-		syshttp.NewHTTPClientWithoutRedirects(50*time.Millisecond, false), s.events)
+		syshttp.Initialize(true).NewHTTPClientWithoutRedirects(50*time.Millisecond), s.events)
 	s.d.retryDelay = time.Millisecond
 	s.withClient("app-1", srv.URL)
 	s.start()

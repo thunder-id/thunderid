@@ -428,7 +428,7 @@ func (suite *DefaultGuardTestSuite) TestDefaultGuard_ChecksATrustedIssuerTokenAg
 	token := base64.RawURLEncoding.EncodeToString(header) + "." +
 		base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 	var observed string
-	suite.mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, issuer+"/oauth2/jwks", mock.Anything, issuer).
+	suite.mockJWT.On("VerifyJWTWithTrustedJWKS", mock.Anything, token, issuer+"/oauth2/jwks", mock.Anything, issuer).
 		Run(func(args mock.Arguments) { observed = args.String(3) }).Return(nil)
 
 	guard, metadata := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})

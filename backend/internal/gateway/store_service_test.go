@@ -28,7 +28,7 @@ func newStoreFixture(t *testing.T, status int, body string) (StoreServiceInterfa
 
 	gw, calls := storeGateway(t, status, body)
 	gw.Key = sealedKey
-	return newStoreService(&fakeStore{gateways: []Gateway{*gw}}, newGatewayClient()), calls
+	return newStoreService(&fakeStore{gateways: []Gateway{*gw}}, testGatewayClient()), calls
 }
 
 // Each call reaches the gateway's store with its key opened, and comes back with what it returned.
