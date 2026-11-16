@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"slices"
 	"testing"
 	"time"
@@ -2057,6 +2059,83 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_Carri
 	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
 
 	suite.Equal("device-secret", got.Token)
+}
+
+// postedSessions returns sessions as the callback posts them, each saying it has the given seconds left; a nil
+// one says nothing.
+func postedSessions(expiresIn ...*int64) []model.SessionData {
+	sessions := make([]model.SessionData, 0, len(expiresIn))
+	for i, seconds := range expiresIn {
+		sessions = append(sessions, model.SessionData{
+			FlowIdentifier: fmt.Sprintf("flow-%d", i), SessionHandle: "handle", ExpiresIn: seconds,
+		})
+	}
+	return sessions
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_LastsUntilItsSessionsEnd() {
+	suite.handler.deviceSecretValidity = time.Hour
+	code := suite.boundCode()
+	code.TimeCreated = time.Now()
+	code.SessionData = postedSessions(new(int64(600)))
+	var validity int64
+	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, c *tokenservice.DeviceSecretBuildContext) (*model.TokenDTO, error) {
+			validity = c.ValidityPeriod
+			return &model.TokenDTO{Token: "device-secret"}, nil
+		})
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Equal("device-secret", got.Token)
+	suite.LessOrEqual(validity, int64(600), "the device secret ends with its session, not the validity")
+	suite.Positive(validity)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenItsSessionsHaveEnded() {
+	suite.handler.deviceSecretValidity = time.Hour
+	code := suite.boundCode()
+	code.TimeCreated = time.Now().Add(-10 * time.Minute)
+	code.SessionData = postedSessions(new(int64(60)), new(int64(120)))
+
+	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+
+	suite.Empty(got.Token)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecretLifetime() {
+	now := time.Unix(1700000000, 0)
+	cases := []struct {
+		name      string
+		postedAt  time.Time
+		expiresIn []*int64
+		want      time.Duration
+		wantAlive bool
+	}{
+		{"until its session ends", now, []*int64{new(int64(600))}, 600 * time.Second, true},
+		{"until the last of its sessions ends", now, []*int64{new(int64(600)), new(int64(1200))},
+			1200 * time.Second, true},
+		{"less the time since the sessions were posted", now.Add(-100 * time.Second), []*int64{new(int64(600))},
+			500 * time.Second, true},
+		{"never longer than the validity", now, []*int64{new(int64(7200))}, time.Hour, true},
+		{"a time left beyond the clock is capped", now, []*int64{new(int64(math.MaxInt64))}, time.Hour, true},
+		{"the validity when a session does not say", now, []*int64{new(int64(600)), nil}, time.Hour, true},
+		{"the validity when the posting time is unknown", time.Time{}, []*int64{new(int64(600))}, time.Hour, true},
+		{"an ended session does not extend it", now, []*int64{new(int64(600)), new(int64(0))}, 600 * time.Second, true},
+		{"none when every session has ended", now, []*int64{new(int64(0)), new(int64(-5))}, 0, false},
+		{"none when the sessions ended since they were posted", now.Add(-10 * time.Minute),
+			[]*int64{new(int64(60))}, 0, false},
+	}
+	suite.handler.deviceSecretValidity = time.Hour
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			got, alive := suite.handler.deviceSecretLifetime(postedSessions(tc.expiresIn...), tc.postedAt, now)
+
+			suite.Equal(tc.wantAlive, alive)
+			suite.Equal(tc.want, got)
+		})
+	}
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenTheCodeKeepsNoSession() {

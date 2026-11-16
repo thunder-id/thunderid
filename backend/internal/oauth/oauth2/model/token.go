@@ -118,8 +118,10 @@ type TokenResponseDTO struct {
 }
 
 // SessionData is one SSO session a client holds: the handle that resumes it, keyed by the identifier of
-// the flow it belongs to.
+// the flow it belongs to. ExpiresIn is the whole seconds the session has left when the caller posts it with
+// the callback, nil when not given; zero or less means the session has ended.
 type SessionData struct {
 	FlowIdentifier string `json:"flowIdentifier"`
 	SessionHandle  string `json:"sessionHandle"`
+	ExpiresIn      *int64 `json:"expiresIn,omitempty"`
 }

@@ -688,10 +688,10 @@ components:
     FlowResponseSessionData:
       type: array
       description: >-
-        The SSO sessions this step started, in the same shape as the request's `sessionData`, plus
-        `expiresIn`. Returned only on the response of the step that started them. A caller that holds
-        its sessions itself keeps them with any others it holds and sends them all back in later
-        requests' `sessionData`. The session cookie is set as well.
+        The SSO sessions this step started or reused, in the same shape as the request's `sessionData`,
+        plus `expiresIn`. Returned on the response of the step that started or reused them. A caller that
+        holds its sessions itself keeps them with any others it holds and sends them all back in later
+        requests' `sessionData`. The session cookie is set as well when the step started the session.
       items:
         $ref: '#/components/schemas/FlowIssuedSessionData'
 
@@ -725,8 +725,8 @@ components:
 
     FlowIssuedSessionData:
       description: >-
-        An SSO session a step started, with how long its handle stays usable. The session can still end
-        earlier, through its idle timeout or a sign-out.
+        An SSO session a step started or reused, with how long its handle stays usable. The session can
+        still end earlier, through its idle timeout or a sign-out.
       allOf:
         - $ref: '#/components/schemas/FlowSessionData'
         - type: object
@@ -738,7 +738,8 @@ components:
               format: int64
               description: >-
                 Seconds until the session reaches its absolute timeout, after which the handle no longer
-                resumes it. The per-flow session cookie carries the same lifetime as its Max-Age.
+                resumes it. For a reused session this is the time it has left. The per-flow session cookie
+                expires at the same time.
               example: 28800
 
     Data:

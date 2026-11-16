@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -482,7 +483,7 @@ func applyInboundSSO(engineCtx *EngineContext, ctx context.Context, sessionData 
 	engineCtx.SSOHandleIn = inbound.HandleFor(flowID)
 }
 
-// applyOutboundSSO adds the SSO session this step started or ended to the step, keyed by flow
+// applyOutboundSSO adds the SSO session this step started, reused or ended to the step, keyed by flow
 // identifier, for the response body to return to a caller that holds its handles itself.
 func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
@@ -491,12 +492,23 @@ func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 				FlowIdentifier: session.FlowIdentifier(flowStep.SSOFlowID),
 				SessionHandle:  flowStep.SSOHandleOut,
 			},
-			ExpiresIn: int64(s.ssoHandleTTL.Seconds()),
+			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now()),
 		}}
 	}
 	if flowStep.SSOClearFlowID != "" {
 		flowStep.ClearedSessions = []string{session.FlowIdentifier(flowStep.SSOClearFlowID)}
 	}
+}
+
+// handleExpiresIn returns the seconds from now a returned handle stays usable: the time its session has left
+// when known, never more than the configured handle lifetime. Rounded up, so a session started in this
+// request reports the whole lifetime.
+func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time) int64 {
+	remaining := s.ssoHandleTTL
+	if !expiresAt.IsZero() {
+		remaining = min(max(expiresAt.Sub(now), 0), s.ssoHandleTTL)
+	}
+	return int64(math.Ceil(remaining.Seconds()))
 }
 
 // loadNewContext initializes a new flow context with the given details.

@@ -857,7 +857,8 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 			"User authentication is required")
 	}
 
-	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion, nil)
+	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion,
+		fromFlowSessionData(step.SessionData))
 	if authErr != nil {
 		// The callback may reject the assertion before consuming the request.
 		if err := as.authReqStore.ClearRequest(ctx, authID); err != nil {
@@ -976,6 +977,19 @@ func toFlowSessionData(sessionData []oauth2model.SessionData) []flowexec.Session
 		converted = append(converted, flowexec.SessionData{
 			FlowIdentifier: entry.FlowIdentifier,
 			SessionHandle:  entry.SessionHandle,
+		})
+	}
+	return converted
+}
+
+// fromFlowSessionData converts the sessions a flow step returned to the form the callback keeps.
+func fromFlowSessionData(issued []flowexec.IssuedSessionData) []oauth2model.SessionData {
+	converted := make([]oauth2model.SessionData, 0, len(issued))
+	for _, entry := range issued {
+		converted = append(converted, oauth2model.SessionData{
+			FlowIdentifier: entry.FlowIdentifier,
+			SessionHandle:  entry.SessionHandle,
+			ExpiresIn:      new(entry.ExpiresIn),
 		})
 	}
 	return converted
