@@ -84,24 +84,38 @@ func TestPolicyHandler_Merge(t *testing.T) {
 		assert.Nil(t, merged.Directives)
 	})
 
-	t.Run("writable path replaces read-only path of the same prefix, others kept", func(t *testing.T) {
+	t.Run("writable path directive replaces only that directive of the same prefix, others kept", func(t *testing.T) {
 		merged := PolicyHandler{}.Merge(
 			PolicyConfig{Paths: []PathPolicy{
-				{Location: "/console/", Directives: map[string][]string{"img-src": {"'self'"}}},
+				{Location: "/console/", Directives: map[string][]string{
+					"img-src":        {"'self'"},
+					"style-src-elem": {"'self'", "'unsafe-inline'"},
+				}},
 				{Location: "/gate/", Directives: map[string][]string{"font-src": {"'self'"}}},
 			}},
 			PolicyConfig{Paths: []PathPolicy{
-				{Location: "/console/", Directives: map[string][]string{"img-src": {"'self'", "https:"}}},
+				{Location: "/console/", Directives: map[string][]string{
+					"img-src":     {"'self'", "https:"},
+					"connect-src": {"'self'", "https://api.example.com"},
+				}},
+				{Location: "/custom/", Directives: map[string][]string{"frame-src": {"'self'"}}},
 			}},
 		).(PolicyConfig)
 
-		require.Len(t, merged.Paths, 2)
+		require.Len(t, merged.Paths, 3)
 		byPrefix := map[string]map[string][]string{}
 		for _, p := range merged.Paths {
 			byPrefix[p.Location] = p.Directives
 		}
-		assert.Equal(t, []string{"'self'", "https:"}, byPrefix["/console/"]["img-src"])
-		assert.Equal(t, []string{"'self'"}, byPrefix["/gate/"]["font-src"])
+		assert.Equal(t, map[string][]string{
+			"img-src":        {"'self'", "https:"},
+			"style-src-elem": {"'self'", "'unsafe-inline'"},
+			"connect-src":    {"'self'", "https://api.example.com"},
+		}, byPrefix["/console/"])
+		assert.Equal(t, map[string][]string{"font-src": {"'self'"}}, byPrefix["/gate/"])
+		assert.Equal(t, map[string][]string{"frame-src": {"'self'"}}, byPrefix["/custom/"])
+		assert.Equal(t, []string{"/console/", "/gate/", "/custom/"},
+			[]string{merged.Paths[0].Location, merged.Paths[1].Location, merged.Paths[2].Location})
 	})
 }
 

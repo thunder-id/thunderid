@@ -28,3 +28,26 @@ export interface ServerConfigLayers<T> {
 }
 
 export type CorsConfigResponse = ServerConfigLayers<CorsValue>;
+
+/**
+ * A map of CSP directive name (for example `img-src`) to its list of sources.
+ */
+export type CspDirectives = Record<string, string[]>;
+
+/**
+ * CSP directives that apply only to requests whose path starts with `location`.
+ */
+export interface CspPathPolicy {
+  location: string;
+  directives: CspDirectives;
+}
+
+export interface CspValue {
+  /** Unset means report-only, so a policy is never enforced until explicitly switched. */
+  reportOnly?: boolean;
+  reportUri?: string;
+  directives?: CspDirectives;
+  paths?: CspPathPolicy[];
+}
+
+export type CspConfigResponse = ServerConfigLayers<CspValue>;
