@@ -7937,8 +7937,12 @@ const translations = {
     'csp.card.title': 'Directives',
     'csp.card.description':
       'The directives sent to the Console and Gate. Changing a directive overrides its default value.',
-    'csp.scope.label': 'Applies to',
-    'csp.scope.all': 'All pages',
+    'csp.scope.shared': 'Shared',
+    'csp.scope.sharedDescription':
+      'Applies to the Console and Gate. A directive set in the Console or Gate section replaces the one here for that section.',
+    'csp.scope.console': 'Console',
+    'csp.scope.gate': 'Gate',
+    'csp.scope.pathDescription': 'Applies to pages under {{location}}.',
     'csp.directive.label': 'Directive',
     'csp.sources.label': 'Sources for {{directive}}',
     'csp.sourcesPlaceholder': 'Add a source and press Enter',
@@ -7947,10 +7951,12 @@ const translations = {
     'csp.resetDirective': 'Reset to default',
     'csp.validation.invalidSource': "A source can't contain a semicolon or comma.",
     'csp.validation.noSources': 'Add at least one source, or reset the directive to its default.',
+    'csp.validation.noSourcesNoDefault': 'Add at least one source, or remove the directive.',
     'csp.validation.noneWithOthers': "'none' can't be combined with other sources.",
     'csp.header.label': 'Header sent for {{scope}}',
+    'csp.header.sharedLabel': 'Header sent when the Console or Gate has no section of its own',
     'csp.header.nonceHint':
-      "Each response also adds a one-time nonce to script-src and style-src-elem, unless they allow 'unsafe-inline'.",
+      "Each response also adds a one-time nonce to script-src, and to style-src-elem when it is set, unless the directive allows 'unsafe-inline'.",
     'csp.unsavedChanges': 'You have unsaved changes',
     'csp.reset': 'Reset',
     'csp.save': 'Save changes',

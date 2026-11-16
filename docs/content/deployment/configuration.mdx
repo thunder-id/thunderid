@@ -1135,7 +1135,7 @@ base-uri 'none';
 form-action 'self'
 ```
 
-A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On HTML responses, <ProductName /> Gate gets a fresh per-request nonce to the `script-src` and `style-src-elem` directives so its own inline scripts and styles load.
+A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On every Console and Gate response, <ProductName /> appends a fresh per-request nonce to `script-src`, and to `style-src-elem` when the policy sets that directive, so the UIs' own inline scripts and styles load. A directive that allows `'unsafe-inline'` gets no nonce, since browsers ignore `'unsafe-inline'` in a directive that has one.
 
 :::warning Overrides replace, not extend
 Listing a directive replaces its baseline value completely. Include `'self'` in your list when you still need same-origin resources. For example, `img-src: ["https://cdn.example.com"]` blocks same-origin images until you add `'self'`.
@@ -1145,7 +1145,7 @@ Listing a directive replaces its baseline value completely. Include `'self'` in 
 
 Set the policy in any of these ways:
 
-- **Console** - go to **Settings** and open the **Content security policy** tab. Turn **Report only** on or off, choose the scope under **Applies to** (**All pages** for the top-level `directives`, or a path such as `/console/`), and edit the sources of any directive, pressing Enter after each new source. Every directive that applies to the scope is listed, including the baseline. Changing a directive overrides its default value, and **Reset to default** removes the override. The header sent for the selected scope is shown at the end, ready to copy. Select **Save changes** to apply the policy immediately.
+- **Console** - go to **Settings** and open the **Content security policy** tab. Turn **Report only** on or off, and edit the sources of any directive, pressing Enter after each new source. **Shared** holds the top-level `directives`, which apply to both the Console and Gate. Each path already in the policy, such as `/console/`, has its own section listing every directive that applies to it, including the baseline. To add a path, use the declarative or runtime method below. Changing a directive overrides its default value, and **Reset to default** removes the override. Each section ends with a preview of the header it sends, without the per-request nonce described in [Deny-First Baseline](#deny-first-baseline). Select **Save changes** to apply the policy immediately.
 - **Declarative** - create `config/resources/server_configs/csp.yaml`, then restart.
   ```yaml
   name: csp
