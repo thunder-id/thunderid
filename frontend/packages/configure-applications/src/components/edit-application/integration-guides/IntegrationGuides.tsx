@@ -5,6 +5,7 @@ import {
   AndroidLogo,
   AppleIcon,
   CopyableField,
+  QueryErrorNotice,
   ExpressIcon,
   ExternalLinkConfirmDialog,
   FlutterLogo,
@@ -23,37 +24,24 @@ import {useGetFlowById} from '@thunderid/configure-flows';
 import {useGetOrganizationUnit} from '@thunderid/configure-organization-units';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {DefaultTheme, type Theme, useGetTheme} from '@thunderid/design';
-import {useLogger} from '@thunderid/logger/react';
-import {
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  IconButton,
-  Paper,
-  Stack,
-  Tooltip,
-  Typography,
-  useColorScheme,
-} from '@wso2/oxygen-ui';
-import {ArrowRight, BookOpen, Check, Copy, Sparkles, X} from '@wso2/oxygen-ui-icons-react';
+import {Box, Button, Collapse, Divider, Paper, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
+import {ArrowRight, ChevronDown, ChevronUp} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
+import ConnectAppGuide from './ConnectAppGuide';
+import EnvironmentBar from './EnvironmentBar';
 import EnvironmentClientIdField from './EnvironmentClientIdField';
-import QuickstartGuide, {type QuickstartGuideSource} from './QuickstartGuide';
+import type {QuickstartGuideSource} from './QuickstartGuide';
 import useResourceEnvironments from '../../../hooks/useResourceEnvironments';
 import type {Application} from '../../../models/application';
 import type {OAuth2Config} from '../../../models/oauth';
 import {getIntegrationGuideForTemplate} from '../../../utils/getIntegrationGuidesForTemplate';
 import getPlaygroundsForTemplate from '../../../utils/getPlaygroundsForTemplate';
 import getQuickstartsForTemplate from '../../../utils/getQuickstartsForTemplate';
+import getTemplateMetadata from '../../../utils/getTemplateMetadata';
 import normalizeTemplateId from '../../../utils/normalizeTemplateId';
 import {hasUserAccess} from '../../../utils/oauth2Rules';
 import resolveTemplateLink from '../../../utils/resolveTemplateLink';
-import EnvironmentChoice from '../../environments/EnvironmentChoice';
 import EnvironmentNotDeployedNotice from '../../environments/EnvironmentNotDeployedNotice';
 
 /**
@@ -78,41 +66,6 @@ interface IntegrationGuidesProps {
   onGoToCustomization?: () => void;
 }
 
-function replacePlaceholders(text: string, values: Record<string, string | undefined>): string {
-  return Object.entries(values).reduce((result, [key, value]) => {
-    if (!value || value.trim() === '') {
-      return result;
-    }
-    return result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
-  }, text);
-}
-
-/** A small rounded, tinted square behind a card's leading icon. */
-function IconBadge({children, gradient = false}: {children: ReactNode; gradient?: boolean}): JSX.Element {
-  return (
-    <Box
-      sx={{
-        width: 32,
-        height: 32,
-        borderRadius: '8px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        ...(gradient
-          ? {
-              background: 'linear-gradient(135deg, #3688FF, #7fb4ff)',
-              color: '#ffffff',
-              boxShadow: '0 4px 14px rgba(54,136,255,0.35)',
-            }
-          : {bgcolor: 'rgba(54,136,255,0.14)', color: 'primary.main'}),
-      }}
-    >
-      {children}
-    </Box>
-  );
-}
-
 /** Vendor logo shown next to a quickstart guide for a given platform's {@link QuickstartLink.label}. */
 const QUICKSTART_ICONS: Record<string, JSX.Element> = {
   Android: <AndroidLogo size={18} />,
@@ -127,34 +80,6 @@ const QUICKSTART_ICONS: Record<string, JSX.Element> = {
   JavaScript: <JavaScriptIcon size={18} />,
   Python: <PythonLogo size={18} />,
 };
-
-/** A bordered card with an icon, a title/description, and arbitrary content below. */
-function IconCard({
-  icon,
-  title,
-  description,
-  children,
-}: {
-  icon: ReactNode;
-  title: ReactNode;
-  description: ReactNode;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <Paper variant="outlined" sx={{borderRadius: '10px', p: 2.25, display: 'flex', gap: 1.75}}>
-      {icon}
-      <Box sx={{minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column'}}>
-        <Typography variant="subtitle2" sx={{fontWeight: 600, mb: 0.5}}>
-          {title}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{mb: 1.25}}>
-          {description}
-        </Typography>
-        <Box sx={{mt: 'auto', display: 'flex', justifyContent: 'flex-start'}}>{children}</Box>
-      </Box>
-    </Paper>
-  );
-}
 
 /** A bordered card with a title/description header and arbitrary content below. */
 function OverviewCard({
@@ -192,10 +117,9 @@ function OverviewCard({
  * Overview tab for an application's edit page.
  *
  * Always shows the application's identifiers, and, for OAuth2-enabled applications, its OIDC
- * endpoints. When the application's template has a quickstart, it additionally shows a StackBlitz
- * quickstart, an emphasized card that opens the integration guide from the docs site in a dialog
- * with this application's values filled in, a ready-made coding-agent prompt, and a preview of
- * the sign-in experience.
+ * endpoints. When the application's template has a quickstart or a coding agent prompt, it leads
+ * with a guide to connecting an app, with this application's values filled in. Sign-in-facing
+ * applications also get a summary of their sign-in experience: a preview, the theme, and the flows.
  */
 export default function IntegrationGuides({
   application,
@@ -204,9 +128,9 @@ export default function IntegrationGuides({
   onGoToCustomization = undefined,
 }: IntegrationGuidesProps): JSX.Element {
   const {t} = useTranslation();
-  const logger = useLogger('IntegrationGuides');
+  const [isEndpointsOpen, setIsEndpointsOpen] = useState(false);
   const {config, getDocumentationLink} = useConfig();
-  const {data: themeDetails} = useGetTheme(application.themeId ?? '');
+  const {data: themeDetails, error: themeError, refetch: refetchTheme} = useGetTheme(application.themeId ?? '');
   const {data: authFlowDetails} = useGetFlowById(application.authFlowId);
   const {data: registrationFlowDetails} = useGetFlowById(
     application.registrationFlowId,
@@ -220,9 +144,6 @@ export default function IntegrationGuides({
   const {data: organizationUnit} = useGetOrganizationUnit(application.ouId);
   const {mode, systemMode} = useColorScheme();
   const productName = config.brand.product_name;
-  const [promptCopied, setPromptCopied] = useState(false);
-  const [isFetchingPrompt, setIsFetchingPrompt] = useState(false);
-  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const externalLinkConfirmation = useExternalLinkConfirmation();
 
   const templateId = application.template ?? undefined;
@@ -235,7 +156,17 @@ export default function IntegrationGuides({
   // rendered with a dead link.
   const quickstartGuides: QuickstartGuideSource[] = quickstarts.flatMap((entry) => {
     const docsUrl = resolveTemplateLink(entry.docsUrl, getDocumentationLink);
-    return docsUrl ? [{label: entry.label, docsUrl, icon: QUICKSTART_ICONS[entry.label]}] : [];
+    return docsUrl
+      ? [
+          {
+            label: entry.label,
+            docsUrl,
+            icon: QUICKSTART_ICONS[entry.label],
+            promptUrl: resolveTemplateLink(entry.promptUrl, getDocumentationLink),
+            section: entry.section,
+          },
+        ]
+      : [];
   });
   // A template with exactly one playground gets the runnable banner, provided it's on an
   // environment the console knows how to render (currently only StackBlitz). Templates covering
@@ -275,24 +206,29 @@ export default function IntegrationGuides({
   const notConfiguredLabel = t('applications:edit.overview.signInPreview.notConfigured', 'Not configured');
   // One row per flow type this application can have, shown in the preview card. Sign-in and
   // sign-out apply to every sign-in-facing app; sign-up and recovery are opt-in per application.
-  const flowRows: {label: string; value: string}[] = [
+  // Whether an opt-in flow is set up is the application's own setting. Its name is read separately, so a
+  // set-up flow whose name has not loaded is still shown as set up.
+  const isSignUpSetUp = Boolean(application.isRegistrationFlowEnabled && application.registrationFlowId);
+  const isRecoverySetUp = Boolean(application.isRecoveryFlowEnabled && application.recoveryFlowId);
+  const setUpLabel = t('applications:edit.overview.signInPreview.configured', 'Configured');
+  const flowRows: {label: string; value: string; setUpLabel?: string}[] = [
     {
       label: t('applications:edit.overview.signInPreview.flows.signIn', 'Sign-in'),
       value: authFlowDetails?.name ?? notConfiguredLabel,
     },
     {
       label: t('applications:edit.overview.signInPreview.flows.signUp', 'Sign-up'),
-      value:
-        application.isRegistrationFlowEnabled && application.registrationFlowId
-          ? (registrationFlowDetails?.name ?? notConfiguredLabel)
-          : notConfiguredLabel,
+      value: isSignUpSetUp ? (registrationFlowDetails?.name ?? setUpLabel) : notConfiguredLabel,
+      setUpLabel: isSignUpSetUp
+        ? undefined
+        : t('applications:edit.overview.signInPreview.setUpSignUp', 'Set up sign-up'),
     },
     {
       label: t('applications:edit.overview.signInPreview.flows.recovery', 'Password recovery'),
-      value:
-        application.isRecoveryFlowEnabled && application.recoveryFlowId
-          ? (recoveryFlowDetails?.name ?? notConfiguredLabel)
-          : notConfiguredLabel,
+      value: isRecoverySetUp ? (recoveryFlowDetails?.name ?? setUpLabel) : notConfiguredLabel,
+      setUpLabel: isRecoverySetUp
+        ? undefined
+        : t('applications:edit.overview.signInPreview.setUpRecovery', 'Set up recovery'),
     },
     {
       label: t('applications:edit.overview.signInPreview.flows.signOut', 'Sign-out'),
@@ -336,36 +272,6 @@ export default function IntegrationGuides({
     baseUrl: endpointsBaseUrl,
     clientId: selectedClientId ?? '<your-client-id>',
     applicationId: application.id,
-  };
-
-  const handleCopyPrompt = async () => {
-    if (!promptUrl) {
-      return;
-    }
-
-    setIsFetchingPrompt(true);
-
-    try {
-      const response = await fetch(promptUrl);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch prompt: ${response.status}`);
-      }
-
-      const promptText = await response.text();
-
-      // A prompt written before the base URL placeholder names a local instance, as the docs code samples do.
-      const filledPrompt = replacePlaceholders(promptText, placeholderValues);
-      await navigator.clipboard.writeText(
-        endpointsBaseUrl ? filledPrompt.replaceAll('https://localhost:8090', endpointsBaseUrl) : filledPrompt,
-      );
-      setPromptCopied(true);
-      setTimeout(() => setPromptCopied(false), 1500);
-    } catch {
-      logger.error('Failed to copy the coding agent prompt to clipboard');
-    } finally {
-      setIsFetchingPrompt(false);
-    }
   };
 
   const isDirectApiEnabled = config.direct_api?.enabled !== false;
@@ -431,37 +337,16 @@ export default function IntegrationGuides({
   const colorMode: 'light' | 'dark' = (mode === 'system' ? systemMode : mode) === 'dark' ? 'dark' : 'light';
   const themeSwatchColor = themeDetails?.theme.colorSchemes?.[colorMode]?.palette?.primary?.main;
   const hasVisibleQuickstart = quickstartGuides.length > 0;
+  const templateDevServerUrl = getTemplateMetadata(templateId)?.devServerUrl;
   // The docs code samples are written against a local instance with placeholder identifiers.
   // Swapping in this application's values leaves the developer nothing to look up.
   const guideCodeValues = {
     '<your-client-id>': selectedClientId,
     '<your-application-id>': application.id,
+    // As written where angle brackets would not be valid, such as in an XML property list.
+    'your-application-id': application.id,
     'https://localhost:8090': endpointsBaseUrl,
   };
-  const promptDescription = selectedEnvironment
-    ? t(
-        'applications:edit.overview.agentPrompt.descriptionForEnvironment',
-        'Copy a ready-made prompt for Claude, Cursor, or any agent, with the values for {{environment}}.',
-        {environment: selectedEnvironment.name},
-      )
-    : t(
-        'applications:edit.overview.agentPrompt.description',
-        'Copy a ready-made prompt for Claude, Cursor, or any agent.',
-      );
-  const renderCopyPromptButton = (variant: 'contained' | 'outlined'): JSX.Element => (
-    <Button
-      variant={variant}
-      size="small"
-      disabled={isFetchingPrompt}
-      startIcon={promptCopied ? <Check size={13} /> : <Copy size={13} />}
-      sx={{flexShrink: 0}}
-      onClick={() => {
-        void handleCopyPrompt();
-      }}
-    >
-      {promptCopied ? t('common:actions.copied') : t('applications:edit.overview.agentPrompt.action', 'Copy prompt')}
-    </Button>
-  );
   const hasEndpoints = showOAuthEndpoints || showFlowEndpoints;
   const endpointFields = (
     <Box>
@@ -487,7 +372,8 @@ export default function IntegrationGuides({
   // endpoints card cramped into, or lopsided against, the narrow sidebar, so for those the
   // endpoints card moves into the main column instead.
   const showEndpointsInSidebar = isSignInFacing;
-  const hasMainContent = hasVisibleQuickstart || Boolean(promptUrl) || isSignInFacing || Boolean(endpointsCard);
+  const hasGuide = hasVisibleQuickstart || Boolean(promptUrl);
+  const hasMainContent = hasGuide || (!showEndpointsInSidebar && Boolean(endpointsCard));
 
   const detailsFields = (
     <Box>
@@ -530,19 +416,10 @@ export default function IntegrationGuides({
       sx={{
         borderRadius: '10px',
         p: 2.25,
-        ...(hasMainContent ? {} : {flex: `1 1 ${panelWidth}px`, maxWidth: {xs: '100%', md: panelWidth}}),
       }}
     >
-      {selectedEnvironment && (
-        <EnvironmentChoice
-          environments={environments}
-          selectedEnvironment={selectedEnvironment}
-          onSelect={selectEnvironment}
-          notDeployedIds={notDeployedIds}
-        />
-      )}
       {shownEnvironment && selectedIsNotDeployed && (
-        <Box sx={{mt: selectedEnvironment ? 2 : 0, mb: selectedEnvironment ? 0 : 2.5}}>
+        <Box sx={{mb: 2.5}}>
           <EnvironmentNotDeployedNotice
             resourceName={application.name}
             environmentName={shownEnvironment.name}
@@ -556,325 +433,251 @@ export default function IntegrationGuides({
       {!selectedIsNotDeployed && hasEndpoints && showEndpointsInSidebar && (
         <>
           <Divider sx={{mt: 2.5}} />
-          {sectionTitle(t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints'))}
-          {endpointFields}
+          {/* Folded by default, so the sign-in experience below stays in reach on a sign-in-facing app. */}
+          <Button
+            fullWidth
+            color="inherit"
+            aria-expanded={isEndpointsOpen}
+            endIcon={isEndpointsOpen ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
+            onClick={() => setIsEndpointsOpen((open) => !open)}
+            disableRipple
+            // A section header rather than a button: no fill on hover, which the theme draws as a pill
+            // hugging the text. The chevron and the focus ring still mark it as one.
+            sx={{
+              mt: 1.5,
+              px: 0,
+              justifyContent: 'space-between',
+              textAlign: 'start',
+              textTransform: 'none',
+              '&:hover': {bgcolor: 'transparent'},
+            }}
+          >
+            <Box component="span" sx={{display: 'flex', flexDirection: 'column'}}>
+              <Typography variant="subtitle1" component="span">
+                {t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints')}
+              </Typography>
+              {endpoints.length > 0 && (
+                <Typography variant="caption" color="text.secondary" component="span">
+                  {t('applications:edit.overview.endpoints.summary', '{{first}} and {{count}} more', {
+                    first: endpoints[0].label,
+                    count: endpoints.length - 1,
+                  })}
+                </Typography>
+              )}
+            </Box>
+          </Button>
+          <Collapse in={isEndpointsOpen}>{endpointFields}</Collapse>
         </>
       )}
     </Paper>
   );
 
-  return (
-    <Stack
-      direction="row"
-      flexWrap="wrap"
-      gap={3.5}
-      alignItems="flex-start"
-      justifyContent={hasMainContent ? undefined : 'center'}
-    >
-      {/* Left: main content */}
-      {hasMainContent && (
-        <Stack sx={{flex: '2 0 480px', minWidth: 0}} spacing={2.25}>
-          {primaryPlaygroundUrl && (
-            <StackblitzQuickstartCard
-              url={primaryPlaygroundUrl}
-              heading={t('applications:edit.overview.stackblitz.heading', 'Try the live quickstart')}
-              subheading={
-                <Trans
-                  i18nKey="applications:edit.overview.stackblitz.subheading"
-                  defaults="Run <code>{{name}}</code> in StackBlitz"
-                  values={{name: application.name}}
-                  components={{
-                    code: <Box component="code" sx={{fontFamily: 'monospace', fontSize: '0.85em', color: 'inherit'}} />,
-                  }}
-                />
-              }
-              ctaLabel={t('applications:edit.overview.stackblitz.cta', 'Open on StackBlitz')}
-            />
-          )}
+  const sectionLabel = (label: string, action: ReactNode): JSX.Element => (
+    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{mb: 1}}>
+      <Typography variant="overline" color="text.secondary">
+        {label}
+      </Typography>
+      {action}
+    </Stack>
+  );
+  const signInExperienceCard = isSignInFacing && (
+    <Paper variant="outlined" component="section" aria-labelledby="sign-in-experience-title" sx={{p: 2.25}}>
+      <Typography id="sign-in-experience-title" variant="subtitle1" component="h3" sx={{mb: 0.25}}>
+        {t('applications:edit.overview.signInPreview.title', 'Sign-in experience')}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+        {t('applications:edit.overview.signInPreview.description', 'What users see when they sign in to {{name}}.', {
+          name: application.name,
+        })}
+      </Typography>
+      <Box
+        sx={{
+          // Fixed so the frame reads as a peek of the live sign-in page rather than a full
+          // screenshot, whatever the flows configured.
+          height: 320,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          border: 1,
+          borderColor: 'divider',
+          mb: 2.5,
+          ...(isNativeApplication
+            ? {width: 240, mx: 'auto', bgcolor: 'common.black', borderRadius: 2.5, p: 1.25}
+            : {borderRadius: 1.5}),
+        }}
+      >
+        <Box sx={{flex: 1, minHeight: 0, borderRadius: isNativeApplication ? 1.75 : 0, overflow: 'hidden'}}>
+          <GatePreview
+            frameless
+            theme={themeDetails?.theme}
+            baseTheme={DefaultTheme as Theme}
+            showToolbar={false}
+            colorScheme={colorMode}
+          />
+        </Box>
+      </Box>
 
-          {hasVisibleQuickstart && (
-            <Paper variant="outlined" sx={{p: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2}}>
-              <IconBadge>
-                {(quickstartGuides.length === 1 ? quickstartGuides[0].icon : undefined) ?? <BookOpen size={16} />}
-              </IconBadge>
-              <Box sx={{flex: '1 1 240px', minWidth: 0}}>
-                <Typography variant="h6" component="h2">
-                  {t('applications:edit.overview.guide.title', 'Integrate your application')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {t(
-                    'applications:edit.overview.guide.description',
-                    'A step-by-step guide, with the values of this application already in the code samples.',
-                  )}
-                </Typography>
-                <Stack direction="row" flexWrap="wrap" gap={1} sx={{mt: 1.5}}>
-                  {/* The coding agent prompt is the quickest way in, so it is the primary action whenever
-                      the template has one. */}
-                  <Button
-                    variant={promptUrl ? 'outlined' : 'contained'}
-                    size="small"
-                    startIcon={<BookOpen size={16} />}
-                    onClick={() => setIsGuideOpen(true)}
-                  >
-                    {t('applications:edit.overview.guide.open', 'Open integration guide')}
-                  </Button>
-                  {promptUrl && (
-                    <Tooltip title={promptDescription}>
-                      <span>{renderCopyPromptButton('contained')}</span>
-                    </Tooltip>
-                  )}
-                </Stack>
-              </Box>
-            </Paper>
-          )}
-
-          {!hasVisibleQuickstart && promptUrl && (
-            <IconCard
-              icon={
-                <IconBadge>
-                  <Sparkles size={16} />
-                </IconBadge>
-              }
-              title={
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <span>{t('applications:edit.overview.agentPrompt.title', 'Integrate with a coding agent')}</span>
-                  <Chip
-                    label={t('applications:edit.overview.agentPrompt.badge', 'AI')}
-                    size="small"
-                    color="primary"
-                    sx={{height: 18, fontSize: '0.65rem', fontWeight: 600}}
-                  />
-                </Stack>
-              }
-              description={promptDescription}
-            >
-              {renderCopyPromptButton('outlined')}
-            </IconCard>
-          )}
-
-          {isSignInFacing && (
-            <OverviewCard
-              title={t('applications:edit.overview.signInPreview.title', 'Preview')}
-              description={t(
-                'applications:edit.overview.signInPreview.description',
-                'What users see when they sign in to {{name}}.',
-                {name: application.name},
-              )}
-            >
-              <Stack direction="row" flexWrap="wrap" gap={3} alignItems="flex-start">
-                <Box
-                  sx={{
-                    width: 260,
-                    // Fixed so the frame reads as a peek of the live sign-in page rather than a
-                    // full screenshot, and its height no longer depends on how many flows are
-                    // configured. The inner card below stretches to fill this height so the
-                    // frame's own background never shows through underneath it.
-                    height: 340,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    pointerEvents: 'none',
-                    ...(isNativeApplication
-                      ? {
-                          bgcolor: '#0a0a0a',
-                          borderRadius: '32px',
-                          p: '10px',
-                          border: '1px solid',
-                          borderColor: 'divider',
-                        }
-                      : {borderRadius: '10px', border: '1px solid', borderColor: 'divider'}),
-                  }}
-                >
-                  {isNativeApplication && (
-                    <Box sx={{display: 'flex', justifyContent: 'center', pb: 1}}>
-                      <Box sx={{width: 56, height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.25)'}} />
-                    </Box>
-                  )}
-                  <Box sx={{flex: 1, minHeight: 0, borderRadius: isNativeApplication ? '22px' : 0, overflow: 'hidden'}}>
-                    <GatePreview
-                      frameless
-                      theme={themeDetails?.theme}
-                      baseTheme={DefaultTheme as Theme}
-                      showToolbar={false}
-                      colorScheme={colorMode}
-                    />
-                  </Box>
-                </Box>
-
-                <Stack sx={{flex: 1, minWidth: 220}} spacing={2} justifyContent="center">
-                  <Box>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{mb: 1}}>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontWeight: 600,
-                          letterSpacing: '0.03em',
-                          color: 'text.secondary',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {t('applications:edit.overview.signInPreview.themeLabel', 'Theme used')}
-                      </Typography>
-                      {onGoToCustomization && (
-                        <Button size="small" endIcon={<ArrowRight size={11} />} onClick={onGoToCustomization}>
-                          {t('applications:edit.overview.signInPreview.editCustomization', 'Edit in customization')}
-                        </Button>
-                      )}
-                    </Stack>
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1.25}
-                      sx={{border: '1px solid', borderColor: 'divider', borderRadius: '8px', px: 1.75, py: 1.25}}
-                    >
-                      <Box
-                        sx={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: '6px',
-                          flexShrink: 0,
-                          bgcolor: themeSwatchColor ?? 'primary.main',
-                        }}
-                      />
-                      <Typography variant="body2">
-                        {themeDetails?.displayName ??
-                          t('applications:edit.overview.signInPreview.defaultTheme', 'Default')}
-                      </Typography>
-                    </Stack>
-                  </Box>
-
-                  <Box>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{mb: 1}}>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontWeight: 600,
-                          letterSpacing: '0.03em',
-                          color: 'text.secondary',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {t('applications:edit.overview.signInPreview.flowsLabel', 'Flows')}
-                      </Typography>
-                      {onGoToFlows && (
-                        <Button size="small" endIcon={<ArrowRight size={11} />} onClick={onGoToFlows}>
-                          {t('applications:edit.overview.signInPreview.editFlows', 'Edit in flows')}
-                        </Button>
-                      )}
-                    </Stack>
-                    <Stack sx={{border: '1px solid', borderColor: 'divider', borderRadius: '8px', overflow: 'hidden'}}>
-                      {flowRows.map((flow, index) => (
-                        <Stack
-                          key={flow.label}
-                          direction="row"
-                          alignItems="center"
-                          justifyContent="space-between"
-                          spacing={1.25}
-                          sx={{
-                            px: 1.75,
-                            py: 1.25,
-                            borderTop: index === 0 ? 'none' : '1px solid',
-                            borderColor: 'divider',
-                          }}
-                        >
-                          <Typography variant="body2" color="text.secondary">
-                            {flow.label}
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            color={flow.value === notConfiguredLabel ? 'text.secondary' : undefined}
-                          >
-                            {flow.value}
-                          </Typography>
-                        </Stack>
-                      ))}
-                    </Stack>
-                  </Box>
-                </Stack>
-              </Stack>
-            </OverviewCard>
-          )}
-
-          {!showEndpointsInSidebar && endpointsCard}
+      {sectionLabel(
+        t('applications:edit.overview.signInPreview.themeLabel', 'Theme used'),
+        onGoToCustomization && (
+          <Button size="small" endIcon={<ArrowRight size={14} aria-hidden />} onClick={onGoToCustomization}>
+            {t('applications:edit.overview.signInPreview.editCustomization', 'Edit in customization')}
+          </Button>
+        ),
+      )}
+      {/* A theme that could not be read says so, rather than passing for the default theme. */}
+      {application.themeId && themeError ? (
+        <Box sx={{mb: 2.5}}>
+          <QueryErrorNotice
+            variant="inline"
+            error={themeError}
+            t={t}
+            fallbackKey="applications:edit.overview.signInPreview.themeError"
+            fallbackDefaultValue="The theme could not be loaded."
+            onRetry={() => {
+              void refetchTheme();
+            }}
+          />
+        </Box>
+      ) : (
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1.25}
+          sx={{border: 1, borderColor: 'divider', borderRadius: 1, px: 1.75, py: 1.25, mb: 2.5}}
+        >
+          <Box
+            sx={{width: 18, height: 18, borderRadius: 0.75, flexShrink: 0, bgcolor: themeSwatchColor ?? 'primary.main'}}
+          />
+          <Typography variant="body2">
+            {themeDetails?.displayName ??
+              (application.themeId
+                ? t('applications:edit.overview.signInPreview.themeLoading', 'Loading the theme')
+                : t('applications:edit.overview.signInPreview.defaultTheme', 'Default'))}
+          </Typography>
         </Stack>
       )}
 
-      {/* Right: identifiers sidebar. Also holds the endpoints card for sign-in-facing apps, whose
-          main column is already full without it. */}
-      <Stack
-        spacing={1.75}
-        sx={hasMainContent ? {flex: '2 0 320px', maxWidth: {xs: '100%', md: panelWidth}} : undefined}
-      >
-        {detailsPanel}
-      </Stack>
-
-      {hasVisibleQuickstart && (
-        // Kept mounted so the guide is fetched before it is first opened, and closing the dialog
-        // does not lose the step someone was on.
-        <Dialog
-          open={isGuideOpen}
-          onClose={() => setIsGuideOpen(false)}
-          maxWidth="md"
-          fullWidth
-          keepMounted
-          aria-labelledby="integration-guide-title-text"
-        >
-          <DialogTitle
-            id="integration-guide-title"
-            sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2}}
-          >
-            <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1.5} sx={{minWidth: 0}}>
-              <span id="integration-guide-title-text">
-                {t('applications:edit.overview.guide.dialogTitle', 'Integration guide')}
-              </span>
-              {selectedEnvironment && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  icon={
-                    <Box
-                      aria-hidden
-                      sx={(theme) => ({
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        bgcolor: selectedEnvironment.color?.light ?? 'text.secondary',
-                        ...theme.applyStyles('dark', {bgcolor: selectedEnvironment.color?.dark ?? 'text.secondary'}),
-                      })}
-                    />
-                  }
-                  label={t('applications:edit.overview.environments.guideFor', 'Values for {{environment}}', {
-                    environment: selectedEnvironment.name,
-                  })}
-                  sx={{pl: 0.75}}
-                />
-              )}
-            </Stack>
-            <IconButton
-              size="small"
-              aria-label={t('common:actions.close', 'Close')}
-              onClick={() => setIsGuideOpen(false)}
-            >
-              <X size={18} aria-hidden />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent dividers>
-            <QuickstartGuide
-              guides={quickstartGuides}
-              codeValues={guideCodeValues}
-              onOpenLink={externalLinkConfirmation.requestNavigation}
-            />
-          </DialogContent>
-        </Dialog>
+      {sectionLabel(
+        t('applications:edit.overview.signInPreview.flowsLabel', 'Flows'),
+        onGoToFlows && (
+          <Button size="small" endIcon={<ArrowRight size={14} aria-hidden />} onClick={onGoToFlows}>
+            {t('applications:edit.overview.signInPreview.editFlows', 'Edit in flows')}
+          </Button>
+        ),
       )}
+      <Stack sx={{border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden'}}>
+        {flowRows.map((flow, index) => (
+          <Stack
+            key={flow.label}
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            spacing={1.25}
+            sx={{px: 1.75, py: 1, borderTop: index === 0 ? 0 : 1, borderColor: 'divider', minHeight: 44}}
+          >
+            <Typography variant="body2" color="text.secondary">
+              {flow.label}
+            </Typography>
+            {/* A flow that is not set up sends the developer to where it is, rather than only saying so. */}
+            {flow.setUpLabel && onGoToFlows ? (
+              <Button size="small" endIcon={<ArrowRight size={14} aria-hidden />} onClick={onGoToFlows}>
+                {flow.setUpLabel}
+              </Button>
+            ) : (
+              <Typography variant="body2" color={flow.value === notConfiguredLabel ? 'text.secondary' : undefined}>
+                {flow.value}
+              </Typography>
+            )}
+          </Stack>
+        ))}
+      </Stack>
+    </Paper>
+  );
 
-      <ExternalLinkConfirmDialog
-        isOpen={externalLinkConfirmation.isOpen}
-        pendingUrl={externalLinkConfirmation.pendingUrl}
-        onCancel={externalLinkConfirmation.cancel}
-        onConfirm={externalLinkConfirmation.confirm}
-      />
+  return (
+    <Stack spacing={3}>
+      {/* The environment leads the tab: the guide, the client ID, and the endpoints all follow it. */}
+      {selectedEnvironment && (
+        <EnvironmentBar
+          environments={environments}
+          selectedEnvironment={selectedEnvironment}
+          onSelect={selectEnvironment}
+          notDeployedIds={notDeployedIds}
+          deployPath={deployPath}
+        />
+      )}
+      <Stack
+        direction="row"
+        flexWrap="wrap"
+        gap={3.5}
+        alignItems="flex-start"
+        justifyContent={hasMainContent ? undefined : 'center'}
+      >
+        {/* Left: main content */}
+        {hasMainContent && (
+          <Stack sx={{flex: '2 1 480px', minWidth: 0}} spacing={2.25}>
+            {primaryPlaygroundUrl && (
+              <StackblitzQuickstartCard
+                url={primaryPlaygroundUrl}
+                heading={t('applications:edit.overview.stackblitz.heading', 'Try the live quickstart')}
+                subheading={
+                  <Trans
+                    i18nKey="applications:edit.overview.stackblitz.subheading"
+                    defaults="Run <code>{{name}}</code> in StackBlitz"
+                    values={{name: application.name}}
+                    components={{
+                      code: (
+                        <Box component="code" sx={{fontFamily: 'monospace', fontSize: '0.85em', color: 'inherit'}} />
+                      ),
+                    }}
+                  />
+                }
+                ctaLabel={t('applications:edit.overview.stackblitz.cta', 'Open on StackBlitz')}
+              />
+            )}
+
+            {hasGuide && (
+              <ConnectAppGuide
+                guides={quickstartGuides}
+                promptUrl={promptUrl}
+                promptValues={placeholderValues}
+                codeValues={guideCodeValues}
+                devServerUrl={templateDevServerUrl}
+                redirectUris={oauth2Config?.redirectUris}
+                isSelfSignUpEnabled={Boolean(application.isRegistrationFlowEnabled)}
+                isSignInFacing={isSignInFacing}
+                onGoToFlows={onGoToFlows}
+                onOpenLink={externalLinkConfirmation.requestNavigation}
+              />
+            )}
+
+            {!showEndpointsInSidebar && endpointsCard}
+          </Stack>
+        )}
+
+        {/* Right: for sign-in-facing apps the sign-in experience, then identifiers and endpoints. */}
+        <Stack
+          spacing={2.25}
+          // Beside a guide, the column shares the row. On its own, it is centered at a readable width.
+          sx={
+            hasMainContent
+              ? {flex: '1 1 320px', minWidth: 0}
+              : {flex: `0 1 ${panelWidth}px`, minWidth: 0, maxWidth: '100%'}
+          }
+        >
+          {signInExperienceCard}
+          {detailsPanel}
+        </Stack>
+
+        <ExternalLinkConfirmDialog
+          isOpen={externalLinkConfirmation.isOpen}
+          pendingUrl={externalLinkConfirmation.pendingUrl}
+          onCancel={externalLinkConfirmation.cancel}
+          onConfirm={externalLinkConfirmation.confirm}
+        />
+      </Stack>
     </Stack>
   );
 }

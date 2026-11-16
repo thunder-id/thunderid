@@ -109,6 +109,11 @@ export {default as LangChainLogo} from './icons/logos/vendor/LangChainLogo';
 export {default as JsonLogo} from './icons/logos/vendor/JsonLogo';
 export {default as JwtLogo} from './icons/logos/vendor/JwtLogo';
 export {default as OAuth2Logo} from './icons/logos/vendor/OAuth2Logo';
+export {default as NpmIcon} from './icons/logos/vendor/NpmIcon';
+export {default as YarnIcon} from './icons/logos/vendor/YarnIcon';
+export {default as PnpmIcon} from './icons/logos/vendor/PnpmIcon';
+export {default as BunIcon} from './icons/logos/vendor/BunIcon';
+export {default as DenoIcon} from './icons/logos/vendor/DenoIcon';
 
 /* -------------------------- LAB -------------------------- */
 

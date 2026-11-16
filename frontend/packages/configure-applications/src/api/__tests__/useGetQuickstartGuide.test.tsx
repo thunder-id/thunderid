@@ -30,9 +30,10 @@ describe('useGetQuickstartGuide', () => {
       expect(result.current.isSuccess).toBe(true);
     });
     expect(mockFetch).toHaveBeenCalledWith('https://example.com/docs/react.md');
-    expect(result.current.data).toEqual([
-      {title: 'Install the SDK', blocks: [{type: 'paragraph', text: 'Install it.'}]},
-    ]);
+    expect(result.current.data).toEqual({
+      steps: [{title: 'Install the SDK', blocks: [{type: 'paragraph', text: 'Install it.'}]}],
+      sample: null,
+    });
   });
 
   it('returns null for a page that is not a quickstart', async () => {

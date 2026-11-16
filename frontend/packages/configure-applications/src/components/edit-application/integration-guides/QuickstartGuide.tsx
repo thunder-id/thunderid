@@ -2,43 +2,36 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useCopyToClipboard} from '@thunderid/hooks';
+import {useConfig} from '@thunderid/contexts';
 import {
   Alert,
   AlertTitle,
-  alpha,
   Box,
   Button,
   CircularProgress,
-  IconButton,
   Link,
   Stack,
-  Step,
-  StepButton,
-  StepContent,
-  Stepper,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
   Typography,
+  Paper,
 } from '@wso2/oxygen-ui';
-import {ArrowUpRight, Check, Copy} from '@wso2/oxygen-ui-icons-react';
+import {Download} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import GuideCode from './GuideCode';
+import GuideStepList from './GuideStepList';
 import useGetQuickstartGuide from '../../../api/useGetQuickstartGuide';
-import {
-  fillQuickstartGuideCode,
-  type QuickstartGuideAlertKind,
-  type QuickstartGuideBlock,
-  type QuickstartGuideStep,
+import useGetSampleRelease from '../../../api/useGetSampleRelease';
+import type {
+  QuickstartGuideAlertKind,
+  QuickstartGuideBlock,
+  QuickstartGuideSample,
+  QuickstartGuideStep,
 } from '../../../utils/parseQuickstartGuide';
 
 /**
@@ -59,6 +52,14 @@ export interface QuickstartGuideSource {
    * The platform's logo
    */
   icon?: ReactNode;
+  /**
+   * The URL of the platform's coding agent prompt, for a template that covers several platforms
+   */
+  promptUrl?: string;
+  /**
+   * The anchor of the section of the guide that holds the steps, when it is not the whole page
+   */
+  section?: string;
 }
 
 /**
@@ -68,9 +69,9 @@ export interface QuickstartGuideSource {
  */
 export interface QuickstartGuideProps {
   /**
-   * The guides to offer. More than one renders a platform switcher.
+   * The guide to show
    */
-  guides: QuickstartGuideSource[];
+  guide: QuickstartGuideSource;
   /**
    * Placeholder text in the docs code samples, mapped to this application's value for it
    */
@@ -79,6 +80,10 @@ export interface QuickstartGuideProps {
    * Opens an external URL, after whatever confirmation the host page wants
    */
   onOpenLink: (url: string) => void;
+  /**
+   * What to show: the steps that build the app (the default), or the sample app that runs instead
+   */
+  view?: 'steps' | 'sample';
 }
 
 /** What every block of a guide needs to render, passed down unchanged through nested blocks. */
@@ -151,96 +156,6 @@ function GuideText({text, onOpenLink}: {text: string; onOpenLink: (url: string) 
   return nodes;
 }
 
-/**
- * A code sample with a copy button. Several options render as tabs, one per option. Values filled
- * in from the application are highlighted so they stand apart from the sample's own code.
- */
-function GuideCode({
-  title = undefined,
-  options,
-  context,
-}: {
-  title?: string;
-  options: {label?: string; language?: string; code: string}[];
-  context: GuideRenderContext;
-}): JSX.Element {
-  const {t} = useTranslation();
-  const {copied, copy} = useCopyToClipboard();
-  const selected = options.findIndex((option) => option.label === context.codeOption);
-  const active = options[Math.max(selected, 0)];
-  const segments = fillQuickstartGuideCode(active.code, context.codeValues);
-  const copyLabel = copied ? t('common:actions.copied', 'Copied!') : t('common:actions.copy', 'Copy');
-
-  return (
-    <Box sx={{border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', minWidth: 0}}>
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        spacing={1}
-        sx={{pl: options.length > 1 ? 0 : 2, pr: 1, borderBottom: 1, borderColor: 'divider', bgcolor: 'action.hover'}}
-      >
-        {options.length > 1 ? (
-          <Tabs
-            value={active.label}
-            onChange={(_, label: string) => context.onCodeOptionChange(label)}
-            variant="scrollable"
-            scrollButtons="auto"
-            aria-label={t('applications:edit.overview.guide.codeOptions', 'Code sample options')}
-          >
-            {options.map((option) => (
-              <Tab key={option.label} value={option.label} label={option.label} />
-            ))}
-          </Tabs>
-        ) : (
-          <Typography variant="caption" color="text.secondary" sx={{fontFamily: 'monospace'}} noWrap>
-            {title ?? active.language}
-          </Typography>
-        )}
-        <Tooltip title={copyLabel}>
-          <IconButton
-            size="small"
-            aria-label={copyLabel}
-            onClick={() => {
-              void copy(segments.map((segment) => segment.text).join(''));
-            }}
-          >
-            {copied ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
-          </IconButton>
-        </Tooltip>
-      </Stack>
-      <Box
-        component="pre"
-        tabIndex={0}
-        aria-label={title ?? active.label ?? t('applications:edit.overview.guide.codeSample', 'Code sample')}
-        sx={{m: 0, p: 2, overflow: 'auto', typography: 'body2', fontFamily: 'monospace'}}
-      >
-        <code>
-          {segments.map((segment, index) =>
-            segment.filled ? (
-              <Box
-                // eslint-disable-next-line react/no-array-index-key
-                key={index}
-                component="mark"
-                sx={(theme) => ({
-                  color: 'inherit',
-                  bgcolor: alpha(theme.palette.primary.main, 0.2),
-                  borderRadius: 0.5,
-                  px: 0.25,
-                })}
-              >
-                {segment.text}
-              </Box>
-            ) : (
-              segment.text
-            ),
-          )}
-        </code>
-      </Box>
-    </Box>
-  );
-}
-
 /** Renders the blocks of a guide step, or of a list item or alert nested inside one. */
 function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context: GuideRenderContext}): JSX.Element {
   return (
@@ -263,9 +178,26 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
               </Typography>
             );
           case 'code':
-            return <GuideCode key={key} title={block.title} options={[block]} context={context} />;
+            return (
+              <GuideCode
+                key={key}
+                title={block.title}
+                options={[block]}
+                codeValues={context.codeValues}
+                codeOption={context.codeOption}
+                onCodeOptionChange={context.onCodeOptionChange}
+              />
+            );
           case 'codeGroup':
-            return <GuideCode key={key} options={block.options} context={context} />;
+            return (
+              <GuideCode
+                key={key}
+                options={block.options}
+                codeValues={context.codeValues}
+                codeOption={context.codeOption}
+                onCodeOptionChange={context.onCodeOptionChange}
+              />
+            );
           case 'list':
             return (
               <Stack key={key} component={block.ordered ? 'ol' : 'ul'} spacing={1} sx={{m: 0, pl: 3}}>
@@ -318,7 +250,7 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
   );
 }
 
-/** The steps of one guide, one open at a time. */
+/** The steps of one guide, all open. */
 function GuideSteps({
   steps,
   codeValues,
@@ -328,99 +260,117 @@ function GuideSteps({
   codeValues: Record<string, string | undefined>;
   onOpenLink: (url: string) => void;
 }): JSX.Element {
-  const {t} = useTranslation();
-  const [activeStep, setActiveStep] = useState(0);
   const [codeOption, setCodeOption] = useState<string | undefined>(undefined);
   const context: GuideRenderContext = {codeValues, onOpenLink, codeOption, onCodeOptionChange: setCodeOption};
 
   return (
-    <Stepper nonLinear orientation="vertical" activeStep={activeStep}>
-      {steps.map((step, index) => (
-        <Step key={step.title} completed={index < activeStep}>
-          <StepButton onClick={() => setActiveStep(index)}>
-            <Typography variant="subtitle2" component="span">
-              <GuideText text={step.title} onOpenLink={onOpenLink} />
+    <GuideStepList
+      steps={steps.map((step) => ({
+        key: step.title,
+        title: <GuideText text={step.title} onOpenLink={onOpenLink} />,
+        content: <GuideBlocks blocks={step.blocks} context={context} />,
+      }))}
+    />
+  );
+}
+
+/** The guide's sample app: its released archive to download, then how the guide says to run it. */
+function GuideSample({
+  guide,
+  sample,
+  codeValues,
+  onOpenLink,
+}: {
+  guide: QuickstartGuideSource;
+  sample: QuickstartGuideSample;
+  codeValues: Record<string, string | undefined>;
+  onOpenLink: (url: string) => void;
+}): JSX.Element {
+  const {t} = useTranslation();
+  const {config} = useConfig();
+  const {
+    data: release,
+    error: releaseError,
+    refetch: refetchRelease,
+  } = useGetSampleRelease(config.documentation?.ecosystemReleasesUrl, sample.id);
+  const [codeOption, setCodeOption] = useState<string | undefined>(undefined);
+  const context: GuideRenderContext = {codeValues, onOpenLink, codeOption, onCodeOptionChange: setCodeOption};
+
+  return (
+    <Stack spacing={2}>
+      {/* A failed lookup of the archive says so, and the instructions below still stand. */}
+      {releaseError && (
+        <QueryErrorNotice
+          variant="inline"
+          error={releaseError}
+          t={t}
+          fallbackKey="applications:edit.overview.sample.error"
+          fallbackDefaultValue="The sample's download could not be found. You can still download it from its releases."
+          onRetry={() => {
+            void refetchRelease();
+          }}
+        />
+      )}
+      {release && (
+        <Paper variant="outlined" sx={{p: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2}}>
+          {guide.icon}
+          <Box sx={{flex: '1 1 200px', minWidth: 0}}>
+            <Typography variant="subtitle2">
+              {t('applications:edit.overview.sample.title', '{{label}} sample app', {label: guide.label})}
             </Typography>
-          </StepButton>
-          <StepContent slotProps={{transition: {unmountOnExit: true}}}>
-            <Box sx={{pt: 1, pb: 2}}>
-              <GuideBlocks blocks={step.blocks} context={context} />
-              <Stack direction="row" spacing={1} sx={{mt: 2}}>
-                {index < steps.length - 1 && (
-                  <Button variant="contained" size="small" onClick={() => setActiveStep(index + 1)}>
-                    {t('applications:edit.overview.guide.nextStep', 'Next step')}
-                  </Button>
-                )}
-                {index > 0 && (
-                  <Button size="small" onClick={() => setActiveStep(index - 1)}>
-                    {t('common:actions.back', 'Back')}
-                  </Button>
-                )}
-              </Stack>
-            </Box>
-          </StepContent>
-        </Step>
-      ))}
-    </Stepper>
+            {release.version && (
+              <Typography variant="body2" color="text.secondary">
+                {release.sizeLabel
+                  ? t('applications:edit.overview.sample.versionWithSize', 'Version {{version}}, {{size}}', {
+                      version: release.version,
+                      size: release.sizeLabel,
+                    })
+                  : t('applications:edit.overview.sample.version', 'Version {{version}}', {version: release.version})}
+              </Typography>
+            )}
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<Download size={16} aria-hidden />}
+            // The product's own released sample, so it downloads without the leaving-the-console confirmation.
+            component="a"
+            href={release.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('applications:edit.overview.sample.download', 'Download sample')}
+          </Button>
+        </Paper>
+      )}
+      <GuideBlocks blocks={sample.blocks} context={context} />
+    </Stack>
   );
 }
 
 /**
- * Shows a docs quickstart as steps inside the Console, with the application's own values filled
- * into the code samples. The content is fetched from the docs site, so it never drifts from the
- * published guide. When the guide cannot be shown inline, the link to the docs site remains.
+ * Shows a docs quickstart inside the Console, with the application's own values filled into the
+ * code samples: either the steps that build the app, or the sample app the guide offers instead.
+ * The content is fetched from the docs site, so it never drifts from the published guide.
  *
  * @param props - The component props
- * @returns The guide, with a platform switcher when there is more than one
+ * @returns The guide's steps or sample, or a notice when they cannot be shown
  *
  * @public
  */
-export default function QuickstartGuide({guides, codeValues, onOpenLink}: QuickstartGuideProps): JSX.Element {
+export default function QuickstartGuide({
+  guide,
+  codeValues,
+  onOpenLink,
+  view = 'steps',
+}: QuickstartGuideProps): JSX.Element {
   const {t} = useTranslation();
-  const [selectedLabel, setSelectedLabel] = useState(guides[0].label);
-  const guide = guides.find((entry) => entry.label === selectedLabel) ?? guides[0];
-  const {data: steps, isLoading, error, refetch} = useGetQuickstartGuide(guide.docsUrl);
+  const {data: content, isLoading, error, refetch} = useGetQuickstartGuide(guide.docsUrl, guide.section);
+  const steps = content === undefined ? undefined : (content?.steps ?? null);
+  const sample = content?.sample;
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" flexWrap="wrap" alignItems="center" justifyContent="space-between" gap={1}>
-        {guides.length > 1 ? (
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={guide.label}
-            onChange={(_, label: string | null) => {
-              if (label) {
-                setSelectedLabel(label);
-              }
-            }}
-            aria-label={t('applications:edit.overview.guide.platform', 'Platform')}
-          >
-            {guides.map((entry) => (
-              <ToggleButton key={entry.label} value={entry.label} sx={{gap: 1}}>
-                {entry.icon}
-                {entry.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : (
-          <Stack direction="row" alignItems="center" spacing={1}>
-            {guide.icon}
-            <Typography variant="subtitle2">
-              {t('applications:edit.overview.guide.quickstartFor', '{{label}} quickstart', {label: guide.label})}
-            </Typography>
-          </Stack>
-        )}
-        <Button
-          variant="outlined"
-          size="small"
-          endIcon={<ArrowUpRight size={16} />}
-          onClick={() => onOpenLink(guide.docsUrl)}
-        >
-          {t('applications:edit.overview.guide.openDocs', 'Open in docs')}
-        </Button>
-      </Stack>
-
       {isLoading && (
         <Box sx={{display: 'flex', justifyContent: 'center', py: 4}}>
           <CircularProgress size={24} aria-label={t('applications:edit.overview.guide.loading', 'Loading the guide')} />
@@ -446,7 +396,19 @@ export default function QuickstartGuide({guides, codeValues, onOpenLink}: Quicks
         </Typography>
       )}
 
-      {steps && <GuideSteps key={guide.docsUrl} steps={steps} codeValues={codeValues} onOpenLink={onOpenLink} />}
+      {view === 'steps' && steps && (
+        <GuideSteps key={guide.docsUrl} steps={steps} codeValues={codeValues} onOpenLink={onOpenLink} />
+      )}
+
+      {view === 'sample' && sample && (
+        <GuideSample
+          key={guide.docsUrl}
+          guide={guide}
+          sample={sample}
+          codeValues={codeValues}
+          onOpenLink={onOpenLink}
+        />
+      )}
     </Stack>
   );
 }

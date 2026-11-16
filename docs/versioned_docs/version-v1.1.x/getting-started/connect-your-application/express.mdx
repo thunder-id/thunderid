@@ -205,6 +205,30 @@ You should see the sign-in link. Click it to be redirected to the <ProductName /
 
 </Stepper>
 
+## Run the Sample App
+
+The [Express sample](https://github.com/thunder-id/samples/tree/main/quickstarts/express) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fexpress&expanded=true) and open its folder.
+2. Create `.env` in the sample's folder with your application's values:
+
+   ```dotenv title=".env"
+   THUNDERID_BASE_URL=https://localhost:8090
+   THUNDERID_CLIENT_ID=<your-client-id>
+   THUNDERID_CLIENT_SECRET=<your-client-secret>
+   # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+   NODE_TLS_REJECT_UNAUTHORIZED=0
+   ```
+
+3. Install the dependencies and start the app:
+
+   ```bash
+   npm install
+   npm start
+   ```
+
+4. Open [http://localhost:3000/login](http://localhost:3000/login) and sign in.
+
 ## What's Next
 
 <NextSteps>

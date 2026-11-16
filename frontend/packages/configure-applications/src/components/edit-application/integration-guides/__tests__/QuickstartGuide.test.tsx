@@ -6,6 +6,14 @@ import {fireEvent, render, screen, waitFor, within} from '@testing-library/react
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import QuickstartGuide from '../QuickstartGuide';
 
+// No releases feed by default, so the sample view shows the docs instructions without a download.
+const mockDocumentation: {ecosystemReleasesUrl?: string} = {};
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {documentation: mockDocumentation}}),
+}));
+
 const reactGuide = `## Create an Application
 
 Create it.
@@ -74,24 +82,38 @@ app.use(plugin)
 \`\`\`
 `;
 
-const guides = [
-  {label: 'React', docsUrl: 'https://example.com/docs/react/'},
-  {label: 'Vue', docsUrl: 'https://example.com/docs/vue/'},
-];
+const reactGuideWithSample = `${reactGuide}
+## Run the Sample App
+
+The [React sample](https://github.com/example/samples/tree/main/quickstarts/react) runs instead.
+
+\`\`\`dotenv title=".env"
+CLIENT_ID=<your-client-id>
+\`\`\`
+`;
+
+const reactSource = {label: 'React', docsUrl: 'https://example.com/docs/react/'};
+const vueSource = {label: 'Vue', docsUrl: 'https://example.com/docs/vue/'};
 
 const pages: Record<string, string> = {
   'https://example.com/docs/react.md': reactGuide,
   'https://example.com/docs/vue.md': vueGuide,
+  'https://example.com/docs/react-sample.md': reactGuideWithSample,
 };
 
 const mockFetch = vi.fn();
 const mockWriteText = vi.fn();
 const onOpenLink = vi.fn();
 
-const renderGuide = (sources = guides) =>
+const renderGuide = (source = reactSource, view: 'steps' | 'sample' = 'steps') =>
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <QuickstartGuide guides={sources} codeValues={{'<your-client-id>': 'client-123'}} onOpenLink={onOpenLink} />
+      <QuickstartGuide
+        guide={source}
+        codeValues={{'<your-client-id>': 'client-123'}}
+        onOpenLink={onOpenLink}
+        view={view}
+      />
     </QueryClientProvider>,
   );
 
@@ -115,51 +137,36 @@ describe('QuickstartGuide', () => {
   });
 
   afterEach(() => {
+    delete mockDocumentation.ecosystemReleasesUrl;
     vi.unstubAllGlobals();
     Object.defineProperty(navigator, 'clipboard', {value: originalClipboard, writable: true, configurable: true});
   });
 
-  it('opens the first step and moves through the steps', async () => {
-    renderGuide([guides[0]]);
+  it('shows every step at once, numbered, with the application values filled in', async () => {
+    renderGuide();
 
-    expect(await screen.findByText('npm install @example/react')).toBeInTheDocument();
-    expect(screen.getByText('React quickstart')).toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Back'})).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', {name: 'Next step'}));
-
-    expect(await screen.findByLabelText('src/main.jsx')).toHaveTextContent('<Provider clientId="client-123" />');
+    // Highlighted code is split into tokens, so each sample is read whole, by its label.
+    await waitFor(() => expect(screen.getAllByLabelText('npm')[0]).toHaveTextContent('npm install @example/react'));
+    const steps = within(screen.getByRole('list')).getAllByRole('heading', {level: 3});
+    expect(steps.map((step) => step.textContent)).toEqual(['Install the SDK', 'Add the Provider', 'Run Your App']);
+    expect(screen.getByLabelText('src/main.jsx')).toHaveTextContent('<Provider clientId="client-123" />');
     expect(screen.getByRole('alert')).toHaveTextContent('Configuration');
     expect(screen.getByRole('columnheader', {name: 'Parameter'})).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', {name: /Run Your App/}));
-
-    expect(await screen.findByText('npm run dev')).toBeInTheDocument();
-    // The step that was open collapses out before it unmounts.
-    await waitFor(() => {
-      expect(screen.queryByRole('button', {name: 'Next step'})).not.toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', {name: 'Back'}));
-
-    expect(await screen.findByLabelText('src/main.jsx')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('npm')[1]).toHaveTextContent('npm run dev');
   });
 
   it('keeps the picked package manager across code groups', async () => {
-    renderGuide([guides[0]]);
+    renderGuide();
 
-    fireEvent.click(await screen.findByRole('tab', {name: 'pnpm'}));
-    expect(screen.getByText('pnpm add @example/react')).toBeInTheDocument();
+    fireEvent.click((await screen.findAllByRole('tab', {name: 'pnpm'}))[0]);
 
-    fireEvent.click(screen.getByRole('button', {name: /Run Your App/}));
-
-    expect(await screen.findByText('pnpm run dev')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('pnpm')[0]).toHaveTextContent('pnpm add @example/react');
+    expect(screen.getAllByLabelText('pnpm')[1]).toHaveTextContent('pnpm run dev');
   });
 
   it('copies the code with the application values filled in', async () => {
-    renderGuide([guides[0]]);
+    renderGuide();
 
-    fireEvent.click(await screen.findByRole('button', {name: /Add the Provider/}));
     const provider = (await screen.findByLabelText('src/main.jsx')).parentElement!;
     fireEvent.click(within(provider).getByRole('button', {name: 'Copy'}));
 
@@ -169,58 +176,104 @@ describe('QuickstartGuide', () => {
   });
 
   it('opens docs links as pages rather than their Markdown export', async () => {
-    renderGuide([guides[0]]);
+    renderGuide();
 
     fireEvent.click(await screen.findByRole('button', {name: 'reference'}));
     expect(onOpenLink).toHaveBeenCalledWith('https://example.com/docs/reference');
-
-    fireEvent.click(screen.getByRole('button', {name: 'Open in docs'}));
-    expect(onOpenLink).toHaveBeenCalledWith('https://example.com/docs/react/');
   });
 
-  it('switches between platform guides', async () => {
-    renderGuide();
+  it('renders nested headings, lists, and untitled code', async () => {
+    renderGuide(vueSource);
 
-    expect(await screen.findByRole('button', {name: /Install the SDK/})).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', {name: 'Vue'}));
-
-    expect(await screen.findByRole('button', {name: /Register the Plugin/})).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    expect(await screen.findByRole('heading', {name: 'Register the Plugin'})).toBeInTheDocument();
     expect(screen.getByRole('heading', {name: 'Before you start'})).toBeInTheDocument();
     expect(screen.getByLabelText('Code sample')).toHaveTextContent('app.use(plugin)');
-    expect(screen.queryByRole('button', {name: /Install the SDK/})).not.toBeInTheDocument();
-
-    // Clicking the platform that is already selected keeps it selected.
-    fireEvent.click(screen.getByRole('button', {name: 'Vue'}));
-
-    expect(screen.getByRole('button', {name: 'Vue'})).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('falls back to the first guide when the selected platform is no longer offered', async () => {
-    const {rerender} = renderGuide([guides[0]]);
+  it('keeps the sample section out of the steps and shows it as the sample view', async () => {
+    const source = {label: 'React', docsUrl: 'https://example.com/docs/react-sample/'};
+    const {unmount} = renderGuide(source);
 
-    expect(await screen.findByRole('button', {name: /Install the SDK/})).toBeInTheDocument();
+    expect(await screen.findByRole('heading', {name: 'Run Your App'})).toBeInTheDocument();
+    expect(screen.queryByText('Run the Sample App')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('.env')).not.toBeInTheDocument();
+    unmount();
 
-    rerender(
+    renderGuide(source, 'sample');
+
+    expect(await screen.findByLabelText('.env')).toHaveTextContent('CLIENT_ID=client-123');
+    expect(screen.queryByRole('heading', {name: 'Install the SDK'})).not.toBeInTheDocument();
+  });
+
+  it('shows the steps when no view is asked for', async () => {
+    render(
       <QueryClientProvider client={new QueryClient()}>
-        <QuickstartGuide guides={[guides[1]]} codeValues={{}} onOpenLink={onOpenLink} />
+        <QuickstartGuide guide={reactSource} codeValues={{}} onOpenLink={onOpenLink} />
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByRole('button', {name: /Register the Plugin/})).toBeInTheDocument();
+    expect(await screen.findByRole('heading', {name: 'Install the SDK'})).toBeInTheDocument();
+  });
+
+  it("shows the sample's version alone when the releases feed gives no size", async () => {
+    const releasesUrl = 'https://example.com/data/ecosystem-releases.json';
+    mockDocumentation.ecosystemReleasesUrl = releasesUrl;
+    pages[releasesUrl] = JSON.stringify({
+      releases: [
+        {
+          type: 'sample',
+          packageId: 'quickstarts/react',
+          latestVersion: '1.2.0',
+          assets: [{downloadUrl: 'https://example.com/react.zip'}],
+        },
+      ],
+    });
+    mockFetch.mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: url in pages,
+        status: url in pages ? 200 : 404,
+        text: () => Promise.resolve(pages[url]),
+        json: () => Promise.resolve(JSON.parse(pages[url]) as unknown),
+      }),
+    );
+
+    renderGuide({label: 'React', docsUrl: 'https://example.com/docs/react-sample/'}, 'sample');
+
+    expect(await screen.findByText('Version 1.2.0')).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'Download sample'})).toHaveAttribute(
+      'href',
+      'https://example.com/react.zip',
+    );
+    delete pages[releasesUrl];
+  });
+
+  it('looks for the sample download again when it could not be found', async () => {
+    const releasesUrl = 'https://example.com/data/missing-releases.json';
+    mockDocumentation.ecosystemReleasesUrl = releasesUrl;
+
+    renderGuide({label: 'React', docsUrl: 'https://example.com/docs/react-sample/'}, 'sample');
+
+    expect(
+      await screen.findByText("The sample's download could not be found. You can still download it from its releases."),
+    ).toBeInTheDocument();
+    const fetchesBefore = mockFetch.mock.calls.filter(([url]) => url === releasesUrl).length;
+
+    fireEvent.click(screen.getByRole('button', {name: /Refresh/i}));
+
+    await waitFor(() =>
+      expect(mockFetch.mock.calls.filter(([url]) => url === releasesUrl).length).toBe(fetchesBefore + 1),
+    );
   });
 
   it('shows an error with a retry when the guide cannot be fetched', async () => {
-    renderGuide([{label: 'Nuxt', docsUrl: 'https://example.com/docs/nuxt/'}]);
+    renderGuide({label: 'Nuxt', docsUrl: 'https://example.com/docs/nuxt/'});
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Open in docs'})).toBeInTheDocument();
 
     pages['https://example.com/docs/nuxt.md'] = vueGuide;
     fireEvent.click(screen.getByRole('button', {name: /Refresh/i}));
 
-    expect(await screen.findByRole('button', {name: /Register the Plugin/})).toBeInTheDocument();
+    expect(await screen.findByRole('heading', {name: 'Register the Plugin'})).toBeInTheDocument();
     delete pages['https://example.com/docs/nuxt.md'];
   });
 });
