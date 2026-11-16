@@ -104,7 +104,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 
 	if engineCtx.runtimeCryptoSvc == nil {
-		logger.Debug(ctx, "runtimeCryptoSvc is not set, Starting to Initialize ThunderID defaultkm")
+		logger.Debug(ctx, "runtimeCryptoSvc is not set, Starting to Initialize the default key manager")
 		// Load the server's private key for signing JWTs.
 		pkiService, err := pki.Initialize()
 		if err != nil {

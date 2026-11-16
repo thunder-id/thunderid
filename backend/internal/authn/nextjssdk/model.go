@@ -5,7 +5,7 @@ package nextjssdk
 
 // integrateNextJSSDKInput represents the input for the integrate_nextjs_sdk tool.
 type integrateNextJSSDKInput struct {
-	ServerURL string `json:"server_url,omitempty" jsonschema:"URL of the ThunderID server which is the baseurl for SDK"`
+	ServerURL string `json:"server_url,omitempty" jsonschema:"URL of the server, which is the SDK base URL"`
 }
 
 // integrateNextJSSDKOutput represents the output for the integrate_nextjs_sdk tool.
