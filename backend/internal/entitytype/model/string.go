@@ -27,6 +27,8 @@ type str struct {
 	enum        map[string]struct{}
 	enumOrder   []string
 	pattern     *regexp.Regexp
+	// regex is the pattern the schema declares; pattern also falls back to a contact default.
+	regex *regexp.Regexp
 }
 
 func (p *str) isUnique() bool {
@@ -176,6 +178,7 @@ func compileStringProperty(propMap map[string]json.RawMessage, valueType string)
 	if err != nil {
 		return nil, err
 	}
+	prop.regex = pattern
 	if pattern == nil {
 		switch valueType {
 		case TypeEmail:

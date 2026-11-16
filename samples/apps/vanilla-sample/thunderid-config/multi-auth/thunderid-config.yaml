@@ -17,6 +17,8 @@ ouHandle: default
 allowSelfRegistration: true
 systemAttributes:
   display: username
+  primaryEmail: email
+  primaryMobile: mobile_number
 schema: {
     "username": {
       "type": "string",
@@ -31,11 +33,10 @@ schema: {
       "credential": true
     },
     "email": {
-      "type": "string",
+      "type": "email",
       "displayName": "Email",
       "required": true,
-      "unique": true,
-      "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+      "unique": true
     },
     "given_name": {
       "type": "string",
@@ -53,9 +54,10 @@ schema: {
       "required": false
     },
     "mobile_number": {
-      "type": "string",
+      "type": "mobile",
       "displayName": "Mobile Number",
-      "required": false
+      "required": false,
+      "regex": "^\\+[1-9]\\d{1,14}$"
     }
 
   }

@@ -14,7 +14,7 @@ import {
   type InviteUserRenderProps,
 } from '@thunderid/react';
 import type {ApiError, I18nMessage} from '@thunderid/types';
-import {EMAIL_REGEX} from '@thunderid/utils';
+import {CONTACT_ATTRIBUTE_REGEX, EMAIL_REGEX} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -55,8 +55,23 @@ type FlowSubComponent = EmbeddedFlowComponent & {
   options?: unknown[];
   placeholder?: string;
   required?: boolean;
+  validation?: {type: string; value?: unknown}[];
   variant?: string;
 };
+
+/** The regex declared on a flow input, or undefined when it has none the browser can compile. */
+function getInputRegex(component: EmbeddedFlowComponent): RegExp | undefined {
+  const rule = (component as FlowSubComponent).validation?.find(
+    (item) => item.type === 'regex' && typeof item.value === 'string' && item.value !== '',
+  );
+  if (!rule) return undefined;
+  try {
+    // Unicode mode rejects most RE2-only syntax, so such patterns are skipped rather than misread.
+    return new RegExp(rule.value as string, 'u');
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Derive the current step label from flow components.
@@ -217,16 +232,36 @@ function InviteUserStepContent({
               comp.ref
             ) {
               let fieldSchema: z.ZodTypeAny = z.string();
+              const labelText = typeof comp.label === 'string' ? comp.label : comp.ref;
+              const inputRegex = getInputRegex(comp);
 
               if (comp.type === 'EMAIL_INPUT') {
                 fieldSchema = z.string().email('Please enter a valid email address');
-              } else if (comp.type === 'PHONE_INPUT') {
-                fieldSchema = z.string().regex(/^\+?[0-9\s\-().]{7,20}$/, 'Please enter a valid phone number');
+              } else if (
+                comp.type === 'PHONE_INPUT' &&
+                (!inputRegex || inputRegex.source === CONTACT_ATTRIBUTE_REGEX.mobile)
+              ) {
+                fieldSchema = z
+                  .string()
+                  .regex(
+                    new RegExp(CONTACT_ATTRIBUTE_REGEX.mobile),
+                    t(
+                      'validations:field.mobile.invalid',
+                      'Enter the mobile number with its country code, for example +14155550123.',
+                    ),
+                  );
               } else if (comp.type === 'PASSWORD_INPUT') {
                 fieldSchema = z.string();
               }
+              if (inputRegex && comp.type !== 'BOOLEAN_INPUT' && inputRegex.source !== CONTACT_ATTRIBUTE_REGEX.mobile) {
+                fieldSchema = (fieldSchema as z.ZodString).regex(
+                  inputRegex,
+                  t('validations:validation.pattern.invalid', '{{field}} format is invalid.', {
+                    field: t(resolve(labelText) ?? labelText) ?? comp.ref,
+                  }),
+                );
+              }
 
-              const labelText = typeof comp.label === 'string' ? comp.label : comp.ref;
               if (comp.type === 'BOOLEAN_INPUT') {
                 // A required boolean is satisfied by either answer, so it carries no min-length rule.
                 shape[comp.ref] = fieldSchema;
@@ -238,7 +273,8 @@ function InviteUserStepContent({
                   `${t(resolve(labelText) ?? labelText) ?? comp.ref} is required`,
                 );
               } else {
-                fieldSchema = (fieldSchema as z.ZodString).optional();
+                // A cleared optional field is empty, not malformed.
+                fieldSchema = z.union([fieldSchema, z.literal('')]).optional();
               }
 
               shape[comp.ref] = fieldSchema;
