@@ -192,6 +192,58 @@ describe('ConfigureDetails', () => {
     expect(screen.getByTestId('application-configure-redirect-uris')).toBeInTheDocument();
   });
 
+  describe('redirect URI readiness for a template with a prefilled redirect URI', () => {
+    const renderReactTemplate = (contextOverrides: Partial<ApplicationCreateContextType>) => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+        },
+        {selectedTemplateConfig: createTemplate('React app', ['http://localhost:5173']), ...contextOverrides},
+      );
+      return onReadyChange;
+    };
+
+    it('blocks the step while no redirect URI is entered', async () => {
+      const onReadyChange = renderReactTemplate({redirectUris: ['  ']});
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('blocks the step for a javascript: redirect URI', async () => {
+      const onReadyChange = renderReactTemplate({redirectUris: ['javascript:alert(1)']});
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('blocks the step for an invalid post-logout redirect URI', async () => {
+      const onReadyChange = renderReactTemplate({
+        redirectUris: ['https://example.com/callback'],
+        postLogoutRedirectUris: ['javascript:alert(1)'],
+      });
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('allows the step once a valid redirect URI is entered', async () => {
+      const onReadyChange = renderReactTemplate({redirectUris: ['https://example.com/callback']});
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+    });
+
+    it('does not require a redirect URI for the embedded sign-in approach', async () => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+          selectedApproach: ApplicationCreateFlowSignInApproach.EMBEDDED,
+        },
+        {selectedTemplateConfig: createTemplate('React app', ['http://localhost:5173'])},
+      );
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+    });
+  });
+
   it('renders no configuration UI for a non-redirect-capable template with a prefilled redirect URI', () => {
     const template: ApplicationTemplate = {
       description: 'Backend App description',

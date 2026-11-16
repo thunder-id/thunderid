@@ -1291,6 +1291,10 @@ func validateIDTokenConfig(ctx context.Context, p *providers.OAuthProfile,
 	return nil
 }
 
+// disallowedRedirectURISchemes are schemes that execute or embed content in the browser and so
+// can never be a legitimate redirect target.
+var disallowedRedirectURISchemes = []string{"javascript", "data", "vbscript"}
+
 // validateRedirectURIs validates redirect URIs and authorization_code grant requirements.
 func validateRedirectURIs(p *providers.OAuthProfile) error {
 	for _, redirectURI := range p.RedirectURIs {
@@ -1302,6 +1306,9 @@ func validateRedirectURIs(p *providers.OAuthProfile) error {
 		}
 		parsedURI, err := sysutils.ParseURL(redirectURI)
 		if err != nil {
+			return ErrOAuthInvalidRedirectURI
+		}
+		if slices.Contains(disallowedRedirectURISchemes, parsedURI.Scheme) {
 			return ErrOAuthInvalidRedirectURI
 		}
 		// Custom URI schemes (RFC 8252 §7.1) don't require a host; path-only like "myapp:/callback" is valid.
