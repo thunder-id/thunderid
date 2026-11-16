@@ -115,7 +115,8 @@ func (s *ExportServiceAuditTestSuite) SetupSubTest() {
 // service returns an export service over the mocked application service that publishes on bus.
 func (s *ExportServiceAuditTestSuite) service(bus eventbus.EventBusInterface) ExportServiceInterface {
 	return newExportService([]declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(s.apps, sharingWithNoPolicies(s.T())),
+		application.NewApplicationExporterForTest(s.apps, entitiesWithNoFlowSecrets(s.T()),
+			sharingWithNoPolicies(s.T())),
 	}, newParameterizer(templatingRules{}, TemplatePlaceholders), bus)
 }
 

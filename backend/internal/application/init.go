@@ -97,7 +97,7 @@ func Initialize(
 		registerMCPTools(mcpServer, appService)
 	}
 
-	exporter := newApplicationExporter(appService, sharingService)
+	exporter := newApplicationExporter(appService, entityService, sharingService)
 	return appService, exporter, nil
 }
 

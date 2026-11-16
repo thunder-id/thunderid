@@ -14,7 +14,7 @@ import (
 // A capture names an application's values from the application it is handed, in either shape the exporter
 // reads, so the exporter must read the ID from both.
 func TestApplicationExporterReadsTheResourceID(t *testing.T) {
-	exporter := newApplicationExporter(nil, nil)
+	exporter := newApplicationExporter(nil, nil, nil)
 
 	assert.Equal(t, "app-1", exporter.GetResourceID(&providers.Application{ID: "app-1"}))
 	assert.Equal(t, "app-2", exporter.GetResourceID(&applicationDeclarativeResource{

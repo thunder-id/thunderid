@@ -187,6 +187,35 @@ func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsValuesReachTheDefaultGa
 	ts.JSONEq(`["https://cp-capture.example.com/callback"]`, held)
 }
 
+// An application's Flow Secret reaches the default gateway's secrets under the name its export refers
+// to, as issued on create, and again when an update sets a new one, as a regenerate does.
+func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsFlowSecretReachesTheDefaultGateway() {
+	g := ts.withDefaultGateway()
+	name := unique("CP Capture Flow Secret App")
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID: ts.ouID, Name: name, Type: "custom", Embedded: true,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+	issued := testutils.GetFlowSecret(appID)
+	ts.Require().NotEmpty(issued, "the application was not issued a Flow Secret")
+	secretName := variableName("APPLICATION", appID, "FLOW_SECRET")
+
+	held, ok := g.heldSoon("secrets", secretName)
+	ts.True(ok, "the issued Flow Secret was not captured")
+	ts.Equal(issued, held)
+
+	regenerated := unique("CpRegeneratedFlowSecret")
+	status, raw := ts.call(http.MethodPut, "/applications/"+appID, map[string]any{
+		"ouId": ts.ouID, "name": name, "type": "custom", "flowSecret": regenerated,
+	}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	ts.True(g.holdsValueSoon("secrets", regenerated), "the regenerated Flow Secret was not captured")
+	held, _ = g.held("secrets", secretName)
+	ts.Equal(regenerated, held)
+}
+
 // A value the gateway's store refuses is written again a little later, so a store that is briefly
 // down loses nothing.
 func (ts *ControlPlaneTestSuite) TestACapturedValueRefusedOnceIsWrittenAgain() {
