@@ -32,13 +32,15 @@ type smsExecutor struct {
 	notifSenderSvc  notification.NotificationSenderServiceInterface
 	templateService template.TemplateServiceInterface
 	entityProvider  entityprovider.EntityProviderInterface
+	authnProvider   providers.AuthnProviderManager
 }
 
 // newSMSExecutor creates a new instance of smsExecutor.
 func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateService template.TemplateServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) *smsExecutor {
+	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManager) *smsExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SMSExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameSMSExecutor,
@@ -60,6 +62,7 @@ func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 		notifSenderSvc:  notifSenderSvc,
 		templateService: templateService,
 		entityProvider:  entityProvider,
+		authnProvider:   authnProvider,
 	}
 }
 
@@ -80,7 +83,10 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 
 	phoneAttr := resolveInputIdentifierByType(ctx, providers.InputTypePhone, common.AttributeMobileNumber)
 
-	recipient := e.resolveRecipientMobile(ctx, phoneAttr)
+	recipient, err := e.resolveRecipientMobile(ctx, execResp, phoneAttr, logger)
+	if err != nil {
+		return nil, err
+	}
 	if recipient == "" {
 		logger.Debug(ctx.Context, "SMS recipient not found in user inputs or runtime data")
 		execResp.Status = providers.ExecFailure
@@ -172,24 +178,20 @@ func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) template.T
 	return templateData
 }
 
-// resolveRecipientMobile retrieves the recipient mobile number from user inputs, runtime data,
-// or the entity provider (via RuntimeData["userID"]), in that order.
-func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAttr string) string {
+// resolveRecipientMobile resolves the mobile number the SMS is sent to.
+func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	phoneAttr string, logger *log.Logger) (string, error) {
+	if mobile, known, err := resolveKnownRecipient(ctx, execResp, e.authnProvider, e.entityProvider,
+		phoneAttr, logger); known || err != nil {
+		return mobile, err
+	}
 	if mobile, ok := ctx.UserInputs[phoneAttr]; ok && mobile != "" {
-		return mobile
+		return mobile, nil
 	}
 	if mobile, ok := ctx.RuntimeData[phoneAttr]; ok && mobile != "" {
-		return mobile
+		return mobile, nil
 	}
-	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" && e.entityProvider != nil {
-		user, err := e.entityProvider.GetEntity(userID)
-		if err == nil {
-			if mobile, attrErr := GetUserAttribute(user, phoneAttr); attrErr == nil {
-				return mobile
-			}
-		}
-	}
-	return ""
+	return "", nil
 }
 
 // isValidPhoneNumber returns true if the given phone number matches an acceptable format.

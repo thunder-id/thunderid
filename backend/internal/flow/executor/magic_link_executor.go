@@ -208,7 +208,7 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 		return execResp, errors.New("failed to generate magic link")
 	}
 
-	if destValue != "" {
+	if isRegistration {
 		execResp.RuntimeData[destAttr] = destValue
 	}
 

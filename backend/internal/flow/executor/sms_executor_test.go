@@ -12,9 +12,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/template"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/templatemock"
@@ -47,7 +50,7 @@ func (suite *SMSExecutorTestSuite) SetupTest() {
 		mock.Anything,
 	).Return(suite.mockBaseExecutor)
 
-	suite.executor = newSMSExecutor(suite.mockFlowFactory, suite.mockSMSSenderSvc, suite.mockTemplateService, nil)
+	suite.executor = newSMSExecutor(suite.mockFlowFactory, suite.mockSMSSenderSvc, suite.mockTemplateService, nil, nil)
 }
 
 func (suite *SMSExecutorTestSuite) TestExecute_SendMode_Success() {
@@ -315,7 +318,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_NilSMSSenderService_Retu
 		mock.Anything,
 	).Return(mockBaseExecutor)
 
-	noServiceExecutor := newSMSExecutor(mockFactory, nil, suite.mockTemplateService, nil)
+	noServiceExecutor := newSMSExecutor(mockFactory, nil, suite.mockTemplateService, nil, nil)
 
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
@@ -619,4 +622,164 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_TemplateDataIncludesRunt
 
 func TestSMSExecutorSuite(t *testing.T) {
 	suite.Run(t, new(SMSExecutorTestSuite))
+}
+
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_IdentifiedUserGetsTheStoredMobile() {
+	const stored, other = "+94711111111", "+94770000000"
+	for name, test := range map[string]struct {
+		profile string
+		arrange func(ctx *providers.NodeContext)
+		want    string
+	}{
+		"over a user input": {`{"mobile_number":"` + stored + `"}`, func(ctx *providers.NodeContext) {
+			ctx.UserInputs[common.AttributeMobileNumber] = other
+		}, stored},
+		"over runtime data": {`{"mobile_number":"` + stored + `"}`, func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[common.AttributeMobileNumber] = other
+		}, stored},
+		"without a stored mobile": {`{"username":"testuser"}`, func(ctx *providers.NodeContext) {
+			ctx.UserInputs[common.AttributeMobileNumber] = other
+		}, ""},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+			entityProvider.On("GetEntity", "test-user-id").Return(
+				&providers.Entity{ID: "test-user-id", Attributes: []byte(test.profile)}, nil)
+			suite.executor.entityProvider = entityProvider
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-flow-id",
+				FlowType:     providers.FlowTypeRecovery,
+				ExecutorMode: ExecutorModeSend,
+				UserInputs:   map[string]string{},
+				RuntimeData:  map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{
+					propertyKeyNotificationSenderID: "sender-uuid-001",
+					propertyKeySMSTemplate:          string(template.ScenarioSelfRegistration),
+				},
+			}
+			test.arrange(ctx)
+			if test.want != "" {
+				suite.expectSMS(test.want)
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			if test.want == "" {
+				suite.Equal(providers.ExecFailure, resp.Status)
+				suite.Equal(ErrSMSRecipientMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
+				suite.mockSMSSenderSvc.AssertNumberOfCalls(suite.T(), "Send", 0)
+				return
+			}
+			suite.Equal(providers.ExecComplete, resp.Status)
+		})
+	}
+}
+
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_IdentifiedUserProfileLookup() {
+	for name, test := range map[string]struct {
+		providerErr *entityprovider.EntityProviderError
+		noProvider  bool
+		wantErr     bool
+	}{
+		"no entity provider": {noProvider: true, wantErr: true},
+		"a store error": {providerErr: entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "provider error", "system failure"), wantErr: true},
+		"user not found": {providerErr: entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeEntityNotFound, "user not found", "entity not found")},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			if !test.noProvider {
+				entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+				entityProvider.On("GetEntity", "test-user-id").Return(nil, test.providerErr)
+				suite.executor.entityProvider = entityProvider
+			}
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-flow-id",
+				ExecutorMode: ExecutorModeSend,
+				UserInputs:   map[string]string{common.AttributeMobileNumber: "+94770000000"},
+				RuntimeData:  map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{
+					propertyKeyNotificationSenderID: "sender-uuid-001",
+					propertyKeySMSTemplate:          string(template.ScenarioSelfRegistration),
+				},
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			if test.wantErr {
+				suite.Error(err)
+				suite.Nil(resp)
+			} else {
+				suite.Require().NoError(err)
+				suite.Equal(providers.ExecFailure, resp.Status)
+				suite.Equal(ErrSMSRecipientMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
+			}
+			suite.mockSMSSenderSvc.AssertNumberOfCalls(suite.T(), "Send", 0)
+		})
+	}
+}
+
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserLookupFails() {
+	authUser := newAuthenticatedAuthUser()
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, authUser).
+		Return(authUser, (*providers.EntityReference)(nil), &tidcommon.InternalServerError)
+	suite.executor.authnProvider = authnProvider
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		ExecutorMode: ExecutorModeSend,
+		AuthUser:     authUser,
+		UserInputs:   map[string]string{common.AttributeMobileNumber: "+94770000000"},
+		RuntimeData:  map[string]string{},
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          string(template.ScenarioSelfRegistration),
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.mockSMSSenderSvc.AssertNumberOfCalls(suite.T(), "Send", 0)
+}
+
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserGetsTheStoredMobile() {
+	authUser := newAuthenticatedAuthUser()
+	authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+	authnProvider.On("GetEntityReference", mock.Anything, authUser).
+		Return(authUser, &providers.EntityReference{EntityID: "test-user-id"}, (*tidcommon.ServiceError)(nil))
+	entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	entityProvider.On("GetEntity", "test-user-id").Return(
+		&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"mobile_number":"+94711111111"}`)}, nil)
+	suite.executor.authnProvider = authnProvider
+	suite.executor.entityProvider = entityProvider
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		ExecutorMode: ExecutorModeSend,
+		AuthUser:     authUser,
+		UserInputs:   map[string]string{common.AttributeMobileNumber: "+94770000000"},
+		RuntimeData:  map[string]string{},
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          string(template.ScenarioSelfRegistration),
+		},
+	}
+	suite.expectSMS("+94711111111")
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
+// expectSMS expects one SMS to the given number.
+func (suite *SMSExecutorTestSuite) expectSMS(recipient string) {
+	suite.mockTemplateService.On("Render", mock.Anything, mock.Anything, template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: testRenderedSMSBody}, nil).Once()
+	suite.mockSMSSenderSvc.On("Send", mock.Anything, notifcm.ChannelTypeSMS, "sender-uuid-001",
+		notifcm.NotificationData{Recipient: recipient, Body: testRenderedSMSBody}).Return(nil).Once()
 }

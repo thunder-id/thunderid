@@ -422,6 +422,7 @@ func (ts *MagicLinkRegistrationTestSuite) TestMagicLinkRegistration_Success() {
 	ts.Require().True(common.HasInput(step2.Data.Inputs, "token"))
 
 	emailMessage := ts.waitForEmail()
+	ts.Require().Equal([]string{emailAddr}, emailMessage.To, "A new user receives the link at the submitted email")
 	token := common.ExtractMagicLinkToken(emailMessage)
 	ts.Require().NotEmpty(token)
 
