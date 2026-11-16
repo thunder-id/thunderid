@@ -4,6 +4,7 @@
 import {
   AccessStatusBanner,
   AccountStatusAction,
+  type CredentialResetField,
   DocumentTitle,
   PageLoadingAnimation,
   QueryErrorNotice,
@@ -50,7 +51,6 @@ import useUpdateAgent from '../api/useUpdateAgent';
 import EditAccessSettings from '../components/edit-agent/access/EditAccessSettings';
 import EditAdvancedSettings from '../components/edit-agent/advanced-settings/EditAdvancedSettings';
 import EditAgentAttributes from '../components/edit-agent/attributes/EditAgentAttributes';
-import type {AgentCredentialField} from '../components/edit-agent/credentials/CredentialResetDialog';
 import EditCredentialsSettings from '../components/edit-agent/credentials/EditCredentialsSettings';
 import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
 import AgentOverview from '../components/edit-agent/overview/AgentOverview';
@@ -138,7 +138,7 @@ export default function AgentEditPage(): JSX.Element {
   } = useGetAgentType(matchedSchema?.id);
   // The credentials the agent type declares, such as a password, which the Credentials tab can reset.
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
-  const credentialFields: AgentCredentialField[] = useMemo(() => {
+  const credentialFields: CredentialResetField[] = useMemo(() => {
     if (!agentTypeDetails?.schema) return [];
     return Object.entries(agentTypeDetails.schema)
       .filter(([, fieldDef]) => (fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential)
