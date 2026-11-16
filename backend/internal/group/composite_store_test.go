@@ -410,3 +410,32 @@ func (suite *CompositeGroupStoreTestSuite) TestGetGroupListByProject_Errors() {
 	_, err = suite.store.GetGroupListByProject(context.Background(), "project-2", nil, 10, 0)
 	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }
+
+// A group whose database store alone holds more members than the composite limit is refused, not
+// listed as if it held only the limit.
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMembers_OneStoreOverTheLimit() {
+	suite.mockDBStore.On("GetGroupMemberCount", mock.Anything, "group1").
+		Return(serverconst.MaxCompositeStoreRecords+500, nil).Once()
+	suite.mockFileStore.On("GetGroupMemberCount", mock.Anything, "group1").Return(0, nil).Once()
+
+	_, err := suite.store.GetGroupMembers(context.Background(), "group1", serverconst.MaxCompositeStoreRecords+1, 0)
+
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+// The groups of an organization unit are still listed when its database store alone holds more than the
+// composite limit, as its first records.
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupsByOrganizationUnit_OneStoreOverTheLimitIsClamped() {
+	suite.mockDBStore.On("GetGroupsByOrganizationUnitCount", mock.Anything, "ou1").
+		Return(serverconst.MaxCompositeStoreRecords+500, nil).Once()
+	suite.mockFileStore.On("GetGroupsByOrganizationUnitCount", mock.Anything, "ou1").Return(0, nil).Once()
+	suite.mockDBStore.On("GetGroupsByOrganizationUnit", mock.Anything, "ou1", mock.Anything, 0).
+		Return([]GroupBasicDAO{{ID: "grp1"}}, nil).Once()
+	suite.mockFileStore.On("GetGroupsByOrganizationUnit", mock.Anything, "ou1", mock.Anything, 0).
+		Return([]GroupBasicDAO{}, nil).Maybe()
+
+	groups, err := suite.store.GetGroupsByOrganizationUnit(context.Background(), "ou1", 10, 0)
+
+	suite.NoError(err)
+	suite.Len(groups, 1)
+}
