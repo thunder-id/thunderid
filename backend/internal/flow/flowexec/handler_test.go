@@ -180,6 +180,53 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_Success() {
 	s.Equal(http.StatusOK, w.Code)
 }
 
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_DataOmittedOnlyWhenEmpty() {
+	cases := []struct {
+		name     string
+		step     *FlowStep
+		expected string
+	}{
+		{
+			name:     "complete without data",
+			step:     &FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusComplete, Assertion: "jwt"},
+			expected: `{"executionId":"exec-1","flowStatus":"COMPLETE","assertion":"jwt"}`,
+		},
+		{
+			name: "complete with additional data",
+			step: &FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusComplete, Assertion: "jwt",
+				Data: FlowData{AdditionalData: map[string]string{"inviteLink": "https://localhost/invite"}}},
+			expected: `{"executionId":"exec-1","flowStatus":"COMPLETE",` +
+				`"data":{"additionalData":{"inviteLink":"https://localhost/invite"}},"assertion":"jwt"}`,
+		},
+		{
+			name: "incomplete with redirect URL",
+			step: &FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete,
+				Type: common.StepTypeView, Data: FlowData{RedirectURL: "https://localhost/next"}},
+			expected: `{"executionId":"exec-1","flowStatus":"INCOMPLETE","type":"VIEW",` +
+				`"data":{"redirectURL":"https://localhost/next"}}`,
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			mockSvc := NewFlowExecServiceInterfaceMock(s.T())
+			mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything).
+				Return(tc.step, (*tidcommon.ServiceError)(nil))
+			h := newFlowExecutionHandler(mockSvc, nil, 0)
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleFlowExecutionRequest(w, req)
+
+			s.Equal(http.StatusOK, w.Code)
+			s.JSONEq(tc.expected, w.Body.String())
+		})
+	}
+}
+
 // TestHandleFlowExecutionRequest_PropagatesInboundSSOCookie verifies the inbound per-flow SSO
 // cookie is read off the request and propagated onto the context handed to the flow service.
 func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesInboundSSOCookie() {

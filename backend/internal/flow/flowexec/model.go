@@ -272,7 +272,6 @@ func (c *InterceptorRunnerContext) GetConsumedInputs() []string {
 // FlowStep represents the outcome of a individual flow step
 type FlowStep struct {
 	ExecutionID    string
-	StepID         string
 	Type           common.FlowStepType
 	Status         providers.FlowStatus
 	ChallengeToken string
@@ -312,11 +311,10 @@ type FlowData struct {
 // FlowResponse represents the flow execution API response body
 type FlowResponse struct {
 	ExecutionID    string                  `json:"executionId"`
-	StepID         string                  `json:"stepId,omitempty"`
 	FlowStatus     string                  `json:"flowStatus"`
 	Type           string                  `json:"type,omitempty"`
 	ChallengeToken string                  `json:"challengeToken,omitempty"`
-	Data           FlowData                `json:"data,omitempty"`
+	Data           FlowData                `json:"data,omitzero"`
 	Assertion      string                  `json:"assertion,omitempty"`
 	ErrorAssertion string                  `json:"errorAssertion,omitempty"`
 	Error          *apierror.ErrorResponse `json:"error,omitempty"`
