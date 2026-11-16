@@ -234,8 +234,10 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token, audi
 	if audience == "" {
 		audience = trustedIssuer.Audience
 	}
-	// VerifyJWTWithJWKS validates signature, aud (resource server identity), iss, and time claims.
-	if svcErr := h.jwtService.VerifyJWTWithJWKS(ctx,
+	// VerifyJWTWithTrustedJWKS validates signature, aud (resource server identity), iss, and time
+	// claims. The trusted issuer is deployment configuration, so its JWKS is fetched without the
+	// outbound guard.
+	if svcErr := h.jwtService.VerifyJWTWithTrustedJWKS(ctx,
 		token, trustedIssuer.JWKSURL, audience, trustedIssuer.Issuer,
 	); svcErr != nil {
 		return false

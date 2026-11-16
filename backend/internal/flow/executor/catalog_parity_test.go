@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 )
 
 // TestCatalogMatchesRegistry holds the static metadata catalog to what the real executors report.
@@ -32,12 +33,13 @@ import (
 func TestCatalogMatchesRegistry(t *testing.T) {
 	factory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{Disabled: true}, "test"))
 	deps := ExecutorDependencies{
-		FlowFactory:    factory,
-		EntityProvider: entityprovidermock.NewEntityProviderInterfaceMock(t),
-		OAuthSvc:       oauthmock.NewOAuthAuthnServiceInterfaceMock(t),
-		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(t),
-		GithubSvc:      githubmock.NewGithubOAuthAuthnServiceInterfaceMock(t),
-		GoogleSvc:      googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(t),
+		FlowFactory:     factory,
+		EntityProvider:  entityprovidermock.NewEntityProviderInterfaceMock(t),
+		OAuthSvc:        oauthmock.NewOAuthAuthnServiceInterfaceMock(t),
+		OIDCSvc:         oidcmock.NewOIDCAuthnServiceInterfaceMock(t),
+		GithubSvc:       githubmock.NewGithubOAuthAuthnServiceInterfaceMock(t),
+		GoogleSvc:       googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(t),
+		OutboundClients: httpmock.NewOutboundClientProviderInterfaceMock(t),
 	}
 	reg := newExecutorRegistry()
 	require.NoError(t, registerBuiltInExecutors(reg, deps, nil))

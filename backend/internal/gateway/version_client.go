@@ -294,7 +294,8 @@ const importTimeout = 2 * time.Minute
 // no redirect: a redirect would hand the key's header to whatever the response pointed at. Unless the
 // deployment allows gateways on private addresses, a host that resolves to a loopback, link-local or
 // private address is refused as it is dialed, so a registered name cannot be pointed at something
-// inside this plane's network after the fact.
+// inside this plane's network after the fact. gateway.allow_private_addresses is read on each call, so
+// the client follows the setting as it stands.
 func httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterface, error) {
 	if !strings.HasPrefix(strings.ToLower(gw.BaseURL), "https://") {
 		return nil, fmt.Errorf("the gateway's baseUrl is not https, so its key is not sent")
@@ -306,7 +307,7 @@ func httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterf
 	if gw.CACertificate != "" && !roots.AppendCertsFromPEM([]byte(gw.CACertificate)) {
 		return nil, fmt.Errorf("the gateway's caCertificate is not a PEM certificate")
 	}
-	return syshttp.NewHTTPClientWithRootCAs(timeout, roots, !allowPrivateAddresses()), nil
+	return syshttp.Initialize(allowPrivateAddresses()).NewHTTPClientWithRootCAs(timeout, roots), nil
 }
 
 // releaseConnections closes a client's idle connections. A client is built per gateway call, for the

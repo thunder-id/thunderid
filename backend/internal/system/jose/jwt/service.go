@@ -33,11 +33,21 @@ type JWTServiceInterface interface {
 	VerifyJWT(ctx context.Context, jwtToken string, expectedAud, expectedIss string) *tidcommon.ServiceError
 	VerifyJWTWithPublicKey(ctx context.Context, jwtToken string, keyRef providers.KeyRef, expectedAud,
 		expectedIss string) *tidcommon.ServiceError
+	// VerifyJWTWithJWKS verifies a JWT against the JWKS at jwksURL, which an administrator or a client
+	// configures, such as an identity provider's JWKS endpoint or a client's JWKS URI. The JWKS is
+	// fetched through the outbound guard.
 	VerifyJWTWithJWKS(ctx context.Context,
+		jwtToken, jwksURL, expectedAud, expectedIss string) *tidcommon.ServiceError
+	// VerifyJWTWithTrustedJWKS verifies a JWT against the JWKS at jwksURL, which the deployment
+	// configuration sets, such as the trusted issuer's. The JWKS is fetched without the outbound guard,
+	// since such an issuer commonly sits on an internal address.
+	VerifyJWTWithTrustedJWKS(ctx context.Context,
 		jwtToken, jwksURL, expectedAud, expectedIss string) *tidcommon.ServiceError
 	VerifyJWTSignature(ctx context.Context, jwtToken string) *tidcommon.ServiceError
 	VerifyJWTSignatureWithPublicKey(ctx context.Context, jwtToken string,
 		keyRef providers.KeyRef) *tidcommon.ServiceError
+	// VerifyJWTSignatureWithJWKS verifies a JWT's signature against the JWKS at jwksURL, which an
+	// administrator or a client configures. The JWKS is fetched through the outbound guard.
 	VerifyJWTSignatureWithJWKS(ctx context.Context, jwtToken string, jwksURL string) *tidcommon.ServiceError
 }
 
@@ -56,13 +66,16 @@ type jwtService struct {
 	kid            string
 	logger         *log.Logger
 	jwksCache      sync.Map
-	httpClient     httpservice.HTTPClientInterface
+	// httpClient fetches a JWKS an administrator or a client configures, through the outbound guard.
+	httpClient httpservice.HTTPClientInterface
+	// trustedHTTPClient fetches a JWKS the deployment configuration sets, without the guard.
+	trustedHTTPClient httpservice.HTTPClientInterface
 }
 
 // newJWTService creates a new JWT service instance.
 func newJWTService(
-	httpClient httpservice.HTTPClientInterface, cryptoProvider providers.RuntimeCryptoProvider,
-	cfg joseconfig.Config,
+	httpClient, trustedHTTPClient httpservice.HTTPClientInterface,
+	cryptoProvider providers.RuntimeCryptoProvider, cfg joseconfig.Config,
 ) (JWTServiceInterface, error) {
 	preferredKid := cfg.PreferredKeyID
 	keyRef := providers.KeyRef{KeyID: preferredKid}
@@ -82,13 +95,14 @@ func newJWTService(
 	}
 
 	return &jwtService{
-		cryptoProvider: cryptoProvider,
-		cfg:            cfg,
-		keyRef:         keyRef,
-		jwsAlg:         key.Algorithm,
-		kid:            key.Thumbprint,
-		logger:         logger,
-		httpClient:     httpClient,
+		cryptoProvider:    cryptoProvider,
+		cfg:               cfg,
+		keyRef:            keyRef,
+		jwsAlg:            key.Algorithm,
+		kid:               key.Thumbprint,
+		logger:            logger,
+		httpClient:        httpClient,
+		trustedHTTPClient: trustedHTTPClient,
 	}, nil
 }
 
@@ -264,15 +278,29 @@ func (js *jwtService) VerifyJWTWithPublicKey(ctx context.Context, jwtToken strin
 	return js.verifyJWTClaims(ctx, jwtToken, expectedAud, expectedIss)
 }
 
-// VerifyJWTWithJWKS verifies the JWT token using a JWK Set (JWKS) endpoint.
+// VerifyJWTWithJWKS verifies the JWT token using a JWK Set (JWKS) endpoint an administrator or a
+// client configures.
 func (js *jwtService) VerifyJWTWithJWKS(ctx context.Context,
+	jwtToken, jwksURL, expectedAud, expectedIss string) *tidcommon.ServiceError {
+	return js.verifyJWTWithJWKS(ctx, js.httpClient, jwtToken, jwksURL, expectedAud, expectedIss)
+}
+
+// VerifyJWTWithTrustedJWKS verifies the JWT token using a JWK Set (JWKS) endpoint the deployment
+// configuration sets.
+func (js *jwtService) VerifyJWTWithTrustedJWKS(ctx context.Context,
+	jwtToken, jwksURL, expectedAud, expectedIss string) *tidcommon.ServiceError {
+	return js.verifyJWTWithJWKS(ctx, js.trustedHTTPClient, jwtToken, jwksURL, expectedAud, expectedIss)
+}
+
+// verifyJWTWithJWKS verifies the JWT token using a JWK Set (JWKS) endpoint fetched with httpClient.
+func (js *jwtService) verifyJWTWithJWKS(ctx context.Context, httpClient httpservice.HTTPClientInterface,
 	jwtToken, jwksURL, expectedAud, expectedIss string) *tidcommon.ServiceError {
 	parts := strings.Split(jwtToken, ".")
 	if len(parts) != 3 {
 		return &ErrorInvalidJWTFormat
 	}
 
-	if err := js.VerifyJWTSignatureWithJWKS(ctx, jwtToken, jwksURL); err != nil {
+	if err := js.verifyJWTSignatureWithJWKS(ctx, httpClient, jwtToken, jwksURL); err != nil {
 		return &ErrorInvalidTokenSignature
 	}
 
@@ -360,9 +388,17 @@ func (js *jwtService) VerifyJWTSignatureWithPublicKey(ctx context.Context, jwtTo
 	return nil
 }
 
-// VerifyJWTSignatureWithJWKS verifies the signature of a JWT token using a JWK Set (JWKS) endpoint.
+// VerifyJWTSignatureWithJWKS verifies the signature of a JWT token using a JWK Set (JWKS) endpoint an
+// administrator or a client configures.
 func (js *jwtService) VerifyJWTSignatureWithJWKS(
 	ctx context.Context, jwtToken string, jwksURL string) *tidcommon.ServiceError {
+	return js.verifyJWTSignatureWithJWKS(ctx, js.httpClient, jwtToken, jwksURL)
+}
+
+// verifyJWTSignatureWithJWKS verifies the signature of a JWT token using a JWK Set (JWKS) endpoint
+// fetched with httpClient.
+func (js *jwtService) verifyJWTSignatureWithJWKS(ctx context.Context, httpClient httpservice.HTTPClientInterface,
+	jwtToken string, jwksURL string) *tidcommon.ServiceError {
 	// Get the key ID from the JWT header
 	header, err := DecodeJWTHeader(jwtToken)
 	if err != nil {
@@ -375,7 +411,7 @@ func (js *jwtService) VerifyJWTSignatureWithJWKS(
 	}
 
 	// Get JWKS keys (from cache or fetch)
-	keys, svcErr := js.getJWKSKeys(ctx, jwksURL)
+	keys, svcErr := js.getJWKSKeys(ctx, httpClient, jwksURL)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -400,9 +436,9 @@ func (js *jwtService) VerifyJWTSignatureWithJWKS(
 	return nil
 }
 
-// getJWKSKeys returns JWKS keys for the given URL, using a TTL-based cache.
-func (js *jwtService) getJWKSKeys(
-	ctx context.Context, jwksURL string) ([]map[string]interface{}, *tidcommon.ServiceError) {
+// getJWKSKeys returns JWKS keys for the given URL, fetched with httpClient, using a TTL-based cache.
+func (js *jwtService) getJWKSKeys(ctx context.Context, httpClient httpservice.HTTPClientInterface,
+	jwksURL string) ([]map[string]interface{}, *tidcommon.ServiceError) {
 	if cached, ok := js.jwksCache.Load(jwksURL); ok {
 		entry := cached.(*jwksCacheEntry)
 		if time.Now().Before(entry.expiresAt) {
@@ -410,7 +446,7 @@ func (js *jwtService) getJWKSKeys(
 		}
 	}
 
-	resp, err := js.httpClient.Get(jwksURL)
+	resp, err := httpClient.Get(jwksURL)
 	if err != nil {
 		js.logger.Debug(ctx, "Failed to fetch JWKS from URL: "+err.Error())
 		return nil, &ErrorFailedToGetJWKS

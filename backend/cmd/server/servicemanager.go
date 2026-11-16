@@ -164,7 +164,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		Leeway:         runtime.Config.JWT.Leeway,
 		JWKSCacheTTL:   time.Duration(runtime.Config.Server.SecurityConfig.JWKSCacheTTL) * time.Second,
 	}
-	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg)
+	// Calls to destinations an administrator configures, such as identity providers and their JWKS,
+	// notification providers and HTTP request steps, go through clients from this provider, which refuse
+	// private addresses unless the deployment allows them.
+	outboundClients := httpservice.Initialize(runtime.Config.Server.AllowPrivateAddresses)
+
+	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg, outboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize JOSE services")
 
 	observabilitySvc = observability.Initialize(config.GetServerRuntime().Config.Observability)
@@ -234,7 +239,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus,
+			outboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	notifTemplateSvc, notifTemplateRenderer, notifTemplateExporter, err :=
@@ -292,7 +298,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 	authzDetailService := authzdetailexec.Initialize(authzDetailMgtService,
-		runtime.Config.OAuth.AuthorizationDetails.ProcessorTimeoutOrDefault())
+		runtime.Config.OAuth.AuthorizationDetails.ProcessorTimeoutOrDefault(), outboundClients)
 
 	// The security-headers middleware reads the deny-first CSP policy from the server-config csp section.
 	csp.InitializeConfigReader(serverConfigService)
@@ -360,7 +366,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouAuthzService.SetPermissionResolver(permissionResolver)
 
 	authZService := authz.Initialize(
-		roleService, resourceService, entityService, authZENPDPService)
+		roleService, resourceService, entityService, authZENPDPService, outboundClients)
 
 	idpService, err := idp.Initialize(
 		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService, auditBus)
@@ -381,10 +387,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	otpCoreService := otp.Initialize(notifOTPService)
 
 	// Initialize federated authentication services.
-	oauthAuthnService := authnOAuth.Initialize(idpService)
+	oauthAuthnService := authnOAuth.Initialize(idpService, outboundClients)
 	oidcAuthnService := authnOIDC.Initialize(oauthAuthnService, jwtService)
 	googleAuthnService := google.Initialize(oidcAuthnService, jwtService)
-	githubAuthnService := github.Initialize(oauthAuthnService)
+	githubAuthnService := github.Initialize(oauthAuthnService, outboundClients)
 
 	federatedAuths := map[providers.IDPType]authncm.FederatedAuthenticator{
 		providers.IDPTypeOAuth:  oauthAuthnService,
@@ -489,9 +495,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ResourceMgtService:     resourceService,
 			HTTPConnectionProvider: httpConnectionService,
 			// A redirect would resend the connection's credential to another host. Each call is bounded
-			// by its connection's timeout, and private addresses are allowed since administrators set
-			// the endpoint.
-			ExtensionHTTPClient:   httpservice.NewHTTPClientWithoutRedirects(0, false),
+			// by its connection's timeout, and private addresses are refused unless the deployment
+			// allows them.
+			ExtensionHTTPClient:   outboundClients.NewHTTPClientWithoutRedirects(0),
 			ObservabilitySvc:      observabilitySvc,
 			IdentityGovernance:    governanceProvider,
 			AttributeVerification: attributeVerificationService,
@@ -499,6 +505,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			AuthzDetailProvider:   authzDetailService,
 			SharingService:        sharingService,
 			DeviceCodeVerifier:    deviceCodeVerifier,
+			OutboundClients:       outboundClients,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,
@@ -527,7 +534,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	inboundClientService, err := inboundclient.Initialize(
 		cacheManager, certservice, entityProvider,
 		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, runtimeCryptoSvc, jweService,
-		cimdService, sharingService, entityService)
+		cimdService, sharingService, entityService, runtime.Config.Server.AllowPrivateAddresses)
 	fatalOnError(ctx, logger, err, "Failed to initialize InboundClientService")
 
 	// Two-phase initialization: the entity and inbound client services import the ou package, so they are
@@ -689,7 +696,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		resourceServerProvider, i18nService, idpService, dpopVerifier,
 		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc,
 		sessionService, ssoTransport, flowMgtService, governanceProvider, authzDetailService, authzDetailMgtService,
-		oauthCfg, auditBus)
+		oauthCfg, auditBus, outboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
 	if dispatcher != nil {
 		err = terminationHook.Add(dispatcher)

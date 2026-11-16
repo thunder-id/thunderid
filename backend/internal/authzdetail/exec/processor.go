@@ -35,8 +35,9 @@ type processorClient struct {
 }
 
 // newProcessorClient creates a new processorClient whose calls are bounded by timeout.
-func newProcessorClient(timeout time.Duration) processorClientInterface {
-	return &processorClient{client: httpservice.NewHTTPClientWithoutRedirects(timeout, false)}
+func newProcessorClient(timeout time.Duration, clients httpservice.OutboundClientProviderInterface,
+) processorClientInterface {
+	return &processorClient{client: clients.NewHTTPClientWithoutRedirects(timeout)}
 }
 
 // Process posts a batch of details to the processor; any failure is reported as errProcessorUnavailable.

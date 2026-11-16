@@ -1996,20 +1996,29 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BackchannelLogoutDefaultsSurviveA
 	assert.Equal(suite.T(), 1024, got.QueueSize)
 }
 
-// reject_private_addresses defaults to true in default.json, so an explicit false must survive the merge.
-func (suite *ConfigTestSuite) TestMergeConfigs_RejectPrivateAddressesCanBeTurnedOff() {
-	base := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
-		Backchannel: engineconfig.BackchannelLogoutConfig{RejectPrivateAddresses: boolPtr(true)},
-	}}}
-	user := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
-		Backchannel: engineconfig.BackchannelLogoutConfig{RejectPrivateAddresses: boolPtr(false)},
-	}}}
+// server.allow_private_addresses is off in default.json, and a deployment turns it on.
+func (suite *ConfigTestSuite) TestMergeConfigs_AllowPrivateAddressesCanBeTurnedOn() {
+	base := &Config{}
+	user := &Config{Server: engineconfig.ServerConfig{AllowPrivateAddresses: true}}
 
 	mergeConfigs(base, user)
 
-	assert.False(suite.T(), base.OAuth.Logout.Backchannel.RejectsPrivateAddresses())
-	var unset engineconfig.BackchannelLogoutConfig
-	assert.True(suite.T(), unset.RejectsPrivateAddresses(), "unset fails safe")
+	assert.True(suite.T(), base.Server.AllowPrivateAddresses)
+	assert.False(suite.T(), (&Config{}).Server.AllowPrivateAddresses, "unset refuses private addresses")
+}
+
+// The back-channel logout reject_private_addresses key and the outbound section are gone: the server
+// setting covers both, and strict loading refuses a deployment.yaml that still names either.
+func (suite *ConfigTestSuite) TestRemovedPrivateAddressKeysAreRefused() {
+	for name, doc := range map[string]string{
+		"reject_private_addresses": "oauth:\n  logout:\n    backchannel:\n      reject_private_addresses: false\n",
+		"outbound":                 "outbound:\n  allow_private_addresses: true\n",
+	} {
+		dec := yaml.NewDecoder(strings.NewReader(doc))
+		dec.KnownFields(true)
+		var cfg Config
+		assert.Error(suite.T(), dec.Decode(&cfg), name)
+	}
 }
 
 func (suite *ConfigTestSuite) TestDeploymentOverridesAccountAccessDefaults() {

@@ -527,7 +527,7 @@ func (s *CIMDServiceTestSuite) TestValidateOAuthProfile() {
 }
 
 func (s *CIMDServiceTestSuite) TestNewCIMDService() {
-	svc := newCIMDService().(*cimdService)
+	svc := newCIMDService(syshttp.Initialize(false)).(*cimdService)
 
 	s.NotNil(svc.httpClient)
 	s.NotNil(svc.logger)
@@ -573,7 +573,7 @@ func (s *CIMDServiceTestSuite) TestFetchCIMDDocument() {
 }
 
 func (s *CIMDServiceTestSuite) TestFetchCIMDDocument_RefusesLoopbackAddress() {
-	svc := newCIMDService().(*cimdService)
+	svc := newCIMDService(syshttp.Initialize(false)).(*cimdService)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{}`))

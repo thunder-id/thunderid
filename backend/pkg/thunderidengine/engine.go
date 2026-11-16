@@ -36,6 +36,7 @@ import (
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -116,9 +117,14 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		}
 	}
 
+	// Calls to destinations an administrator configures, such as identity providers' JWKS, HTTP request
+	// steps and authorization details processors, go through clients from this provider, which refuse
+	// private addresses unless the server config passed with WithServerConfig allows them.
+	outboundClients := httpservice.Initialize(engineCtx.serverConfig.AllowPrivateAddresses)
+
 	// Initialize JOSE services for JWT and JWE handling.
 	engineCtx.jwtService, engineCtx.jweService, err = jose.Initialize(
-		engineCtx.runtimeCryptoSvc, engineCtx.joseConfig())
+		engineCtx.runtimeCryptoSvc, engineCtx.joseConfig(), outboundClients)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}
@@ -186,7 +192,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 	if engineCtx.authzDetailProvider == nil {
 		engineCtx.authzDetailProvider = authzdetailexec.Initialize(engineCtx.authorizationDetailTypes,
-			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
+			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault(), outboundClients)
 	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:           engineCtx.flowFactory,
@@ -209,6 +215,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
 		AuthzDetailProvider: engineCtx.authzDetailProvider,
+		OutboundClients:     outboundClients,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -276,7 +283,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
 		// answering login_required rather than consulting a session.
 		nil, nil, engineCtx.flowProvider, engineCtx.identityGovernance, engineCtx.authzDetailProvider,
-		engineCtx.authorizationDetailTypes, oauthConfig, auditBus)
+		engineCtx.authorizationDetailTypes, oauthConfig, auditBus, outboundClients)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

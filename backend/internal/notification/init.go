@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -26,7 +27,8 @@ import (
 // bus is required: the sender management service publishes the audit event of every notification
 // sender it creates, updates or deletes on it.
 func Initialize(jwtService jwt.JWTServiceInterface, cfg notificationconfig.Config,
-	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface) (
+	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface,
+	clients syshttp.OutboundClientProviderInterface) (
 	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface,
 	serverconfig.ServerConfigHandlerInterface, error) {
 	if bus == nil {
@@ -51,7 +53,7 @@ func Initialize(jwtService jwt.JWTServiceInterface, cfg notificationconfig.Confi
 
 	mgtService := newNotificationSenderMgtService(notificationStore, tx, ouService, bus)
 
-	clientFactory := client.Initialize()
+	clientFactory := client.Initialize(clients)
 	otpService := newOTPService(jwtService, cfg)
 	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
 

@@ -185,6 +185,8 @@ func (suite *JWTServiceTestSuite) SetupTest() {
 		kid:        "test-kid",
 		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWTService")),
 		httpClient: httpservice.NewHTTPClientWithTimeout(10 * time.Second),
+		// The trusted client is the guarded one here, so a test proves which client a call uses.
+		trustedHTTPClient: httpservice.Initialize(false).NewHTTPClient(10 * time.Second),
 	}
 }
 
@@ -203,7 +205,7 @@ func (suite *JWTServiceTestSuite) TestNewJWTService() {
 	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return(testSupportedSigningAlgs)
 
 	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
-	service, err := Initialize(cryptoMock, cfg)
+	service, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true))
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*JWTServiceInterface)(nil), service)
@@ -272,7 +274,7 @@ func (suite *JWTServiceTestSuite) TestInitScenarios() {
 			}
 
 			cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
-			service, err := Initialize(cryptoMock, cfg)
+			service, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true))
 
 			if tc.expectSuccess {
 				assert.NoError(t, err)
@@ -1708,6 +1710,34 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKS() {
 	assert.Nil(suite.T(), err)
 }
 
+// A JWKS an administrator or a client configures is fetched through the outbound guard, and one the
+// deployment sets, such as the trusted issuer's, without it.
+func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS_GuardsOnlyConfiguredJWKS() {
+	token, _, err := suite.jwtService.GenerateJWT(context.Background(),
+		"test-subject", testIssuer, 3600, map[string]interface{}{"aud": testAudience}, TokenTypeJWT, "")
+	suite.Require().Nil(err)
+	testServer := suite.mockJWKSServer()
+	defer testServer.Close()
+
+	guarded := &jwtService{
+		cryptoProvider:    suite.jwtService.cryptoProvider,
+		cfg:               suite.jwtService.cfg,
+		keyRef:            suite.jwtService.keyRef,
+		jwsAlg:            suite.jwtService.jwsAlg,
+		kid:               suite.jwtService.kid,
+		logger:            suite.jwtService.logger,
+		httpClient:        httpservice.Initialize(false).NewHTTPClient(10 * time.Second),
+		trustedHTTPClient: httpservice.NewHTTPClientWithTimeout(10 * time.Second),
+	}
+
+	// httptest binds to 127.0.0.1, which the guard refuses.
+	assert.NotNil(suite.T(), guarded.VerifyJWTWithJWKS(context.Background(), token, testServer.URL,
+		testAudience, testIssuer))
+	assert.NotNil(suite.T(), guarded.VerifyJWTSignatureWithJWKS(context.Background(), token, testServer.URL))
+	assert.Nil(suite.T(), guarded.VerifyJWTWithTrustedJWKS(context.Background(), token, testServer.URL,
+		testAudience, testIssuer))
+}
+
 func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSUsesCache() {
 	// Verifies the in-process JWKS cache contract:
 	//   1. First fetch for a given URL hits the network.
@@ -2197,7 +2227,7 @@ func (suite *JWTServiceTestSuite) TestInitWithECDSAKeys() {
 				}).Maybe()
 
 			cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
-			service, err := Initialize(cryptoMock, cfg)
+			service, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true))
 
 			assert.NoError(t, err)
 			assert.NotNil(t, service)
@@ -2251,7 +2281,7 @@ func (suite *JWTServiceTestSuite) TestInitWithEd25519Key() {
 		}).Maybe()
 
 	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
-	service, err := Initialize(cryptoMock, cfg)
+	service, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true))
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), service)
 
@@ -2288,7 +2318,7 @@ func (suite *JWTServiceTestSuite) TestInitWithECPrivateKeyFormat() {
 	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return(testSupportedSigningAlgs)
 
 	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
-	service, err := Initialize(cryptoMock, cfg)
+	service, err := Initialize(cryptoMock, cfg, httpservice.Initialize(true))
 
 	assert.NoError(suite.T(), err)
 
@@ -2313,7 +2343,7 @@ func (suite *JWTServiceTestSuite) TestInitWithUnsupportedECCurve() {
 	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return(testSupportedSigningAlgs)
 
 	cfg := joseconfig.Config{PreferredKeyID: "test-kid"}
-	_, err = Initialize(cryptoMock, cfg)
+	_, err = Initialize(cryptoMock, cfg, httpservice.Initialize(true))
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "unsupported algorithm")
