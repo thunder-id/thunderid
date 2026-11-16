@@ -231,6 +231,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	}
 
 	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpDTO, federatedAttributes, logger)
+	setSyncModes(execResp, idpDTO)
 
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 

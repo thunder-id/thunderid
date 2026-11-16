@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package idp
@@ -2184,4 +2184,54 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnionMappedPermission
 			suite.Equal(tc.want, UnionMappedPermissionTargets(nil, []string{tc.requested}, targets, "rs-1"))
 		})
 	}
+}
+
+func (s *IDPUtilsTestSuite) TestValidateSyncConfiguration() {
+	tests := []struct {
+		name    string
+		sync    *providers.SyncConfiguration
+		wantErr bool
+	}{
+		{"unset", nil, false},
+		{"empty modes", &providers.SyncConfiguration{}, false},
+		{"all attribute modes", &providers.SyncConfiguration{Attributes: providers.SyncModeOverrideReceived}, false},
+		{"session only groups and roles",
+			&providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly}, false},
+		{"unknown attributes mode", &providers.SyncConfiguration{Attributes: "always"}, true},
+		{"override received for groups and roles",
+			&providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived}, true},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			svcErr := validateSyncConfiguration(&providers.AttributeConfiguration{Sync: tc.sync})
+			if tc.wantErr {
+				s.Require().NotNil(svcErr)
+				s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+			} else {
+				s.Nil(svcErr)
+			}
+		})
+	}
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDP_SyncMode() {
+	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
+	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)
+	prop3, _ := cmodels.NewProperty(PropRedirectURI, "http://localhost/callback", false)
+	newDTO := func(sync providers.SyncConfiguration) *providers.IDPDTO {
+		return &providers.IDPDTO{
+			Name:                   "idp",
+			Type:                   providers.IDPTypeGitHub,
+			Properties:             []cmodels.Property{*prop1, *prop2, *prop3},
+			AttributeConfiguration: &providers.AttributeConfiguration{Sync: &sync},
+		}
+	}
+
+	s.NoError(ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll})))
+	s.Error(ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived})))
+	s.NoError(ValidateIDP(newDTO(providers.SyncConfiguration{Attributes: providers.SyncModeOverrideReceived})))
+	s.Error(ValidateIDP(newDTO(providers.SyncConfiguration{Attributes: providers.SyncModeOverrideAll})))
+
+	err := ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived}))
+	s.ErrorContains(err, "sync mode 'override_received' is not supported for 'groupsAndRoles'")
 }

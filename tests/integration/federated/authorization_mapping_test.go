@@ -104,9 +104,17 @@ func equalsRules(values map[string][]testutils.AuthorizationTarget) []testutils.
 	return rules
 }
 
+// sessionOnlyGroupsAndRoles keeps config's mapped groups and roles to the session, so a provisioned
+// entity is never assigned to the suite's shared mapped role and group fixtures.
+func sessionOnlyGroupsAndRoles(config *testutils.AttributeConfiguration) *testutils.AttributeConfiguration {
+	config.Sync = &testutils.SyncConfiguration{GroupsAndRoles: "session_only"}
+	return config
+}
+
 // authorizeFederated drives the authorization-mapping auth flow for a mock identity, requesting the
 // given permissions against the given resource server, and returns the authorized_permissions carried
-// on the resulting assertion (nil when the claim is absent, meaning nothing was authorized).
+// on the resulting assertion (nil when the claim is absent, meaning nothing was authorized). Mapped
+// groups and roles are kept to the session, so they authorize the login without being assigned.
 func (s *FederatedMappingSuite) authorizeFederated(
 	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo,
 	requestedPermissions, resourceServerIdentifier string,
@@ -123,7 +131,7 @@ func (s *FederatedMappingSuite) authorizeFederatedEntity(
 	requestedPermissions, resourceServerIdentifier string,
 ) ([]string, *testutils.User) {
 	s.T().Helper()
-	s.applyConfig(config)
+	s.applyConfig(sessionOnlyGroupsAndRoles(config))
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
 
@@ -489,7 +497,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ConsentSurfacesAndCanDeclineMap
 		"platform-admins":   {roleTarget(s.authzMappedRoleID)},
 		"platform-deleters": {permissionTarget(s.authzResourceServerID, "delete")},
 	})
-	s.applyConfig(config)
+	s.applyConfig(sessionOnlyGroupsAndRoles(config))
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
 
@@ -576,18 +584,18 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ConsentSurfacesAndCanDeclineMap
 	s.NotContains(authorized, "delete", "the declined mapped permission must not be granted")
 }
 
-// TestAuthzMapping_ProvisioningSeedsRolesAndGroupsFromMapping drives a one-off flow whose provisioning
-// step opts into seedGroupsFromMapping and seedRolesFromMapping, so a newly provisioned federated
-// entity is given real, persisted role and group assignments derived from whatever its claims mapped
-// to at that moment, alongside whatever the AuthorizationExecutor grants dynamically. Seeding is a
-// one-time creation-time action, so this is verified by reading the assignments back directly rather
-// than only observing the assertion's authorized_permissions claim (which every other test in this
-// file already exercises for the dynamic, unseeded path). A dedicated throwaway role and group are used
-// rather than the suite's shared mapped fixtures, since seeding persists a real assignment that would
+// TestAuthzMapping_ProvisioningStoresMappedRolesAndGroups drives a one-off flow through a connection
+// with the default groups and roles sync mode (no sync), so a newly provisioned federated entity is
+// given real, persisted role and group assignments derived from whatever its claims mapped to at that
+// moment, alongside whatever the AuthorizationExecutor grants dynamically. This is a one-time
+// creation-time action, so it is verified by reading the assignments back directly rather than only
+// observing the assertion's authorized_permissions claim (which every other test in this file already
+// exercises for the session only path). A dedicated throwaway role and group are used rather than the
+// suite's shared mapped fixtures, since storing them persists a real assignment that would
 // otherwise leak into TestAuthzMapping_MappedRoleWithNoLocalAssigneesGrants' "zero assignees" premise
 // and into other tests sharing those fixtures; there is no test API to remove a group member once
 // added, so the group itself is deleted afterward instead.
-func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroupsFromMapping() {
+func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningStoresMappedRolesAndGroups() {
 	seedRoleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Federated Seeding Test Role",
 		OUID: s.ouID,
@@ -641,12 +649,8 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 				"onSuccess": "provisioning",
 			},
 			{
-				"id":   "provisioning",
-				"type": "TASK_EXECUTION",
-				"properties": map[string]interface{}{
-					"seedGroupsFromMapping": true,
-					"seedRolesFromMapping":  true,
-				},
+				"id":        "provisioning",
+				"type":      "TASK_EXECUTION",
 				"executor":  map[string]interface{}{"name": "ProvisioningExecutor"},
 				"onSuccess": "authorization_check",
 			},
@@ -699,7 +703,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 	s.Require().NoError(err, "failed to look up the entity the assertion was issued for")
 	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
 
-	// The permissions are granted on this first login regardless of seeding (the dynamic mapping alone
+	// The permissions are granted on this first login regardless of storing them (the dynamic mapping alone
 	// would produce the same result), so the real signal is the persisted assignment below.
 	claims, err := testutils.DecodeJWT(completed.Assertion)
 	s.Require().NoError(err, "failed to decode the assertion")
@@ -713,7 +717,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 		roleAssigneeIDs = append(roleAssigneeIDs, a.ID)
 	}
 	s.Contains(roleAssigneeIDs, provisioned.ID,
-		"seedRolesFromMapping should have persisted a real assignment to the mapped role")
+		"no sync should have persisted a real assignment to the mapped role at creation")
 
 	groupMembers, err := testutils.GetGroupMembers(seedGroupID)
 	s.Require().NoError(err, "failed to read the seeding group's members")
@@ -722,7 +726,73 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 		groupMemberIDs = append(groupMemberIDs, m.ID)
 	}
 	s.Contains(groupMemberIDs, provisioned.ID,
-		"seedGroupsFromMapping should have persisted real membership in the mapped group")
+		"no sync should have persisted real membership in the mapped group at creation")
+}
+
+// A mapping that targets a group and a role deleted after it was saved doesn't fail a new user's
+// registration: the deleted targets are skipped and the live ones are assigned.
+func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSkipsDeletedMappedGroupAndRole() {
+	liveGroupID := s.createMappedGroup("Federated Mapping Live Group")
+	liveRoleID := s.createMappedRole("Federated Mapping Live Role")
+	deletedGroupID, err := testutils.CreateGroup(testutils.Group{Name: "Federated Mapping Deleted Group", OUID: s.ouID})
+	s.Require().NoError(err, "failed to create the group to delete")
+	deletedRoleID, err := testutils.CreateRole(testutils.Role{Name: "Federated Mapping Deleted Role", OUID: s.ouID})
+	s.Require().NoError(err, "failed to create the role to delete")
+	// A mapping naming a missing target is refused on save, so the targets are deleted after it's saved.
+	s.applyConfig(authzMapping("groups", "", map[string][]testutils.AuthorizationTarget{
+		"engineering": {
+			groupTarget(liveGroupID), groupTarget(deletedGroupID),
+			roleTarget(liveRoleID), roleTarget(deletedRoleID),
+		},
+	}))
+	s.Require().NoError(testutils.DeleteGroup(deletedGroupID), "failed to delete the mapped group")
+	s.Require().NoError(testutils.DeleteRole(deletedRoleID), "failed to delete the mapped role")
+
+	user := s.baseUser(s.nextSubject())
+	user.Custom["groups"] = []interface{}{"engineering"}
+	provisioned := s.registerWithAppliedConfig(user)
+
+	members, err := testutils.GetGroupMembers(liveGroupID)
+	s.Require().NoError(err, "failed to read the live group's members")
+	memberIDs := make([]string, 0, len(members))
+	for _, m := range members {
+		memberIDs = append(memberIDs, m.ID)
+	}
+	s.Contains(memberIDs, provisioned.ID, "the live mapped group should be assigned")
+
+	assignments, err := testutils.GetRoleAssignments(liveRoleID)
+	s.Require().NoError(err, "failed to read the live role's assignments")
+	assigneeIDs := make([]string, 0, len(assignments))
+	for _, a := range assignments {
+		assigneeIDs = append(assigneeIDs, a.ID)
+	}
+	s.Contains(assigneeIDs, provisioned.ID, "the live mapped role should be assigned")
+}
+
+// createMappedGroup creates a group in the suite's organization unit, deleted when the test ends.
+func (s *FederatedMappingSuite) createMappedGroup(name string) string {
+	s.T().Helper()
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: name, OUID: s.ouID})
+	s.Require().NoError(err, "failed to create group %s", name)
+	s.T().Cleanup(func() {
+		if err := testutils.DeleteGroup(groupID); err != nil {
+			s.T().Logf("failed to delete group %s: %v", name, err)
+		}
+	})
+	return groupID
+}
+
+// createMappedRole creates a role in the suite's organization unit, deleted when the test ends.
+func (s *FederatedMappingSuite) createMappedRole(name string) string {
+	s.T().Helper()
+	roleID, err := testutils.CreateRole(testutils.Role{Name: name, OUID: s.ouID})
+	s.Require().NoError(err, "failed to create role %s", name)
+	s.T().Cleanup(func() {
+		if err := testutils.DeleteRole(roleID); err != nil {
+			s.T().Logf("failed to delete role %s: %v", name, err)
+		}
+	})
+	return roleID
 }
 
 // Mapped access combines with a real, non-mapped local group membership too, not just direct role
@@ -819,12 +889,11 @@ func (s *FederatedMappingSuite) TestAuthzMapping_OverlappingLocalAndMappedGroupD
 		"a group reachable via both local membership and mapping must resolve once, not fail or duplicate")
 }
 
-// The counterpart to TestAuthzMapping_ProvisioningSeedsRolesAndGroupsFromMapping: without
-// seedRolesFromMapping/seedGroupsFromMapping opted in on the provisioning node (the default, used by
-// every other scenario in this file via authorizeFederated), a mapped role or group still authorizes
-// the login dynamically, but nothing is persisted — the entity gets no durable assignment or
-// membership from it.
-func (s *FederatedMappingSuite) TestAuthzMapping_WithoutSeedingFlagsMappingIsNotPersisted() {
+// The counterpart to TestAuthzMapping_ProvisioningStoresMappedRolesAndGroups: with session only groups
+// and roles (used by every other scenario in this file via authorizeFederated), a mapped role or group
+// still authorizes the login dynamically, but nothing is persisted. The entity gets no durable
+// assignment or membership from it.
+func (s *FederatedMappingSuite) TestAuthzMapping_SessionOnlyMappingIsNotPersisted() {
 	user := s.baseUser(s.nextSubject())
 	user.Custom["groups"] = []interface{}{"platform-admins", "platform-editors"}
 	config := authzMapping("groups", "", map[string][]testutils.AuthorizationTarget{
@@ -834,17 +903,17 @@ func (s *FederatedMappingSuite) TestAuthzMapping_WithoutSeedingFlagsMappingIsNot
 
 	authorized, entity := s.authorizeFederatedEntity(config, user, "read write", "federated-authz-mapping-api")
 	s.ElementsMatch([]string{"read", "write"}, authorized,
-		"the mapped role and group should still authorize dynamically without the seeding flags")
+		"the mapped role and group should still authorize dynamically when kept to the session")
 
 	roleAssignments, err := testutils.GetRoleAssignments(s.authzMappedRoleID)
 	s.Require().NoError(err, "failed to read the mapped role's assignments")
 	for _, a := range roleAssignments {
-		s.NotEqual(entity.ID, a.ID, "without seedRolesFromMapping, no durable role assignment should be created")
+		s.NotEqual(entity.ID, a.ID, "with session only, no durable role assignment should be created")
 	}
 
 	groupMembers, err := testutils.GetGroupMembers(s.authzMappedGroupID)
 	s.Require().NoError(err, "failed to read the mapped group's members")
 	for _, m := range groupMembers {
-		s.NotEqual(entity.ID, m.ID, "without seedGroupsFromMapping, no durable group membership should be created")
+		s.NotEqual(entity.ID, m.ID, "with session only, no durable group membership should be created")
 	}
 }
