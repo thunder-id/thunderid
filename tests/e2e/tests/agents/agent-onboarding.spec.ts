@@ -49,7 +49,6 @@ test.describe("Agents - Onboarding Flow", () => {
     await test.step("Name the agent and fill in the schema-driven details", async () => {
       await agentOnboardingPage.submitDetailsStep({
         name: createdAgent,
-        model: "claude-opus-5",
         modelProvider: /^anthropic$/i,
       });
     });
@@ -88,7 +87,6 @@ test.describe("Agents - Onboarding Flow", () => {
       // name among them.
       expect(agent.attributes).toMatchObject({
         name: createdAgent,
-        model: "claude-opus-5",
         modelProvider: "anthropic",
       });
     });
@@ -109,7 +107,6 @@ test.describe("Agents - Onboarding Flow", () => {
     const providers = await agentOnboardingPage.optionLabels(agentOnboardingPage.modelProviderSelect);
 
     expect(providers).toEqual(["openai", "anthropic", "gemini", "mistral", "custom"]);
-    expect(await agentOnboardingPage.optionLabels(agentOnboardingPage.functionSelect)).not.toHaveLength(0);
   });
 
   /** TC003: Verify closing the wizard returns to the agent list without creating anything */

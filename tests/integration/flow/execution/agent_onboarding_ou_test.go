@@ -121,7 +121,6 @@ func (ts *AgentOnboardingOUTestSuite) TestAgentIsProvisionedIntoTheSelectedOU() 
 	status, step, body = ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{
 		agentNameInput:          common.GenerateUniqueUsername("integration_agent_ou"),
 		agentModelProviderInput: "anthropic",
-		agentModelInput:         common.GenerateUniqueUsername("model"),
 	})
 	ts.Require().Equal(http.StatusOK, status, "Details step failed: %s", string(body))
 	ts.Require().Equal("COMPLETE", step.FlowStatus, "The flow should complete: %s", string(body))

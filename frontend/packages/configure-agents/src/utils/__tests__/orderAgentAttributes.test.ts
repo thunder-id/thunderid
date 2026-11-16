@@ -9,10 +9,10 @@ const names = (entries: [string, unknown][]): string[] => entries.map(([name]) =
 describe('orderAgentAttributes', () => {
   const schema = {
     apiKey: {type: 'string', credential: true},
-    model: {type: 'string'},
+    region: {type: 'string'},
     environment: {type: 'string', required: true},
     secret: {type: 'string', required: true, credential: true},
-    function: {type: 'string'},
+    team: {type: 'string'},
     label: {type: 'string', required: true},
   };
 
@@ -20,47 +20,39 @@ describe('orderAgentAttributes', () => {
     expect(names(orderAgentAttributes(schema, 'label'))).toEqual([
       'label',
       'environment',
-      'model',
-      'function',
+      'region',
+      'team',
       'secret',
       'apiKey',
     ]);
   });
 
   it('leads with the display attribute even when it is optional', () => {
-    expect(names(orderAgentAttributes(schema, 'model'))).toEqual([
-      'model',
+    expect(names(orderAgentAttributes(schema, 'region'))).toEqual([
+      'region',
       'environment',
       'label',
-      'function',
+      'team',
       'secret',
       'apiKey',
     ]);
   });
 
   it('assumes no display attribute when the agent type names none', () => {
-    expect(names(orderAgentAttributes({model: {type: 'string'}, name: {type: 'string', required: true}}))).toEqual([
+    expect(names(orderAgentAttributes({region: {type: 'string'}, name: {type: 'string', required: true}}))).toEqual([
       'name',
-      'model',
+      'region',
     ]);
   });
 
-  it('asks for the model provider before the model, then the function, however the schema arrives', () => {
+  it('keeps optional attributes in schema order, with none placed ahead of the others', () => {
     const stored = {
-      function: {type: 'string'},
-      model: {type: 'string'},
-      modelProvider: {type: 'string'},
       name: {type: 'string', required: true},
       region: {type: 'string'},
+      modelProvider: {type: 'string'},
     };
 
-    expect(names(orderAgentAttributes(stored, 'name'))).toEqual([
-      'name',
-      'modelProvider',
-      'model',
-      'function',
-      'region',
-    ]);
+    expect(names(orderAgentAttributes(stored, 'name'))).toEqual(['name', 'region', 'modelProvider']);
   });
 
   it('ignores a display attribute the schema does not hold, and drops nothing', () => {
