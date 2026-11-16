@@ -397,6 +397,31 @@ func (ah *applicationHandler) HandleApplicationDeleteRequest(w http.ResponseWrit
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// HandleClientSecretRegenerateRequest handles a request to regenerate an application's client secret.
+// The new secret is in the response, the only time it can be read.
+func (ah *applicationHandler) HandleClientSecretRegenerateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		errResp := apierror.ErrorResponse{
+			Code:        ErrorInvalidApplicationID.Code,
+			Message:     ErrorInvalidApplicationID.Error,
+			Description: ErrorInvalidApplicationID.ErrorDescription,
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		return
+	}
+
+	regenerated, svcErr := ah.service.RegenerateClientSecret(ctx, id)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, regenerated)
+}
+
 // processInboundAuthConfig prepares the response for OAuth app configuration.
 func (ah *applicationHandler) processInboundAuthConfig(
 	ctx context.Context, logger *log.Logger, appDTO *model.ApplicationDTO,

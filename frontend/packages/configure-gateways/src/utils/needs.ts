@@ -31,3 +31,30 @@ export function withNeeded(selected: ReadonlySet<string>, changes: Change[]): Ma
   }
   return required;
 }
+
+/**
+ * What a selection brings along besides: the removal of each resource a selected addition replaces under
+ * its name, as the control plane takes it in, since the target refuses the addition while the old one
+ * holds the name. A removal the target holds back, or one the source does not run, is not brought: only
+ * ticking it sends it. Returns `brought` with each such removal added, with the addition that replaces it.
+ */
+export function withReplaced(
+  selected: ReadonlySet<string>,
+  brought: ReadonlyMap<string, string>,
+  changes: Change[],
+): Map<string, string> {
+  const byKey = new Map(changes.map((change: Change): [string, Change] => [change.key, change]));
+  const required = new Map(brought);
+  changes.forEach((change: Change) => {
+    const replaced = change.replaces ? byKey.get(change.replaces) : undefined;
+    if (
+      replaced &&
+      !replaced.heldBack &&
+      !replaced.sourceExcluded &&
+      (selected.has(change.key) || brought.has(change.key))
+    ) {
+      required.set(replaced.key, change.key);
+    }
+  });
+  return required;
+}

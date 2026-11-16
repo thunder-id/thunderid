@@ -223,6 +223,14 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from: '/docs/next/use-cases/b2b/multi-tenant-saas',
             to: '/docs/next/use-cases/b2b/overview',
           },
+          {
+            from: '/docs/next/use-cases/b2b/quick-start',
+            to: '/docs/next/getting-started/connect-your-b2b-application/react',
+          },
+          {
+            from: '/docs/next/use-cases/b2b/sdk-components',
+            to: '/docs/next/use-cases/b2b/overview',
+          },
         ],
 
         // The lastVersion is served at the bare /docs/ root. Redirect its versioned

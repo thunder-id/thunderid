@@ -597,6 +597,10 @@ func TestRegisterRoutes_SharingPreflight(t *testing.T) {
 			path:    "/applications/app-1/overlay-rules",
 			pattern: "OPTIONS /applications/",
 		},
+		{
+			path:    "/applications/app-1/client-secret/regenerate",
+			pattern: "OPTIONS /applications/{id}/client-secret/regenerate",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -608,6 +612,17 @@ func TestRegisterRoutes_SharingPreflight(t *testing.T) {
 			assert.Equal(t, tt.pattern, pattern)
 		})
 	}
+}
+
+// TestRegisterRoutes_ClientSecretRegenerate checks that a POST to regenerate a client secret reaches its
+// own route rather than falling to one of the application routes.
+func TestRegisterRoutes_ClientSecretRegenerate(t *testing.T) {
+	mux := http.NewServeMux()
+	registerRoutes(mux, &applicationHandler{})
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/client-secret/regenerate", nil)
+	_, pattern := mux.Handler(req)
+	assert.Equal(t, "POST /applications/{id}/client-secret/regenerate", pattern)
 }
 
 // TestInitialize_Standalone tests Initialize function without suite dependencies

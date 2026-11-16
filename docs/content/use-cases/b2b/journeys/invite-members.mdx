@@ -14,7 +14,7 @@ An invitation does this. The admin names a person by email and picks their roles
 
 ## Prerequisites
 
-- The platform organization, its shared roles, and the shared application from [B2B Quick Start with React](../quick-start.mdx).
+- The platform organization, its shared roles, and the shared application from [Wayfinder Enterprise sample](../try-it-out/index.mdx).
 - The backend client and the token it gets for one organization, from [Let Organization Admins Manage Teams](./delegated-administration.mdx#create-the-backend-client). Your backend starts each invitation with it.
 - An email provider for the invitation emails. See [Configure an Email Provider](../../../guides/notifications/email-providers.mdx).
 - A user type with an `email` attribute. The invitation finds an existing account by its email and creates a new account with it, so an account without an email cannot be found. The **Organization Sign-up** templates collect only a username and a password, so add an email field to your sign-up flow if those accounts should be invitable later.
@@ -37,7 +37,7 @@ One invitation is a single flow run in two parts. The admin's part runs on your 
 sequenceDiagram
   autonumber
   participant Admin as Northstar admin
-  participant App as Wayfinder Enterprise Web
+  participant App as Wayfinder Enterprise
   participant TID as ThunderID
   participant Invitee
   Admin->>App: Invite a teammate by email, pick roles
@@ -161,6 +161,17 @@ curl -X POST https://localhost:8090/users/<user-id>/sharing-policies \
   }'
 ```
 
+An OU keeps one sharing policy per user. When the account already has one, for example from a sign-up that shared it
+into the company, the `POST` fails with `409` and `USR-1031`. Read the policy with `GET /users/<user-id>/sharing-policies`,
+then replace it with `PUT /users/<user-id>/sharing-policies/<policy-id>`: send its current `version`, and list every unit
+the account keeps along with the new ones. The `PUT` replaces the whole policy, so send each unit with its
+`overlayRules`. A unit sent without them loses the roles they mandate.
+
+A section that reaches a whole group, such as `childUnits` with `mode: all`, cannot become a list of units, and a `PUT`
+that tries fails with `400` and `USR-1029`. Keep the section, and remove the company from its `excludedOuIds` if it is
+withheld there. A whole-group section cannot mandate roles, so to mandate them, delete the policy and create one that
+lists the units.
+
 A roles rule is accepted only on a unit listed under `childUnits` in `selected` mode with `reach: unit`. See [Mandate Roles on a Shared User](../../../guides/users/manage-users.mdx#mandate-roles-on-a-shared-user) for every rule and error.
 
 Once the person belongs to more than one company, their sign-in lands in one company at a time. See [Switch Organizations](./switch-organizations.mdx).
@@ -179,8 +190,8 @@ Once the person belongs to more than one company, their sign-in lands in one com
     href="../switch-organizations"
   />
   <NextStepsCard
-    title="B2B SDK Components"
-    description="The React components for invitations, users, groups, and roles."
-    href="../../sdk-components"
+    title="See It in a Sample App"
+    description="Run Wayfinder Enterprise and manage a company's people from its Team page."
+    href="../../try-it-out"
   />
 </NextSteps>

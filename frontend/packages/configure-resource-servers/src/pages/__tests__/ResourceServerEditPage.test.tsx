@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -225,6 +225,32 @@ describe('ResourceServerEditPage', () => {
       isError: false,
       error: null,
       reset: mockUpdateReset,
+    });
+  });
+
+  describe('a hidden resource server', () => {
+    it('returns to the list when the resource server is hidden by its identifier', async () => {
+      renderWithProviders(
+        <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['https://api.example.com']}}>
+          <ResourceServerEditPage />
+        </HiddenResourcesProvider>,
+      );
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/resource-servers', {replace: true});
+      });
+    });
+
+    it('shows the resource server when another identifier is hidden', () => {
+      renderWithProviders(
+        <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['var:DATA_PLANE_URL']}}>
+          <ResourceServerEditPage />
+        </HiddenResourcesProvider>,
+      );
+
+      expect(screen.getByText(mockResourceServer.name)).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 

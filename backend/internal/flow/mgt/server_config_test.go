@@ -51,6 +51,23 @@ func (s *FlowConfigHandlerTestSuite) TestDecode_ValidJSON() {
 	s.Equal(int64(900), cfg.AuthFlow.ExpirySeconds)
 }
 
+// A configuration written before the secret regeneration flow was removed still loads: the entry that
+// named it is ignored and the rest of the section stands.
+func (s *FlowConfigHandlerTestSuite) TestDecode_IgnoresRemovedSecretRegenerationFlow() {
+	raw := json.RawMessage(`{"secretRegenerationFlow":{"defaultHandle":"default-secret-regeneration-flow"},` +
+		`"agentOnboardingFlow":{"defaultHandle":"default-agent-onboarding-flow"}}`)
+
+	result, err := s.handler.Decode(raw)
+	s.Require().NoError(err)
+
+	cfg, ok := result.(flowconfig.FlowSectionConfig)
+	s.Require().True(ok)
+	s.Equal(flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-agent-onboarding-flow"},
+	}, cfg)
+	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
+}
+
 func (s *FlowConfigHandlerTestSuite) TestDecode_InvalidJSON() {
 	_, err := s.handler.Decode(json.RawMessage(`{invalid`))
 	s.Error(err)
@@ -274,7 +291,6 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
 	}
 	return flowconfig.FlowSectionConfig{
-		SecretRegenerationFlow:         handle("secret-regeneration"),
 		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
 		UserUnlockFlow:                 handle("user-unlock"),
 		UserSuspendFlow:                handle("user-suspend"),

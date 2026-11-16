@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {focusManager} from '@tanstack/react-query';
+import {HiddenResourcesProvider} from '@thunderid/contexts';
 import {act, render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -888,6 +889,51 @@ describe('DeployPage', () => {
     await waitFor(() => expect(checks()).toBeGreaterThan(before));
   });
 
+  it('leaves a hidden resource out of what a rollback says it changes', async () => {
+    routes['POST /gateways/gw-dev/revert'] = (call: Call) => ({
+      gatewayId: 'gw-dev',
+      dryRun: Boolean((call.data as {dryRun?: boolean}).dryRun),
+      diff: {
+        toVersion: versions[1].version,
+        summary: {added: 0, updated: 2, deleted: 0, unchanged: 0},
+        changes: [
+          {key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'updated'},
+          {
+            key: 'application/app-9',
+            resourceType: 'application',
+            id: 'app-9',
+            name: 'Admin Console',
+            change: 'updated',
+          },
+        ],
+      },
+    });
+    routes['POST /gateways/gw-dev/apply'] = () => ({
+      gatewayId: 'gw-dev',
+      dryRun: true,
+      diff: {toVersion: versions[0].version, summary: {added: 0, updated: 0, deleted: 0, unchanged: 0}, changes: []},
+    });
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['app-9']}}}>
+        <DeployPage />
+      </HiddenResourcesProvider>,
+    );
+
+    const dev = await screen.findByTestId('deploy-stage-gw-dev');
+    await userEvent.click(within(dev).getByRole('button', {name: 'Rollback'}));
+    const panel = await screen.findByTestId('deploy-revert-panel');
+    expect(
+      await within(panel).findByText('Rolling back writes 1 resource as the earlier version has it.'),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/Admin Console/)).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('button', {name: 'Roll back'}));
+
+    await waitFor(() => expect(screen.queryByTestId('deploy-revert-panel')).not.toBeInTheDocument());
+    expect(http.calls.filter((call: Call) => call.url.endsWith('/revert')).map((call: Call) => call.data)).toEqual([
+      {dryRun: true},
+      {dryRun: false},
+    ]);
+  });
   it('says how many resources a rollback had refused', async () => {
     routes['POST /gateways/gw-dev/revert'] = (call: Call) => ({
       gatewayId: 'gw-dev',

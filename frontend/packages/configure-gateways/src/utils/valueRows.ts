@@ -40,3 +40,20 @@ export default function valueRowsOf(
     return unset(a) - unset(b) || a.name.localeCompare(b.name);
   });
 }
+
+/**
+ * The rows with the hidden resources left out: a value only hidden resources use is dropped, and a value
+ * other resources use too is kept without them. A value no resource uses is kept.
+ */
+export function withoutHiddenResources(
+  rows: ValueRow[],
+  isHiddenResource: (resourceType: string, id: string | undefined) => boolean,
+): ValueRow[] {
+  const isShown = (reference: ValueReference): boolean =>
+    !isHiddenResource(reference.resourceType, reference.resourceId);
+  return rows.flatMap((row: ValueRow) => {
+    const uses = [...row.references, ...row.current];
+    if (uses.length > 0 && !uses.some(isShown)) return [];
+    return [{...row, references: row.references.filter(isShown), current: row.current.filter(isShown)}];
+  });
+}

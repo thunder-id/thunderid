@@ -67,6 +67,25 @@ describe('ChangeList', () => {
     expect(onToggle).toHaveBeenCalledWith('role/r1');
   });
 
+  it('locks a change a ticked one brings, and leaves it out of ticking them all', async () => {
+    const onToggleAll = vi.fn();
+    render(
+      <ChangeList
+        changes={changes}
+        selected={new Set(['application/a1', 'role/r1'])}
+        required={new Map([['role/r1', 'application/a1']])}
+        onToggle={vi.fn()}
+        onToggleAll={onToggleAll}
+      />,
+    );
+
+    const admin = screen.getByRole('checkbox', {name: 'Write Admin'});
+    expect(admin).toBeChecked();
+    expect(admin).toBeDisabled();
+    await userEvent.click(screen.getAllByRole('checkbox')[0]);
+    expect(onToggleAll).toHaveBeenCalledWith(['application/a1'], false);
+  });
+
   it('opens a change from anywhere on its row, while only the checkbox selects it', async () => {
     const onToggle = vi.fn();
     render(<ChangeList changes={changes} selected={new Set()} onToggle={onToggle} onToggleAll={vi.fn()} />);

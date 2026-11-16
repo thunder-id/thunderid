@@ -478,6 +478,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			RoleAssignmentService:  roleAssignmentService,
 			PermissionResolver:     permissionResolver,
 			EntityProvider:         entityProvider,
+			EntityService:          entityService,
 			UserMgtProvider:        userMgtProvider,
 			AttributeCacheSvc:      attributeCacheService,
 			TemplateRenderer:       notifTemplateRenderer,
@@ -559,6 +560,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		revocationSvc, artifactLifetime)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+	// The application and agent services decide whether an entity's client secret may be regenerated.
+	entityService.RegisterClientSecretHolder(providers.EntityCategoryApp, applicationService)
+	entityService.RegisterClientSecretHolder(providers.EntityCategoryAgent, agentService)
 
 	// Two-phase initialization: inject the agent provider into the executors that provision agents.
 	fatalOnError(ctx, logger, executor.SetAgentMgtProvider(execRegistry, agentmgtprovider.Initialize(agentService)),
@@ -671,6 +675,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
 	err = application.SetSystemFlowProvider(applicationService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
+	entityService.SetSystemFlowProvider(flowExecService)
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, true)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, true)
 	err = user.SetSystemFlowProvider(userService, flowExecService)

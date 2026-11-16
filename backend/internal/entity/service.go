@@ -144,6 +144,22 @@ type EntityServiceInterface interface {
 	// false when the category cannot be shared.
 	GetSharedResourceType(category providers.EntityCategory) (sharing.ResourceType, bool)
 
+	// Client secrets
+	// RegisterClientSecretHolder names the service that decides whether the client secret of an entity of
+	// the category may be regenerated.
+	RegisterClientSecretHolder(category providers.EntityCategory, holder ClientSecretHolderInterface)
+	// SetSystemFlowProvider gives the service the engine that runs the system flows around a client
+	// secret regeneration. Without one, as on a control plane, no system flow runs.
+	SetSystemFlowProvider(provider SystemFlowProviderInterface)
+	// ValidateClientSecretRegeneration reports whether the caller may regenerate the entity's client
+	// secret, and returns the profile the revocation around it is bounded by, without changing state.
+	ValidateClientSecretRegeneration(ctx context.Context, category providers.EntityCategory, entityID string) (
+		*ClientSecretProfile, *tidcommon.ServiceError)
+	// RegenerateClientSecret replaces the entity's client secret with a generated one, revoking what the
+	// old one issued, and returns it.
+	RegenerateClientSecret(ctx context.Context, category providers.EntityCategory, entityID string) (
+		*ClientSecretRegeneration, *tidcommon.ServiceError)
+
 	// Runtime state, used by the governance service.
 	GetGovernedEntity(ctx context.Context, entityID string,
 		seedMissing bool) (*identitygovernance.GovernedEntity, error)
@@ -191,6 +207,10 @@ type entityService struct {
 	observability           providers.ObservabilityProvider
 	logger                  *log.Logger
 	groupMembershipProvider GroupMembershipProvider
+	// secretHolders decide, by entity category, whether a client secret may be regenerated.
+	secretHolders map[providers.EntityCategory]ClientSecretHolderInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows SystemFlowProviderInterface
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -218,6 +238,7 @@ func newEntityService(
 		ouService:         ouService,
 		sharingService:    sharingService,
 		sharedTypes:       map[providers.EntityCategory]sharing.ResourceType{},
+		secretHolders:     map[providers.EntityCategory]ClientSecretHolderInterface{},
 		transactioner:     transactioner,
 		observability:     observabilitySvc,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EntityService")),

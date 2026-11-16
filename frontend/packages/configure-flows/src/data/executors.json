@@ -1104,47 +1104,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Secret Regeneration Validator",
-      "label": "Validate and Plan Secret Regeneration",
-      "description": "Validate the application whose client secret is being regenerated, then plan revocation of the artifacts issued under the old secret",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ApplicationActionValidator", "mode": "revoke_before_action"},
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Client Secret Executor",
-      "label": "Regenerate Client Secret",
-      "description": "Regenerate the application's client secret, returning the new value once",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ClientSecretExecutor"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Account Linking Executor",
       "label": "Account Linking",
       "description": "Decide whether this federated identity is new, already signed in, or needs the account verified first",

@@ -11,9 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
+	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 )
 
 // recordingCapturer records every resource handed to it.
@@ -135,4 +138,52 @@ func (suite *ServiceTestSuite) TestCaptureWithoutACapturerDoesNothing() {
 	assert.NotPanics(suite.T(), func() {
 		service.captureValues(context.Background(), confidentialClientDTO("My App"))
 	})
+}
+
+// A regenerated secret is captured with the application, as an update that sets one is, so a
+// configuration version carries the new secret: only the regeneration still holds it.
+func (suite *ServiceTestSuite) TestRegenerateClientSecret_CapturesTheNewSecret() {
+	service, _ := suite.newRegenerationFixture(providers.TokenEndpointAuthMethodClientSecretBasic)
+	capturer := &recordingCapturer{}
+	service.valueCapturer = capturer
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadEntityAccess(mock.Anything, mock.Anything).
+		Return(identitygovernance.AccessRead{}).Maybe()
+	service.governance = governance
+	mockLoadFullApplication(service.inboundClientService.(*inboundclientmock.InboundClientServiceInterfaceMock),
+		service, &model.ApplicationProcessedDTO{
+			ID:   testServiceAppID,
+			Name: "My App",
+			Type: model.ApplicationTypeM2M,
+			InboundAuthConfig: []inboundmodel.InboundAuthConfigProcessed{{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthClient{
+					ClientID:                testClientID,
+					GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+				},
+			}},
+		})
+
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(context.Background(), testServiceAppID))
+	require.Nil(suite.T(), svcErr)
+
+	app := capturer.captured(suite)
+	assert.Equal(suite.T(), testServiceAppID, app.ID)
+	assert.Equal(suite.T(), "My App", app.Name)
+	require.Len(suite.T(), app.InboundAuthConfig, 1)
+	assert.Equal(suite.T(), testClientID, app.InboundAuthConfig[0].OAuthConfig.ClientID)
+	assert.Equal(suite.T(), secret, app.InboundAuthConfig[0].OAuthConfig.ClientSecret)
+}
+
+// A refused regeneration writes no secret, so it captures none.
+func (suite *ServiceTestSuite) TestRegenerateClientSecret_RefusalCapturesNothing() {
+	service, _ := suite.newRegenerationFixture(providers.TokenEndpointAuthMethodPrivateKeyJWT)
+	capturer := &recordingCapturer{}
+	service.valueCapturer = capturer
+
+	_, svcErr := regeneratedSecret(service.RegenerateClientSecret(context.Background(), testServiceAppID))
+
+	require.NotNil(suite.T(), svcErr)
+	assert.Empty(suite.T(), capturer.resources)
 }

@@ -33,6 +33,7 @@ const (
 	toolAgentID  = "agent-1"
 	toolClientID = "client-1"
 	toolOwnerID  = "user-1"
+	toolProject  = "project-1"
 )
 
 type AgentToolsTestSuite struct {
@@ -276,6 +277,41 @@ func (s *AgentToolsTestSuite) TestListAgents() {
 		s.Contains(text, "ouId can't be combined")
 	})
 
+	inProject := &model.AgentListResponse{TotalResults: 1, Agents: []model.BasicAgentResponse{{
+		ID: toolAgentID, Display: "support-agent", OUID: "ou-1", ProjectID: toolProject,
+	}}}
+
+	s.Run("by project", func() {
+		s.agents.On("GetAgentListByProject", mock.Anything, toolProject, mock.Anything, 0,
+			map[string]interface{}{}, true).Return(inProject, (*tidcommon.ServiceError)(nil)).Once()
+		var out agentListMCPResponse
+		s.structured(s.call("list_agents", map[string]any{"projectId": toolProject}), &out)
+		s.Equal([]agentMCPItem{{ID: toolAgentID, Name: "support-agent", OUID: "ou-1", ProjectID: toolProject}},
+			out.Agents)
+	})
+
+	s.Run("by project and organization unit", func() {
+		s.agents.On("GetAgentListByProject", mock.Anything, toolProject, mock.Anything, 0,
+			map[string]interface{}{"ouId": "ou-1"}, true).Return(inProject, (*tidcommon.ServiceError)(nil)).Once()
+		var out agentListMCPResponse
+		s.structured(s.call("list_agents", map[string]any{"projectId": toolProject, "ouId": "ou-1"}), &out)
+		s.Len(out.Agents, 1)
+	})
+
+	s.Run("project with name or owner", func() {
+		s.Contains(s.errorText(s.call("list_agents", map[string]any{"projectId": toolProject, "name": "a"})),
+			"projectId can't be combined")
+		s.Contains(s.errorText(s.call("list_agents", map[string]any{"projectId": toolProject,
+			"owner": toolOwnerID})), "projectId can't be combined")
+	})
+
+	s.Run("project service error", func() {
+		s.agents.On("GetAgentListByProject", mock.Anything, "project-2", mock.Anything, 0,
+			map[string]interface{}{}, true).Return((*model.AgentListResponse)(nil), &ErrorInvalidFilter).Once()
+		s.Contains(s.errorText(s.call("list_agents", map[string]any{"projectId": "project-2"})),
+			"failed to list agents")
+	})
+
 	s.Run("service error", func() {
 		s.agents.On("GetAgentList", mock.Anything, mock.Anything, 0, map[string]interface{}{}, true).
 			Return((*model.AgentListResponse)(nil), &ErrorInvalidLimit).Once()
@@ -318,6 +354,17 @@ func (s *AgentToolsTestSuite) TestGetAgent() {
 		s.structured(s.call("get_agent", map[string]any{"clientId": toolClientID}), &out)
 		s.Equal("none", out.Credential)
 		s.Empty(out.ActsForUsers)
+		s.Empty(out.ProjectID)
+	})
+
+	s.Run("in a project", func() {
+		agent := toolAgent(nil)
+		agent.ProjectID = toolProject
+		s.agents.On("GetAgent", mock.Anything, "agent-in-project", true).
+			Return(agent, (*tidcommon.ServiceError)(nil)).Once()
+		var out agentMCPDetails
+		s.structured(s.call("get_agent", map[string]any{"agentId": "agent-in-project"}), &out)
+		s.Equal(toolProject, out.ProjectID)
 	})
 
 	s.Run("needs exactly one identifier", func() {
@@ -499,6 +546,71 @@ func (s *AgentToolsTestSuite) TestOnboardAgent_Owner() {
 	})
 }
 
+func (s *AgentToolsTestSuite) TestOnboardAgent_InAProject() {
+	s.Run("without ouId, the service places it in the system organization unit", func() {
+		s.connect("", true)
+		s.agentSchema()
+		s.ownerExists()
+		var created *providers.Agent
+		s.agents.On("CreateAgent", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.Agent) }).
+			Return(func(_ context.Context, agent *providers.Agent) *model.AgentCompleteResponse {
+				complete := completeOf(toolAgent(secretConfig()), "s3cret")
+				complete.OUID = "ou-system"
+				complete.ProjectID = agent.ProjectID
+				return complete
+			}, (*tidcommon.ServiceError)(nil)).Once()
+
+		var out onboardAgentMCPResponse
+		s.structured(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
+			"projectId": toolProject}), &out)
+		s.Require().NotNil(created)
+		s.Equal(toolProject, created.ProjectID)
+		s.Empty(created.OUID)
+		s.Empty(created.OUHandle, "the Default organization unit is in no project")
+		s.Equal("ou-system", out.Agent.OUID)
+		s.Equal(toolProject, out.Agent.ProjectID)
+	})
+
+	s.Run("with an organization unit of the project", func() {
+		s.connect("", true)
+		s.agentSchema()
+		s.ownerExists()
+		var created *providers.Agent
+		s.agents.On("CreateAgent", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.Agent) }).
+			Return(completeOf(toolAgent(secretConfig()), "s3cret"), (*tidcommon.ServiceError)(nil)).Once()
+		var out onboardAgentMCPResponse
+		s.structured(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
+			"projectId": toolProject, "ouId": "ou-1"}), &out)
+		s.Require().NotNil(created)
+		s.Equal("ou-1", created.OUID)
+		s.Equal(toolProject, created.ProjectID)
+	})
+
+	s.Run("an organization unit outside the project", func() {
+		s.connect("", true)
+		s.agentSchema()
+		s.ownerExists()
+		s.agents.On("CreateAgent", mock.Anything, mock.Anything).
+			Return((*model.AgentCompleteResponse)(nil), &ErrorOUNotInProject).Once()
+		text := s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
+			"projectId": toolProject, "ouId": "ou-other"}))
+		s.Contains(text, "failed to onboard agent: "+ErrorOUNotInProject.ErrorDescription.DefaultValue)
+	})
+
+	s.Run("system organization unit missing", func() {
+		s.connect("", true)
+		s.agentSchema()
+		s.ownerExists()
+		s.agents.On("CreateAgent", mock.Anything, mock.Anything).
+			Return((*model.AgentCompleteResponse)(nil), &ErrorOrganizationUnitNotFound).Once()
+		text := s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
+			"projectId": toolProject}))
+		s.NotContains(text, "Default organization unit")
+	})
+}
+
 func (s *AgentToolsTestSuite) TestOnboardAgent_ServiceErrors() {
 	s.Run("Default organization unit missing", func() {
 		s.agentSchema()
@@ -656,13 +768,31 @@ func (s *AgentToolsTestSuite) TestRotateAgentCredentials_Secret() {
 	s.agents.On("GetAgent", mock.Anything, toolAgentID, false).
 		Return(toolAgent(secretConfig()), (*tidcommon.ServiceError)(nil))
 	s.agents.On("RegenerateAgentSecret", mock.Anything, toolAgentID).
-		Return("fresh", (*tidcommon.ServiceError)(nil)).Once()
+		Return(&model.ClientSecretResponse{ClientSecret: "fresh", Revoked: true}, (*tidcommon.ServiceError)(nil)).Once()
 
 	var out rotateAgentCredentialsMCPResponse
 	s.structured(s.call("rotate_agent_credentials", map[string]any{"agentId": toolAgentID}), &out)
 	s.Equal("client_secret", out.Credential)
 	s.Equal("fresh", out.ClientSecret)
-	s.Contains(out.Notice, "old secret no longer works")
+	s.Contains(out.Notice, "old secret no longer works, and the tokens it issued are revoked")
+
+	// A revocation that failed after the write is reported, with the secret.
+	s.agents.On("RegenerateAgentSecret", mock.Anything, toolAgentID).
+		Return(&model.ClientSecretResponse{ClientSecret: "fresher", RevocationIncomplete: true},
+			(*tidcommon.ServiceError)(nil)).Once()
+	out = rotateAgentCredentialsMCPResponse{}
+	s.structured(s.call("rotate_agent_credentials", map[string]any{"agentId": toolAgentID}), &out)
+	s.Equal("fresher", out.ClientSecret)
+	s.Contains(out.Notice, "revoking the tokens it issued failed")
+
+	// Where nothing is revoked, as on a control plane, the notice does not claim that anything was.
+	s.agents.On("RegenerateAgentSecret", mock.Anything, toolAgentID).
+		Return(&model.ClientSecretResponse{ClientSecret: "freshest"}, (*tidcommon.ServiceError)(nil)).Once()
+	out = rotateAgentCredentialsMCPResponse{}
+	s.structured(s.call("rotate_agent_credentials", map[string]any{"agentId": toolAgentID}), &out)
+	s.Equal("freshest", out.ClientSecret)
+	s.Contains(out.Notice, "were not revoked")
+	s.NotContains(out.Notice, "are revoked")
 
 	text := s.errorText(s.call("rotate_agent_credentials", map[string]any{"agentId": toolAgentID,
 		"removeKeyId": "k1"}))
@@ -893,6 +1023,22 @@ func (s *AgentToolsTestSuite) TestOnboardAgent_TokenGuideOnlyWhenAsked() {
 	s.Empty(out.Endpoints)
 	s.Equal([]string{"token_guide"}, out.NotIncluded)
 	s.Equal("s3cret", out.ClientSecret, "the secret is always returned, since it is shown only once")
+}
+
+// The name attribute is read with the server's authority, so a caller who may create agents but not view
+// agent types can still onboard one.
+func (s *AgentToolsTestSuite) TestNameAttribute_ReadsTheAgentTypeWithServerAuthority() {
+	entityTypes := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	entityTypes.On("GetEntityTypeByHandle", mock.MatchedBy(security.IsRuntimeContext), entitytype.TypeCategoryAgent,
+		entitytype.DefaultAgentTypeHandle).Return(&entitytype.EntityType{
+		Handle: entitytype.DefaultAgentTypeHandle, SystemAttributes: &entitytype.SystemAttributes{Display: "label"},
+	}, (*tidcommon.ServiceError)(nil)).Once()
+	tools := &agentTools{entityTypeService: entityTypes}
+
+	nameAttribute, svcErr := tools.nameAttribute(context.Background())
+
+	s.Nil(svcErr)
+	s.Equal("label", nameAttribute)
 }
 
 func (s *AgentToolsTestSuite) TestChangedFields() {

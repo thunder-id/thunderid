@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {HiddenResourcesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -256,5 +257,48 @@ describe('GatewayValuesPage', () => {
 
     expect(await screen.findByRole('button', {name: 'Set APP_ORDERS_REDIRECT_URIS'})).toBeInTheDocument();
     expect(screen.queryByLabelText('APP_ORDERS_REDIRECT_URIS')).not.toBeInTheDocument();
+  });
+  it('leaves out the values only a hidden resource uses, and the hidden resource from a shared value', async () => {
+    routes[`GET /configuration-versions/${hash}`] = {
+      version: hash,
+      createdAt: '2026-10-12T13:52:47Z',
+      references: [
+        {
+          name: 'ADMIN_CLIENT_ID',
+          kind: 'variable',
+          resourceType: 'application',
+          resourceId: 'app-admin',
+          resourceName: 'Admin Console',
+          field: 'clientId',
+        },
+        {
+          name: 'SHARED_URL',
+          kind: 'variable',
+          resourceType: 'application',
+          resourceId: 'app-admin',
+          resourceName: 'Admin Console',
+          field: 'redirectUris',
+        },
+        {
+          name: 'SHARED_URL',
+          kind: 'variable',
+          resourceType: 'application',
+          resourceId: 'app-orders',
+          resourceName: 'Orders',
+          field: 'redirectUris',
+        },
+      ],
+    };
+    http = fakeHttp(routes);
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['app-admin']}}}>
+        <GatewayValuesPage />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(await screen.findByText('SHARED_URL')).toBeInTheDocument();
+    expect(screen.getByText(/Orders/)).toBeInTheDocument();
+    expect(screen.queryByText('ADMIN_CLIENT_ID')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Admin Console/)).not.toBeInTheDocument();
   });
 });

@@ -27,6 +27,7 @@ vi.mock('@thunderid/contexts', () => ({
     isTrustedIssuerGenericOidc: mockIsTrustedIssuerGenericOidc,
     config: mockConfig,
   }),
+  HiddenResourcesProvider: ({children}: {children: ReactNode}) => children,
 }));
 
 // Mock ThunderIDProvider

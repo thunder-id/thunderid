@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import * as thunderIdReactModule from '@thunderid/react';
 import {renderWithProviders, screen, fireEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -211,6 +211,18 @@ describe('ResourceServersList', () => {
     fireEvent.click(screen.getByRole('button', {name: /Refresh/i}));
 
     expect(mockRefetch).toHaveBeenCalled();
+  });
+
+  it('leaves a hidden resource server out of the list and its total, matching its identifier', () => {
+    renderWithProviders(
+      <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['https://mcp.example.com']}}>
+        <ResourceServersList />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(screen.getByText('Payments API')).toBeInTheDocument();
+    expect(screen.queryByText('System MCP')).not.toBeInTheDocument();
+    expect(screen.getByText(/1–1 of 1/)).toBeInTheDocument();
   });
 });
 
