@@ -80,6 +80,10 @@ type revocationPlan struct {
 	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
 	// Zero leaves the revocation service on its configured default.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+	// HolderScopes are the scopes every holder of the target loses. A plan records them when holders can
+	// be added between the plan and the change, so the post flow can extend the plan to the holders the
+	// change removed that the plan did not see.
+	HolderScopes []revocation.AudienceScope `json:"holderScopes,omitempty"`
 	// NothingToRevoke records that the preparatory node established there is no artifact to revoke, which
 	// is how an empty criteria list is distinguished from a missing one. Only a node that verified the
 	// absence sets it; without it an empty list stays an error, so a plan can never be silently skipped.
@@ -639,4 +643,16 @@ func pinnedVerificationEvidence(ctx *providers.NodeContext) (*verificationEviden
 	}
 
 	return &proof, nil
+}
+
+// entityScopeCriterion revokes, for one entity, what a scope grants: the scope itself, or, for a scope of
+// a hierarchical resource server, the subtree of permissions below it.
+func entityScopeCriterion(entityID string, scope revocation.AudienceScope) revocation.Criterion {
+	if scope.SubtreeDelimiter != "" {
+		return revocation.Criterion{Type: revocation.CriterionTypeEntityScopeSubtree,
+			Value: revocation.EntityScopeSubtreeCriterionValue(entityID, scope.Audience, scope.Scope,
+				scope.SubtreeDelimiter)}
+	}
+	return revocation.Criterion{Type: revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope)}
 }
