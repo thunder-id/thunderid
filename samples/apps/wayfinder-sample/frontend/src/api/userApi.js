@@ -45,10 +45,10 @@ export async function updateMyUser(accessToken, attributes) {
   });
 }
 
-export async function updateMyCredentials(accessToken, attributes) {
+export async function updateMyCredentials(accessToken, name, currentValue, newValue) {
   return thunderRequest(`/users/me/update-credentials`, accessToken, {
     method: "POST",
-    body: JSON.stringify({ attributes })
+    body: JSON.stringify({ name, currentValue, newValue })
   });
 }
 

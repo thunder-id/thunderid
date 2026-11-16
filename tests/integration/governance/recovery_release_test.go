@@ -110,7 +110,7 @@ func (ts *RecoveryReleaseTestSuite) TestASelfServiceCredentialUpdateReleasesNoth
 
 	replacement := "Self-Rotated-Secret-21!"
 	payload, err := json.Marshal(map[string]interface{}{
-		"attributes": map[string]interface{}{"password": replacement},
+		"name": "password", "currentValue": password, "newValue": replacement,
 	})
 	ts.Require().NoError(err)
 	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/update-credentials",

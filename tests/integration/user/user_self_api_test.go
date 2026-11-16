@@ -57,6 +57,7 @@ func (s *SelfUserEndpointsSuite) SetupSuite() {
 			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"email":    map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"password": map[string]interface{}{"type": "string", "credential": true},
+			"pin":      map[string]interface{}{"type": "string", "credential": true},
 		},
 	}
 	schemaID, err := testutils.CreateUserType(schema)
@@ -186,9 +187,9 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateReportsTheDerivedStatus() {
 func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 	newPassword := s.password + "!"
 	payload := map[string]interface{}{
-		"attributes": map[string]interface{}{
-			"password": newPassword,
-		},
+		"name":         "password",
+		"currentValue": s.password,
+		"newValue":     newPassword,
 	}
 
 	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials", payload)
@@ -325,13 +326,12 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateProfileSchemaInvalidAttribute
 		"a rejected update must leave the whole profile unchanged")
 }
 
-// TestSelfUserUpdateCredentialsMissingAttributesRejected verifies that a credential update with an
-// empty attribute set is refused as missing credentials, and that the existing password still
-// authenticates afterwards. The endpoint reports this distinctly from a malformed body: an empty
-// object is a well-formed request that names no credential to change.
-func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingAttributesRejected() {
+// TestSelfUserUpdateCredentialsMissingNewValueRejected verifies that a credential update with no new
+// value is refused as missing credentials, and that the existing password still authenticates
+// afterwards.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingNewValueRejected() {
 	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
-		map[string]interface{}{"attributes": map[string]interface{}{}})
+		map[string]interface{}{"name": "password", "currentValue": s.password})
 	s.Require().NoError(err)
 	defer resp.Body.Close()
 
@@ -347,4 +347,73 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingAttributesR
 	s.Require().NoError(err)
 	defer verifyResp.Body.Close()
 	s.Equal(http.StatusOK, verifyResp.StatusCode, "the existing password must still grant access")
+}
+
+// requirePasswordStillWorks asserts the suite user still signs in with the current password.
+func (s *SelfUserEndpointsSuite) requirePasswordStillWorks() {
+	s.T().Helper()
+
+	client, err := s.signIn.HTTPClientForUser(s.ouID, s.username, s.password)
+	s.Require().NoError(err, "the existing password must still authenticate")
+
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/users/me", nil)
+	s.Require().NoError(err)
+	resp, err := client.Do(req)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Equal(http.StatusOK, resp.StatusCode, "the existing password must still grant access")
+}
+
+// TestSelfUserUpdateCredentialsInvalidCurrentValueRejected verifies that changing a held credential
+// needs its current value, and a missing value is refused the same way as a wrong one.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsInvalidCurrentValueRejected() {
+	testCases := []struct {
+		name    string
+		payload map[string]interface{}
+	}{
+		{
+			name: "Wrong current value",
+			payload: map[string]interface{}{
+				"name": "password", "currentValue": "Wr0ngP@ssword!", "newValue": "N3wSelfP@ssw0rd!",
+			},
+		},
+		{
+			name:    "Missing current value",
+			payload: map[string]interface{}{"name": "password", "newValue": "N3wSelfP@ssw0rd!"},
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials", tc.payload)
+			s.Require().NoError(err)
+			defer resp.Body.Close()
+
+			s.requireSelfError(resp, http.StatusForbidden, "USR-1047")
+			s.requirePasswordStillWorks()
+		})
+	}
+}
+
+// TestSelfUserUpdateCredentialsNewCredentialRejected verifies that a user who holds a password can't
+// add a credential they don't hold yet, since there is nothing to check it against.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsNewCredentialRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
+		map[string]interface{}{"name": "pin", "newValue": "482913"})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1048")
+}
+
+// TestSelfUserUpdateCredentialsAttributesBodyRejected verifies that a body in the earlier attributes
+// shape is refused as malformed, and the password stays as it was.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsAttributesBodyRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
+		map[string]interface{}{"attributes": map[string]interface{}{"password": "N3wSelfP@ssw0rd!"}})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1001")
+	s.requirePasswordStillWorks()
 }

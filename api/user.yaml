@@ -2687,6 +2687,12 @@ paths:
       tags:
         - Self
       summary: Update self user credentials
+      description: |
+        Sets one credential of the authenticated user. `name` is any attribute the user type schema
+        declares as a credential. System-managed credentials (e.g. passkeys) are rejected.
+
+        Changing a credential the user already holds requires its current value in `currentValue`.
+        A credential the user doesn't hold yet can be set only when the user holds no credential at all.
       security:
         - OAuth2: []
       requestBody:
@@ -2694,10 +2700,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSelfUserRequest'
+              $ref: '#/components/schemas/UpdateSelfCredentialRequest'
             example:
-              attributes:
-                password: "n3wP@ssword!"
+              name: "password"
+              currentValue: "0ldP@ssword!"
+              newValue: "n3wP@ssword!"
       responses:
         "204":
           description: Credentials updated
@@ -2718,6 +2725,16 @@ paths:
                     description:
                       key: "error.userservice.missing_credentials_description"
                       defaultValue: "At least one credential field must be provided"
+                credential-set-not-allowed:
+                  summary: Credential cannot be set
+                  value:
+                    code: "USR-1048"
+                    message:
+                      key: "error.userservice.credential_set_not_allowed"
+                      defaultValue: "Credential cannot be set"
+                    description:
+                      key: "error.userservice.credential_set_not_allowed_description"
+                      defaultValue: "A new credential cannot be added to an account that already holds a credential"
         "401":
           description: Unauthorized - missing or invalid authentication token
           content:
@@ -2733,19 +2750,32 @@ paths:
                   key: "error.unauthorized_description"
                   defaultValue: "Authentication is required to access this resource"
         "403":
-          description: The caller may not change the user's credentials with a delegated token
+          description: Forbidden - a delegated token, or a missing or wrong current value
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "USR-1046"
-                message:
-                  key: "error.userservice.delegated_token_not_allowed"
-                  defaultValue: "Delegated token not allowed"
-                description:
-                  key: "error.userservice.delegated_token_not_allowed_description"
-                  defaultValue: "Credentials cannot be changed with a delegated token"
+              examples:
+                delegated-token-not-allowed:
+                  summary: Delegated token not allowed
+                  value:
+                    code: "USR-1046"
+                    message:
+                      key: "error.userservice.delegated_token_not_allowed"
+                      defaultValue: "Delegated token not allowed"
+                    description:
+                      key: "error.userservice.delegated_token_not_allowed_description"
+                      defaultValue: "Credentials cannot be changed with a delegated token"
+                invalid-current-credential:
+                  summary: Invalid current credential
+                  value:
+                    code: "USR-1047"
+                    message:
+                      key: "error.userservice.invalid_current_credential"
+                      defaultValue: "Invalid current credential"
+                    description:
+                      key: "error.userservice.invalid_current_credential_description"
+                      defaultValue: "Provide the current value of the credential to change it"
         "404":
           description: Authenticated user not found
           content:
@@ -4654,6 +4684,23 @@ components:
           type: object
           description: "User attributes"
           additionalProperties: true
+
+    UpdateSelfCredentialRequest:
+      type: object
+      required: [name, newValue]
+      properties:
+        name:
+          type: string
+          description: "Name of the credential attribute, as declared in the user type schema."
+          example: "password"
+        currentValue:
+          type: string
+          description: "Current value of the credential. Required when the user already holds a value for it."
+          example: "0ldP@ssword!"
+        newValue:
+          type: string
+          description: "New value of the credential."
+          example: "n3wP@ssword!"
 
     UpdateUserCredentialsRequest:
       type: object
