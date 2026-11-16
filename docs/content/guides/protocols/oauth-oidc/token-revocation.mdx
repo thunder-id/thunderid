@@ -66,7 +66,7 @@ Revoking one token of a grant usually should not leave its siblings working. Fiv
 
 | Flow | Behavior |
 |---|---|
-| Authorization code with SSO | Minted when the session is established and stored against the session participant, which is what makes sign-out revocation possible |
+| Authorization code with SSO | Generated when the application first joins the session and stored against its session participant, which is what makes sign-out revocation possible. Later sign-ins by the same application in that session and organization unit, such as from a second tab or a silent `prompt=none` request, reuse the family. Sign-out revokes all of them. With the default `oauth.revocation.token_family.on_explicit_revoke` setting, revoking a token of any one of them revokes the rest. If the family has been revoked, the next sign-in gets a new one |
 | Authorization code without SSO | Minted when the authorization code is created, so the grant is still revocable |
 | Refresh | Copied to the new tokens, so a family survives rotation |
 | Token exchange | Controlled by `oauth.token_exchange.token_family`. `none` (the default) issues an independent token; `inherit` copies the subject token's family |
