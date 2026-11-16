@@ -137,7 +137,12 @@ func (s *MasterServiceTestSuite) TestEachApplyWritesANewMasterAndADryRunNone() {
 	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
 	s.Equal(2, master.Seq)
 	s.Require().Len(master.Entries, 2)
-	s.Equal(f.hash(1), master.Entries[0].SourceVersion, "a resource that did not change was rewritten")
+	earlier, _ := f.versions.GetMasterAt(context.Background(), "gw-1", 1)
+	s.Require().NotNil(earlier)
+	// ou-a was not sent: it keeps when it was written, and names version 2, which holds it as it is, so
+	// version 1 is no longer needed to say where it came from.
+	s.Equal(f.hash(2), master.Entries[0].SourceVersion, "a resource version 2 holds as it is still names version 1")
+	s.Equal(earlier.Entries[0].At, master.Entries[0].At, "a resource that did not change was rewritten")
 	s.Equal(f.hash(2), master.Entries[1].SourceVersion)
 	masters, _ = f.svc.ListMasters(context.Background(), "gw-1")
 	s.Require().Len(masters, 2)

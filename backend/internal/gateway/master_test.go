@@ -332,3 +332,251 @@ func (s *MasterTestSuite) TestTheEmptyMasterHasNoCreationTime() {
 	s.Require().NoError(err)
 	s.NotContains(string(raw), `"at"`)
 }
+
+// After a forward apply, every resource the gateway holds deployed as the applied version has it names
+// that version and its origin, sent or not, so an older version stops being named and can be pruned. A
+// resource the version holds otherwise, or not at all, keeps its source, and nothing that was not
+// written gets a new time or author. A refused resource is recorded as before.
+func (s *MasterTestSuite) TestAForwardApplyNamesTheVersionForWhatItHoldsAsIs() {
+	previous := deployedMaster("v1", "ou-a", "ou-b", "ou-c", "ou-e")
+	newD := unit("ou-d")
+	refusedE := "resource_type: organization_unit\nid: ou-e\nname: ou-e\ndescription: refused"
+	version := &Version{Hash: "v2", Resources: joinBundle([]string{unit("ou-a"),
+		"resource_type: organization_unit\nid: ou-c\nname: ou-c\ndescription: newer", newD, refusedE})}
+
+	next := nextMaster(previous, masterWrite{
+		sent:   parseBundle(joinBundle([]string{newD, refusedE})),
+		answer: answerOf(wrote("ou-d"), refused("ou-e", "ou-e", "OU-1")),
+		source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(version),
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range next.Entries {
+		byKey[entry.Key] = entry
+	}
+	unchanged := byKey["organization_unit/ou-a"]
+	s.Equal("v2", unchanged.SourceVersion, "a resource the version holds as it is still names the older version")
+	s.Equal("dev", unchanged.Origin)
+	s.Equal(masterAt, unchanged.At, "a resource that was not written got a new time")
+	s.Equal(&Actor{ID: "u-1"}, unchanged.By, "a resource that was not written got a new author")
+
+	s.Equal("v1", byKey["organization_unit/ou-b"].SourceVersion, "a resource the version does not hold was renamed")
+	s.Equal("v1", byKey["organization_unit/ou-c"].SourceVersion, "a resource the version holds otherwise was renamed")
+	s.Equal("v2", byKey["organization_unit/ou-d"].SourceVersion)
+	s.Equal(EntryFailed, byKey["organization_unit/ou-e"].State)
+}
+
+// A revert names no version for what it carries over: a resource it leaves as the master it returns to
+// records it takes that master's source, not the version the revert sends.
+func (s *MasterTestSuite) TestARevertKeepsTheSourcesItCarriesOver() {
+	previous := deployedMaster("v1", "ou-a", "ou-b")
+	newB := "resource_type: organization_unit\nid: ou-b\nname: ou-b\ndescription: back"
+
+	next := nextMaster(previous, masterWrite{
+		sent:   parseBundle(joinBundle([]string{newB})),
+		answer: answerOf(wrote("ou-b")),
+		source: "v0", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		mode: revertWrite, earlier: deployedMaster("v0", "ou-a"),
+	})
+
+	s.Equal("v0", next.Entries[0].SourceVersion, "a carried-over resource did not take the earlier master's source")
+}
+
+// A resource a version removed stays recorded removed until something is deployed under its key again.
+// A later forward apply whose version does not hold it either names that version for the removal, so the
+// version that removed it is not kept for it forever; one whose version holds it keeps the removal's
+// source, since the gateway does not run the resource as the version has it.
+func (s *MasterTestSuite) TestALaterApplyNamesItsVersionForARemovalItAgreesWith() {
+	previous := nextMaster(deployedMaster("v1", "ou-a", "ou-b", "ou-c"), masterWrite{
+		deletions: []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-b"},
+			{ResourceType: "organization_unit", ID: "ou-c"}},
+		answer: answerOf(removed("ou-b"), removed("ou-c")),
+		source: "v2", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+	})
+	version := &Version{Hash: "v3", Resources: joinBundle(unitsOf("ou-a", "ou-c"))}
+
+	next := nextMaster(previous, masterWrite{
+		answer: answerOf(), source: "v3", origin: "dev", by: &Actor{ID: "u-3"}, at: masterAt.Add(2 * time.Hour),
+		sourceContent: contentHashes(version),
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range next.Entries {
+		byKey[entry.Key] = entry
+	}
+	gone := byKey["organization_unit/ou-b"]
+	s.Equal(EntryRemoved, gone.State)
+	s.Equal("v3", gone.SourceVersion, "a removal the applied version agrees with still names the version that made it")
+	s.Equal(masterAt.Add(time.Hour), gone.At, "a removal that did not change got a new time")
+	s.Equal("v2", byKey["organization_unit/ou-c"].SourceVersion,
+		"a removal of a resource the applied version holds was renamed")
+	s.Equal("v3", byKey["organization_unit/ou-a"].SourceVersion)
+}
+
+// A revert gives a resource the gateway already held as the master it returns to records it that
+// master's source and origin, though a forward apply since named a later version for it, and keeps when
+// and by whom its entry was last written.
+func (s *MasterTestSuite) TestARevertRestoresTheSourceOfWhatItLeavesAsItWas() {
+	earlier := deployedMaster("v1", "ou-a", "ou-b")
+	forward := nextMaster(earlier, masterWrite{
+		sent:   parseBundle(unit("ou-c")),
+		answer: answerOf(wrote("ou-c")),
+		source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(&Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a", "ou-b", "ou-c"))}),
+	})
+	s.Require().Equal("v2", forward.Entries[0].SourceVersion)
+
+	reverted := nextMaster(forward, masterWrite{
+		deletions: []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-c"}},
+		answer:    answerOf(removed("ou-c")),
+		source:    "v1", by: &Actor{ID: "u-3"}, at: masterAt.Add(2 * time.Hour),
+		mode: revertWrite, earlier: earlier,
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range reverted.Entries {
+		byKey[entry.Key] = entry
+	}
+	unchanged := byKey["organization_unit/ou-a"]
+	s.Equal("v1", unchanged.SourceVersion, "a resource the revert left as it was kept the later version")
+	s.Empty(unchanged.Origin)
+	s.Equal(masterAt, unchanged.At, "a resource the revert did not write got a new time")
+	s.Equal(&Actor{ID: "u-1"}, unchanged.By)
+	s.Equal(EntryRemoved, byKey["organization_unit/ou-c"].State)
+}
+
+// A project's rollback restores the source of only what it writes: a resource outside the project keeps
+// the source the gateway holds it with now, though the master the rollback returns to records another.
+func (s *MasterTestSuite) TestAProjectRollbackRestoresOnlyWhatItWrites() {
+	earlier := deployedMaster("v1", "ou-a", "ou-b")
+	forward := nextMaster(earlier, masterWrite{
+		sent:   parseBundle(joinBundle(unitsOf("ou-a", "ou-b"))),
+		answer: answerOf(wrote("ou-a"), wrote("ou-b")),
+		source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(&Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a", "ou-b"))}),
+	})
+
+	reverted := nextMaster(forward, masterWrite{
+		mode: revertWrite, projectRevert: true, project: "p-1",
+		sent:   parseBundle(unit("ou-a")),
+		answer: answerOf(wrote("ou-a")),
+		source: "v1", by: &Actor{ID: "u-3"}, at: masterAt.Add(2 * time.Hour),
+		earlier: earlier,
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range reverted.Entries {
+		byKey[entry.Key] = entry
+	}
+	s.Equal("v1", byKey["organization_unit/ou-a"].SourceVersion, "what the rollback wrote kept the later version")
+	s.Equal("v2", byKey["organization_unit/ou-b"].SourceVersion, "a resource outside the rollback took its source")
+	s.Equal("dev", byKey["organization_unit/ou-b"].Origin)
+}
+
+// A deploy scoped to a project names its version only for that project's resources and those of no
+// project: another project's resource keeps the version its own deploy named.
+func (s *MasterTestSuite) TestAProjectDeployLeavesAnotherProjectsSourceAsItWas() {
+	previous := deployedMaster("v1", "ou-a", "ou-b", "ou-c")
+	version := &Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a", "ou-b", "ou-c"))}
+
+	next := nextMaster(previous, masterWrite{
+		answer: answerOf(), source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(version), scope: "shop",
+		owners: map[string]string{"organization_unit/ou-a": "shop", "organization_unit/ou-b": "billing"},
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range next.Entries {
+		byKey[entry.Key] = entry
+	}
+	s.Equal("v2", byKey["organization_unit/ou-a"].SourceVersion, "the project's own resource kept the older version")
+	s.Equal("v1", byKey["organization_unit/ou-b"].SourceVersion, "another project's resource was renamed")
+	s.Equal("v2", byKey["organization_unit/ou-c"].SourceVersion, "a resource of no project kept the older version")
+}
+
+// A removal keeps no document to say which project it was, and its source only keeps the version it
+// names from being pruned. A later deploy of another project whose version also lacks the resource
+// names its version for the removal, leaving who removed it, and when, as they were.
+func (s *MasterTestSuite) TestAnotherProjectsDeployTakesOverARemovalItsVersionAgreesWith() {
+	previous := deployedMaster("v1", "ou-a", "ou-b")
+	billing := &Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a"))}
+	removedAt := masterAt.Add(time.Hour)
+	afterRemoval := nextMaster(previous, masterWrite{
+		deletions: []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-b"}},
+		answer:    answerOf(removed("ou-b")), source: "v2", by: &Actor{ID: "u-2"}, at: removedAt,
+		sourceContent: contentHashes(billing), scope: "billing",
+		owners: map[string]string{"organization_unit/ou-a": "shop", "organization_unit/ou-b": "billing"},
+	})
+
+	shop := &Version{Hash: "v3", Resources: joinBundle(unitsOf("ou-a"))}
+	next := nextMaster(afterRemoval, masterWrite{
+		answer: answerOf(), source: "v3", by: &Actor{ID: "u-3"}, at: masterAt.Add(2 * time.Hour),
+		sourceContent: contentHashes(shop), scope: "shop",
+		owners: ownersOf(parseBundle(afterRemoval.Resources), parseBundle(shop.Resources)),
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range next.Entries {
+		byKey[entry.Key] = entry
+	}
+	removal := byKey["organization_unit/ou-b"]
+	s.Equal(EntryRemoved, removal.State)
+	s.Equal("v3", removal.SourceVersion, "the removal kept naming a version no deploy may need again")
+	s.Equal(removedAt, removal.At, "the removal was taken to be written again")
+	s.Equal(&Actor{ID: "u-2"}, removal.By)
+}
+
+// A deploy of a selection that is not scoped to a project names its version for what belongs to no
+// project, and leaves every project's resource with the version its own deploy named.
+func (s *MasterTestSuite) TestASelectiveDeployLeavesEveryProjectsSourceAsItWas() {
+	previous := deployedMaster("v1", "ou-a", "ou-b")
+	version := &Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a", "ou-b"))}
+
+	next := nextMaster(previous, masterWrite{
+		answer: answerOf(), source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(version), owners: map[string]string{"organization_unit/ou-a": "shop"},
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range next.Entries {
+		byKey[entry.Key] = entry
+	}
+	s.Equal("v1", byKey["organization_unit/ou-a"].SourceVersion, "a project's resource took the selection's version")
+	s.Equal("v2", byKey["organization_unit/ou-b"].SourceVersion, "a resource of no project kept the older version")
+}
+
+// A forward apply that sends nothing still names its version for what the gateway holds as it has it.
+func (s *MasterTestSuite) TestAForwardApplyThatSendsNothingStillRepoints() {
+	previous := deployedMaster("v1", "ou-a")
+	version := &Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a"))}
+
+	next := nextMaster(previous, masterWrite{
+		answer: answerOf(), source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(version),
+	})
+
+	s.Equal("v2", next.Entries[0].SourceVersion)
+	s.Equal(masterAt, next.Entries[0].At, "a resource that was not written got a new time")
+}
+
+// Applying the version a resource already names again, with another origin, records that origin for
+// what the gateway holds as the version has it.
+func (s *MasterTestSuite) TestAnApplyOfTheSameVersionFromElsewhereRecordsItsOrigin() {
+	version := &Version{Hash: "v2", Resources: joinBundle(unitsOf("ou-a", "ou-b"))}
+	first := nextMaster(deployedMaster("v1", "ou-a"), masterWrite{
+		sent: parseBundle(unit("ou-b")), answer: answerOf(wrote("ou-b")),
+		source: "v2", origin: "dev", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+		sourceContent: contentHashes(version),
+	})
+
+	next := nextMaster(first, masterWrite{
+		answer: answerOf(), source: "v2", origin: "staging", by: &Actor{ID: "u-3"}, at: masterAt.Add(2 * time.Hour),
+		sourceContent: contentHashes(version),
+	})
+
+	for _, entry := range next.Entries {
+		s.Equal("v2", entry.SourceVersion)
+		s.Equal("staging", entry.Origin, "%s kept the earlier apply's origin", entry.Key)
+	}
+}
