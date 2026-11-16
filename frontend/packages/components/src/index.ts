@@ -4,6 +4,11 @@
 // Components
 export {default as CopyableField} from './CopyableField/CopyableField';
 export type {CopyableFieldProps} from './CopyableField/CopyableField';
+export {default as CredentialFieldInput} from './CredentialFieldInput/CredentialFieldInput';
+export {default as CredentialResetDialog} from './CredentialReset/CredentialResetDialog';
+export type {CredentialResetDialogProps, CredentialResetField} from './CredentialReset/CredentialResetDialog';
+export {default as CredentialResetSection} from './CredentialReset/CredentialResetSection';
+export type {CredentialResetSectionProps} from './CredentialReset/CredentialResetSection';
 export {default as CspOriginHint} from './CspOriginHint/CspOriginHint';
 export type {CspOriginHintProps} from './CspOriginHint/CspOriginHint';
 export {resolveCspHint} from './CspOriginHint/resolveCspHint';
