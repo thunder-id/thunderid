@@ -22,6 +22,7 @@ import {
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
 import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -41,7 +42,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useEffect, type SyntheticEvent, type JSX, type ReactNode} from 'react';
+import {type JSX, type ReactNode, type SyntheticEvent, useCallback, useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import useGetAgent from '../api/useGetAgent';
@@ -49,6 +50,7 @@ import useUpdateAgent from '../api/useUpdateAgent';
 import EditAccessSettings from '../components/edit-agent/access/EditAccessSettings';
 import EditAdvancedSettings from '../components/edit-agent/advanced-settings/EditAdvancedSettings';
 import EditAgentAttributes from '../components/edit-agent/attributes/EditAgentAttributes';
+import type {AgentCredentialField} from '../components/edit-agent/credentials/CredentialResetDialog';
 import EditCredentialsSettings from '../components/edit-agent/credentials/EditCredentialsSettings';
 import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
 import AgentOverview from '../components/edit-agent/overview/AgentOverview';
@@ -134,6 +136,19 @@ export default function AgentEditPage(): JSX.Element {
     error: agentTypeError,
     refetch: refetchAgentType,
   } = useGetAgentType(matchedSchema?.id);
+  // The credentials the agent type declares, such as a password, which the Credentials tab can reset.
+  const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
+  const credentialFields: AgentCredentialField[] = useMemo(() => {
+    if (!agentTypeDetails?.schema) return [];
+    return Object.entries(agentTypeDetails.schema)
+      .filter(([, fieldDef]) => (fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential)
+      .map(([fieldName, fieldDef]) => {
+        const displayName =
+          'displayName' in fieldDef && fieldDef.displayName ? resolveDisplayName(fieldDef.displayName) : '';
+
+        return {fieldName, label: displayName || fieldName};
+      });
+  }, [agentTypeDetails, resolveDisplayName]);
   // Block save until the schema settles, else stale values bypass sanitization.
   const isSchemaResolving = isTypesLoading || isTypeLoading;
   // A failed read of the schema keeps Save off rather than the whole page: viewing an agent doesn't
@@ -452,7 +467,7 @@ export default function AgentEditPage(): JSX.Element {
     },
   ];
 
-  if (hasOAuth) {
+  if (hasOAuth || (agent.kind !== PERSONAL_AGENT_KIND && credentialFields.length > 0)) {
     tabs.push({
       key: 'credentials',
       label: t('agents:edit.page.tabs.credentials', 'Credentials'),
@@ -462,6 +477,7 @@ export default function AgentEditPage(): JSX.Element {
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
+          credentialFields={credentialFields}
         />
       ),
     });

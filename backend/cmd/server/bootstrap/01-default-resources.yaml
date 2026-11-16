@@ -88,6 +88,11 @@ schema:
       - gemini
       - mistral
       - custom
+  password:
+    type: string
+    displayName: Password
+    required: false
+    credential: true
 ---
 resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020

@@ -559,6 +559,57 @@ describe('AgentEditPage', () => {
       expect(screen.getByRole('tab', {name: /Access/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /Advanced/i})).toBeInTheDocument();
     });
+
+    describe('without OAuth but with a credential in the agent type', () => {
+      const withCredentialSchema = (): void => {
+        mockUseGetAgentType.mockReturnValue({
+          data: {
+            id: 'default-type',
+            handle: 'default',
+            displayName: 'Default',
+            schema: {password: {type: 'string', credential: true}},
+          },
+          isLoading: false,
+          error: null,
+        });
+      };
+      const agentWithoutOAuth = (extra: Record<string, unknown> = {}): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {...baseAgent, inboundAuthConfig: [], ...extra},
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+      };
+
+      it('offers the Credentials tab so the credential can be reset', () => {
+        withCredentialSchema();
+        agentWithoutOAuth();
+
+        render(<AgentEditPage />);
+
+        expect(screen.getByRole('tab', {name: /Credentials/i})).toBeInTheDocument();
+        expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
+      });
+
+      it('shows no Credentials tab for a personal agent, which only its owner resets', () => {
+        withCredentialSchema();
+        agentWithoutOAuth({kind: 'personal-assistant'});
+
+        render(<AgentEditPage />);
+
+        expect(screen.queryByRole('tab', {name: /Credentials/i})).not.toBeInTheDocument();
+      });
+
+      it('shows no Credentials tab when the agent type declares no credential', () => {
+        agentWithoutOAuth();
+
+        render(<AgentEditPage />);
+
+        expect(screen.queryByRole('tab', {name: /Credentials/i})).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe('Header inline editing', () => {

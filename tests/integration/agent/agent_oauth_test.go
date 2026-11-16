@@ -95,6 +95,7 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 		Schema: map[string]interface{}{
 			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
+			"password":    map[string]interface{}{"type": "string", "credential": true},
 		},
 	})
 	ts.Require().NoError(err, "Failed to create agent schema")

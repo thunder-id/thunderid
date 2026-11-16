@@ -9,6 +9,7 @@ import EditCredentialsSettings from '../EditCredentialsSettings';
 
 vi.mock('../ClientIdSection', () => ({default: () => <div data-testid="client-id" />}));
 vi.mock('../ClientSecretSection', () => ({default: () => <div data-testid="client-secret" />}));
+vi.mock('../CredentialResetSection', () => ({default: () => <div data-testid="credential-reset" />}));
 vi.mock('../CertificateSection', () => ({
   default: ({onCertificateChange}: {onCertificateChange: (cert: unknown) => void}) => (
     <button type="button" data-testid="certificate" onClick={() => onCertificateChange({type: 'jwks', value: '{}'})}>
@@ -66,5 +67,48 @@ describe('EditCredentialsSettings', () => {
         }),
       ]),
     );
+  });
+  it('shows the credential reset when the agent type declares a credential', () => {
+    render(
+      <EditCredentialsSettings
+        agent={mockAgent}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: [], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+        credentialFields={[{fieldName: 'password', label: 'Password'}]}
+      />,
+    );
+
+    expect(screen.getByTestId('credential-reset')).toBeInTheDocument();
+  });
+
+  it('does not offer the administrator reset for a personal agent', () => {
+    render(
+      <EditCredentialsSettings
+        agent={{...mockAgent, kind: 'personal-assistant'}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: [], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+        credentialFields={[{fieldName: 'password', label: 'Password'}]}
+      />,
+    );
+
+    expect(screen.queryByTestId('credential-reset')).not.toBeInTheDocument();
+    expect(screen.getByTestId('client-id')).toBeInTheDocument();
+  });
+
+  it('shows only the reset for an agent with no OAuth configuration', () => {
+    render(
+      <EditCredentialsSettings
+        agent={{...mockAgent, inboundAuthConfig: []}}
+        editedAgent={{}}
+        onFieldChange={mockOnFieldChange}
+        credentialFields={[{fieldName: 'password', label: 'Password'}]}
+      />,
+    );
+
+    expect(screen.getByTestId('credential-reset')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-id')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('certificate')).not.toBeInTheDocument();
   });
 });

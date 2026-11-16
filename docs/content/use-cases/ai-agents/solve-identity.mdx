@@ -26,7 +26,7 @@ See [Create and Manage Agents](../../../guides/agents/manage-agents) to register
 
 Registering agents one at a time produces a list. What turns that list into something you can query is the **agent schema**: a shared set of attributes every agent carries, so a fleet can be filtered and reported on rather than remembered.
 
-The default schema includes a required, unique `name`, plus an optional `modelProvider` attribute. The schema's display setting selects the attribute used to label agents in the Console. It selects `name` by default and falls back to the agent ID when no display value is available. Selected attributes can also appear in the agent's access token, so a downstream service can apply policy using the agent's recorded attributes.
+The default schema includes a required, unique `name`, plus optional `modelProvider` and `password` attributes. The schema's display setting selects the attribute used to label agents in the Console. It selects `name` by default and falls back to the agent ID when no display value is available. Selected attributes can also appear in the agent's access token, so a downstream service can apply policy using the agent's recorded attributes.
 
 See [Agent Schema](../../../guides/agents/agent-schema) for the attributes an agent can carry and [Attribute values](../../../guides/agents/manage-agents#attribute-values) for setting them on one agent.
 

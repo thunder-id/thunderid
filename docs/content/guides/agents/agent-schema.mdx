@@ -37,14 +37,22 @@ If an API request omits the pattern, the backend validates email addresses again
 
 ## The default schema
 
-The built-in schema defines a required name and one optional attribute:
+The built-in schema defines a required name and two optional attributes:
 
 | Attribute | Type | Required | Values |
 |---|---|---|---|
 | `name` | string | Yes | A unique name for the agent |
 | `modelProvider` | enum | No | `openai`, `anthropic`, `gemini`, `mistral`, `custom` |
+| `password` | string, credential | No | A secret the agent holds. It is stored hashed and never returned |
 
-Set these values in **Agent Details** during onboarding or on the agent's **Attributes** tab. API requests and declarative agent resources store the name in `attributes.name`. The schema controls its validation, just as it does for other attributes.
+Set every value except `password` in **Agent Details** during onboarding or on the agent's **Attributes** tab. API requests and declarative agent resources store the name in `attributes.name`. The schema controls its validation, just as it does for other attributes.
+
+The optional `password` is not shown in either place. Send it in `attributes` when you create an agent through the API. An update of the agent that names a credential fails with `AGT-1068`, so change it with a credential update instead:
+
+- `POST /agents/{id}/update-credentials` sets the new value under `credentials`. It fails with `AGT-1069` for a personal agent.
+- `POST /users/me/agents/{id}/update-credentials` lets the owner of a personal agent set the new value under `attributes`.
+
+Replacing a password the agent already holds revokes its tokens and ends its sessions, as for a user.
 
 With the default schema, a missing name fails schema validation (`AGT-1015`), and a duplicate name causes an attribute conflict (`AGT-1014`). These errors apply to schema attributes, not to a separate agent-name field.
 

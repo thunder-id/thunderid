@@ -1785,6 +1785,83 @@ func (_c *AgentServiceInterfaceMock_UpdateOwnedAgent_Call) RunAndReturn(run func
 	return _c
 }
 
+// UpdateOwnedAgentCredentials provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) UpdateOwnedAgentCredentials(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, credentials json.RawMessage) *common.ServiceError {
+	ret := _mock.Called(ctx, ownerID, agentID, kind, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateOwnedAgentCredentials")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind, json.RawMessage) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, ownerID, agentID, kind, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateOwnedAgentCredentials'
+type AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call struct {
+	*mock.Call
+}
+
+// UpdateOwnedAgentCredentials is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - agentID string
+//   - kind providers.AgentKind
+//   - credentials json.RawMessage
+func (_e *AgentServiceInterfaceMock_Expecter) UpdateOwnedAgentCredentials(ctx any, ownerID any, agentID any, kind any, credentials any) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	return &AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call{Call: _e.mock.On("UpdateOwnedAgentCredentials", ctx, ownerID, agentID, kind, credentials)}
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call) Run(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, credentials json.RawMessage)) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 providers.AgentKind
+		if args[3] != nil {
+			arg3 = args[3].(providers.AgentKind)
+		}
+		var arg4 json.RawMessage
+		if args[4] != nil {
+			arg4 = args[4].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call) RunAndReturn(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, credentials json.RawMessage) *common.ServiceError) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateAgent provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) ValidateAgent(ctx context.Context, agent *providers.Agent, excludeID string) (string, string, model0.InboundClient, *common.ServiceError) {
 	ret := _mock.Called(ctx, agent, excludeID)

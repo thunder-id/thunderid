@@ -844,6 +844,14 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodPost, path: "/agents/agent-1/client-secret/regenerate", wantPerm: p.AgentUpdate,
 		},
 		{
+			name:   "POST owner credential update of a personal agent needs only the owner's own token",
+			method: http.MethodPost, path: "/users/me/agents/agent-1/update-credentials", wantPerm: "",
+		},
+		{
+			name:   "POST agent credential update updates the agent",
+			method: http.MethodPost, path: "/agents/agent-1/update-credentials", wantPerm: p.AgentUpdate,
+		},
+		{
 			name:   "POST CIMD preview needs app create",
 			method: http.MethodPost, path: "/cimd/preview", wantPerm: p.AppCreate,
 		},
@@ -1331,8 +1339,9 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
 		"POST /users/me/update-credentials": true, "DELETE /users/me/agents/*": true,
 		"POST /users/me/agents/suspend": true, "POST /users/me/agents/*/suspend": true,
-		"POST /users/me/agents/*/unsuspend": true,
-		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"POST /users/me/agents/*/unsuspend":          true,
+		"POST /users/me/agents/*/update-credentials": true,
+		"GET /register/passkey/**":                   true, "POST /register/passkey/**": true,
 		"* /mcp/**":       true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
