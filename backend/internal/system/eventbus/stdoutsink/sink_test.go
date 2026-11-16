@@ -56,6 +56,7 @@ type knownLine struct {
 	Application   map[string]string `json:"application"`
 	SessionRef    string            `json:"session_ref"`
 	FlowRef       string            `json:"flow_ref"`
+	OU            map[string]string `json:"ou"`
 	Details       map[string]string `json:"details"`
 }
 
@@ -178,6 +179,22 @@ func (s *SinkTestSuite) TestALineInAFlowCarriesTheFlowRefAfterTheSessionRef() {
 	s.Equal("ref-7", decoded.FlowRef)
 	s.Equal(map[string]string{"id": "a17"}, decoded.Application)
 	s.Equal(1, decoded.SchemaVersion)
+}
+
+func (s *SinkTestSuite) TestALineCarriesTheOUAfterTheApplicationAndOmitsItWhenEmpty() {
+	ctx := syscontext.WithApplicationID(syscontext.WithFlowRef(context.Background(), "ref-7"), "a17")
+	p := audit.NewPayload(ctx, testTarget, audit.ActionUpdate, audit.OutcomeSucceeded).
+		WithSessionRef("s5d1").WithDetails(map[string]string{"reason": "requested"})
+
+	withOU := s.write(envelope(), p.WithOU("o3"))
+	withoutOU := s.write(envelope(), p)
+
+	s.Equal([]string{
+		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "target", "action", "outcome",
+		"application", "ou", "session_ref", "flow_ref", "details",
+	}, s.keys(withOU))
+	s.Equal(map[string]string{"id": "o3"}, s.decode(withOU).OU)
+	s.NotContains(s.keys(withoutOU), "ou")
 }
 
 // The flow reference is left out when the context carries none.
@@ -328,10 +345,12 @@ func (s *SinkTestSuite) TestThenTheCallerControlledFields() {
 	s.Equal(env.ID, decoded.ID)
 }
 
-// The application ID and the session reference are free-form fields too, so the last cap bounds them.
-func (s *SinkTestSuite) TestTheCapAlsoBoundsTheApplicationAndTheSessionRef() {
-	l := newLine(envelope(), payload().WithApplication("a17").WithSessionRef("s5d1"))
+// The application and organization unit IDs and the session reference are free-form fields too, so the last
+// cap bounds them.
+func (s *SinkTestSuite) TestTheCapAlsoBoundsTheApplicationTheOUAndTheSessionRef() {
+	l := newLine(envelope(), payload().WithApplication("a17").WithOU("o3").WithSessionRef("s5d1"))
 	l.Application.ID = strings.Repeat("a", 3*maxLineBytes)
+	l.OU.ID = strings.Repeat("o", 3*maxLineBytes)
 	l.SessionRef = strings.Repeat("s", 3*maxLineBytes)
 
 	buf, err := render(l)
@@ -340,6 +359,7 @@ func (s *SinkTestSuite) TestTheCapAlsoBoundsTheApplicationAndTheSessionRef() {
 	s.LessOrEqual(len(buf), maxLineBytes)
 	decoded := s.decode(buf)
 	s.Equal(map[string]string{"id": strings.Repeat("a", maxFieldBytes)}, decoded.Application)
+	s.Equal(map[string]string{"id": strings.Repeat("o", maxFieldBytes)}, decoded.OU)
 	s.Equal(strings.Repeat("s", maxFieldBytes), decoded.SessionRef)
 }
 

@@ -104,60 +104,11 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 	requestedAttributes *providers.RequestedAttributes,
 	metadata *providers.AuthnMetadata,
 	authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
-	if len(credentials) == 0 {
-		m.logger.Debug(ctx, "no credentials provided for authentication")
-		return authUser, nil, &ErrorAuthenticationFailed
-	}
-
-	selectedProviderName, selectedProvider, svcErr := m.selectProvider(ctx, slices.Sorted(maps.Keys(credentials)))
+	authUser, authResult, outcome, svcErr := m.authenticateUser(ctx, identifiers, credentials, metadata, authUser)
+	m.publishAuthentication(ctx, credentials, authResult, outcome)
 	if svcErr != nil {
 		return authUser, nil, svcErr
 	}
-
-	authResult, svcErr := selectedProvider.Authenticate(ctx, identifiers, credentials, metadata)
-	if svcErr != nil {
-		if svcErr.Type == tidcommon.ServerErrorType {
-			m.logger.Error(ctx, "provider returned server error during authentication",
-				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			return authUser, nil, &tidcommon.InternalServerError
-		}
-		switch svcErr.Code {
-		case authnprovidercm.ErrorCodeUserNotFound:
-			m.logger.Debug(ctx, "authentication failed with user not found error from provider",
-				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-			return authUser, nil, &ErrorUserNotFound
-		case authnprovidercm.ErrorCodeInvalidRequest:
-			m.logger.Debug(ctx, "authentication failed with invalid request error from provider",
-				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-			return authUser, nil, &ErrorInvalidRequest
-		case authnprovidercm.ErrorCodeAmbiguousUser:
-			if _, federated := credentials[authnprovidercm.CredentialTypeFederated]; federated {
-				// Two entities hold the recorded link. Reported as such so the caller does not read it as
-				// a failed exchange with the connection.
-				m.logger.Debug(ctx, "federated authentication resolved an ambiguous link",
-					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-				return authUser, nil, &ErrorAmbiguousUser
-			}
-		case authnprovidercm.ErrorCodeAccountLocked:
-			m.logger.Debug(ctx, "authentication refused a locked account")
-			return authUser, nil, &ErrorAccountLocked
-		case authnprovidercm.ErrorCodeAccountSuspended:
-			m.logger.Debug(ctx, "authentication refused a suspended account")
-			return authUser, nil, &ErrorAccountSuspended
-		}
-		m.logger.Debug(ctx, "authentication failed with client error from provider",
-			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-		return authUser, nil, &ErrorAuthenticationFailed
-	}
-	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
-		return authUser, nil, svcErr
-	}
-
-	authUser, svcErr = m.updateAuthUser(ctx, authResult, authUser, selectedProviderName)
-	if svcErr != nil {
-		return authUser, nil, svcErr
-	}
-
 	return authUser, authResult.AuthenticatedClaims, nil
 }
 
@@ -650,6 +601,98 @@ func accountLinkingFilters(entityReferenceToken any) []map[string]interface{} {
 	default:
 		return nil
 	}
+}
+
+// authenticateUser checks the credential and returns the audit outcome with the provider's result on a
+// success. The outcome follows the provider's error code, which the caller's error hides.
+func (m *authnProviderManager) authenticateUser(ctx context.Context, identifiers, credentials map[string]interface{},
+	metadata *providers.AuthnMetadata, authUser providers.AuthUser) (
+	providers.AuthUser, *providers.AuthnResult, audit.Outcome, *tidcommon.ServiceError) {
+	if len(credentials) == 0 {
+		m.logger.Debug(ctx, "no credentials provided for authentication")
+		return authUser, nil, audit.Outcome{}, &ErrorAuthenticationFailed
+	}
+
+	selectedProviderName, selectedProvider, svcErr := m.selectProvider(ctx, slices.Sorted(maps.Keys(credentials)))
+	if svcErr != nil {
+		return authUser, nil, audit.OutcomeFailed(audit.ReasonServerError), svcErr
+	}
+
+	authResult, svcErr := selectedProvider.Authenticate(ctx, identifiers, credentials, metadata)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			m.logger.Error(ctx, "provider returned server error during authentication",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, audit.OutcomeFailed(audit.ReasonServerError), &tidcommon.InternalServerError
+		}
+		outcome := audit.OutcomeFailed(auditReasonInvalidCredentials)
+		switch svcErr.Code {
+		case authnprovidercm.ErrorCodeUserNotFound:
+			m.logger.Debug(ctx, "authentication failed with user not found error from provider",
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, audit.OutcomeFailed(auditReasonUserNotFound), &ErrorUserNotFound
+		case authnprovidercm.ErrorCodeInvalidRequest:
+			m.logger.Debug(ctx, "authentication failed with invalid request error from provider",
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, audit.OutcomeFailed(auditReasonInvalidRequest), &ErrorInvalidRequest
+		case authnprovidercm.ErrorCodeAmbiguousUser:
+			outcome = audit.OutcomeFailed(auditReasonAmbiguousUser)
+			if _, federated := credentials[authnprovidercm.CredentialTypeFederated]; federated {
+				// Two entities hold the recorded link. Reported as such so the caller does not read it as
+				// a failed exchange with the connection.
+				m.logger.Debug(ctx, "federated authentication resolved an ambiguous link",
+					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+				return authUser, nil, outcome, &ErrorAmbiguousUser
+			}
+		case authnprovidercm.ErrorCodeAccountLocked:
+			m.logger.Debug(ctx, "authentication refused a locked account")
+			return authUser, nil, audit.OutcomeDenied(auditReasonAccountLocked), &ErrorAccountLocked
+		case authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "authentication refused a suspended account")
+			return authUser, nil, audit.OutcomeDenied(auditReasonAccountSuspended), &ErrorAccountSuspended
+		}
+		m.logger.Debug(ctx, "authentication failed with client error from provider",
+			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+		return authUser, nil, outcome, &ErrorAuthenticationFailed
+	}
+	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
+		return authUser, nil, audit.OutcomeDenied(auditReasonSubjectNotAllowed), svcErr
+	}
+
+	authUser, svcErr = m.updateAuthUser(ctx, authResult, authUser, selectedProviderName)
+	if svcErr != nil {
+		return authUser, nil, audit.OutcomeFailed(audit.ReasonServerError), svcErr
+	}
+
+	return authUser, authResult, audit.OutcomeSucceeded, nil
+}
+
+// publishAuthentication publishes the audit event of a credential check that is a sign-in. The actor is set
+// here, never read from the request, since the sign-in endpoints are public.
+func (m *authnProviderManager) publishAuthentication(ctx context.Context, credentials map[string]interface{},
+	authResult *providers.AuthnResult, outcome audit.Outcome) {
+	method := authnprovidercm.AuthenticationMethodOf(credentials)
+	_, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]
+	if provisioned || method == providers.AuthenticationMethodSystemCredential || authnprovidercm.IsContactProof(ctx) {
+		return
+	}
+	target := audit.Ref{Type: audit.TargetTypeUser}
+	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+	var entity *providers.EntityReference
+	if authResult != nil {
+		entity = authResult.EntityReference
+		if entity == nil {
+			return
+		}
+		target = audit.PrincipalRef(ctx, entity.EntityCategory, entity.EntityID)
+		actor = audit.PrincipalActor(entity.EntityCategory, entity.EntityID)
+	}
+	payload := audit.NewPayload(ctx, target, audit.ActionAuthenticate, outcome).WithActor(actor).
+		WithDetails(map[string]string{audit.DetailAuthenticationMethod: string(method)})
+	if entity != nil {
+		payload = payload.WithSubject(target).WithOU(entity.OUID)
+	}
+	eventbus.TryPublish(ctx, m.bus, eventbus.NewEvent(ctx, audit.EventUserAuthenticate).With(payload))
 }
 
 // updateAuthUser records a provider's authentication or enrollment result in the AuthUser

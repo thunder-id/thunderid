@@ -28,6 +28,8 @@ const (
 	EventUserUpdate = "user.update"
 	// EventUserDelete names an attempt to delete a user.
 	EventUserDelete = "user.delete"
+	// EventUserAuthenticate names a check of a credential presented to sign in. It never carries the credential.
+	EventUserAuthenticate = "user.authenticate"
 	// EventUserCredentialEnroll names an attempt to enroll a credential for a user. It never carries
 	// credential data.
 	EventUserCredentialEnroll = "user.credential.enroll" //nolint:gosec // an event name, not a credential
@@ -241,6 +243,16 @@ var principalTargetTypes = map[string]string{
 	TargetTypeGroup:                       TargetTypeGroup,
 }
 
+// principalActorTypes maps the type a principal is named by to its actor type.
+var principalActorTypes = map[string]ActorType{
+	string(providers.EntityCategoryUser):  ActorTypeUser,
+	string(providers.EntityCategoryApp):   ActorTypeApplication,
+	string(providers.EntityCategoryAgent): ActorTypeAgent,
+}
+
+// DetailAuthenticationMethod is the detail key of the method a credential was checked with.
+const DetailAuthenticationMethod = "authentication_method"
+
 // DetailGrantType is the detail key of the grant type a token was requested with.
 const DetailGrantType = "grant_type"
 
@@ -266,6 +278,8 @@ var auditedEvents = map[string][]string{
 	EventUserCreate: nil,
 	EventUserUpdate: nil,
 	EventUserDelete: nil,
+
+	EventUserAuthenticate: {DetailAuthenticationMethod},
 
 	EventUserCredentialEnroll: nil,
 	EventUserCredentialUpdate: nil,

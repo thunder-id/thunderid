@@ -38,7 +38,10 @@ func newLine(env eventbus.Envelope, payload audit.Payload) line {
 		l.Client = &clientLine{Address: client.Address, UserAgent: client.UserAgent}
 	}
 	if id := payload.Application(); id != "" {
-		l.Application = &applicationLine{ID: id}
+		l.Application = &idLine{ID: id}
+	}
+	if id := payload.OU(); id != "" {
+		l.OU = &idLine{ID: id}
 	}
 	return l
 }
@@ -78,6 +81,9 @@ func capFields(l *line) {
 	}
 	if l.Application != nil {
 		fields = append(fields, &l.Application.ID)
+	}
+	if l.OU != nil {
+		fields = append(fields, &l.OU.ID)
 	}
 	for _, field := range fields {
 		*field = truncateBytes(*field, maxFieldBytes)

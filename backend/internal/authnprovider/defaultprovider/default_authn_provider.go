@@ -500,32 +500,32 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	ctx context.Context,
 	identifiers, credentials map[string]interface{},
 ) (*authncommon.AuthnResult, providers.AuthenticationMethod, *attributedFailure, *tidcommon.ServiceError) {
+	method := authnprovidercm.AuthenticationMethodOf(credentials)
 	if provisioned, ok := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; ok {
 		res, svcErr := p.authenticateForProvisioning(provisioned)
 		// An entity the flow bound by ID checks no secret, so it is admitted as a federated sign-in.
-		return res, providers.AuthenticationMethodFederated, nil, svcErr
+		return res, method, nil, svcErr
 	}
 	if passkeyCredential, ok := credentials[authnprovidercm.CredentialTypePasskey]; ok {
 		res, svcErr := p.authenticateWithPasskey(ctx, passkeyCredential)
-		return res, providers.AuthenticationMethodPasskey, nil, svcErr
+		return res, method, nil, svcErr
 	}
 	if otpCredential, ok := credentials[authnprovidercm.CredentialTypeOTP]; ok {
 		res, failure, svcErr := p.authenticateWithOTP(ctx, otpCredential)
-		return res, providers.AuthenticationMethodOTP, failure, svcErr
+		return res, method, failure, svcErr
 	}
 	if fedCred, ok := credentials[authnprovidercm.CredentialTypeFederated]; ok {
 		res, svcErr := p.authenticateWithFederated(ctx, fedCred)
-		return res, providers.AuthenticationMethodFederated, nil, svcErr
+		return res, method, nil, svcErr
 	}
 	if mlCred, ok := credentials[authnprovidercm.CredentialTypeMagicLink]; ok {
 		res, svcErr := p.authenticateWithMagicLink(ctx, mlCred)
-		return res, providers.AuthenticationMethodMagicLink, nil, svcErr
+		return res, method, nil, svcErr
 	}
 	if vpCred, ok := credentials[authnprovidercm.CredentialTypeOpenID4VP]; ok {
 		res, svcErr := p.authenticateWithOpenID4VP(ctx, vpCred)
-		return res, providers.AuthenticationMethodOpenID4VP, nil, svcErr
+		return res, method, nil, svcErr
 	}
-	method := credentialAuthenticationMethod(credentials)
 	if userID, ok := identifiers[authnprovidercm.UserAttributeUserID]; ok && userID != "" {
 		res, failure, svcErr := p.authenticateByUserID(ctx, userID, credentials)
 		return res, method, failure, svcErr
