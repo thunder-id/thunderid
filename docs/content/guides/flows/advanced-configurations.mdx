@@ -1193,7 +1193,9 @@ Checks the authenticated user's existing profile attributes against the node's c
 **How missing-input resolution works:**
 1. Checks the user's authenticated attributes.
 2. Falls back to the user's stored profile in the user store.
-3. Only attributes absent from both sources are added to the prompt.
+3. Only attributes absent from both sources are added to the prompt. An attribute stored with an empty value counts as absent.
+
+The executor only adds attributes the user doesn't have. A submitted value for an attribute the user already has is ignored.
 
 **Input Configuration:** No registered defaults. Configure any attribute identifiers as node inputs; the executor checks those attributes and prompts only for missing ones.
 
@@ -1710,7 +1712,7 @@ Sends a transactional email using a configured template. Runs in the background:
 - **Recovery flows:** Send a password reset link to the user's registered email.
 
 **Prerequisites:**
-- `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
+- `email` (required): the recipient email address must be resolvable before this executor runs. Resolved in priority order: the user's address in the user store, when the flow knows the user (from `userID`, or the signed-in user), or else the address in runtime data. When the flow knows the user, no other source is read. Otherwise: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → runtime data → user inputs. The executor fails if none of these resolve to a non-empty address.
 - An email service must be configured in <ProductName />. See [SMTP Server Configuration](../../smtp-server/smtp-server-configuration/). The executor returns failure status if no email client is configured.
 
 **Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments.
@@ -1764,9 +1766,10 @@ Sends a transactional SMS using a configured template and sender. Runs in the ba
 - `senderId` node property must be set to the configured sender ID
 
 **Recipient resolution order:**
-1. A phone-type input from the node's configured inputs (from `ForwardedData`)
-2. `mobile_number` from user inputs
-3. Phone attribute from user store (looked up by userID if available)
+1. The user's number in the user store, when the flow knows the user (from `userID`, or the signed-in user), or else the number in runtime data. When the flow knows the user, no other source is read.
+2. Otherwise, user inputs, then runtime data
+
+The number is read from the attribute named by the node's phone-type input, `mobile_number` by default.
 
 **Phone number validation:** Accepts phone numbers in E.164 format and common variations with parentheses, spaces, dashes.
 

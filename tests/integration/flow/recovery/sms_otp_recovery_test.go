@@ -349,24 +349,32 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_MissingMobileNumbe
 		}
 	}()
 
-	ts.mockSMSServer.ClearMessages()
+	for name, inputs := range map[string]map[string]string{
+		"without a mobile number input": {"username": usernameNoMobile},
+		"with a mobile number input":    {"username": usernameNoMobile, "mobile_number": "+94770000000"},
+	} {
+		ts.Run(name, func() {
+			ts.mockSMSServer.ClearMessages()
 
-	// Initiate + submit username of the user with no mobile.
-	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
-	ts.Require().NoError(err)
+			// Initiate + submit username of the user with no mobile.
+			flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+			ts.Require().NoError(err)
 
-	flowStep, err = common.CompleteFlow(
-		flowStep.ExecutionID,
-		map[string]string{"username": usernameNoMobile},
-		"action_submit_username",
-		flowStep.ChallengeToken,
-	)
-	ts.Require().NoError(err)
+			flowStep, err = common.CompleteFlow(
+				flowStep.ExecutionID,
+				inputs,
+				"action_submit_username",
+				flowStep.ChallengeToken,
+			)
+			ts.Require().NoError(err)
 
-	// The flow should still reach otp_sent_status (sms_send onFailure → otp_sent_status).
-	// Users without a mobile number cause sms_send to fail silently and advance to the status node.
-	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus,
-		"Even when mobile is missing, flow should advance to otp_sent_status via onFailure")
+			// The flow should still reach otp_sent_status (sms_send onFailure → otp_sent_status).
+			// Users without a mobile number cause sms_send to fail silently and advance to the status node.
+			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus,
+				"Even when mobile is missing, flow should advance to otp_sent_status via onFailure")
+			ts.Require().Nil(ts.mockSMSServer.GetLastMessage(), "No SMS should be sent")
+		})
+	}
 }
 
 // buildSMSOTPRecoveryFlow returns a custom SMS OTP recovery flow definition with
