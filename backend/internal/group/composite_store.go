@@ -393,6 +393,13 @@ func (c *compositeGroupStore) DeleteMembershipsByMember(
 	return c.dbStore.DeleteMembershipsByMember(ctx, memberType, memberID)
 }
 
+// GetMemberGroupIDs returns the member's direct group IDs from the database store only, since
+// declarative memberships are not writable.
+func (c *compositeGroupStore) GetMemberGroupIDs(
+	ctx context.Context, memberType, memberID string) ([]string, error) {
+	return c.dbStore.GetMemberGroupIDs(ctx, memberType, memberID)
+}
+
 // GetGroupsByIDs returns groups matching the given IDs, merged from both stores.
 func (c *compositeGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
 	dbGroups, err := c.dbStore.GetGroupsByIDs(ctx, groupIDs)

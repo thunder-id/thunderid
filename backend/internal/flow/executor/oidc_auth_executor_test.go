@@ -14,33 +14,37 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
 type OIDCAuthExecutorTestSuite struct {
 	suite.Suite
-	mockOIDCService   *oidcmock.OIDCAuthnCoreServiceInterfaceMock
-	mockIDPService    *idpmock.IDPServiceInterfaceMock
-	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerMock
-	executor          oidcAuthExecutorInterface
+	mockOIDCService    *oidcmock.OIDCAuthnCoreServiceInterfaceMock
+	mockIDPService     *idpmock.IDPServiceInterfaceMock
+	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
+	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
+	executor           oidcAuthExecutorInterface
 }
 
 func TestOIDCAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OIDCAuthExecutorTestSuite))
 }
 
-func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
+func (suite *OIDCAuthExecutorTestSuite) SetupTest() { //nolint:dupl // Mirrors the OAuth executor suite setup.
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOIDCAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOIDCAuth, providers.ExecutorTypeAuthentication,
@@ -48,7 +52,15 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOIDCService,
-		suite.mockAuthnProvider, providers.IDPTypeOIDC)
+		suite.mockAuthnProvider, providers.IDPTypeOIDC,
+		newFederatedSyncer(ExecutorDependencies{EntityProvider: suite.mockEntityProvider,
+			AuthnProvider: suite.mockAuthnProvider}))
+}
+
+// expectSync expects the sign-in to sync the user it settles once, writing nothing.
+func (suite *OIDCAuthExecutorTestSuite) expectSync() {
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, mock.Anything, mock.Anything).
+		Return([]*providers.Entity{{ID: "local-user-123", Category: providers.EntityCategoryUser}}, nil).Once()
 }
 
 func newOIDCAuthenticatedUser() providers.AuthUser {
@@ -177,6 +189,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_BuildAuthorizeFlow_ClientErr
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeProvided_ValidIDToken_AuthenticatesUser() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -210,6 +223,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeProvided_ValidIDToken_Au
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ValidIDToken_Success() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -280,6 +294,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoLocalUser_
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_LocalUser_EntityStateExists() { //nolint:dupl
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -383,6 +398,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_StatedHoldUs
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ValidNonce() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -498,6 +514,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailMismatc
 // An already authenticated user whose email matches the federated one passes the consistency check,
 // so the comparison reads the attribute's value rather than its response wrapper.
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AuthenticatedUserSameEmail_Succeeds() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID:    "flow-123",
 		FlowType:       providers.FlowTypeAuthentication,
@@ -727,6 +744,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoCodeProvid
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_FiltersNonUserClaimsFromIDToken() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -769,6 +787,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_FiltersNonUs
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDToken() { //nolint:dupl
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -805,6 +824,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDTok
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoEmailInIDToken() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -841,6 +861,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoEmailInIDT
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmptyEmailInIDToken() { //nolint:dupl
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -917,6 +938,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_Registration
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailFromUserInfo() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -956,6 +978,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailFromUse
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDToken_NilRuntimeData() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -1069,6 +1092,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthW
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistrationWithExistingUser() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeRegistration,
@@ -1178,6 +1202,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ServerError(
 // The OIDC executor carries its own copy of the callback handling, so the code and state it consumed
 // must not survive into the next federated node either. See the OAuth executor's counterpart.
 func (suite *OIDCAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsumed() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -1210,4 +1235,75 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsu
 		"the consumed code must not survive into the next federated node")
 	assert.NotContains(suite.T(), ctx.UserInputs, userInputState,
 		"the consumed state must not survive into the next federated node")
+}
+
+func (suite *OIDCAuthExecutorTestSuite) expectReturningUser() {
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newOIDCAuthenticatedUser(), providers.AuthenticatedClaims{"sub": "user-sub-123"},
+			(*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, newOIDCAuthenticatedUser())
+	expectIdentityProviderResolved(suite.mockIDPService)
+}
+
+// The user holding the link is synced through the link the sign-in asserted, in authentication and,
+// when an existing user is allowed, in registration.
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_SyncsTheLinkHolder() {
+	for _, ctx := range []*providers.NodeContext{
+		oauthSyncContext(providers.FlowTypeAuthentication, false),
+		oauthSyncContext(providers.FlowTypeRegistration, true),
+	} {
+		suite.SetupTest()
+		suite.expectSync()
+		suite.expectReturningUser()
+		execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+		suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(ctx, execResp))
+
+		suite.Equal(providers.ExecComplete, execResp.Status)
+		suite.mockEntityProvider.AssertCalled(suite.T(), "GetLinkedEntities", mock.Anything, "idp-123",
+			"user-sub-123")
+		suite.Equal("", execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+	}
+}
+
+// Registration that doesn't allow an existing user keeps the sync pending and writes nothing.
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationWithoutExistingUserDoesNotSync() {
+	suite.expectReturningUser()
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(
+		oauthSyncContext(providers.FlowTypeRegistration, false), execResp))
+
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetLinkedEntities",
+		mock.Anything, mock.Anything, mock.Anything)
+	suite.NotEmpty(execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+}
+
+// Groups and roles overridden from a mapping that can't be fully resolved fail the sign-in before
+// anything is synced or kept for a later node, whatever the flow.
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_IncompleteMappingFailsSignIn() {
+	for _, ctx := range incompleteMappingContexts() {
+		suite.SetupTest()
+		expectIncompleteMapping(suite.mockIDPService)
+		suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything).
+			Return(newOIDCAuthenticatedUser(), providers.AuthenticatedClaims{"sub": "user-sub-123"},
+				(*tidcommon.ServiceError)(nil))
+		execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+		suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(ctx, execResp))
+
+		requireIncompleteMappingFailure(suite.T(), execResp, suite.mockEntityProvider)
+	}
+}
+
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_FailedSyncFailsSignIn() {
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-123", "user-sub-123").Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "failed", "detail")).Once()
+	suite.expectReturningUser()
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.Error(suite.executor.ProcessAuthFlowResponse(
+		oauthSyncContext(providers.FlowTypeAuthentication, false), execResp))
 }

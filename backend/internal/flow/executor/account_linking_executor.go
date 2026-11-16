@@ -34,6 +34,7 @@ type accountLinkingExecutor struct {
 	providers.Executor
 	authnProvider     providers.AuthnProviderManager
 	entityTypeService entitytype.EntityTypeServiceInterface
+	syncer            *federatedSyncer
 	logger            *log.Logger
 }
 
@@ -44,6 +45,7 @@ func newAccountLinkingExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	syncer *federatedSyncer,
 ) *accountLinkingExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, ExecutorNameAccountLinking),
@@ -64,6 +66,7 @@ func newAccountLinkingExecutor(
 		Executor:          base,
 		authnProvider:     authnProvider,
 		entityTypeService: entityTypeService,
+		syncer:            syncer,
 		logger:            logger,
 	}
 }
@@ -194,6 +197,11 @@ func (e *accountLinkingExecutor) settleVerification(ctx *providers.NodeContext,
 
 	if err := e.writeLink(ctx, execResp, authenticatedID, logger); err != nil ||
 		execResp.Status == providers.ExecFailure {
+		return err
+	}
+	// The sync is a separate write after the link, so a sync that fails keeps the verified link for
+	// the next sign-in to resolve through.
+	if ok, err := e.syncer.syncPendingUser(ctx, execResp, authenticatedID, logger); !ok {
 		return err
 	}
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists

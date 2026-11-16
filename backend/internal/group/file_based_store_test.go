@@ -315,6 +315,10 @@ func (suite *GroupFileBasedStoreTestSuite) TestImmutability() {
 		{ID: "user1", Type: MemberTypeUser},
 	})
 	suite.Error(err)
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user1")
+	suite.NoError(err)
+	suite.Empty(groupIDs)
 }
 
 func (suite *GroupFileBasedStoreTestSuite) TestCreate_ImplementsStorer() {

@@ -50,6 +50,71 @@ func (_m *RoleAssignmentServiceInterfaceMock) EXPECT() *RoleAssignmentServiceInt
 	return &RoleAssignmentServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// AddAssigneeToExistingRoles provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) AddAssigneeToExistingRoles(ctx context.Context, assignment role.RoleAssignment, roleIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, assignment, roleIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddAssigneeToExistingRoles")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, role.RoleAssignment, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, assignment, roleIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddAssigneeToExistingRoles'
+type RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call struct {
+	*mock.Call
+}
+
+// AddAssigneeToExistingRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - assignment role.RoleAssignment
+//   - roleIDs []string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) AddAssigneeToExistingRoles(ctx any, assignment any, roleIDs any) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	return &RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call{Call: _e.mock.On("AddAssigneeToExistingRoles", ctx, assignment, roleIDs)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call) Run(run func(ctx context.Context, assignment role.RoleAssignment, roleIDs []string)) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 role.RoleAssignment
+		if args[1] != nil {
+			arg1 = args[1].(role.RoleAssignment)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call) Return(serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call) RunAndReturn(run func(ctx context.Context, assignment role.RoleAssignment, roleIDs []string) *common.ServiceError) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AddAssigneesToRoles provides a mock function for the type RoleAssignmentServiceInterfaceMock
 func (_mock *RoleAssignmentServiceInterfaceMock) AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment, roleIDs []string) *common.ServiceError {
 	ret := _mock.Called(ctx, assignments, roleIDs)
@@ -470,6 +535,82 @@ func (_c *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call) Return(ro
 }
 
 func (_c *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call) RunAndReturn(run func(ctx context.Context, id string, ouID string, assigneeID string) (*role.RoleAssignmentWithDisplay, *common.ServiceError)) *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetDirectRoleIDs provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) GetDirectRoleIDs(ctx context.Context, assigneeID string, ouID string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, assigneeID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDirectRoleIDs")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, assigneeID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []string); ok {
+		r0 = returnFunc(ctx, assigneeID, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, assigneeID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDirectRoleIDs'
+type RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call struct {
+	*mock.Call
+}
+
+// GetDirectRoleIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - assigneeID string
+//   - ouID string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetDirectRoleIDs(ctx any, assigneeID any, ouID any) *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call {
+	return &RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call{Call: _e.mock.On("GetDirectRoleIDs", ctx, assigneeID, ouID)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call) Run(run func(ctx context.Context, assigneeID string, ouID string)) *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call) Return(strings []string, serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call) RunAndReturn(run func(ctx context.Context, assigneeID string, ouID string) ([]string, *common.ServiceError)) *RoleAssignmentServiceInterfaceMock_GetDirectRoleIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }

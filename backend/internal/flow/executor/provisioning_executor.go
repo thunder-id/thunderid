@@ -49,6 +49,7 @@ type provisioningExecutor struct {
 	roleAssignmentService role.RoleAssignmentServiceInterface
 	entityTypeService     entitytype.EntityTypeServiceInterface
 	authnProvider         providers.AuthnProviderManager
+	syncer                *federatedSyncer
 	logger                *log.Logger
 }
 
@@ -87,15 +88,13 @@ func newProvisioningExecutor(
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
 				{Property: common.NodePropertyAssignGroup},
 				{Property: common.NodePropertyAssignRole},
-				{Property: propertyKeySeedGroupsFromMapping},
-				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
 				{Property: propertyKeyProvisioningOU},
 			},
 		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil)
+		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil, nil)
 
 	return &provisioningExecutor{
 		Executor:                     base,
@@ -108,7 +107,11 @@ func newProvisioningExecutor(
 		roleAssignmentService:        roleAssignmentService,
 		entityTypeService:            entityTypeService,
 		authnProvider:                authnProvider,
-		logger:                       logger,
+		syncer: newFederatedSyncer(ExecutorDependencies{
+			EntityProvider: entityProvider, EntityTypeService: entityTypeService, GroupService: groupService,
+			RoleAssignmentService: roleAssignmentService, AuthnProvider: authnProvider,
+		}),
+		logger: logger,
 	}
 }
 
@@ -228,7 +231,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		execResp.RuntimeData[userAttributeUserID] = entityID
 	}
 
-	return p.completeProvisioning(ctx, category, entityID, execResp, logger), nil
+	return p.completeProvisioning(ctx, category, entityID, execResp, logger)
 }
 
 // isSelfRegistering reports whether the flow registers the person running it: self-registration, or
@@ -296,6 +299,9 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
 			return nil
 		}
+		if ok, err := p.syncer.syncPendingUser(ctx, execResp, holderIDs[0], logger); !ok {
+			return err
+		}
 	}
 	execResp.Status = providers.ExecComplete
 	return nil
@@ -336,8 +342,12 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 	if err != nil {
 		return nil, false, err
 	}
+	// A federated sign-in whose connection keeps attributes to the session can drop every claim, and
+	// still creates the user so the federated link is saved.
+	keepsFederatedToSession := category == entitytype.TypeCategoryUser && p.attributesSessionOnly(ctx) &&
+		federatedIdentityFrom(ctx) != nil
 	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 &&
-		!hasRecordValues(ctx, category) {
+		!hasRecordValues(ctx, category) && !keepsFederatedToSession {
 		logger.Debug(ctx.Context, "No entity attributes provided for provisioning")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrProvisioningAttrsMissing, category)
@@ -467,14 +477,16 @@ func (p *provisioningExecutor) createEntity(ctx *providers.NodeContext, category
 // authentication as the provisioned entity, and the runtime flags the rest of the flow reads.
 func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse,
-	logger *log.Logger) *providers.ExecutorResponse {
-	if err := p.assignGroupsAndRoles(ctx, category, entityID); err != nil {
-		logger.Error(ctx.Context, "Failed to assign groups and roles to the provisioned entity",
-			log.MaskedString(log.LoggerKeyEntityID, entityID),
-			log.Error(err))
+	logger *log.Logger) (*providers.ExecutorResponse, error) {
+	if svcErr := p.assignGroupsAndRoles(ctx, category, entityID); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, fmt.Errorf("failed to assign groups and roles to the provisioned entity: %s", svcErr.Code)
+		}
+		logger.Debug(ctx.Context, "Failed to assign groups and roles to the provisioned entity",
+			log.String("errorCode", svcErr.Code))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrProvisioningAssignmentFailed, category)
-		return execResp
+		return execResp, nil
 	}
 
 	// An agent is never the flow's signed-in entity: whoever created it, or the user who registered it,
@@ -482,7 +494,7 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 	if category != entitytype.TypeCategoryAgent {
 		p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
 		if execResp.Status == providers.ExecFailure {
-			return execResp
+			return execResp, nil
 		}
 	}
 
@@ -493,7 +505,7 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 		execResp.RuntimeData[common.RuntimeKeyUserAutoProvisioned] = dataValueTrue
 	}
 
-	return execResp
+	return execResp, nil
 }
 
 // authenticateProvisionedEntity authenticates the newly provisioned entity and updates the
@@ -743,10 +755,7 @@ func (p *provisioningExecutor) buildMissingInputs(
 			continue
 		}
 		nodeInp, inNodeInputs := nodeInputMap[attr.Attribute]
-		effectiveRequired := attr.Required
-		if inNodeInputs {
-			effectiveRequired = attr.Required || nodeInp.Required
-		}
+		effectiveRequired := isEffectivelyRequired(attr, ctx.NodeInputs)
 
 		if attr.Credential {
 			if !effectiveRequired && !promptOptionalCredentials && !inNodeInputs {
@@ -875,9 +884,28 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 	return 0
 }
 
+// isEffectivelyRequired reports whether attr must have a value: the entity type requires it, or a node
+// input raises it to required. A node input cannot lower a required attribute to optional.
+func isEffectivelyRequired(attr entitytype.AttributeInfo, nodeInputs []providers.Input) bool {
+	return attr.Required || slices.ContainsFunc(nodeInputs, func(inp providers.Input) bool {
+		return inp.Identifier == attr.Attribute && inp.Required
+	})
+}
+
+// attributesSessionOnly reports whether the federated connection keeps attributes to the session.
+func (p *provisioningExecutor) attributesSessionOnly(ctx *providers.NodeContext) bool {
+	return ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] == string(providers.SyncModeSessionOnly)
+}
+
+// storesClaim reports whether a provider claim for attr is stored on the entity. A connection that
+// keeps attributes to the session stores only the claims for attributes the flow requires.
+func (p *provisioningExecutor) storesClaim(ctx *providers.NodeContext, attr entitytype.AttributeInfo) bool {
+	return !p.attributesSessionOnly(ctx) || isEffectivelyRequired(attr, ctx.NodeInputs)
+}
+
 // isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs, the
-// runtime data or, for a non-credential attribute, the external identity's claims. Credentials are
-// never taken from claims, so a claim never stands in for one.
+// runtime data or, for a non-credential attribute, a stored claim of the external identity.
+// Credentials are never taken from claims, so a claim never stands in for one.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extIdentity *core.ExternalIdentity,
 	attr entitytype.AttributeInfo) bool {
 	if val, ok := ctx.UserInputs[attr.Attribute]; ok && val != "" {
@@ -932,7 +960,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
-				claimValue != "" {
+				claimValue != "" && p.storesClaim(ctx, a) {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
 			}
 		}
@@ -1334,25 +1362,27 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	ctx *providers.NodeContext,
 	category entitytype.TypeCategory,
 	entityID string,
-) error {
+) *tidcommon.ServiceError {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
 
-	// Seeding from the authorization mapping (rule-based or direct) is a one-time assignment at
-	// creation, it opts in to whatever the federated login's mapping already resolved for this
-	// entity's claims, alongside the fixed lists above.
-	if isSeedGroupsFromMappingEnabled(ctx) {
-		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
-		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
-	}
-	if isSeedRolesFromMappingEnabled(ctx) {
-		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
+	// Groups and roles the federated login's authorization mapping resolved are stored on the new
+	// user, alongside the fixed lists above, unless the connection keeps them to the session. They
+	// describe the signed-in user, so an agent the user registers doesn't take them.
+	var mappedGroupIDs, mappedRoleIDs []string
+	if category == entitytype.TypeCategoryUser &&
+		ctx.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] != string(providers.SyncModeSessionOnly) {
+		mappedGroupIDs = slices.DeleteFunc(
+			systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " "),
+			func(id string) bool { return slices.Contains(groupIDs, id) })
+		mappedRoleIDs = slices.DeleteFunc(
+			systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " "),
+			func(id string) bool { return slices.Contains(roleIDs, id) })
 	}
 
-	if len(groupIDs) == 0 && len(roleIDs) == 0 {
+	if len(groupIDs) == 0 && len(roleIDs) == 0 && len(mappedGroupIDs) == 0 && len(mappedRoleIDs) == 0 {
 		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
 		return nil
 	}
@@ -1360,47 +1390,44 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	logger.Debug(ctx.Context, "Assigning groups and roles to the provisioned entity",
 		log.MaskedString(log.LoggerKeyEntityID, entityID),
 		log.String("groupIDs", strings.Join(groupIDs, ",")),
-		log.String("roleIDs", strings.Join(roleIDs, ",")))
+		log.String("roleIDs", strings.Join(roleIDs, ",")),
+		log.String("mappedGroupIDs", strings.Join(mappedGroupIDs, ",")),
+		log.String("mappedRoleIDs", strings.Join(mappedRoleIDs, ",")))
 
+	member := group.Member{ID: entityID, Type: traitsFor(category).groupMemberType}
 	if len(groupIDs) > 0 {
 		if svcErr := p.groupService.AddMembersToGroups(ctx.Context,
-			[]group.Member{{ID: entityID, Type: traitsFor(category).groupMemberType}}, groupIDs); svcErr != nil {
-			return fmt.Errorf("group assignment failed: %s", svcErr.Error.DefaultValue)
+			[]group.Member{member}, groupIDs); svcErr != nil {
+			return svcErr
 		}
 	}
 
+	assignee := role.RoleAssignment{ID: entityID, Type: traitsFor(category).roleAssigneeType}
 	if len(roleIDs) > 0 {
 		if svcErr := p.roleAssignmentService.AddAssigneesToRoles(ctx.Context,
-			[]role.RoleAssignment{{ID: entityID, Type: traitsFor(category).roleAssigneeType}}, roleIDs); svcErr != nil {
-			return fmt.Errorf("role assignment failed: %s", svcErr.Error.DefaultValue)
+			[]role.RoleAssignment{assignee}, roleIDs); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	// Mapped targets skip groups and roles that no longer exist, so a stale mapping doesn't fail the
+	// sign-in.
+	if len(mappedGroupIDs) > 0 {
+		if svcErr := p.groupService.AddMemberToExistingGroups(ctx.Context, member, mappedGroupIDs); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	if len(mappedRoleIDs) > 0 {
+		if svcErr := p.roleAssignmentService.AddAssigneeToExistingRoles(
+			ctx.Context, assignee, mappedRoleIDs); svcErr != nil {
+			return svcErr
 		}
 	}
 
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyEntityID, entityID))
 	return nil
-}
-
-// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
-// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
 }
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.
