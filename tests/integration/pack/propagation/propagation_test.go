@@ -91,3 +91,36 @@ func (ts *PropagationTestSuite) TestAUserSyncedFromTheControlPlaneIsReadOnlyOnTh
 		strings.Contains(string(raw), managedUserCode),
 		"the data plane did not refuse a delete with %s: %d %s", managedUserCode, status, raw)
 }
+
+// A trusted issuer that accepts ID-JAGs without token exchange deploys to the data plane with ID-JAG
+// acceptance still on.
+func (ts *PropagationTestSuite) TestATrustedIssuerAcceptingIDJAGsReachesTheDataPlane() {
+	issuer := "https://" + packtest.Unique("idjag-issuer") + ".example.com"
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.Call(ts.CP, http.MethodPost, "/connections/oidc", map[string]any{
+		"name":                 packtest.Unique("pack-idjag"),
+		"ouId":                 packtest.DefaultOUID,
+		"issuer":               issuer,
+		"jwksEndpoint":         issuer + "/oauth2/jwks",
+		"tokenExchangeEnabled": false,
+		"idJagEnabled":         true,
+	}, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	ts.RemoveOnCleanup("/connections/oidc/" + created.ID)
+	ts.Sync()
+
+	var held struct {
+		Issuer               string `json:"issuer"`
+		TokenExchangeEnabled *bool  `json:"tokenExchangeEnabled"`
+		IDJagEnabled         *bool  `json:"idJagEnabled"`
+	}
+	status, raw = ts.Call(ts.DP, http.MethodGet, "/connections/oidc/"+created.ID, nil, &held)
+	ts.Require().Equal(http.StatusOK, status, "the trusted issuer did not reach the data plane: %s", raw)
+	ts.Equal(issuer, held.Issuer)
+	ts.Require().NotNil(held.IDJagEnabled, "ID-JAG acceptance was dropped on the way to the data plane: %s", raw)
+	ts.True(*held.IDJagEnabled)
+	ts.Require().NotNil(held.TokenExchangeEnabled)
+	ts.False(*held.TokenExchangeEnabled)
+}
