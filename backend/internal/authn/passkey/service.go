@@ -28,6 +28,12 @@ const (
 
 	// CredentialType is the credential type key that identifies passkey credentials in the provider chain.
 	CredentialType = authnprovidercm.CredentialTypePasskey
+
+	// maxPasskeyNameLength is the most characters a passkey name may have.
+	maxPasskeyNameLength = 64
+
+	// metadataKeyName is the stored credential metadata key that holds the passkey name.
+	metadataKeyName = "name"
 )
 
 // PasskeyServiceInterface defines the interface for passkey authentication and registration operations.
@@ -47,6 +53,10 @@ type PasskeyServiceInterface interface {
 	FinishAuthentication(
 		ctx context.Context, req *PasskeyAuthenticationFinishRequest,
 	) (*common.AuthnResult, *tidcommon.ServiceError)
+
+	// Management methods
+	ListPasskeys(ctx context.Context, userID string) ([]PasskeyInfo, *tidcommon.ServiceError)
+	DeletePasskey(ctx context.Context, userID, passkeyID string) *tidcommon.ServiceError
 }
 
 // passkeyService is the default implementation of PasskeyServiceInterface.
@@ -217,6 +227,10 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 		logger.Error(ctx, "Failed to retrieve session data", log.String("error", svcErr.Error.DefaultValue))
 		return nil, svcErr
 	}
+	if req.UserID != "" && req.UserID != userID {
+		logger.Debug(ctx, "Registration session belongs to a different user")
+		return nil, &ErrorInvalidSessionToken
+	}
 
 	// Retrieve entity
 	coreEntity, svcErr := w.getEntity(ctx, userID)
@@ -258,7 +272,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	}
 
 	// Store credential in database using user service
-	if err := w.storePasskeyCredential(ctx, userID, credential); err != nil {
+	if err := w.storePasskeyCredential(ctx, userID, credential, strings.TrimSpace(req.Name)); err != nil {
 		logger.Error(ctx, "Failed to store credential in database", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -515,6 +529,67 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	}, nil
 }
 
+// ListPasskeys returns the passkeys registered for a user.
+func (w *passkeyService) ListPasskeys(
+	ctx context.Context, userID string,
+) ([]PasskeyInfo, *tidcommon.ServiceError) {
+	entries, svcErr := w.getStoredPasskeyEntries(ctx, userID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	passkeys := make([]PasskeyInfo, 0, len(entries))
+	for _, entry := range entries {
+		var credential webauthnCredential
+		if err := json.Unmarshal([]byte(entry.Value), &credential); err != nil {
+			w.logger.Warn(ctx, "Skipping a passkey credential that cannot be read",
+				log.MaskedString("userID", userID), log.Error(err))
+			continue
+		}
+		passkeys = append(passkeys, PasskeyInfo{
+			ID:   base64.RawURLEncoding.EncodeToString(credential.ID),
+			Name: entry.Metadata[metadataKeyName],
+		})
+	}
+	return passkeys, nil
+}
+
+// DeletePasskey removes one of a user's passkeys. A passkey the user does not have is reported as
+// not found.
+func (w *passkeyService) DeletePasskey(ctx context.Context, userID, passkeyID string) *tidcommon.ServiceError {
+	entries, svcErr := w.getStoredPasskeyEntries(ctx, userID)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	remaining := make([]entity.StoredCredential, 0, len(entries))
+	for _, entry := range entries {
+		var credential webauthnCredential
+		if err := json.Unmarshal([]byte(entry.Value), &credential); err == nil &&
+			base64.RawURLEncoding.EncodeToString(credential.ID) == passkeyID {
+			continue
+		}
+		remaining = append(remaining, entry)
+	}
+	if len(remaining) == len(entries) {
+		return &ErrorCredentialNotFound
+	}
+
+	payload, err := json.Marshal(map[string][]entity.StoredCredential{
+		CredentialType: remaining,
+	})
+	if err != nil {
+		w.logger.Error(ctx, "Failed to marshal passkey credentials", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if err := w.entityService.UpdateSystemCredentials(ctx, userID, payload); err != nil {
+		w.logger.Error(ctx, "Failed to remove passkey credential",
+			log.MaskedString("userID", userID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
 // refuseHeldEnrolment refuses a passkey enrolment for an identity that is suspended or whose lifespan
 // has ended.
 func (w *passkeyService) refuseHeldEnrolment(ctx context.Context, userID string,
@@ -598,9 +673,10 @@ func (w *passkeyService) decodePasskeyCredentials(ctx context.Context,
 	return credentials
 }
 
-// storePasskeyCredential appends a new passkey credential to the entity's stored set.
+// storePasskeyCredential appends a new passkey credential, with its optional name, to the entity's
+// stored set.
 func (w *passkeyService) storePasskeyCredential(
-	ctx context.Context, entityID string, credential *webauthnCredential,
+	ctx context.Context, entityID string, credential *webauthnCredential, name string,
 ) error {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -617,9 +693,13 @@ func (w *passkeyService) storePasskeyCredential(
 		return fmt.Errorf("failed to load existing passkey credentials: %s", svcErr.Error.DefaultValue)
 	}
 
-	existingEntries = append(existingEntries, entity.StoredCredential{
+	newEntry := entity.StoredCredential{
 		Value: string(credentialJSON),
-	})
+	}
+	if name != "" {
+		newEntry.Metadata = map[string]string{metadataKeyName: name}
+	}
+	existingEntries = append(existingEntries, newEntry)
 
 	payload, err := json.Marshal(map[string][]entity.StoredCredential{
 		CredentialType: existingEntries,
@@ -642,7 +722,7 @@ func (w *passkeyService) storePasskeyCredential(
 }
 
 // updatePasskeyCredential updates an existing passkey credential, preserving the storage
-// metadata (StorageAlgo, StorageAlgoParams) of the original entry.
+// metadata (StorageAlgo, StorageAlgoParams, Metadata) of the original entry.
 func (w *passkeyService) updatePasskeyCredential(
 	ctx context.Context, entityID string, updatedCredential *webauthnCredential,
 ) error {
@@ -678,6 +758,7 @@ func (w *passkeyService) updatePasskeyCredential(
 				StorageAlgo:       entry.StorageAlgo,
 				StorageAlgoParams: entry.StorageAlgoParams,
 				Value:             string(credentialJSON),
+				Metadata:          entry.Metadata,
 			})
 			found = true
 

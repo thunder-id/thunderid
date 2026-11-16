@@ -39,6 +39,7 @@ This model covers:
 - Receipt of a back-channel logout token by an SDK that runs on a server, and the ending of the
   local sessions it names.
 - Starting a verification of the signed-in user's own email address or mobile number.
+- Listing, adding, and removing the signed-in user's own passkeys.
 - Configuration supplied by the host application, where it can weaken the above.
 
 Out of scope:
@@ -579,6 +580,69 @@ sequenceDiagram
 | 4 | [Tampering] | The application shows an attribute as verified that the server never recorded | [No] | Status comes only from the read-only `verifiedAttributes` of `/users/me`, re-read after `COMPLETE`; the SDK never marks an attribute verified locally, and an absent field shows neither status (AC10.4) |
 | 5 | [Information Disclosure] | The code reaches a log or a crash report | [No] | The code is a credential under interaction 03 and is never logged (AC10.5) |
 
+#### 09: Managing the signed-in user's own passkeys
+
+**Description**
+
+A signed-in user adds or removes a passkey on their own account. To add one, the SDK sends the
+relying party ID to `register/start` with the user's access token. The server takes the user
+from the token and returns the credential creation options and a session token. The SDK hands
+the options to the platform's passkey API, which asks the user to unlock the device and creates
+the credential. The SDK sends the credential, the session token and an optional name to
+`register/finish`, and the server checks the credential against the application's passkey
+origins before saving it. To remove one, the SDK deletes it by ID, then tells the platform's
+passkey provider where the platform supports it.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Host application | SDK, authenticated transport, platform passkey API | `/users/me/passkeys`, the user's passkey provider |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Host application
+  participant S as SDK
+  participant P as Platform passkey API
+  participant R as /users/me/passkeys
+  A->>S: add passkey
+  S->>R: access token, relying party ID
+  R->>S: creation options, session token
+  S->>P: creation options
+  P->>S: credential
+  S->>R: credential, session token, name
+  R->>S: saved passkey
+  A->>S: remove passkey
+  S->>R: access token, passkey ID
+  S->>P: signal the removed credential
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The access token, and the session token that binds a registration to its user |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | |
+| Authentication | Bearer access token on every request | The server binds the user from it |
+| Accessibility | [Restricted] | A signed-in user, for passkeys on their own account |
+| Authorization and Access Control | Server-side: the token's subject, the session token, and the application's passkey origins | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Elevation of Privilege] | A caller names another user to add a passkey to, or remove one from, that user's account | [No] | The SDK sends no user identifier; the server takes the user only from the access token (AC11.1) |
+| 2 | [Elevation of Privilege] | Someone holding a stolen access token registers a passkey of their own, and keeps signing in after the token expires | [Yes] | The routes need only a valid access token, with no fresh authentication. The SDK cannot require one. Recorded as a residual |
+| 3 | [Spoofing] | A page on another origin, or a relying party ID the application does not own, gets a passkey saved for the account | [No] | The platform only creates a credential for a relying party ID the origin may claim, and the server checks the credential's origin against the application's passkey origins before saving it |
+| 4 | [Information Disclosure] | A call that names an explicit URL sends the access token to a host other than the server | [No] | The request goes through the SDK's authenticated transport, so the attachment rules of interaction 04 apply |
+| 5 | [Information Disclosure] | The credential or the session token reaches a log or a crash report | [No] | Both are submitted and discarded as credentials under interaction 03, and are never logged (AC11.7) |
+| 6 | [Denial of Service] | A single click removes the user's only passkey and leaves them without a way to sign in | [No] | A component asks before it removes a passkey, and warns when it is the last (AC11.4) |
+| 7 | [Tampering] | The passkeys on the device and on the account drift apart, so a removed passkey still appears at sign-in, or a created one is never saved | [Yes] | A created credential is always finished, named or not (AC11.2), and a removal is signalled to the provider where the platform supports it (AC11.5). Where it does not, or the finish fails, the copy on the device stays. Recorded as a residual |
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -671,6 +735,12 @@ identifiers a user supplies during authentication and recovery.
 - Each self user attribute verification sends a message to the user's contact. The server caps
   codes per execution, not new executions, so send volume across executions is limited by the
   deployment's rate limits and the provider's quotas.
+- Adding a passkey needs only a valid access token. Someone holding a stolen token can register
+  a passkey of their own and keep access after the token expires, until the user removes it.
+  Requiring fresh authentication before registration is a server decision.
+- A passkey stays with the user's passkey provider when the platform cannot be told it was
+  removed, or when a registration fails after the device created the credential. The provider
+  offers it at sign-in, where the server refuses it. The user removes it from the provider.
 
 ## Appendix
 
@@ -694,3 +764,4 @@ identifiers a user supplies during authentication and recovery.
 | 0.3 | 2026-10-12 | Interaction 07 added for a federated redirect inside an embedded flow. A callback without a `state` is never submitted, and mobile SDKs reject one that does not echo the request's `state`. Authorization codes, and callback URLs that carry one, are never logged. |
 | 0.4 | 2026-11-03 | Interaction 08 added for starting a self user attribute verification. |
 | 0.5 | 2026-11-10 | Interaction 08: the built-in profile waits for Verify after a contact save, which limits threat 3 (AC10.6). |
+| 0.6 | 2026-11-16 | Interaction 09 added for managing the signed-in user's own passkeys. |

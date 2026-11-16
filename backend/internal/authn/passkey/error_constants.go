@@ -206,4 +206,17 @@ var (
 			DefaultValue: "No credentials found for the user. Please register a credential first",
 		},
 	}
+	// ErrorInvalidPasskeyName is returned when the passkey name is too long.
+	ErrorInvalidPasskeyName = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "PSK-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.passkeyservice.invalid_passkey_name",
+			DefaultValue: "Invalid passkey name",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.passkeyservice.invalid_passkey_name_description",
+			DefaultValue: "The passkey name must be at most {{param(maxLength)}} characters",
+		},
+	}
 )
