@@ -6,6 +6,7 @@ package export
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -359,4 +360,33 @@ func TestSecretFieldsMatchWhereTheExportWritesSecrets(t *testing.T) {
 			assert.Contains(t, lister.SecretFields(), p.convertPathToYAMLPath(reflect.TypeOf(tc.model), path), name)
 		}
 	}
+}
+
+// The prefix of a resource leads every name PlaceholderValues gives its values.
+func TestPlaceholderPrefixLeadsTheNamesOfTheResourcesValues(t *testing.T) {
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+
+	prefix, err := svc.PlaceholderPrefix(resourceTypeApplication, testResourceID)
+	require.NoError(t, err)
+	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,
+		confidentialApp("the-id", "the-secret"))
+	require.NoError(t, err)
+
+	require.NotEmpty(t, variables)
+	require.NotEmpty(t, secrets)
+	for _, values := range []map[string]string{variables, secrets} {
+		for name := range values {
+			assert.True(t, strings.HasPrefix(name, prefix), "%q does not start with %q", name, prefix)
+		}
+	}
+}
+
+// A resource of a type nothing exports, or without an ID, has no prefix.
+func TestPlaceholderPrefixRefusesAnUnregisteredTypeOrAMissingID(t *testing.T) {
+	_, err := referenceExportService(t).PlaceholderPrefix(resourceTypeApplication, testResourceID)
+	assert.Error(t, err)
+
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	_, err = svc.PlaceholderPrefix(resourceTypeApplication, "")
+	assert.Error(t, err)
 }

@@ -1203,6 +1203,9 @@ func (us *userService) credentialUpdateError(ctx context.Context, logger *log.Lo
 // DeleteUser deletes the user with the given ID.
 func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError {
 	svcErr := us.deleteUser(ctx, userID)
+	if svcErr == nil {
+		us.releaseValues(ctx, userID)
+	}
 	us.publishUserEvent(ctx, audit.EventUserDelete, audit.ActionDelete, userID, svcErr)
 	return svcErr
 }

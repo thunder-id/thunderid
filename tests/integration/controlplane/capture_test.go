@@ -43,6 +43,18 @@ func newCapturingGateway() *capturingGateway {
 			return
 		}
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if prefix, found := strings.CutPrefix(r.URL.Query().Get("filter"), "name sw "); found &&
+			r.Method == http.MethodGet && len(parts) == 1 {
+			g.list(w, parts[0], strings.Trim(prefix, `"`))
+			return
+		}
+		if r.Method == http.MethodDelete && len(parts) == 2 {
+			g.mu.Lock()
+			delete(g.values, parts[0]+"/"+parts[1])
+			g.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if r.Method != http.MethodPut || len(parts) != 2 {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -70,6 +82,35 @@ func newCapturingGateway() *capturingGateway {
 		_, _ = w.Write([]byte(`{"name":"` + parts[1] + `"}`))
 	}))
 	return g
+}
+
+// list answers a listing of the names a collection holds that start with a prefix, as a store does.
+func (g *capturingGateway) list(w http.ResponseWriter, collection, prefix string) {
+	g.mu.Lock()
+	entries := []map[string]any{}
+	for key := range g.values {
+		if name, found := strings.CutPrefix(key, collection+"/"); found && strings.HasPrefix(name, prefix) {
+			entries = append(entries, map[string]any{"name": name, "exists": true})
+		}
+	}
+	g.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"totalResults": len(entries), "count": len(entries),
+		collection: entries})
+}
+
+// goneSoon waits for nothing to be held under a name in a collection, and reports whether it went.
+func (g *capturingGateway) goneSoon(collection, name string) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, ok := g.held(collection, name); !ok {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // heldSoon waits for a value to be set under a name in a collection, since the control plane writes
@@ -187,6 +228,35 @@ func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsValuesReachTheDefaultGa
 	ts.JSONEq(`["https://cp-capture.example.com/callback"]`, held)
 }
 
+// A deleted application's values leave the default gateway's store with it.
+func (ts *ControlPlaneTestSuite) TestADeletedApplicationsValuesLeaveTheDefaultGateway() {
+	g := ts.withDefaultGateway()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:         ts.ouID,
+		Name:         unique("CP Release App"),
+		ClientID:     unique("cp-release-client"),
+		ClientSecret: unique("cp-release-secret"),
+		RedirectURIs: []string{"https://cp-release.example.com/callback"},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+	names := map[string]string{
+		variableName("APPLICATION", appID, "CLIENT_ID"):     "variables",
+		variableName("APPLICATION", appID, "CLIENT_SECRET"): "secrets",
+		variableName("APPLICATION", appID, "REDIRECT_URIS"): "variables",
+	}
+	for name, collection := range names {
+		_, ok := g.heldSoon(collection, name)
+		ts.Require().True(ok, "%s was not captured", name)
+	}
+
+	ts.Require().NoError(testutils.DeleteApplication(appID))
+
+	for name, collection := range names {
+		ts.True(g.goneSoon(collection, name), "%s was left on the gateway", name)
+	}
+}
+
 // A value the gateway's store refuses is written again a little later, so a store that is briefly
 // down loses nothing.
 func (ts *ControlPlaneTestSuite) TestACapturedValueRefusedOnceIsWrittenAgain() {
@@ -277,6 +347,10 @@ func (ts *ControlPlaneTestSuite) TestAWrittenUsersPasswordReachesTheDefaultGatew
 
 	ts.True(g.holdsValueSoon("secrets", password), "the password was not captured as a secret")
 	ts.False(g.holdsValue("variables", password), "the password was captured as a variable")
+
+	ts.Require().NoError(testutils.DeleteUser(userID))
+	ts.True(g.goneSoon("secrets", variableName("USER", userID, "PASSWORD")),
+		"the deleted user's password was left on the gateway")
 }
 
 // A connection backed by an identity provider leaves its client secret in the default gateway's

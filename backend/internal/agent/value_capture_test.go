@@ -21,11 +21,17 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// released records each "<resource type>/<ID>" handed to ReleaseValues.
+	released []string
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
+}
+
+func (r *recordingCapturer) ReleaseValues(_ context.Context, resourceType, resourceID string) {
+	r.released = append(r.released, resourceType+"/"+resourceID)
 }
 
 // captured returns the one agent handed to the capturer, in the shape its exporter reads back.
@@ -319,4 +325,43 @@ func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_CapturesCredentia
 
 	agent := capturer.captured(suite)
 	assert.Equal(suite.T(), map[string]interface{}{"password": "rotated"}, agent.Credentials)
+}
+
+// A deleted agent's captured values go with it.
+func (suite *AgentServiceTestSuite) TestDeleteAgent_ReleasesTheAgentsValues() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-abc"), nil)
+	clearMockCalls(mockInbound, "DeleteInboundClient")
+	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).Return(nil)
+	clearMockCalls(mockEntity, "DeleteEntity")
+	mockEntity.On("DeleteEntity", mock.Anything, testAgentID).Return(nil)
+
+	suite.Require().Nil(svc.DeleteAgent(context.Background(), testAgentID))
+	assert.Equal(suite.T(), []string{resourceTypeAgent + "/" + testAgentID}, capturer.released)
+}
+
+// An owner's deleted agent has its captured values go with it, and a refused delete keeps them.
+func (suite *AgentServiceTestSuite) TestDeleteOwnedAgent_ReleasesTheAgentsValues() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	owned := withKind(buildAgentEntityFixture(testAgentName, "", "alice", "cid-123"),
+		providers.AgentKindPersonalAssistant)
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(owned, nil)
+	clearMockCalls(mockInbound, "DeleteInboundClient")
+	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).Return(nil).Once()
+	clearMockCalls(mockEntity, "DeleteEntity")
+	mockEntity.On("DeleteEntity", mock.Anything, testAgentID).Return(nil).Once()
+
+	suite.Require().NotNil(svc.DeleteOwnedAgent(ownerContext(testOUID), "bob", testAgentID,
+		providers.AgentKindPersonalAssistant))
+	assert.Empty(suite.T(), capturer.released)
+	suite.Require().Nil(svc.DeleteOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant))
+	assert.Equal(suite.T(), []string{resourceTypeAgent + "/" + testAgentID}, capturer.released)
 }

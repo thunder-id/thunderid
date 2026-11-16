@@ -992,6 +992,9 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 	if svcErr == errResourceServerNotFoundNoop {
 		return nil
 	}
+	if svcErr == nil {
+		rs.releaseValues(ctx, id)
+	}
 	rs.publishEvent(ctx, audit.EventResourceServerDelete, audit.TargetTypeResourceServer, audit.ActionDelete, id,
 		svcErr)
 	return svcErr

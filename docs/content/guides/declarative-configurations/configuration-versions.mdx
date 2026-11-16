@@ -204,7 +204,9 @@ sent, the control plane asks the gateway's store for each name.
   resources the apply sends are checked: one the gateway already holds as it is, or one left out of
   the selection, needs no value yet.
 - An apply is refused with `409` (`GTW-1017`) until the gateway holds them all. Nothing is sent and
-  nothing is recorded.
+  nothing is recorded. On a control plane's first gateway, that includes the values of a resource
+  deleted since, which the delete removed from the gateway (see
+  [Values Captured on a Control Plane](./value-references.mdx#values-captured-on-a-control-plane)).
 
 Set the missing values through the control plane, as described in
 [Manage a Gateway's Values](#manage-a-gateways-values), then apply again.

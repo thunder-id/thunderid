@@ -141,3 +141,25 @@ func TestDeriveVariableNameSeparatorNeverAppearsInsideAPart(t *testing.T) {
 		}
 	}
 }
+
+// Every name of a resource starts with its prefix, and no name of another resource or type does.
+func TestResourcePrefixLeadsOnlyTheResourcesOwnNames(t *testing.T) {
+	prefix := ResourcePrefix("user", idAlice)
+	if prefix != "USER__0198F3A17C2E7B109A445D3E8F21C6B7__" {
+		t.Fatalf("ResourcePrefix = %q", prefix)
+	}
+	if name := DeriveVariableName("user", idAlice, "password"); !strings.HasPrefix(name, prefix) {
+		t.Errorf("%q does not start with %q", name, prefix)
+	}
+	for _, name := range []string{
+		DeriveVariableName("user", idOther, "password"),
+		DeriveVariableName("user_type", idAlice, "password"),
+	} {
+		if strings.HasPrefix(name, prefix) {
+			t.Errorf("%q starts with %q", name, prefix)
+		}
+	}
+	if got := ResourcePrefix("", idAlice); got != "_0198F3A17C2E7B109A445D3E8F21C6B7__" {
+		t.Errorf("ResourcePrefix without a type = %q", got)
+	}
+}

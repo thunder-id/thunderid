@@ -137,10 +137,14 @@ func CredentialPlaceholders(resourceType, resourceID string, credentials []strin
 // what a read would not return, such as a client secret it has just generated. The resource type is
 // the one its exporter is registered under.
 //
-// It is optional and best-effort: a service with none behaves exactly as before, and a capture that
-// fails is logged by the capturer and never fails the write that triggered it.
+// A service that deletes a resource hands its ID to ReleaseValues once the delete has succeeded, so
+// the values kept for it go with it.
+//
+// It is optional and best-effort: a service with none behaves exactly as before, and a capture or
+// release that fails is logged by the capturer and never fails the write that triggered it.
 type ValueCapturer interface {
 	CaptureValues(ctx context.Context, resourceType string, resource interface{})
+	ReleaseValues(ctx context.Context, resourceType, resourceID string)
 }
 
 // ResourceViewer is implemented by an exporter that can show a document it exported the way the

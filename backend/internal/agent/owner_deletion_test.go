@@ -94,6 +94,20 @@ func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_DeletesTheOwne
 	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, "agent-ordinary")
 }
 
+// A personal agent deleted with its owner has its captured values go with it.
+func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_ReleasesThePersonalAgentsValues() {
+	svc, mockEntity, _ := suite.ownerDeletionService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	clearMockCalls(mockEntity, "DeleteEntity")
+	mockEntity.On("DeleteEntity", mock.Anything, "agent-personal").Return(nil).Once()
+
+	_, err := svc.CascadeDeleteDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-2")
+
+	suite.Require().NoError(err)
+	suite.Equal([]string{resourceTypeAgent + "/agent-personal"}, capturer.released)
+}
+
 // Any failure aborts the owner's deletion: listing the agents or deleting one.
 func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_FailuresAbort() {
 	suite.Run("listing", func() {

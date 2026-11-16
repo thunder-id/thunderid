@@ -479,6 +479,7 @@ func (s *authorizationDetailMgtService) DeleteAuthorizationDetailType(ctx contex
 		s.logger.Error(ctx, "Failed to delete authorization details type", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
+	s.releaseValues(ctx, id)
 	return nil
 }
 

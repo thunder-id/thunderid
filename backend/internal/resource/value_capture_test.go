@@ -17,11 +17,17 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// released records each "<resource type>/<ID>" handed to ReleaseValues.
+	released []string
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
+}
+
+func (r *recordingCapturer) ReleaseValues(_ context.Context, resourceType, resourceID string) {
+	r.released = append(r.released, resourceType+"/"+resourceID)
 }
 
 // recordCaptures hands the suite's service a capturer and returns it.
@@ -133,4 +139,28 @@ func (suite *ResourceServiceTestSuite) TestCaptureOfNoServerDoesNothing() {
 	suite.service.(*resourceService).captureValues(context.Background(), nil)
 
 	suite.Empty(capturer.resources)
+}
+
+// A deleted resource server's captured values go with it.
+func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_ReleasesTheServersValues() {
+	capturer := suite.recordCaptures()
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything, "rs-123").Return(false, nil)
+	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil)
+
+	suite.Nil(suite.service.DeleteResourceServer(context.Background(), "rs-123"))
+	suite.Equal([]string{resourceTypeResourceServer + "/rs-123"}, capturer.released)
+}
+
+// A resource server whose delete fails keeps its captured values.
+func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_FailedDeleteKeepsTheServersValues() {
+	capturer := suite.recordCaptures()
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything, "rs-123").Return(false, nil)
+	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(errors.New("database error"))
+
+	suite.NotNil(suite.service.DeleteResourceServer(context.Background(), "rs-123"))
+	suite.Empty(capturer.released)
 }

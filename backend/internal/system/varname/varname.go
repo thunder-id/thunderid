@@ -55,18 +55,24 @@ const (
 // Example: ("user", "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7", "password") ->
 // "USER__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD".
 func DeriveVariableName(resourceType, resourceID, fieldName string) string {
-	segments := make([]string, 0, 3)
+	return ResourcePrefix(resourceType, resourceID) + sanitizeSegment(toSnakeCaseUpper(fieldName))
+}
+
+// ResourcePrefix returns the "<TYPE>__<ID>__" every variable name of one resource starts with, and no
+// name of another resource does.
+func ResourcePrefix(resourceType, resourceID string) string {
+	segments := make([]string, 0, 2)
 	if resourceType != "" {
 		segments = append(segments, sanitizeSegment(toSnakeCaseUpper(strings.ReplaceAll(resourceType, " ", "_"))))
 	}
-	segments = append(segments, idSegment(resourceID), sanitizeSegment(toSnakeCaseUpper(fieldName)))
+	segments = append(segments, idSegment(resourceID))
 
-	name := strings.Join(segments, segmentSeparator)
+	prefix := strings.Join(segments, segmentSeparator) + segmentSeparator
 	// A name must not start with a digit.
-	if name[0] >= '0' && name[0] <= '9' {
-		return "_" + name
+	if prefix[0] >= '0' && prefix[0] <= '9' {
+		return "_" + prefix
 	}
-	return name
+	return prefix
 }
 
 // idSegment spells a resource ID so that two IDs never share a spelling. A lower-case UUID, which

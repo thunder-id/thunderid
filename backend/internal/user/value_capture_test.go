@@ -28,11 +28,17 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// released records each "<resource type>/<ID>" handed to ReleaseValues.
+	released []string
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
+}
+
+func (r *recordingCapturer) ReleaseValues(_ context.Context, resourceType, resourceID string) {
+	r.released = append(r.released, resourceType+"/"+resourceID)
 }
 
 // captured returns the one user handed to the capturer, in the shape its exporter reads back.
@@ -202,4 +208,19 @@ func TestACapturedCredentialIsNamedAsTheExportNamesIt(t *testing.T) {
 		assert.Equal(t, "{{."+name+"}}", exported.Credentials["password"])
 		assert.Equal(t, "s3cret", value)
 	}
+}
+
+// A deleted user's captured values go with it, and a refused delete keeps them.
+func TestDeleteUser_ReleasesTheUsersValues(t *testing.T) {
+	capturer := &recordingCapturer{}
+	service := deletingUserService(t, discardingBus{}, true)
+	service.valueCapturer = capturer
+	require.Nil(t, service.DeleteUser(adminContext(), svcTestUserID1))
+	assert.Equal(t, []string{resourceTypeUser + "/" + svcTestUserID1}, capturer.released)
+
+	refused := &recordingCapturer{}
+	service = deletingUserService(t, discardingBus{}, false)
+	service.valueCapturer = refused
+	require.NotNil(t, service.DeleteUser(adminContext(), svcTestUserID1))
+	assert.Empty(t, refused.released)
 }

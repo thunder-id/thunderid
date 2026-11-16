@@ -25,3 +25,10 @@ func (s *authorizationDetailMgtService) captureValues(ctx context.Context, t *pr
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeAuthorizationDetailType, resource)
 }
+
+// releaseValues hands a deleted authorization details type to the value capturer, so the values captured for it go too.
+func (s *authorizationDetailMgtService) releaseValues(ctx context.Context, id string) {
+	if s.valueCapturer != nil {
+		s.valueCapturer.ReleaseValues(ctx, resourceTypeAuthorizationDetailType, id)
+	}
+}

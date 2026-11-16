@@ -445,6 +445,7 @@ func (s *service) deleteByType(ctx context.Context, idpType providers.IDPType, i
 	if svcErr := s.idpService.DeleteIdentityProvider(ctx, id); svcErr != nil {
 		return svcErr
 	}
+	s.releaseValues(ctx, id)
 	return s.deleteSharingPolicies(ctx, id)
 }
 
@@ -601,6 +602,7 @@ func (s *service) deleteSenderByProvider(ctx context.Context, senderType ncommon
 	if svcErr := s.notificationService.DeleteSender(ctx, id); svcErr != nil {
 		return svcErr
 	}
+	s.releaseValues(ctx, id)
 	return s.deleteSharingPolicies(ctx, id)
 }
 
@@ -869,6 +871,7 @@ func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceE
 	if svcErr := s.httpService.DeleteHTTPConnection(ctx, id); svcErr != nil {
 		return svcErr
 	}
+	s.releaseValues(ctx, id)
 	return s.deleteSharingPolicies(ctx, id)
 }
 

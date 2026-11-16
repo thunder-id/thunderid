@@ -72,3 +72,10 @@ func (s *agentService) capture(ctx context.Context, resource *model.AgentGetResp
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeAgent, resource)
 }
+
+// releaseValues hands a deleted agent to the value capturer, so the values captured for it go too.
+func (s *agentService) releaseValues(ctx context.Context, agentID string) {
+	if s.valueCapturer != nil {
+		s.valueCapturer.ReleaseValues(ctx, resourceTypeAgent, agentID)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ const (
 type placeholderValuer interface {
 	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
 		map[string]string, map[string]string, error)
+	PlaceholderPrefix(resourceType, resourceID string) (string, error)
 }
 
 // ValueCapture writes the values a resource's export refers to into the default gateway's store,
@@ -72,13 +74,16 @@ type ValueCapture struct {
 	// than the fill's, even once its own write has finished and it is no longer pending.
 	fills              int
 	capturedDuringFill map[string]bool
+	// releases counts the releases still finding what the gateway holds of a deleted resource.
+	releases int
 }
 
 // pendingValue is one value on its way to a gateway's store: the latest value given for its name,
-// and the write in flight or waiting for it.
+// or its removal, and the write in flight or waiting for it.
 type pendingValue struct {
 	gatewayID, collection, name string
 	value                       string
+	remove                      bool
 	failures                    int
 	timer                       *time.Timer
 	running                     bool
@@ -165,29 +170,51 @@ func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, name := range names {
-		key := gatewayID + "/" + collection + "/" + name
-		p := c.pending[key]
-		if !replace && (p != nil || c.capturedDuringFill[key]) {
-			continue
-		}
-		if replace && c.fills > 0 {
-			c.capturedDuringFill[key] = true
-		}
-		if p == nil {
-			p = &pendingValue{gatewayID: gatewayID, collection: collection, name: name}
-			c.pending[key] = p
-		}
-		p.value = values[name]
-		p.failures = 0
-		if p.running {
-			p.again = true
-			continue
-		}
-		if p.timer != nil {
-			p.timer.Stop()
-		}
-		p.timer = time.AfterFunc(0, func() { c.push(ctx, key) })
+		c.put(ctx, gatewayID, collection, name, values[name], false, !replace)
 	}
+}
+
+// enqueueRemovals puts the removal of each name in a collection on its way to the gateway's store, in
+// place of any value on its way under that name. A fill running meanwhile does not put the value back.
+func (c *ValueCapture) enqueueRemovals(ctx context.Context, gatewayID, collection string, names []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, name := range names {
+		c.put(ctx, gatewayID, collection, name, "", true, false)
+	}
+}
+
+// put puts a value, or its removal, on its way under a name. A fill's value is dropped when one is on
+// its way under the name or was put since a fill started; any other is marked as put meanwhile for a
+// fill running. The caller holds the lock.
+func (c *ValueCapture) put(ctx context.Context, gatewayID, collection, name, value string, remove, fill bool) {
+	key := gatewayID + "/" + collection + "/" + name
+	p := c.pending[key]
+	if fill && (p != nil || c.capturedDuringFill[key]) {
+		return
+	}
+	if !fill && c.fills > 0 {
+		c.capturedDuringFill[key] = true
+	}
+	if p == nil {
+		p = &pendingValue{gatewayID: gatewayID, collection: collection, name: name}
+		c.pending[key] = p
+	}
+	p.value, p.remove, p.failures = value, remove, 0
+	c.schedule(ctx, key, p)
+}
+
+// schedule writes a pending value now, or once the write in flight for it returns. The caller holds
+// the lock.
+func (c *ValueCapture) schedule(ctx context.Context, key string, p *pendingValue) {
+	if p.running {
+		p.again = true
+		return
+	}
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+	p.timer = time.AfterFunc(0, func() { c.push(ctx, key) })
 }
 
 // push writes one pending value to the gateway's store, and keeps it pending to be tried again when
@@ -202,12 +229,18 @@ func (c *ValueCapture) push(ctx context.Context, key string) {
 	}
 	p.timer = nil
 	p.running = true
-	value := p.value
+	value, remove := p.value, p.remove
 	c.mu.Unlock()
 
 	// The write is the capture's own work, on a context of its own, bounded like the rest.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), captureTimeout)
-	refusal, svcErr := c.set(ctx, p.gatewayID, p.collection, p.name, value)
+	var refusal *StoreRefusal
+	var svcErr *tidcommon.ServiceError
+	if remove {
+		refusal, svcErr = c.unset(ctx, p.gatewayID, p.collection, p.name)
+	} else {
+		refusal, svcErr = c.set(ctx, p.gatewayID, p.collection, p.name, value)
+	}
 	cancel()
 
 	c.mu.Lock()
@@ -271,11 +304,173 @@ func (c *ValueCapture) set(ctx context.Context, gatewayID, collection, name, val
 	return answer.Refusal, nil
 }
 
-// idle reports whether no value is on its way to a gateway.
+// unset removes one name from a collection of the gateway's store, through the same store service an
+// administrator's removal goes through.
+func (c *ValueCapture) unset(ctx context.Context, gatewayID, collection, name string) (*StoreRefusal,
+	*tidcommon.ServiceError) {
+	var answer *StoreAnswer[struct{}]
+	var svcErr *tidcommon.ServiceError
+	if collection == collectionSecrets {
+		answer, svcErr = c.store.DeleteSecret(ctx, gatewayID, name)
+	} else {
+		answer, svcErr = c.store.DeleteVariable(ctx, gatewayID, name)
+	}
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return answer.Refusal, nil
+}
+
+// ReleaseValues removes from the first gateway's store every variable and secret captured for a
+// resource that was deleted: each name the resource's export would refer to, whatever its field.
+//
+// Like a capture, it never fails the caller. The resource's names are worked out as the delete
+// returns; the gateway is found, any of the resource's values still on their way are removed instead of
+// written, and what the gateway holds under its names is listed and removed in the background, the
+// listing and each removal tried again the way a captured value's write is. Configuration the gateway
+// already imported keeps working, since a reference is resolved when it is imported.
+func (c *ValueCapture) ReleaseValues(ctx context.Context, resourceType, resourceID string) {
+	if c == nil || c.values == nil {
+		return
+	}
+	prefix, err := c.values.PlaceholderPrefix(resourceType, resourceID)
+	if err != nil {
+		c.logger.Warn(ctx, "Failed to work out the names a deleted resource's values are held under",
+			log.String("resourceType", resourceType), log.Error(err))
+		return
+	}
+	c.mu.Lock()
+	c.releases++
+	c.mu.Unlock()
+	ctx = context.WithoutCancel(ctx)
+	time.AfterFunc(0, func() { c.release(ctx, resourceType, prefix) })
+}
+
+// release finds the first gateway, removes the values on their way to it under a prefix, and then
+// removes what its store holds under the prefix.
+func (c *ValueCapture) release(ctx context.Context, resourceType, prefix string) {
+	lookupCtx, cancel := context.WithTimeout(ctx, captureTimeout)
+	gw, err := c.firstGateway(lookupCtx)
+	cancel()
+	if err != nil || gw == nil {
+		if err != nil {
+			c.logger.Warn(ctx, "Failed to find the first gateway, so a deleted resource's values were not removed",
+				log.String("resourceType", resourceType), log.Error(err))
+		}
+		c.endRelease()
+		return
+	}
+
+	c.mu.Lock()
+	onTheirWay := map[string][]string{}
+	for _, p := range c.pending {
+		if p.gatewayID == gw.ID && strings.HasPrefix(p.name, prefix) {
+			onTheirWay[p.collection] = append(onTheirWay[p.collection], p.name)
+		}
+	}
+	c.mu.Unlock()
+	for collection, names := range onTheirWay {
+		c.enqueueRemovals(ctx, gw.ID, collection, names)
+	}
+	c.removeHeld(ctx, gw.ID, resourceType, prefix, 0)
+}
+
+// removeHeld lists what the gateway's store holds under a prefix and puts each name's removal on its
+// way. A gateway that does not answer is asked again after the delay a captured value's write waits;
+// one that refuses is not.
+func (c *ValueCapture) removeHeld(ctx context.Context, gatewayID, resourceType, prefix string, failures int) {
+	held, err := c.heldUnder(ctx, gatewayID, prefix)
+	var refusal *StoreRefusal
+	switch {
+	case err == nil:
+		for _, collection := range []string{collectionVariables, collectionSecrets} {
+			c.enqueueRemovals(ctx, gatewayID, collection, held[collection])
+		}
+	case !errors.As(err, &refusal) && failures+1 < c.attempts:
+		time.AfterFunc(c.pushDelay(failures+1), func() {
+			c.removeHeld(ctx, gatewayID, resourceType, prefix, failures+1)
+		})
+		return
+	default:
+		c.logger.Warn(ctx, "Gave up removing a deleted resource's values from the first gateway",
+			log.String("gatewayID", gatewayID), log.String("resourceType", resourceType), log.Error(err))
+	}
+	c.endRelease()
+}
+
+// endRelease records that a release has put on their way all the removals it will.
+func (c *ValueCapture) endRelease() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.releases--
+}
+
+// heldUnder returns, by collection, the names the gateway's store holds that start with a prefix.
+func (c *ValueCapture) heldUnder(ctx context.Context, gatewayID, prefix string) (map[string][]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, captureTimeout)
+	defer cancel()
+	held := map[string][]string{}
+	for _, collection := range []string{collectionVariables, collectionSecrets} {
+		for offset := 0; ; {
+			names, total, err := c.pageUnder(ctx, gatewayID, collection, prefix, offset)
+			if err != nil {
+				return nil, err
+			}
+			held[collection] = append(held[collection], names...)
+			offset += len(names)
+			if len(names) == 0 || offset >= total {
+				break
+			}
+		}
+	}
+	return held, nil
+}
+
+// pageUnder returns one page of the names a collection of the gateway's store holds that start with a
+// prefix, and how many it holds in all.
+func (c *ValueCapture) pageUnder(ctx context.Context, gatewayID, collection, prefix string,
+	offset int) ([]string, int, error) {
+	query := StoreListQuery{Filter: fmt.Sprintf("name sw %q", prefix), Limit: fmt.Sprint(maxNamesPerLookup),
+		Offset: fmt.Sprint(offset)}
+	if collection == collectionSecrets {
+		answer, svcErr := c.store.ListSecrets(ctx, gatewayID, query)
+		return listedNames(answer, svcErr, func(l *variablestore.SecretListResponse) ([]string, int) {
+			names := make([]string, 0, len(l.Secrets))
+			for _, secret := range l.Secrets {
+				names = append(names, secret.Name)
+			}
+			return names, l.TotalResults
+		})
+	}
+	answer, svcErr := c.store.ListVariables(ctx, gatewayID, query)
+	return listedNames(answer, svcErr, func(l *variablestore.VariableListResponse) ([]string, int) {
+		names := make([]string, 0, len(l.Variables))
+		for _, variable := range l.Variables {
+			names = append(names, variable.Name)
+		}
+		return names, l.TotalResults
+	})
+}
+
+// listedNames returns the names on one page of a listing and how many it holds in all, or why the
+// listing failed.
+func listedNames[T any](answer *StoreAnswer[T], svcErr *tidcommon.ServiceError,
+	names func(*T) ([]string, int)) ([]string, int, error) {
+	if svcErr != nil {
+		return nil, 0, fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
+	}
+	if answer.Refusal != nil {
+		return nil, 0, answer.Refusal
+	}
+	listed, total := names(answer.Value)
+	return listed, total, nil
+}
+
+// idle reports whether no value is on its way to a gateway, and no release is still listing.
 func (c *ValueCapture) idle() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return len(c.pending) == 0
+	return len(c.pending) == 0 && c.releases == 0
 }
 
 // firstGateway returns the pipeline's first gateway, or nil when there is none.

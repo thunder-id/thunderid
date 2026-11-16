@@ -1737,6 +1737,7 @@ func (s *agentService) removeAgent(ctx context.Context, agentID string) *tidcomm
 		s.logger.Error(ctx, "Failed to delete agent entity", log.String("agentID", agentID), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
+	s.releaseValues(ctx, agentID)
 	return nil
 }
 

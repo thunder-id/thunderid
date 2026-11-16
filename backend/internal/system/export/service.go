@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 )
 
 // templateVariablePattern matches only uppercase-only parameter names in the exact forms
@@ -77,6 +78,8 @@ type ExportServiceInterface interface {
 	// must be of the type the exporter registered for resourceType reads back.
 	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
 		map[string]string, map[string]string, error)
+	// PlaceholderPrefix returns the prefix every name an export of one resource refers to starts with.
+	PlaceholderPrefix(resourceType, resourceID string) (string, error)
 }
 
 // exportService implements the ExportServiceInterface.
@@ -428,6 +431,18 @@ func (es *exportService) PlaceholderValues(ctx context.Context, resourceType str
 	}
 	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(),
 		resourceIDOf(exporter, resource), rulesFor(exporter, resource))
+}
+
+// PlaceholderPrefix names the resource the way PlaceholderValues does, from its exporter's type and its ID.
+func (es *exportService) PlaceholderPrefix(resourceType, resourceID string) (string, error) {
+	exporter, exists := es.registry.Get(resourceType)
+	if !exists {
+		return "", fmt.Errorf("no exporter is registered for resource type %q", resourceType)
+	}
+	if resourceID == "" {
+		return "", errResourceHasNoID
+	}
+	return varname.ResourcePrefix(exporter.GetParameterizerType(), resourceID), nil
 }
 
 // resourceIDOf returns the ID of a resource, read by an exporter that can, or "" when it cannot.

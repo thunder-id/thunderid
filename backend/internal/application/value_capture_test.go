@@ -14,7 +14,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 )
@@ -23,11 +25,17 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// released records each "<resource type>/<ID>" handed to ReleaseValues.
+	released []string
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
+}
+
+func (r *recordingCapturer) ReleaseValues(_ context.Context, resourceType, resourceID string) {
+	r.released = append(r.released, resourceType+"/"+resourceID)
 }
 
 // captured returns the one application handed to the capturer.
@@ -186,4 +194,51 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_RefusalCapturesNothing
 
 	require.NotNil(suite.T(), svcErr)
 	assert.Empty(suite.T(), capturer.resources)
+}
+
+// A deleted application's captured values go with it.
+func (suite *ServiceTestSuite) TestDeleteApplication_ReleasesTheApplicationsValues() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	capturer := &recordingCapturer{}
+	service.valueCapturer = capturer
+	resetEntityServiceMethod(service, "GetEntityProfile").On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	suite.Nil(svcErr)
+	suite.Equal([]string{resourceTypeApplication + "/" + testServiceAppID}, capturer.released)
+}
+
+// Values are released once the entity is gone, even when a later step of the delete fails, since a
+// retry finds nothing to delete.
+func (suite *ServiceTestSuite) TestDeleteApplication_ReleasesOnceTheEntityIsGone() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	capturer := &recordingCapturer{}
+	service.valueCapturer = capturer
+	resetEntityServiceMethod(service, "GetEntityProfile").On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+	i18nMock := mgtmock.NewI18nServiceInterfaceMock(suite.T())
+	i18nMock.On("DeleteTranslationsByKey", mock.Anything, mock.Anything, mock.Anything).
+		Return(&tidcommon.InternalServerError)
+	service.i18nService = i18nMock
+
+	suite.NotNil(service.DeleteApplication(context.Background(), testServiceAppID))
+	suite.Equal([]string{resourceTypeApplication + "/" + testServiceAppID}, capturer.released)
+}
+
+// An application that was never there has nothing to release.
+func (suite *ServiceTestSuite) TestDeleteApplication_OfNothingReleasesNothing() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	capturer := &recordingCapturer{}
+	service.valueCapturer = capturer
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+
+	suite.Nil(service.DeleteApplication(context.Background(), testServiceAppID))
+	suite.Empty(capturer.released)
 }

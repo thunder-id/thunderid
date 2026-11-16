@@ -167,6 +167,10 @@ Capture follows these rules:
   reported as missing in the same way.
 - **Replaces what is there.** A value is set whether or not the gateway already holds that name, so
   writing a resource again replaces the value the gateway held under its name.
+- **Removed with the resource.** Deleting one of these resources removes, in the background, every
+  variable and secret the first gateway holds under its names, and any of its values still on their
+  way. Values on any other gateway stay. Applying or reverting the first gateway to a version that
+  still holds the resource is then refused until its values are set again.
 - **An agent's owner only when the write sets it.** The owner is captured when an agent is created,
   and when an update changes the owner. An update that leaves the owner as it was captures none, so
   an owner set on the first gateway for that agent stays until the owner is changed on the control
@@ -201,8 +205,10 @@ from references, so upgrade data planes before their control plane.
 ### Limits
 
 - **Renames.** Changing an application's name, an agent's resolved display label, or a user's username changes the names its values are exported under. For agents, the label comes from the schema's display setting, which selects `name` by default and falls back to the agent ID. The control plane captures the client ID under the new name, but not a client secret or password it was not given in the same write, because it holds only their hashes. Set the value under the new name on the gateway yourself.
-- **Imported connections.** Configuration imported into a control plane writes connections without
-  capturing their values. Applications, agents, and users imported into a control plane are captured.
+- **Imported connections.** Configuration imported into a control plane writes identity provider and
+  SMS sender connections without capturing their values, and one an import deletes keeps its values
+  on the first gateway until you remove them. HTTP connections, applications, agents, and users
+  imported into a control plane are captured.
 - **Name collisions.** When two resources' names normalize to the same value name, a full export adds
   a suffix such as `_2` to one of them. A capture sees one resource at a time and uses the name
   without the suffix, so set the suffixed value on the gateway yourself.

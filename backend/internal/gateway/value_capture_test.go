@@ -7,8 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,11 +39,16 @@ type captureFixture struct {
 	// refuse makes the default gateway refuse each call; hangUp makes it drop each connection unanswered.
 	refuse bool
 	hangUp bool
-	// hangUps makes the default gateway drop that many calls unanswered, then answer the rest.
-	hangUps int
-	// held are the variables a listing of the default gateway's store answers with.
-	held []string
-	mu   sync.Mutex
+	// hangUps makes the default gateway drop that many calls unanswered, then answer the rest, and
+	// hangUpRemovals that many removals.
+	hangUps        int
+	hangUpRemovals int
+	// held are the variables, and heldSecrets the secrets, a listing of the default gateway's store
+	// answers with, narrowed to a name sw filter; filters are the filters those listings were given.
+	held        []string
+	heldSecrets []string
+	filters     []string
+	mu          sync.Mutex
 }
 
 // newCaptureFixture builds a bound capture over two gateways served over TLS, gw-2 being the
@@ -64,8 +73,19 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 			*into = append(*into, storeCall{method: r.Method, path: r.URL.EscapedPath(),
 				key: r.Header.Get(constants.APIKeyHeaderName), body: string(raw)})
 			hangUp, refuse, held := f.hangUp, f.refuse, f.held
+			if strings.HasPrefix(r.URL.Path, "/"+collectionSecrets) {
+				held = f.heldSecrets
+			}
+			filter := r.URL.Query().Get("filter")
+			if filter != "" {
+				f.filters = append(f.filters, filter)
+			}
 			if f.hangUps > 0 {
 				f.hangUps--
+				hangUp = true
+			}
+			if r.Method == http.MethodDelete && f.hangUpRemovals > 0 {
+				f.hangUpRemovals--
 				hangUp = true
 			}
 			f.mu.Unlock()
@@ -77,13 +97,26 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 			case refuse:
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"code":"VAR-1001"}`))
-			case r.Method == http.MethodGet:
-				listing := variablestore.VariableListResponse{Variables: []variablestore.Variable{}}
-				for _, name := range held {
-					listing.Variables = append(listing.Variables, variablestore.Variable{Name: name})
+			case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/"+collectionSecrets):
+				listing := variablestore.SecretListResponse{Secrets: []variablestore.Secret{}}
+				page, total := pageOf(namesUnder(held, filter), r.URL.Query())
+				for _, name := range page {
+					listing.Secrets = append(listing.Secrets, variablestore.Secret{Name: name, Exists: true})
 				}
+				listing.TotalResults = total
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(listing)
+			case r.Method == http.MethodGet:
+				listing := variablestore.VariableListResponse{Variables: []variablestore.Variable{}}
+				page, total := pageOf(namesUnder(held, filter), r.URL.Query())
+				for _, name := range page {
+					listing.Variables = append(listing.Variables, variablestore.Variable{Name: name})
+				}
+				listing.TotalResults = total
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(listing)
+			case r.Method == http.MethodDelete:
+				w.WriteHeader(http.StatusNoContent)
 			default:
 				w.WriteHeader(http.StatusCreated)
 				_, _ = w.Write([]byte(`{"name":"set"}`))
@@ -103,6 +136,33 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	f.capture.attempts = 1
 	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()), newPipeline())
 	return f
+}
+
+// namesUnder returns the names a name sw filter keeps, or all of them without one.
+func namesUnder(names []string, filter string) []string {
+	prefix, found := strings.CutPrefix(filter, "name sw ")
+	if !found {
+		return names
+	}
+	prefix = strings.Trim(prefix, `"`)
+	var kept []string
+	for _, name := range names {
+		if strings.HasPrefix(name, prefix) {
+			kept = append(kept, name)
+		}
+	}
+	return kept
+}
+
+// pageOf returns the page of names a listing's limit and offset select, and how many there are in all.
+func pageOf(names []string, query url.Values) ([]string, int) {
+	offset, _ := strconv.Atoi(query.Get("offset"))
+	limit, err := strconv.Atoi(query.Get("limit"))
+	if err != nil {
+		limit = len(names)
+	}
+	start := min(offset, len(names))
+	return names[start:min(start+limit, len(names))], len(names)
 }
 
 // settle waits for every value on its way to have arrived or been given up on.
@@ -498,4 +558,179 @@ func TestFillingFillsWhatItCanRead(t *testing.T) {
 	f.settle(t)
 
 	assert.Contains(t, f.paths(), "/variables/A")
+}
+
+const releasedPrefix = "USER__0198F3A17C2E7B109A445D3E8F21C6B7__"
+
+// A release removes every variable and secret the first gateway holds under the deleted resource's
+// names, and nothing another resource holds.
+func TestAReleaseRemovesWhatTheFirstGatewayHoldsForTheResource(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.prefix = releasedPrefix
+	f.held = []string{releasedPrefix + "DISPLAY", "USER__0198F3A17C2E7B109A445D3E8F21C6B8__DISPLAY"}
+	f.heldSecrets = []string{releasedPrefix + "PASSWORD", "DB_PASSWORD"}
+
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	calls, others := f.received()
+	var removed []string
+	for _, call := range calls {
+		if call.method == http.MethodDelete {
+			removed = append(removed, call.path)
+			assert.Equal(t, "the-key", call.key)
+		}
+	}
+	assert.ElementsMatch(t, []string{"/variables/" + releasedPrefix + "DISPLAY",
+		"/secrets/" + releasedPrefix + "PASSWORD"}, removed)
+	assert.Equal(t, []string{`name sw "` + releasedPrefix + `"`, `name sw "` + releasedPrefix + `"`}, f.filters)
+	assert.Empty(t, others, "a value was removed from a gateway that is not the first")
+}
+
+// A value of the resource still on its way when it is deleted is removed rather than written.
+func TestAReleaseRemovesAValueStillOnItsWay(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 2
+	f.capture.retryDelay = time.Minute
+	f.hangUp = true
+	f.exporter.prefix = releasedPrefix
+	f.exporter.secrets = map[string]string{releasedPrefix + "PASSWORD": "the-password"}
+
+	f.capture.CaptureValues(context.Background(), "user", struct{}{})
+	require.Eventually(t, func() bool { return len(f.paths()) >= 1 }, time.Second, time.Millisecond)
+	f.mu.Lock()
+	f.hangUp = false
+	f.mu.Unlock()
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	calls, _ := f.received()
+	assert.Contains(t, calls[1:], storeCall{method: http.MethodDelete,
+		path: "/secrets/" + releasedPrefix + "PASSWORD", key: "the-key"})
+	for _, call := range calls[1:] {
+		assert.NotEqual(t, http.MethodPut, call.method, "the value was written after its resource was deleted")
+	}
+}
+
+// A gateway that does not answer the listing is asked again.
+func TestAReleaseIsTriedAgainUntilTheGatewayAnswers(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 3
+	f.hangUps = 1
+	f.exporter.prefix = releasedPrefix
+	f.heldSecrets = []string{releasedPrefix + "PASSWORD"}
+
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.NotEmpty(t, calls)
+	assert.Equal(t, storeCall{method: http.MethodDelete, path: "/secrets/" + releasedPrefix + "PASSWORD",
+		key: "the-key"}, calls[len(calls)-1])
+}
+
+// A gateway that never answers the listing is asked as many times as a write is tried, and nothing is
+// removed.
+func TestAReleaseGivesUpAfterItsAttempts(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 2
+	f.hangUp = true
+	f.exporter.prefix = releasedPrefix
+	f.heldSecrets = []string{releasedPrefix + "PASSWORD"}
+
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	assert.Equal(t, []string{"/variables", "/variables"}, f.paths())
+}
+
+// A removal the gateway did not answer is tried again.
+func TestAReleaseRetriesARemovalThatFailed(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 3
+	f.hangUpRemovals = 1
+	f.exporter.prefix = releasedPrefix
+	f.held = []string{releasedPrefix + "DISPLAY"}
+
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	removal := "/variables/" + releasedPrefix + "DISPLAY"
+	assert.Equal(t, []string{"/variables", "/secrets", removal, removal}, f.paths())
+}
+
+// A listing longer than a page is read page by page, and every name on it is removed.
+func TestAReleaseRemovesEveryPageOfNames(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.prefix = releasedPrefix
+	removable := make([]string, 0, maxNamesPerLookup+5)
+	for i := range maxNamesPerLookup + 5 {
+		f.held = append(f.held, fmt.Sprintf("%sFIELD_%d", releasedPrefix, i))
+		removable = append(removable, "/variables/"+f.held[i])
+	}
+
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	calls, _ := f.received()
+	var removed []string
+	for _, call := range calls {
+		if call.method == http.MethodDelete {
+			removed = append(removed, call.path)
+		}
+	}
+	assert.ElementsMatch(t, removable, removed)
+}
+
+// A gateway that refuses the listing is not asked again, and nothing is removed.
+func TestAReleaseStopsWhenTheGatewayRefuses(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 3
+	f.refuse = true
+	f.exporter.prefix = releasedPrefix
+	f.heldSecrets = []string{releasedPrefix + "PASSWORD"}
+
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.Len(t, calls, 1)
+	assert.Equal(t, http.MethodGet, calls[0].method)
+}
+
+// A fill running while a value is removed does not put the value back.
+func TestFillingKeepsAValueRemovedMeanwhile(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.fills = 1
+	f.capture.capturedDuringFill = map[string]bool{}
+
+	f.capture.enqueueRemovals(context.Background(), "gw-2", collectionVariables, []string{"A"})
+	f.settle(t)
+	f.capture.enqueue(context.Background(), "gw-2", collectionVariables, map[string]string{"A": "old"}, false)
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.Len(t, calls, 1)
+	assert.Equal(t, http.MethodDelete, calls[0].method)
+}
+
+// A resource whose names cannot be worked out, or a pipeline without a first gateway, removes nothing.
+func TestAReleaseWithoutNamesOrAFirstGatewayRemovesNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.prefixErr = errors.New("no exporter")
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+	assert.Empty(t, f.paths())
+
+	f.exporter.prefix, f.exporter.prefixErr = releasedPrefix, nil
+	f.gateways.gateways[1].IsDefault = false
+	f.capture.ReleaseValues(context.Background(), "user", "the-id")
+	f.settle(t)
+	assert.Empty(t, f.paths())
+
+	assert.NotPanics(t, func() {
+		NewValueCapture().ReleaseValues(context.Background(), "user", "the-id")
+		var none *ValueCapture
+		none.ReleaseValues(context.Background(), "user", "the-id")
+	})
 }

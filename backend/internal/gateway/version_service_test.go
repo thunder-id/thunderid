@@ -453,6 +453,9 @@ type fakeExporter struct {
 	valuesOf []valuesRequest
 	// valuesCtxDone records whether a value capture asked with a context that was already done.
 	valuesCtxDone bool
+	// prefix and prefixErr answer PlaceholderPrefix.
+	prefix    string
+	prefixErr error
 }
 
 type valuesRequest struct {
@@ -472,6 +475,10 @@ func (f *fakeExporter) PlaceholderValues(ctx context.Context, resourceType strin
 	f.valuesOf = append(f.valuesOf, valuesRequest{resourceType: resourceType, resource: resource})
 	f.valuesCtxDone = f.valuesCtxDone || ctx.Err() != nil
 	return f.variables, f.secrets, f.valuesErr
+}
+
+func (f *fakeExporter) PlaceholderPrefix(_, _ string) (string, error) {
+	return f.prefix, f.prefixErr
 }
 
 // fakeGatewayClient records what an apply sends a gateway.

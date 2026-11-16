@@ -16,11 +16,17 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// released records each "<resource type>/<ID>" handed to ReleaseValues.
+	released []string
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
+}
+
+func (r *recordingCapturer) ReleaseValues(_ context.Context, resourceType, resourceID string) {
+	r.released = append(r.released, resourceType+"/"+resourceID)
 }
 
 // recordCaptures hands the suite's service a capturer and returns it.
@@ -99,4 +105,17 @@ func (s *ServiceTestSuite) TestCreateType_FailedWriteCapturesNothing() {
 
 	s.Require().NotNil(svcErr)
 	s.Empty(capturer.resources)
+}
+
+// A deleted type's captured values go with it, and a delete that fails keeps them.
+func (s *ServiceTestSuite) TestDeleteType_ReleasesTheTypesValues() {
+	capturer := s.recordCaptures()
+	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(flightType(), nil)
+	s.typeStore.EXPECT().DeleteType(mock.Anything, "type-1").Return(errors.New("db down")).Once()
+	s.NotNil(s.service.DeleteAuthorizationDetailType(s.ctx, "type-1"))
+	s.Empty(capturer.released)
+
+	s.typeStore.EXPECT().DeleteType(mock.Anything, "type-1").Return(nil).Once()
+	s.Nil(s.service.DeleteAuthorizationDetailType(s.ctx, "type-1"))
+	s.Equal([]string{resourceTypeAuthorizationDetailType + "/type-1"}, capturer.released)
 }

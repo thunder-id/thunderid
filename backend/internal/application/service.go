@@ -1032,14 +1032,18 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 	}
 	// Delete entity, which revokes what was issued to it as a subject. A missing entity is non-fatal (e.g. on a
 	// retry after a partial delete) so the remaining delete steps still run.
-	if entErr := as.entityService.DeleteEntity(ctx, appID); entErr != nil &&
-		!errors.Is(entErr, entity.ErrEntityNotFound) {
+	entErr := as.entityService.DeleteEntity(ctx, appID)
+	if entErr != nil && !errors.Is(entErr, entity.ErrEntityNotFound) {
 		if svcErr := mapEntityError(entErr); svcErr != nil {
 			return svcErr
 		}
 		as.logger.Error(ctx, "Failed to delete application entity",
 			log.String("appID", appID), log.Error(entErr))
 		return &tidcommon.InternalServerError
+	}
+	// Released once the entity is gone, since a retry after a later step fails finds nothing to delete.
+	if found && entErr == nil {
+		as.releaseValues(ctx, appID)
 	}
 
 	if svcErr := as.deleteLocalizedVariants(ctx, appID); svcErr != nil || found {

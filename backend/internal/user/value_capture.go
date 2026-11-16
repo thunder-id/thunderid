@@ -63,3 +63,10 @@ func (us *userService) captureCredentials(ctx context.Context, user *providers.U
 	}
 	us.valueCapturer.CaptureValues(ctx, resourceTypeUser, resource)
 }
+
+// releaseValues hands a deleted user to the value capturer, so the values captured for it go too.
+func (us *userService) releaseValues(ctx context.Context, userID string) {
+	if us.valueCapturer != nil {
+		us.valueCapturer.ReleaseValues(ctx, resourceTypeUser, userID)
+	}
+}

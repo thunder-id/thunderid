@@ -28,3 +28,10 @@ func (as *applicationService) captureValues(ctx context.Context, app *model.Appl
 		InboundAuthConfig: app.InboundAuthConfig,
 	})
 }
+
+// releaseValues hands a deleted application to the value capturer, so the values captured for it go too.
+func (as *applicationService) releaseValues(ctx context.Context, appID string) {
+	if as.valueCapturer != nil {
+		as.valueCapturer.ReleaseValues(ctx, resourceTypeApplication, appID)
+	}
+}

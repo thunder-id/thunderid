@@ -60,3 +60,10 @@ func (s *service) captureModel(ctx context.Context, id string, model connectionE
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)
 }
+
+// releaseValues hands a deleted connection to the value capturer, so the values captured for it go too.
+func (s *service) releaseValues(ctx context.Context, id string) {
+	if s.valueCapturer != nil {
+		s.valueCapturer.ReleaseValues(ctx, resourceTypeConnection, id)
+	}
+}

@@ -18,3 +18,10 @@ func (rs *resourceService) captureValues(ctx context.Context, server *providers.
 	}
 	rs.valueCapturer.CaptureValues(ctx, resourceTypeResourceServer, server)
 }
+
+// releaseValues hands a deleted resource server to the value capturer, so the values captured for it go too.
+func (rs *resourceService) releaseValues(ctx context.Context, id string) {
+	if rs.valueCapturer != nil {
+		rs.valueCapturer.ReleaseValues(ctx, resourceTypeResourceServer, id)
+	}
+}

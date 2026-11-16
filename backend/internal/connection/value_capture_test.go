@@ -27,11 +27,17 @@ import (
 type recordingCapturer struct {
 	resourceTypes []string
 	resources     []interface{}
+	// released records each "<resource type>/<ID>" handed to ReleaseValues.
+	released []string
 }
 
 func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string, resource interface{}) {
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
+}
+
+func (r *recordingCapturer) ReleaseValues(_ context.Context, resourceType, resourceID string) {
+	r.released = append(r.released, resourceType+"/"+resourceID)
 }
 
 // captured returns the one connection handed to the capturer, in the shape its exporter reads back.
@@ -226,4 +232,53 @@ func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
 		newSharingServiceMock(s.T()), allowAllAuthz(s.T()), newDiscardingBus(s.T()))
 	s.Require().NoError(err)
 	s.IsType(&httpConnectionWriter{}, synced)
+}
+
+// A deleted connection's captured values go with it, whichever service holds it.
+func (s *ServiceTestSuite) TestDeleteReleasesTheConnectionsValues() {
+	s.Run("identity provider", func() {
+		s.SetupTest()
+		capturer := &recordingCapturer{}
+		s.svc.valueCapturer = capturer
+		s.mockIDP.On("GetIdentityProvider", mock.Anything, "g-1").
+			Return(&providers.IDPDTO{ID: "g-1", Type: providers.IDPTypeGoogle}, (*tidcommon.ServiceError)(nil))
+		s.mockIDP.On("DeleteIdentityProvider", mock.Anything, "g-1").Return((*tidcommon.ServiceError)(nil))
+
+		s.Nil(s.svc.deleteByType(context.Background(), providers.IDPTypeGoogle, "g-1"))
+		s.Equal([]string{resourceTypeConnection + "/g-1"}, capturer.released)
+	})
+	s.Run("notification sender", func() {
+		s.SetupTest()
+		capturer := &recordingCapturer{}
+		s.svc.valueCapturer = capturer
+		s.mockNotif.On("GetSender", mock.Anything, "tw-1").Return(s.twilioSender("t"), (*tidcommon.ServiceError)(nil))
+		s.mockNotif.On("DeleteSender", mock.Anything, "tw-1").Return((*tidcommon.ServiceError)(nil))
+
+		s.Nil(s.svc.deleteSenderByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
+			ncommon.NotificationProviderTypeTwilio, "tw-1"))
+		s.Equal([]string{resourceTypeConnection + "/tw-1"}, capturer.released)
+	})
+	s.Run("http", func() {
+		s.SetupTest()
+		_, mockHTTP, stored := s.withHTTPWriter(nil)
+		capturer := &recordingCapturer{}
+		s.svc.valueCapturer = capturer
+		mockHTTP.On("GetHTTPConnection", mock.Anything, stored.ID).Return(stored, (*tidcommon.ServiceError)(nil))
+		mockHTTP.On("DeleteHTTPConnection", mock.Anything, stored.ID).Return((*tidcommon.ServiceError)(nil))
+
+		s.Nil(s.svc.deleteHTTP(context.Background(), stored.ID))
+		s.Equal([]string{resourceTypeConnection + "/" + stored.ID}, capturer.released)
+	})
+}
+
+// A delete the connection's service refuses keeps its captured values.
+func (s *ServiceTestSuite) TestRefusedDeleteKeepsTheConnectionsValues() {
+	capturer := &recordingCapturer{}
+	s.svc.valueCapturer = capturer
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "g-1").
+		Return(&providers.IDPDTO{ID: "g-1", Type: providers.IDPTypeGoogle}, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("DeleteIdentityProvider", mock.Anything, "g-1").Return(&tidcommon.InternalServerError)
+
+	s.NotNil(s.svc.deleteByType(context.Background(), providers.IDPTypeGoogle, "g-1"))
+	s.Empty(capturer.released)
 }
