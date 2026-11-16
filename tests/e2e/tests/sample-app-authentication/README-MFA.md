@@ -110,7 +110,7 @@ Run the following command, replacing `<application_id>` with your sample app ID 
 
 ```bash
 FLOW_RESPONSE=$(curl -k -s -X POST 'https://localhost:8090/flow/execute' \
-  -d '{"applicationId":"<application_id>","flowType":"AUTHENTICATION"}')
+  -d '{"applicationId":"<application_id>","flowType":"AUTHENTICATION","inputs":{"requested_permissions":"system","resource_server_identifier":"https://localhost:8090/mcp"}}')
 
 EXECUTION_ID=$(echo $FLOW_RESPONSE | jq -r '.executionId')
 ```
@@ -119,7 +119,7 @@ Run the following command with the extracted `executionId`.
 
 ```bash
 ADMIN_TOKEN_RESPONSE=$(curl -k -s -X POST 'https://localhost:8090/flow/execute' \
-  -d '{"executionId":"'$EXECUTION_ID'","inputs":{"username":"admin","password":"admin","requested_permissions":"system","resource_server_identifier":"https://localhost:8090/mcp"},"action":"action_001"}')
+  -d '{"executionId":"'$EXECUTION_ID'","inputs":{"username":"admin","password":"admin"},"action":"action_001"}')
 
 ADMIN_TOKEN=$(echo $ADMIN_TOKEN_RESPONSE | jq -r '.assertion')
 ```

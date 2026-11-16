@@ -120,6 +120,20 @@ func (ts *MFARecipientTestSuite) TestPasswordSMSOTP_StoredMobileIsKept() {
 		"The stored mobile number is kept")
 }
 
+func (ts *MFARecipientTestSuite) TestPasswordSMSOTP_StoredMobileIsKeptWhenSentOnStart() {
+	username := ts.createUser(`"mobile_number": "+1222333444"`)
+	ts.mockSMSServer.ClearMessages()
+
+	step, err := common.InitiateAuthenticationFlow(ts.smsAppID, false,
+		map[string]string{"username": username, "password": "testpassword", "mobile_number": "+1999888777"}, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+	ts.Equal("+1222333444", ts.storedAttribute(username, "mobile_number"),
+		"The stored mobile number is kept")
+}
+
 func (ts *MFARecipientTestSuite) TestPasswordSMSOTP_UserWithoutMobileEnrollsOne() {
 	username := ts.createUser("")
 	ts.mockSMSServer.ClearMessages()

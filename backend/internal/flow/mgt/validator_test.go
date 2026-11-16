@@ -1862,3 +1862,25 @@ func (s *ValidatorTestSuite) TestValidateSessionExecutor_MultiplePairsValid() {
 	err = s.v.validateSessionExecutor(&nodes[3], nodes)
 	s.Nil(err)
 }
+
+func (s *ValidatorTestSuite) TestValidatePromptInputsNotOneTimeUse() {
+	promptNode := func(input providers.InputDefinition) providers.NodeDefinition {
+		return providers.NodeDefinition{ID: "prompt", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{{}, {Inputs: []providers.InputDefinition{input}}}}
+	}
+	executorNode := providers.NodeDefinition{
+		ID: "verify", Type: string(common.NodeTypeTaskExecution),
+		Executor: &providers.ExecutorDefinition{Name: "test-executor",
+			Inputs: []providers.InputDefinition{{Identifier: "otp", OneTimeUse: true}}},
+	}
+
+	s.Nil(s.v.validatePromptInputsNotOneTimeUse(
+		[]providers.NodeDefinition{promptNode(providers.InputDefinition{Identifier: "otp"}), executorNode}),
+		"an executor input may be one time use")
+
+	err := s.v.validatePromptInputsNotOneTimeUse([]providers.NodeDefinition{
+		promptNode(providers.InputDefinition{Identifier: "otp", OneTimeUse: true}), executorNode})
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+	s.Equal(map[string]string{"nodeID": "prompt", "inputID": "otp"}, err.ErrorDescription.Params)
+}

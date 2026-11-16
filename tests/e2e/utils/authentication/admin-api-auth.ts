@@ -20,8 +20,19 @@ export async function getAdminToken(request: import("@playwright/test").APIReque
   const adminPassword = process.env.ADMIN_PASSWORD || "admin";
   const applicationId = E2E_ADMIN_NATIVE_APP_ID;
 
+  // resource_server_identifier scopes the permission evaluation to the System resource server
+  // (identifier from backend/cmd/server/bootstrap/01-default-resources.yaml). Direct /flow/execute
+  // calls do not pass through the OAuth layer, so the target resource server must be declared here.
+  // A flow takes these only from the request that starts it.
   const flowResponse = await request.post(`${serverUrl}/flow/execute`, {
-    data: { applicationId, flowType: "AUTHENTICATION" },
+    data: {
+      applicationId,
+      flowType: "AUTHENTICATION",
+      inputs: {
+        requested_permissions: "system",
+        resource_server_identifier: "https://localhost:8090/mcp",
+      },
+    },
     headers: { "Flow-Secret": E2E_ADMIN_NATIVE_FLOW_SECRET },
     ignoreHTTPSErrors: true,
   });
@@ -32,14 +43,9 @@ export async function getAdminToken(request: import("@playwright/test").APIReque
     data: {
       executionId: flowData.executionId,
       ...(flowData.challengeToken && { challengeToken: flowData.challengeToken }),
-      // resource_server_identifier scopes the permission evaluation to the System resource server
-      // (identifier from backend/cmd/server/bootstrap/01-default-resources.yaml). Direct /flow/execute
-      // calls do not pass through the OAuth layer, so the target resource server must be declared here.
       inputs: {
         username: adminUsername,
         password: adminPassword,
-        requested_permissions: "system",
-        resource_server_identifier: "https://localhost:8090/mcp",
       },
       action: "action_001",
     },

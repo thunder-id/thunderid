@@ -649,6 +649,68 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_FilteredToOne() {
 	assert.Equal(suite.T(), "user-2", resp.RuntimeData[userAttributeUserID])
 }
 
+func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_ConsumesDisambiguationInputs() {
+	candidates := []*providers.Entity{
+		{ID: "user-1", Type: "Person", Attributes: attrsAlexJohnson},
+		{ID: "user-2", Type: "Person", Attributes: attrsAlexSmith},
+	}
+	candidatesJSON, _ := json.Marshal(candidates)
+
+	ctx := &providers.NodeContext{
+		ExecutionID:  "flow-123",
+		ExecutorMode: ExecutorModeResolve,
+		UserInputs:   map[string]string{"given_name": "Alex", "family_name": "Smith", "password": "secret"},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyCandidateUsers: string(candidatesJSON),
+		},
+	}
+
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
+	})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), "user-2", resp.RuntimeData[userAttributeUserID])
+	assert.Equal(suite.T(), []string{"family_name"}, ctx.GetConsumedInputs())
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_LoginHintIsConsumed() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		NodeProperties: map[string]interface{}{propertyKeyLoginHintAttribute: "username"},
+		UserInputs:     map[string]string{userInputLoginHint: "testuser"},
+	}
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "testuser"}).
+		Return(&userID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Contains(suite.T(), ctx.GetConsumedInputs(), userInputLoginHint)
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_LoginHintWithoutAttributeIsNotConsumed() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{userInputLoginHint: "testuser"},
+	}
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(false)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.NotContains(suite.T(), ctx.GetConsumedInputs(), userInputLoginHint)
+}
+
 func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_StillAmbiguous() {
 	candidates := []*providers.Entity{
 		{ID: "user-1", Type: "Person", Attributes: attrsAlexSmith},
