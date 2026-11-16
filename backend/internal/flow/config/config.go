@@ -39,15 +39,14 @@ type FlowTypeConfig struct {
 // never lock, so have no unlock. AdminAttributeVerificationFlow names the administrator-initiated flow
 // the Console starts to send a user a verification link.
 type FlowSectionConfig struct {
-	AuthFlow               FlowTypeConfig `json:"authFlow"`
-	RegistrationFlow       FlowTypeConfig `json:"registrationFlow"`
-	UserOnboardingFlow     FlowTypeConfig `json:"userOnboardingFlow"`
-	RecoveryFlow           FlowTypeConfig `json:"recoveryFlow"`
-	SignOutFlow            FlowTypeConfig `json:"signOutFlow"`
-	SelfFlow               FlowTypeConfig `json:"selfFlow"`
-	AdminInitiatedFlow     FlowTypeConfig `json:"adminInitiatedFlow"`
-	SecretRegenerationFlow FlowTypeConfig `json:"secretRegenerationFlow"`
-	AgentOnboardingFlow    FlowTypeConfig `json:"agentOnboardingFlow"`
+	AuthFlow            FlowTypeConfig `json:"authFlow"`
+	RegistrationFlow    FlowTypeConfig `json:"registrationFlow"`
+	UserOnboardingFlow  FlowTypeConfig `json:"userOnboardingFlow"`
+	RecoveryFlow        FlowTypeConfig `json:"recoveryFlow"`
+	SignOutFlow         FlowTypeConfig `json:"signOutFlow"`
+	SelfFlow            FlowTypeConfig `json:"selfFlow"`
+	AdminInitiatedFlow  FlowTypeConfig `json:"adminInitiatedFlow"`
+	AgentOnboardingFlow FlowTypeConfig `json:"agentOnboardingFlow"`
 
 	AdminAttributeVerificationFlow FlowTypeConfig `json:"adminAttributeVerificationFlow"`
 

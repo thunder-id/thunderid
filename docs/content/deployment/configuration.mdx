@@ -587,7 +587,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `PreCredentialUpdateExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `EntitySecretRotationValidator`, `PreCredentialUpdateExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -616,6 +616,7 @@ flow:
     - AccessChangeValidator
     - ApplicationActionValidator
     - CriteriaRevocationExecutor
+    - EntitySecretRotationValidator
     - PreCredentialUpdateExecutor
     - PreDeleteExecutor
     - SessionRevocationExecutor
@@ -1228,7 +1229,7 @@ Flow configuration uses the following fields. `selfFlow` uses only `expirySecond
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
 
-Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `secretRegenerationFlow`, `agentOnboardingFlow`, and `adminAttributeVerificationFlow`.
+Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `agentOnboardingFlow`, and `adminAttributeVerificationFlow`.
 
 `selfFlow` sets the execution expiry of every `SELF` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF` flow. A start without a `handle`, or with one that names no `SELF` flow, is refused before any node runs.
 

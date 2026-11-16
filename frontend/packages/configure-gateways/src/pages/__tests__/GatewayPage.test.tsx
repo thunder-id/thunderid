@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {HiddenResourcesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -157,6 +157,42 @@ describe('GatewayPage', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it('leaves a hidden resource out of what the gateway runs', async () => {
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['a-2']}}}>
+        <GatewayPage />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(await screen.findByTestId('gateway-resource-application/a-1')).toHaveTextContent('Orders');
+    expect(screen.getByTestId('gateway-resource-flow/f-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('gateway-resource-application/a-2')).not.toBeInTheDocument();
+  });
+
+  it('leaves a hidden resource out of what a deployment wrote', async () => {
+    const at = '2026-10-12T14:00:00Z';
+    routes['GET /gateways/gw-dev/master'] = {
+      gatewayId: 'gw-dev',
+      number: 2,
+      summary: {deployed: 2, failed: 0, removed: 0},
+      entries: [
+        {key: 'application/a-1', resourceType: 'application', id: 'a-1', name: 'Orders', state: 'deployed', at},
+        {key: 'application/a-2', resourceType: 'application', id: 'a-2', name: 'Billing', state: 'deployed', at},
+      ],
+    };
+    http = fakeHttp(routes);
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['a-2']}}}>
+        <GatewayPage section="history" />
+      </HiddenResourcesProvider>,
+    );
+
+    const history = await screen.findByTestId('gateway-full-history');
+    await userEvent.click(await within(history).findByText('Deploy 2'));
+    expect(await within(history).findByText(/Orders/)).toBeInTheDocument();
+    expect(within(history).queryByText(/Billing/)).not.toBeInTheDocument();
+  });
+
   it("opens the gateway's admin portal, and lists the administrators who sign in to it", async () => {
     render(<GatewayPage />);
 
@@ -262,6 +298,29 @@ describe('GatewayPage', () => {
     const user = within(identities).getByTestId('resource-card-user/u-9');
     expect(user).toHaveTextContent('self.registered@example.com');
     expect(within(user).getByTestId(`resource-value-${password}`)).toHaveTextContent('Not set');
+  });
+
+  it('leaves a hidden resource out of the values, without listing its values as unused', async () => {
+    routes[`GET /configuration-versions/${v1}`] = {
+      ...versions[1],
+      references: [
+        {name: 'APP_SECRET', kind: 'secret', resourceType: 'application', resourceId: 'a-1', resourceName: 'Orders'},
+        {name: 'APP_ID', kind: 'variable', resourceType: 'application', resourceId: 'a-2', resourceName: 'Billing'},
+      ],
+    };
+    http = fakeHttp(routes);
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['a-2']}}}>
+        <GatewayPage section="values" />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(await screen.findByRole('heading', {name: 'Variables & secrets'})).toBeInTheDocument();
+    expect(await screen.findByText('Orders')).toBeInTheDocument();
+    expect(screen.queryByText('Billing')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('gateway-show-all-values'));
+    const other = await screen.findByTestId('gateway-other-variable');
+    expect(within(other).queryByText('APP_ID')).not.toBeInTheDocument();
   });
 
   it("speaks of the project's own resources and values within a project", async () => {

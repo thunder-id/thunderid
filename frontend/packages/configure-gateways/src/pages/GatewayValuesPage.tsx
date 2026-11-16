@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
+import {useHiddenResources} from '@thunderid/contexts';
 import {Alert, Box, CircularProgress, PageTitle, Stack, Tab, Tabs} from '@wso2/oxygen-ui';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -16,7 +17,7 @@ import ValuesTable, {type ValueRow} from '../components/ValuesTable';
 import useDeployRoutes from '../hooks/useDeployRoutes';
 import type {ValueKind} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import valueRowsOf from '../utils/valueRows';
+import valueRowsOf, {withoutHiddenResources} from '../utils/valueRows';
 
 /**
  * The variables and secrets one gateway holds, with what the version it runs refers to each for, and
@@ -38,13 +39,23 @@ export default function GatewayValuesPage(): JSX.Element {
   const current = useVersion('current');
   const references = useMemo(() => running.data ?? [], [running.data]);
   const currentReferences = useMemo(() => current.data?.references ?? [], [current.data]);
+  // The values of hidden resources are left out, but rows are read with them so they do not show as unused.
+  const {isHiddenResource} = useHiddenResources();
   const variableRows = useMemo(
-    () => valueRowsOf('variable', variables.data ?? [], references, currentReferences),
-    [variables.data, references, currentReferences],
+    () =>
+      withoutHiddenResources(
+        valueRowsOf('variable', variables.data ?? [], references, currentReferences),
+        isHiddenResource,
+      ),
+    [variables.data, references, currentReferences, isHiddenResource],
   );
   const secretRows = useMemo(
-    () => valueRowsOf('secret', secrets.data ?? [], references, currentReferences),
-    [secrets.data, references, currentReferences],
+    () =>
+      withoutHiddenResources(
+        valueRowsOf('secret', secrets.data ?? [], references, currentReferences),
+        isHiddenResource,
+      ),
+    [secrets.data, references, currentReferences, isHiddenResource],
   );
   const missing = [...variableRows, ...secretRows].filter(
     (row: ValueRow) => !row.stored && row.references.length > 0,

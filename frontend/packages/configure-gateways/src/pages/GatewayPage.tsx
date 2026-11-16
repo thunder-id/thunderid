@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
+import {useHiddenResources} from '@thunderid/contexts';
 import {
   Accordion,
   AccordionDetails,
@@ -112,6 +113,8 @@ export default function GatewayPage({section = 'overview'}: GatewayPageProps): J
 
 function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element {
   const {t} = useTranslation('deploy');
+  // Hidden resources are deployed like the others, but the page does not show them.
+  const {isHiddenResource} = useHiddenResources();
   const nameOfChange = useChangeName();
   const {gatewayId = ''} = useParams<{gatewayId: string}>();
   const routes = useDeployRoutes();
@@ -167,6 +170,13 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
           )
         : allReferences,
     [allReferences, projectKeys],
+  );
+  // The resource cards leave hidden resources out; the other values still count their uses, so a value
+  // only hidden resources use is shown nowhere.
+  const shownReferences = useMemo(
+    () =>
+      references.filter((reference: ValueReference) => !isHiddenResource(reference.resourceType, reference.resourceId)),
+    [references, isHiddenResource],
   );
   const gateways = useMemo(() => (stage ? [stage.gateway] : []), [stage]);
   const everyApplied = useAppliedVersions(stages.map((entry: PipelineStage) => entry.gateway.id));
@@ -258,7 +268,9 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   };
 
   const rows = changes.filter(
-    (change: Change) => !project || change.section === 'project' || change.section === 'needed',
+    (change: Change) =>
+      (!project || change.section === 'project' || change.section === 'needed') &&
+      !isHiddenResource(change.resourceType, change.id),
   );
   const exploreTo = project
     ? gatewaySectionOf(routes, gatewayId, project, 'explore')
@@ -273,7 +285,11 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   }
   const writtenBy = (deploy: Master): MasterEntry[] =>
     entries.filter(
-      (entry: MasterEntry) => entry.at && entry.at === deploy.createdAt && inScope(entry.resourceType, entry.id),
+      (entry: MasterEntry) =>
+        entry.at &&
+        entry.at === deploy.createdAt &&
+        inScope(entry.resourceType, entry.id) &&
+        !isHiddenResource(entry.resourceType, entry.id),
     );
   const deployLine = (deploy: Master): string =>
     [
@@ -485,7 +501,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
         key={gatewayId}
         gatewayId={gatewayId}
         name={stage.name}
-        references={references}
+        references={shownReferences}
         variables={variables.data ?? []}
         secrets={secrets.data ?? []}
       />

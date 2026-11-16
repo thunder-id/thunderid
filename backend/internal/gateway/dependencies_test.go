@@ -635,3 +635,187 @@ func (s *DependenciesTestSuite) TestADocumentsOwnIdentityIsNotAReference() {
 	s.Empty(needs["user/u-1"], "a kind was read as a reference")
 	s.Equal([]string{"user/u-1"}, needs["group/g-1"])
 }
+
+// resourceServer is a resource server in a unit under a name.
+func resourceServer(id, name, ou string) string {
+	return "resource_type: resource_server\nid: " + id + "\nname: " + name + "\nouId: " + ou
+}
+
+// An added resource replaces a removed one of the same type and name in the same unit and under the same
+// parent. An update, another type, another unit or parent, or a name two additions share is no
+// replacement.
+func (s *DependenciesTestSuite) TestAnAdditionReplacesARemovalOfTheSameName() {
+	held := parseBundle(joinBundle([]string{
+		resourceServer("rs-a", "API", "ou-1"), resourceServer("rs-kept", "Kept", "ou-1"),
+		resourceServer("rs-c", "Moved", "ou-1"), flow("Flows"),
+		resourceServer("rs-d", "Twice", "ou-1"),
+		childUnit("ou-x", "parent-a"),
+	}))
+	applied := parseBundle(joinBundle([]string{
+		resourceServer("rs-b", "API", "ou-1"), resourceServer("rs-kept", "Kept", "ou-1"),
+		resourceServer("rs-c2", "Moved", "ou-2"), resourceServer("rs-flow", "Flows", "ou-1"),
+		resourceServer("rs-e", "Twice", "ou-1"), resourceServer("rs-f", "Twice", "ou-1"),
+		"resource_type: organization_unit\nid: ou-y\nname: ou-x\nparent: parent-b",
+	}))
+
+	s.Equal(map[string]string{"resource_server/rs-b": "resource_server/rs-a"}, replacementsOf(held, applied))
+}
+
+// The removal of a replaced resource goes first, with every removed resource that names it, in the
+// order the removals were given; the rest stay.
+func (s *DependenciesTestSuite) TestAReplacedRemovalGoesFirstWithWhatNamesIt() {
+	held := parseBundle(joinBundle([]string{flow("f-1"), app("app-1", "ou-1", "f-1"), unit("ou-1"),
+		unit("ou-2")}))
+	deletions := []gatewayDeletion{{ResourceType: "application", ID: "app-1"}, {ResourceType: "flow", ID: "f-1"},
+		{ResourceType: "organization_unit", ID: "ou-2"}}
+
+	first, rest := replacedRemovals(deletions, held, map[string]bool{"flow/f-1": true})
+
+	s.Equal(deletions[:2], first)
+	s.Equal(deletions[2:], rest)
+	first, rest = replacedRemovals(deletions, held, nil)
+	s.Empty(first)
+	s.Equal(deletions, rest)
+}
+
+// A selection naming an addition takes in the removal of the resource it replaces, marked as required
+// by the addition.
+func (s *DependenciesTestSuite) TestASelectedAdditionTakesInTheRemovalItReplaces() {
+	target := &Version{Resources: resourceServer("rs-b", "API", "ou-1")}
+	diff := &Diff{Changes: []Change{
+		{Key: "resource_server/rs-b", ResourceType: "resource_server", ID: "rs-b", Change: ChangeAdded,
+			Replaces: "resource_server/rs-a"},
+		{Key: "resource_server/rs-a", ResourceType: "resource_server", ID: "rs-a", Change: ChangeDeleted},
+	}}
+	selection := []string{"resource_server/rs-b"}
+
+	sent, svcErr := chosen(diff, target, &selection, false)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]gatewayDeletion{{ResourceType: "resource_server", ID: "rs-a"}}, sent.deletions)
+	s.True(diff.Changes[1].Selected)
+	s.True(diff.Changes[1].Required)
+	s.Equal("resource_server/rs-b", diff.Changes[1].RequiredBy)
+}
+
+// The removal a selected addition replaces stays out while the gateway holds it back.
+func (s *DependenciesTestSuite) TestASelectedAdditionLeavesOutAHeldBackRemovalItReplaces() {
+	target := &Version{Resources: resourceServer("rs-b", "API", "ou-1")}
+	diff := &Diff{Changes: []Change{
+		{Key: "resource_server/rs-b", ResourceType: "resource_server", ID: "rs-b", Change: ChangeAdded,
+			Replaces: "resource_server/rs-a"},
+		{Key: "resource_server/rs-a", ResourceType: "resource_server", ID: "rs-a", Change: ChangeDeleted,
+			HeldBack: true},
+	}}
+	selection := []string{"resource_server/rs-b"}
+
+	sent, svcErr := chosen(diff, target, &selection, false)
+
+	s.Require().Nil(svcErr)
+	s.Empty(sent.deletions)
+	s.False(diff.Changes[1].Selected)
+}
+
+// A resource deleted and created again under its name is replaced in one apply: the old one is removed
+// in an import of its own before the documents, even while a document the gateway keeps names it and
+// is updated to name the new one, which would otherwise hold the removal back for the update.
+func (s *DependenciesTestSuite) TestAReplacedResourceIsRemovedInAnImportBeforeTheDocuments() {
+	t := s.T()
+	f := newVersionFixture(t)
+	f.exporter.response = documents(unit("ou-1"), resourceServer("rs-a", "API", "ou-1"),
+		"resource_type: server_config\nname: defaultResourceServer\nresourceServerId: rs-a")
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	f.exporter.response = documents(unit("ou-1"), resourceServer("rs-b", "API", "ou-1"),
+		"resource_type: server_config\nname: defaultResourceServer\nresourceServerId: rs-b")
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
+	require.Nil(t, svcErr)
+	replaces := ""
+	for _, change := range diff.Changes {
+		if change.Key == "resource_server/rs-b" {
+			replaces = change.Replaces
+		}
+	}
+	assert.Equal(t, "resource_server/rs-a", replaces)
+	sentBefore := len(f.client.sent)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Selection: &[]string{"resource_server/rs-b",
+		"server_config/defaultResourceServer"}})
+
+	require.Nil(t, svcErr)
+	require.Len(t, f.client.sent, sentBefore+2)
+	removal := f.client.sent[sentBefore]
+	assert.Empty(t, removal.Content)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "resource_server", ID: "rs-a"}}, removal.Deletions)
+	assert.Contains(t, f.client.last().Content, "id: rs-b")
+	assert.Empty(t, f.client.last().Deletions)
+	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
+	require.Nil(t, svcErr)
+	assert.NotContains(t, master.Resources, "id: rs-a", "the removal sent first was not recorded")
+}
+
+// An apply that may no longer write the gateway after the removals sent first sends nothing more, and
+// says why: another node took its lease over, or it ran past the time it may send in.
+func (s *DependenciesTestSuite) TestNothingMoreIsSentOnceTheApplyMayNoLongerWriteAfterTheFirstImport() {
+	budget := prepareBudget
+	s.T().Cleanup(func() { prepareBudget = budget })
+	for name, tc := range map[string]struct {
+		stop func(f *versionFixture)
+		want string
+	}{
+		"lease taken over": {stop: func(f *versionFixture) { f.versions.leases["gw-1"].Token = anotherPod },
+			want: ErrorAppliedChanged.Code},
+		"took too long": {stop: func(*versionFixture) { prepareBudget = -time.Second },
+			want: ErrorApplyTookTooLong.Code},
+	} {
+		s.Run(name, func() {
+			t := s.T()
+			prepareBudget = budget
+			f := newVersionFixture(t)
+			f.exporter.response = documents(unit("ou-1"), resourceServer("rs-a", "API", "ou-1"))
+			_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+			require.Nil(t, svcErr)
+			_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+			require.Nil(t, svcErr)
+			f.exporter.response = documents(unit("ou-1"), resourceServer("rs-b", "API", "ou-1"))
+			_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+			require.Nil(t, svcErr)
+			sentBefore := len(f.client.sent)
+			f.client.onImport = func() { tc.stop(f) }
+
+			_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+			require.NotNil(t, svcErr)
+			assert.Equal(t, tc.want, svcErr.Code)
+			require.Len(t, f.client.sent, sentBefore+1, "the documents were sent after the apply had to stop")
+			assert.Empty(t, f.client.last().Content)
+			assert.Equal(t, []gatewayDeletion{{ResourceType: "resource_server", ID: "rs-a"}}, f.client.last().Deletions)
+		})
+	}
+}
+
+// A dry run sends the replaced removal with everything else in one import.
+func (s *DependenciesTestSuite) TestADryRunSendsAReplacedRemovalWithTheDocuments() {
+	t := s.T()
+	f := newVersionFixture(t)
+	f.exporter.response = documents(unit("ou-1"), resourceServer("rs-a", "API", "ou-1"))
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	f.exporter.response = documents(unit("ou-1"), resourceServer("rs-b", "API", "ou-1"))
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	sentBefore := len(f.client.sent)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{DryRun: true})
+
+	require.Nil(t, svcErr)
+	require.Len(t, f.client.sent, sentBefore+1)
+	assert.Contains(t, f.client.last().Content, "id: rs-b")
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "resource_server", ID: "rs-a"}}, f.client.last().Deletions)
+}

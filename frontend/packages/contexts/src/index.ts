@@ -12,6 +12,12 @@ export type {
 } from './Administration/AdministrationContext';
 export type {AdministrationMode} from './Administration/constants';
 export type {RuntimeContextType} from './Runtime/RuntimeContext';
+export type {
+  EnvironmentValue,
+  EnvironmentValueField,
+  RuntimeEnvironment,
+  RuntimeEnvironmentsContextType,
+} from './Runtime/RuntimeEnvironmentsContext';
 export type {ProjectScopeContextType} from './ProjectScope/ProjectScopeContext';
 export type {Capabilities} from './Capabilities/CapabilitiesContext';
 
@@ -41,6 +47,14 @@ export {default as RuntimeContext} from './Runtime/RuntimeContext';
 export {default as RuntimeProvider, type RuntimeProviderProps} from './Runtime/RuntimeProvider';
 export {default as useRuntimeUrl} from './Runtime/useRuntimeUrl';
 export {default as useGateCallbackUrl} from './Runtime/useGateCallbackUrl';
+export {default as RuntimeEnvironmentsContext} from './Runtime/RuntimeEnvironmentsContext';
+export {default as useRuntimeEnvironments} from './Runtime/useRuntimeEnvironments';
+export {default as HiddenResourcesContext, type HiddenResources} from './HiddenResources/HiddenResourcesContext';
+export {
+  default as HiddenResourcesProvider,
+  type HiddenResourcesProviderProps,
+} from './HiddenResources/HiddenResourcesProvider';
+export {default as useHiddenResources, type HiddenResourceChecks} from './HiddenResources/useHiddenResources';
 export {default as ProjectScopeContext} from './ProjectScope/ProjectScopeContext';
 export {default as ProjectScopeProvider, type ProjectScopeProviderProps} from './ProjectScope/ProjectScopeProvider';
 export {default as useProjectScope} from './ProjectScope/useProjectScope';

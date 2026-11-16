@@ -24,10 +24,27 @@ import {useGetOrganizationUnit} from '@thunderid/configure-organization-units';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {DefaultTheme, type Theme, useGetTheme} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
-import {Box, Button, Chip, Link, Paper, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
-import {ArrowRight, ArrowUpRight, Check, Copy, Sparkles} from '@wso2/oxygen-ui-icons-react';
+import {
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  Paper,
+  Stack,
+  Tooltip,
+  Typography,
+  useColorScheme,
+} from '@wso2/oxygen-ui';
+import {ArrowRight, BookOpen, Check, Copy, Sparkles, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
+import EnvironmentClientIdField from './EnvironmentClientIdField';
+import QuickstartGuide, {type QuickstartGuideSource} from './QuickstartGuide';
+import useResourceEnvironments from '../../../hooks/useResourceEnvironments';
 import type {Application} from '../../../models/application';
 import type {OAuth2Config} from '../../../models/oauth';
 import {getIntegrationGuideForTemplate} from '../../../utils/getIntegrationGuidesForTemplate';
@@ -36,6 +53,8 @@ import getQuickstartsForTemplate from '../../../utils/getQuickstartsForTemplate'
 import normalizeTemplateId from '../../../utils/normalizeTemplateId';
 import {hasUserAccess} from '../../../utils/oauth2Rules';
 import resolveTemplateLink from '../../../utils/resolveTemplateLink';
+import EnvironmentChoice from '../../environments/EnvironmentChoice';
+import EnvironmentNotDeployedNotice from '../../environments/EnvironmentNotDeployedNotice';
 
 /**
  * Props for the {@link IntegrationGuides} component.
@@ -94,7 +113,7 @@ function IconBadge({children, gradient = false}: {children: ReactNode; gradient?
   );
 }
 
-/** Vendor logo shown in a quickstart card for a given platform's {@link QuickstartLink.label}. */
+/** Vendor logo shown next to a quickstart guide for a given platform's {@link QuickstartLink.label}. */
 const QUICKSTART_ICONS: Record<string, JSX.Element> = {
   Android: <AndroidLogo size={18} />,
   Flutter: <FlutterLogo size={18} />,
@@ -115,16 +134,14 @@ function IconCard({
   title,
   description,
   children,
-  sx = undefined,
 }: {
   icon: ReactNode;
   title: ReactNode;
   description: ReactNode;
   children: ReactNode;
-  sx?: object;
 }): JSX.Element {
   return (
-    <Paper variant="outlined" sx={{borderRadius: '10px', p: 2.25, display: 'flex', gap: 1.75, ...sx}}>
+    <Paper variant="outlined" sx={{borderRadius: '10px', p: 2.25, display: 'flex', gap: 1.75}}>
       {icon}
       <Box sx={{minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column'}}>
         <Typography variant="subtitle2" sx={{fontWeight: 600, mb: 0.5}}>
@@ -175,9 +192,10 @@ function OverviewCard({
  * Overview tab for an application's edit page.
  *
  * Always shows the application's identifiers, and, for OAuth2-enabled applications, its OIDC
- * endpoints. When the application's template has a runnable quickstart, it additionally shows a
- * StackBlitz quickstart, a link to the hosted integration guide, a ready-made coding-agent
- * prompt, and a preview of the sign-in experience.
+ * endpoints. When the application's template has a quickstart, it additionally shows a StackBlitz
+ * quickstart, an emphasized card that opens the integration guide from the docs site in a dialog
+ * with this application's values filled in, a ready-made coding-agent prompt, and a preview of
+ * the sign-in experience.
  */
 export default function IntegrationGuides({
   application,
@@ -204,6 +222,7 @@ export default function IntegrationGuides({
   const productName = config.brand.product_name;
   const [promptCopied, setPromptCopied] = useState(false);
   const [isFetchingPrompt, setIsFetchingPrompt] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const externalLinkConfirmation = useExternalLinkConfirmation();
 
   const templateId = application.template ?? undefined;
@@ -211,17 +230,13 @@ export default function IntegrationGuides({
   const promptUrl = resolveTemplateLink(guide?.llm_prompt.docsUrl, getDocumentationLink);
   const quickstarts = getQuickstartsForTemplate(templateId) ?? [];
   const playgrounds = getPlaygroundsForTemplate(templateId) ?? [];
-  // A template with exactly one quickstart guide gets a single generic guide card. Templates
-  // covering multiple platform SDKs (e.g. Mobile, which spans iOS/Android/Flutter) get one guide
-  // card per platform instead. Entries whose docs link isn't configured (resolves to undefined)
-  // are dropped rather than rendered with a dead link.
-  const primaryQuickstart = quickstarts.length === 1 ? quickstarts[0] : undefined;
-  const primaryQuickstartDocsUrl = resolveTemplateLink(primaryQuickstart?.docsUrl, getDocumentationLink);
-  const visibleQuickstarts = primaryQuickstart
-    ? []
-    : quickstarts
-        .map((entry) => ({...entry, docsUrl: resolveTemplateLink(entry.docsUrl, getDocumentationLink)}))
-        .filter((entry): entry is {label: string; docsUrl: string} => Boolean(entry.docsUrl));
+  // One guide per platform SDK the template covers (e.g. Mobile spans iOS, Android, and Flutter).
+  // Entries whose docs link isn't configured (resolves to undefined) are dropped rather than
+  // rendered with a dead link.
+  const quickstartGuides: QuickstartGuideSource[] = quickstarts.flatMap((entry) => {
+    const docsUrl = resolveTemplateLink(entry.docsUrl, getDocumentationLink);
+    return docsUrl ? [{label: entry.label, docsUrl, icon: QUICKSTART_ICONS[entry.label]}] : [];
+  });
   // A template with exactly one playground gets the runnable banner, provided it's on an
   // environment the console knows how to render (currently only StackBlitz). Templates covering
   // multiple platform SDKs, or platforms with no runnable environment (e.g. native mobile), have
@@ -288,10 +303,38 @@ export default function IntegrationGuides({
   // The prompt and the endpoints below are for someone to copy into their own application, so they
   // have to name the deployment that answers them rather than the one the console is configured against.
   const runtimeUrl = useRuntimeUrl();
+  // Where the application is deployed to more than one environment, its client ID and endpoints differ in
+  // each, so the details and endpoints show one chosen environment's: the first in the pipeline until
+  // another is chosen. An environment the application is not in has no client ID for it and its endpoints
+  // do not accept it, so neither is shown for it: the way to get the application there is, in their place.
+  const {
+    environments,
+    selectedEnvironment,
+    shownEnvironment,
+    selectEnvironment,
+    notDeployedIds,
+    isNotDeployed: selectedIsNotDeployed,
+    previousEnvironmentName,
+    selectedClientId: selectedClientIdValue,
+    getValue,
+    deployPath,
+  } = useResourceEnvironments({
+    resourceType: 'application',
+    resourceId: application.id,
+    hasClientId: Boolean(oauth2Config?.clientId),
+  });
+  // A single environment's values are shown as one of several is, only with nothing to choose.
+  const endpointsBaseUrl = shownEnvironment?.runtimeUrl ?? runtimeUrl;
+  // The integration guide and the coding agent prompt are for the environment chosen too. An environment
+  // with no client ID for the application leaves the placeholder for the developer to fill in.
+  let selectedClientId = oauth2Config?.clientId;
+  if (shownEnvironment) {
+    selectedClientId = selectedClientIdValue?.status === 'set' ? selectedClientIdValue.value : undefined;
+  }
   const placeholderValues = {
     productName,
-    baseUrl: runtimeUrl,
-    clientId: oauth2Config?.clientId,
+    baseUrl: endpointsBaseUrl,
+    clientId: selectedClientId ?? '<your-client-id>',
     applicationId: application.id,
   };
 
@@ -311,7 +354,11 @@ export default function IntegrationGuides({
 
       const promptText = await response.text();
 
-      await navigator.clipboard.writeText(replacePlaceholders(promptText, placeholderValues));
+      // A prompt written before the base URL placeholder names a local instance, as the docs code samples do.
+      const filledPrompt = replacePlaceholders(promptText, placeholderValues);
+      await navigator.clipboard.writeText(
+        endpointsBaseUrl ? filledPrompt.replaceAll('https://localhost:8090', endpointsBaseUrl) : filledPrompt,
+      );
       setPromptCopied(true);
       setTimeout(() => setPromptCopied(false), 1500);
     } catch {
@@ -326,24 +373,24 @@ export default function IntegrationGuides({
     {
       key: 'flowExecute',
       label: t('applications:edit.overview.endpoints.flowExecute', 'Flow execution endpoint'),
-      url: `${runtimeUrl}/flow/execute`,
+      url: `${endpointsBaseUrl}/flow/execute`,
     },
     {
       key: 'flowMeta',
       label: t('applications:edit.overview.endpoints.flowMeta', 'Flow metadata endpoint'),
-      url: `${runtimeUrl}/flow/meta`,
+      url: `${endpointsBaseUrl}/flow/meta`,
     },
     ...(isDirectApiEnabled
       ? [
           {
             key: 'passkeyRegisterStart',
             label: t('applications:edit.overview.endpoints.passkeyRegisterStart', 'Passkey registration (start)'),
-            url: `${runtimeUrl}/register/passkey/start`,
+            url: `${endpointsBaseUrl}/register/passkey/start`,
           },
           {
             key: 'passkeyRegisterFinish',
             label: t('applications:edit.overview.endpoints.passkeyRegisterFinish', 'Passkey registration (finish)'),
-            url: `${runtimeUrl}/register/passkey/finish`,
+            url: `${endpointsBaseUrl}/register/passkey/finish`,
           },
         ]
       : []),
@@ -352,27 +399,27 @@ export default function IntegrationGuides({
     {
       key: 'wellknown',
       label: t('applications:edit.overview.endpoints.wellknown', 'OpenID configuration'),
-      url: `${runtimeUrl}/.well-known/openid-configuration`,
+      url: `${endpointsBaseUrl}/.well-known/openid-configuration`,
     },
     {
       key: 'authorization',
       label: t('applications:edit.overview.endpoints.authorization', 'Authorization endpoint'),
-      url: `${runtimeUrl}/oauth2/authorize`,
+      url: `${endpointsBaseUrl}/oauth2/authorize`,
     },
     {
       key: 'token',
       label: t('applications:edit.overview.endpoints.token', 'Token endpoint'),
-      url: `${runtimeUrl}/oauth2/token`,
+      url: `${endpointsBaseUrl}/oauth2/token`,
     },
     {
       key: 'userinfo',
       label: t('applications:edit.overview.endpoints.userinfo', 'Userinfo endpoint'),
-      url: `${runtimeUrl}/oauth2/userinfo`,
+      url: `${endpointsBaseUrl}/oauth2/userinfo`,
     },
     {
       key: 'jwks',
       label: t('applications:edit.overview.endpoints.jwks', 'JWKS URI'),
-      url: `${runtimeUrl}/oauth2/jwks`,
+      url: `${endpointsBaseUrl}/oauth2/jwks`,
     },
   ];
   // Apps with their own backend/native runtime ("App Native", per the Flow Execution API) drive
@@ -383,8 +430,47 @@ export default function IntegrationGuides({
 
   const colorMode: 'light' | 'dark' = (mode === 'system' ? systemMode : mode) === 'dark' ? 'dark' : 'light';
   const themeSwatchColor = themeDetails?.theme.colorSchemes?.[colorMode]?.palette?.primary?.main;
-  const hasVisibleQuickstart = Boolean(primaryQuickstartDocsUrl) || visibleQuickstarts.length > 0;
-  const endpointsCard = (showOAuthEndpoints || showFlowEndpoints) && (
+  const hasVisibleQuickstart = quickstartGuides.length > 0;
+  // The docs code samples are written against a local instance with placeholder identifiers.
+  // Swapping in this application's values leaves the developer nothing to look up.
+  const guideCodeValues = {
+    '<your-client-id>': selectedClientId,
+    '<your-application-id>': application.id,
+    'https://localhost:8090': endpointsBaseUrl,
+  };
+  const promptDescription = selectedEnvironment
+    ? t(
+        'applications:edit.overview.agentPrompt.descriptionForEnvironment',
+        'Copy a ready-made prompt for Claude, Cursor, or any agent, with the values for {{environment}}.',
+        {environment: selectedEnvironment.name},
+      )
+    : t(
+        'applications:edit.overview.agentPrompt.description',
+        'Copy a ready-made prompt for Claude, Cursor, or any agent.',
+      );
+  const renderCopyPromptButton = (variant: 'contained' | 'outlined'): JSX.Element => (
+    <Button
+      variant={variant}
+      size="small"
+      disabled={isFetchingPrompt}
+      startIcon={promptCopied ? <Check size={13} /> : <Copy size={13} />}
+      sx={{flexShrink: 0}}
+      onClick={() => {
+        void handleCopyPrompt();
+      }}
+    >
+      {promptCopied ? t('common:actions.copied') : t('applications:edit.overview.agentPrompt.action', 'Copy prompt')}
+    </Button>
+  );
+  const hasEndpoints = showOAuthEndpoints || showFlowEndpoints;
+  const endpointFields = (
+    <Box>
+      {endpoints.map((endpoint) => (
+        <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
+      ))}
+    </Box>
+  );
+  const endpointsCard = hasEndpoints && !selectedIsNotDeployed && (
     <OverviewCard
       title={t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints')}
       description={t(
@@ -392,11 +478,7 @@ export default function IntegrationGuides({
         'For driving sign-in and registration with a fully custom UI.',
       )}
     >
-      <Box>
-        {endpoints.map((endpoint) => (
-          <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
-        ))}
-      </Box>
+      {endpointFields}
     </OverviewCard>
   );
   // Sign-in-facing apps already fill the main column with a quickstart and a sizeable preview
@@ -407,31 +489,78 @@ export default function IntegrationGuides({
   const showEndpointsInSidebar = isSignInFacing;
   const hasMainContent = hasVisibleQuickstart || Boolean(promptUrl) || isSignInFacing || Boolean(endpointsCard);
 
-  const detailsCard = (
-    <OverviewCard
-      title={t('applications:edit.overview.appDetails.title', 'Application details')}
-      description={t('applications:edit.overview.appDetails.description', 'Identifiers used in your integration code.')}
-      sx={hasMainContent ? undefined : {flex: '1 1 320px', maxWidth: {xs: '100%', md: 320}}}
+  const detailsFields = (
+    <Box>
+      <CopyableField label={t('applications:edit.general.labels.applicationId')} value={application.id} />
+      {oauth2Config?.clientId &&
+        !selectedIsNotDeployed &&
+        (shownEnvironment && getValue ? (
+          <EnvironmentClientIdField environment={shownEnvironment} resourceId={application.id} getValue={getValue} />
+        ) : (
+          <CopyableField
+            label={t('applications:edit.general.labels.clientId', 'Client ID')}
+            value={oauth2Config.clientId}
+          />
+        ))}
+      {application.ouId && (
+        <CopyableField
+          label={t('applications:edit.overview.appDetails.organizationUnitId', 'Organization unit ID')}
+          value={application.ouId}
+        />
+      )}
+      {organizationUnit?.handle && (
+        <CopyableField
+          label={t('applications:edit.overview.appDetails.organizationUnitHandle', 'Organization unit handle')}
+          value={organizationUnit.handle}
+        />
+      )}
+    </Box>
+  );
+  // The identifiers and endpoints sit in one card. With several environments the choice of one leads it,
+  // so the card reads as one answer: this environment's identifiers and endpoints.
+  const sectionTitle = (title: string): JSX.Element => (
+    <Typography variant="subtitle1" component="h3" sx={{fontWeight: 600, mt: 2.5, mb: 1.25, '&:first-child': {mt: 0}}}>
+      {title}
+    </Typography>
+  );
+  const panelWidth = 520;
+  const detailsPanel = (
+    <Paper
+      variant="outlined"
+      sx={{
+        borderRadius: '10px',
+        p: 2.25,
+        ...(hasMainContent ? {} : {flex: `1 1 ${panelWidth}px`, maxWidth: {xs: '100%', md: panelWidth}}),
+      }}
     >
-      <Box>
-        <CopyableField label={t('applications:edit.general.labels.applicationId')} value={application.id} />
-        {oauth2Config?.clientId && (
-          <CopyableField label={t('applications:edit.general.labels.clientId')} value={oauth2Config.clientId} />
-        )}
-        {application.ouId && (
-          <CopyableField
-            label={t('applications:edit.overview.appDetails.organizationUnitId', 'Organization unit ID')}
-            value={application.ouId}
+      {selectedEnvironment && (
+        <EnvironmentChoice
+          environments={environments}
+          selectedEnvironment={selectedEnvironment}
+          onSelect={selectEnvironment}
+          notDeployedIds={notDeployedIds}
+        />
+      )}
+      {shownEnvironment && selectedIsNotDeployed && (
+        <Box sx={{mt: selectedEnvironment ? 2 : 0, mb: selectedEnvironment ? 0 : 2.5}}>
+          <EnvironmentNotDeployedNotice
+            resourceName={application.name}
+            environmentName={shownEnvironment.name}
+            previousEnvironmentName={previousEnvironmentName}
+            deployPath={deployPath}
           />
-        )}
-        {organizationUnit?.handle && (
-          <CopyableField
-            label={t('applications:edit.overview.appDetails.organizationUnitHandle', 'Organization unit handle')}
-            value={organizationUnit.handle}
-          />
-        )}
-      </Box>
-    </OverviewCard>
+        </Box>
+      )}
+      {sectionTitle(t('applications:edit.overview.appDetails.title', 'Application details'))}
+      {detailsFields}
+      {!selectedIsNotDeployed && hasEndpoints && showEndpointsInSidebar && (
+        <>
+          <Divider sx={{mt: 2.5}} />
+          {sectionTitle(t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints'))}
+          {endpointFields}
+        </>
+      )}
+    </Paper>
   );
 
   return (
@@ -463,104 +592,64 @@ export default function IntegrationGuides({
             />
           )}
 
-          {(hasVisibleQuickstart || promptUrl) && (
-            <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.75}}>
-              {primaryQuickstartDocsUrl && (
-                <IconCard
-                  icon={
-                    <IconBadge>{QUICKSTART_ICONS[primaryQuickstart!.label] ?? <ArrowUpRight size={16} />}</IconBadge>
-                  }
-                  title={t('applications:edit.overview.readGuide.title', 'Read the quickstart guide')}
-                  description={t(
-                    'applications:edit.overview.readGuide.description',
-                    'Step-by-step integration guide on the docs site.',
+          {hasVisibleQuickstart && (
+            <Paper variant="outlined" sx={{p: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2}}>
+              <IconBadge>
+                {(quickstartGuides.length === 1 ? quickstartGuides[0].icon : undefined) ?? <BookOpen size={16} />}
+              </IconBadge>
+              <Box sx={{flex: '1 1 240px', minWidth: 0}}>
+                <Typography variant="h6" component="h2">
+                  {t('applications:edit.overview.guide.title', 'Integrate your application')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {t(
+                    'applications:edit.overview.guide.description',
+                    'A step-by-step guide, with the values of this application already in the code samples.',
                   )}
-                  sx={{flex: '1 1 240px'}}
-                >
-                  <Link
-                    component="button"
-                    type="button"
-                    variant="body2"
-                    underline="hover"
-                    sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5, fontWeight: 600}}
-                    onClick={() => externalLinkConfirmation.requestNavigation(primaryQuickstartDocsUrl)}
-                  >
-                    {t('applications:edit.overview.readGuide.action', 'Open quickstart')}
-                    <ArrowUpRight size={13} />
-                  </Link>
-                </IconCard>
-              )}
-
-              {visibleQuickstarts.map((entry) => (
-                <IconCard
-                  key={entry.label}
-                  icon={<IconBadge>{QUICKSTART_ICONS[entry.label] ?? <ArrowUpRight size={16} />}</IconBadge>}
-                  title={t('applications:edit.overview.readGuide.titleFor', '{{label}} quickstart guide', {
-                    label: entry.label,
-                  })}
-                  description={t(
-                    'applications:edit.overview.readGuide.descriptionFor',
-                    'Step-by-step {{label}} integration guide on the docs site.',
-                    {label: entry.label},
-                  )}
-                  sx={{flex: '1 1 240px'}}
-                >
-                  <Link
-                    component="button"
-                    type="button"
-                    variant="body2"
-                    underline="hover"
-                    sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5, fontWeight: 600}}
-                    onClick={() => externalLinkConfirmation.requestNavigation(entry.docsUrl)}
-                  >
-                    {t('applications:edit.overview.readGuide.action', 'Open quickstart')}
-                    <ArrowUpRight size={13} />
-                  </Link>
-                </IconCard>
-              ))}
-
-              {promptUrl && (
-                <IconCard
-                  icon={
-                    <IconBadge>
-                      <Sparkles size={16} />
-                    </IconBadge>
-                  }
-                  title={
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <span>{t('applications:edit.overview.agentPrompt.title', 'Integrate with a coding agent')}</span>
-                      <Chip
-                        label={t('applications:edit.overview.agentPrompt.badge', 'AI')}
-                        size="small"
-                        color="primary"
-                        sx={{height: 18, fontSize: '0.65rem', fontWeight: 600}}
-                      />
-                    </Stack>
-                  }
-                  description={t(
-                    'applications:edit.overview.agentPrompt.description',
-                    'Copy a ready-made prompt for Claude, Cursor, or any agent.',
-                  )}
-                  sx={{flex: '1 1 240px'}}
-                >
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" gap={1} sx={{mt: 1.5}}>
+                  {/* The coding agent prompt is the quickest way in, so it is the primary action whenever
+                      the template has one. */}
                   <Button
-                    variant="outlined"
+                    variant={promptUrl ? 'outlined' : 'contained'}
                     size="small"
-                    disabled={isFetchingPrompt}
-                    startIcon={promptCopied ? <Check size={13} /> : <Copy size={13} />}
-                    onClick={() => {
-                      handleCopyPrompt().catch(() => {
-                        /* Error already handled */
-                      });
-                    }}
+                    startIcon={<BookOpen size={16} />}
+                    onClick={() => setIsGuideOpen(true)}
                   >
-                    {promptCopied
-                      ? t('common:actions.copied')
-                      : t('applications:edit.overview.agentPrompt.action', 'Copy prompt')}
+                    {t('applications:edit.overview.guide.open', 'Open integration guide')}
                   </Button>
-                </IconCard>
-              )}
-            </Box>
+                  {promptUrl && (
+                    <Tooltip title={promptDescription}>
+                      <span>{renderCopyPromptButton('contained')}</span>
+                    </Tooltip>
+                  )}
+                </Stack>
+              </Box>
+            </Paper>
+          )}
+
+          {!hasVisibleQuickstart && promptUrl && (
+            <IconCard
+              icon={
+                <IconBadge>
+                  <Sparkles size={16} />
+                </IconBadge>
+              }
+              title={
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <span>{t('applications:edit.overview.agentPrompt.title', 'Integrate with a coding agent')}</span>
+                  <Chip
+                    label={t('applications:edit.overview.agentPrompt.badge', 'AI')}
+                    size="small"
+                    color="primary"
+                    sx={{height: 18, fontSize: '0.65rem', fontWeight: 600}}
+                  />
+                </Stack>
+              }
+              description={promptDescription}
+            >
+              {renderCopyPromptButton('outlined')}
+            </IconCard>
           )}
 
           {isSignInFacing && (
@@ -713,10 +802,72 @@ export default function IntegrationGuides({
 
       {/* Right: identifiers sidebar. Also holds the endpoints card for sign-in-facing apps, whose
           main column is already full without it. */}
-      <Stack spacing={1.75} sx={hasMainContent ? {flex: '1 0 280px', maxWidth: {xs: '100%', md: 320}} : undefined}>
-        {detailsCard}
-        {showEndpointsInSidebar && endpointsCard}
+      <Stack
+        spacing={1.75}
+        sx={hasMainContent ? {flex: '2 0 320px', maxWidth: {xs: '100%', md: panelWidth}} : undefined}
+      >
+        {detailsPanel}
       </Stack>
+
+      {hasVisibleQuickstart && (
+        // Kept mounted so the guide is fetched before it is first opened, and closing the dialog
+        // does not lose the step someone was on.
+        <Dialog
+          open={isGuideOpen}
+          onClose={() => setIsGuideOpen(false)}
+          maxWidth="md"
+          fullWidth
+          keepMounted
+          aria-labelledby="integration-guide-title-text"
+        >
+          <DialogTitle
+            id="integration-guide-title"
+            sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2}}
+          >
+            <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1.5} sx={{minWidth: 0}}>
+              <span id="integration-guide-title-text">
+                {t('applications:edit.overview.guide.dialogTitle', 'Integration guide')}
+              </span>
+              {selectedEnvironment && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  icon={
+                    <Box
+                      aria-hidden
+                      sx={(theme) => ({
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: selectedEnvironment.color?.light ?? 'text.secondary',
+                        ...theme.applyStyles('dark', {bgcolor: selectedEnvironment.color?.dark ?? 'text.secondary'}),
+                      })}
+                    />
+                  }
+                  label={t('applications:edit.overview.environments.guideFor', 'Values for {{environment}}', {
+                    environment: selectedEnvironment.name,
+                  })}
+                  sx={{pl: 0.75}}
+                />
+              )}
+            </Stack>
+            <IconButton
+              size="small"
+              aria-label={t('common:actions.close', 'Close')}
+              onClick={() => setIsGuideOpen(false)}
+            >
+              <X size={18} aria-hidden />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            <QuickstartGuide
+              guides={quickstartGuides}
+              codeValues={guideCodeValues}
+              onOpenLink={externalLinkConfirmation.requestNavigation}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ExternalLinkConfirmDialog
         isOpen={externalLinkConfirmation.isOpen}

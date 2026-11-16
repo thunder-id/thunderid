@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useHiddenResources} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -48,6 +49,7 @@ export default function RevertPanel({
   onReverted,
 }: RevertPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {isHiddenResource} = useHiddenResources();
   const tForErrors = useGatewayErrorTranslator();
   const revert = useRevert();
   // In a project only its own applications and agents go back.
@@ -90,6 +92,8 @@ export default function RevertPanel({
   // Counted as the control plane counts them for its threshold: a resource without an id cannot be
   // named to the gateway, so it is not a removal.
   const removals = changes.filter((change: Change) => change.change === 'deleted' && Boolean(change.id)).length;
+  // Hidden resources are rolled back with the rest, but not shown.
+  const shown = changes.filter((change: Change) => !isHiddenResource(change.resourceType, change.id));
   const header = (
     <Stack direction="row" alignItems="center" spacing={1.5}>
       <Box sx={{display: 'flex', color: 'error.main'}}>
@@ -161,19 +165,19 @@ export default function RevertPanel({
             )}
             {preview && (
               <Typography variant="body2" color="text.secondary">
-                {changes.length === 0
+                {shown.length === 0
                   ? t('revertPanel.noChanges', 'Rolling back changes nothing the gateway runs.')
                   : t(
                       'revertPanel.changes',
                       'Rolling back writes {{count}} resources as the earlier version has them.',
                       {
-                        count: changes.length,
+                        count: shown.length,
                       },
                     )}
               </Typography>
             )}
             {preview?.changed && <ChangedValuesNotice changed={preview.changed} />}
-            {preview && changes.length > 0 && <ChangeList changes={changes} />}
+            {preview && shown.length > 0 && <ChangeList changes={shown} />}
             {confirmRemovals && (
               <Alert severity="warning" data-testid="deploy-confirm-removals">
                 {t(

@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/entity"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -64,8 +65,14 @@ func (s *InlineStubAgentService) GetAgentListByOwner(context.Context, string, in
 	return &model.AgentListResponse{}, nil
 }
 
-func (s *InlineStubAgentService) RegenerateAgentSecret(context.Context, string) (string, *tidcommon.ServiceError) {
-	return "", nil
+func (s *InlineStubAgentService) RegenerateAgentSecret(context.Context, string) (
+	*model.ClientSecretResponse, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
+func (s *InlineStubAgentService) ValidateClientSecretRegeneration(context.Context, string) (
+	*entity.ClientSecretProfile, *tidcommon.ServiceError) {
+	return nil, nil
 }
 
 func (s *InlineStubAgentService) CreateAgent(
@@ -506,6 +513,51 @@ func TestHandleAgentDeleteRequest_MissingID(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handler.HandleAgentDeleteRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// The new secret is returned once, and the response is never cached.
+func TestHandleClientSecretRegenerateRequest_ReturnsTheSecret(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().RegenerateAgentSecret(mock.Anything, "agent-123").
+		Return(&model.ClientSecretResponse{ClientSecret: "fresh", RevocationIncomplete: true}, nil).Once()
+	handler := newAgentHandler(service)
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/client-secret/regenerate", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	assert.JSONEq(t, `{"clientSecret":"fresh","revocationIncomplete":true}`, w.Body.String())
+}
+
+// A refusal is reported with the service's status, and no secret.
+func TestHandleClientSecretRegenerateRequest_ReportsARefusal(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().RegenerateAgentSecret(mock.Anything, "agent-123").
+		Return(nil, &ErrorClientSecretNotUsed).Once()
+	handler := newAgentHandler(service)
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/client-secret/regenerate", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorClientSecretNotUsed.Code)
+	assert.NotContains(t, w.Body.String(), "clientSecret")
+}
+
+func TestHandleClientSecretRegenerateRequest_MissingID(t *testing.T) {
+	handler := newAgentHandler(&InlineStubAgentService{})
+	req := httptest.NewRequest(http.MethodPost, "/agents//client-secret/regenerate", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 

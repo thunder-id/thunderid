@@ -350,10 +350,8 @@ func (suite *ServiceTestSuite) TestCreateApplication_SucceedsWhenTheBusRefusesTh
 type regenerationStage int
 
 const (
-	// regenerationRefused is a regeneration refused before it reads anything.
-	regenerationRefused regenerationStage = iota
 	// regenerationNotLoaded is a regeneration that reads the application and stops.
-	regenerationNotLoaded
+	regenerationNotLoaded regenerationStage = iota
 	// regenerationNotStored is a regeneration that checks the client and stops before it writes.
 	regenerationNotStored
 	// regenerationStored is a regeneration that writes the secret.
@@ -379,7 +377,7 @@ func (suite *ServiceTestSuite) regeneratingService(existing *providers.Entity, e
 		mockEntityService.On("UpdateSystemCredentials", mock.Anything, testServiceAppID, mock.Anything).
 			Return(persistErr).Once()
 	}
-	return &applicationService{
+	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
@@ -387,16 +385,38 @@ func (suite *ServiceTestSuite) regeneratingService(existing *providers.Entity, e
 		authzService:         allowAllAuthz(suite.T()),
 		bus:                  discardingBus{},
 	}
+	regeneratesThroughTheHolder(service, mockEntityService)
+	return service
+}
+
+// testRegeneratedSecret is the secret the mocked entity layer generates.
+const testRegeneratedSecret = "regenerated-client-secret-0123456789"
+
+// regeneratesThroughTheHolder has the mocked entity layer regenerate a secret as the entity service does: it
+// asks the application service, the holder of applications, whether the secret may be regenerated, then
+// stores a new one. The system flows the entity service runs around the write are tested with it.
+func regeneratesThroughTheHolder(service *applicationService, entities *entitymock.EntityServiceInterfaceMock) {
+	entities.EXPECT().RegenerateClientSecret(mock.Anything, providers.EntityCategoryApp, mock.Anything).
+		RunAndReturn(func(ctx context.Context, _ providers.EntityCategory, appID string) (
+			*entity.ClientSecretRegeneration, *tidcommon.ServiceError) {
+			if _, svcErr := service.ValidateClientSecretRegeneration(ctx, appID); svcErr != nil {
+				return nil, svcErr
+			}
+			if err := entities.UpdateSystemCredentials(ctx, appID,
+				[]byte(`{"clientSecret":"`+testRegeneratedSecret+`"}`)); err != nil {
+				return nil, &tidcommon.InternalServerError
+			}
+			return &entity.ClientSecretRegeneration{ClientSecret: testRegeneratedSecret}, nil
+		}).Maybe()
 }
 
 // Regenerating a client secret records an update of the application, never the secret it generated.
-func (suite *ServiceTestSuite) TestApplyCredentialAction_PublishesOneEventPerAttempt() {
+func (suite *ServiceTestSuite) TestRegenerateClientSecret_PublishesOneEventPerAttempt() {
 	confidential := appEntityWithClientID("secret-client")
 	basic := providers.TokenEndpointAuthMethodClientSecretBasic
 	cases := []struct {
 		name       string
 		appID      string
-		action     model.CredentialAction
 		existing   *providers.Entity
 		entityErr  error
 		authMethod providers.TokenEndpointAuthMethod
@@ -404,20 +424,15 @@ func (suite *ServiceTestSuite) TestApplyCredentialAction_PublishesOneEventPerAtt
 		stage      regenerationStage
 		outcome    audit.Outcome
 	}{
-		{name: "the secret is regenerated", appID: testServiceAppID, action: model.CredentialActionRegenerate,
-			existing: confidential, authMethod: basic, stage: regenerationStored, outcome: audit.OutcomeSucceeded},
-		{name: "the application does not exist", appID: testServiceAppID,
-			action: model.CredentialActionRegenerate, entityErr: entity.ErrEntityNotFound,
+		{name: "the secret is regenerated", appID: testServiceAppID, existing: confidential,
+			authMethod: basic, stage: regenerationStored, outcome: audit.OutcomeSucceeded},
+		{name: "the application does not exist", appID: testServiceAppID, entityErr: entity.ErrEntityNotFound,
 			stage: regenerationNotLoaded, outcome: audit.OutcomeFailed("app_1001")},
-		{name: "the client authenticates without a secret", appID: testServiceAppID,
-			action: model.CredentialActionRegenerate, existing: confidential,
+		{name: "the client authenticates without a secret", appID: testServiceAppID, existing: confidential,
 			authMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT, stage: regenerationNotStored,
 			outcome: audit.OutcomeFailed("app_1047")},
-		{name: "the action is not supported", appID: testServiceAppID, action: "rotate",
-			stage: regenerationRefused, outcome: audit.OutcomeFailed("app_1049")},
-		{name: "the new secret cannot be stored", appID: testServiceAppID,
-			action: model.CredentialActionRegenerate, existing: confidential, authMethod: basic,
-			persistErr: errors.New("database is unavailable"), stage: regenerationStored,
+		{name: "the new secret cannot be stored", appID: testServiceAppID, existing: confidential,
+			authMethod: basic, persistErr: errors.New("database is unavailable"), stage: regenerationStored,
 			outcome: audit.OutcomeFailed("sse_5000")},
 	}
 	for _, tc := range cases {
@@ -427,7 +442,7 @@ func (suite *ServiceTestSuite) TestApplyCredentialAction_PublishesOneEventPerAtt
 			bus, published := newRecordingBus(suite.T())
 			service.bus = bus
 
-			secret, svcErr := service.ApplyCredentialAction(adminContext(), tc.appID, tc.action)
+			secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(adminContext(), tc.appID))
 
 			suite.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
 			event := suite.requireOnlyEvent(published(), audit.EventApplicationUpdate, audit.ActionUpdate,
@@ -440,15 +455,14 @@ func (suite *ServiceTestSuite) TestApplyCredentialAction_PublishesOneEventPerAtt
 }
 
 // A bus that cannot take the event never fails the regeneration it describes, nor withholds its secret.
-func (suite *ServiceTestSuite) TestApplyCredentialAction_SucceedsWhenTheBusRefusesTheEvent() {
+func (suite *ServiceTestSuite) TestRegenerateClientSecret_SucceedsWhenTheBusRefusesTheEvent() {
 	failing := eventbusmock.NewEventBusInterfaceMock(suite.T())
 	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Once()
 	service := suite.regeneratingService(appEntityWithClientID("secret-client"), nil,
 		providers.TokenEndpointAuthMethodClientSecretPost, nil, regenerationStored)
 	service.bus = failing
 
-	secret, svcErr := service.ApplyCredentialAction(adminContext(), testServiceAppID,
-		model.CredentialActionRegenerate)
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(adminContext(), testServiceAppID))
 
 	suite.Nil(svcErr)
 	suite.NotEmpty(secret)
@@ -625,7 +639,7 @@ func (suite *ServiceTestSuite) TestDeleteSharingPolicy_PublishesNothingForAMissi
 	}
 }
 
-func (suite *ServiceTestSuite) TestApplyCredentialAction_RecordsAnAccessDenialWithTheApplicationAsSubject() {
+func (suite *ServiceTestSuite) TestRegenerateClientSecret_RecordsAnAccessDenialWithTheApplicationAsSubject() {
 	service := suite.regeneratingService(appEntityWithClientID("secret-client"), nil,
 		providers.TokenEndpointAuthMethodClientSecretBasic, nil, regenerationNotLoaded)
 	denying := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
@@ -634,11 +648,19 @@ func (suite *ServiceTestSuite) TestApplyCredentialAction_RecordsAnAccessDenialWi
 	bus, published := newRecordingBus(suite.T())
 	service.bus = bus
 
-	secret, svcErr := service.ApplyCredentialAction(adminContext(), testServiceAppID,
-		model.CredentialActionRegenerate)
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(adminContext(), testServiceAppID))
 
 	suite.Empty(secret)
 	suite.NotNil(svcErr)
 	suite.requireOnlyEvent(published(), audit.EventApplicationUpdate, audit.ActionUpdate, testServiceAppID,
 		audit.OutcomeDenied("forbidden"))
+}
+
+// regeneratedSecret reads the secret out of a regeneration's result, empty when it failed.
+func regeneratedSecret(regenerated *model.ClientSecretResponse, svcErr *tidcommon.ServiceError) (
+	string, *tidcommon.ServiceError) {
+	if regenerated == nil {
+		return "", svcErr
+	}
+	return regenerated.ClientSecret, svcErr
 }

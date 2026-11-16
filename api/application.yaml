@@ -803,6 +803,111 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /applications/{id}/client-secret/regenerate:
+    parameters:
+      - $ref: '#/components/parameters/applicationIdPathParam'
+    post:
+      tags:
+        - Applications
+      summary: Regenerate an application's client secret
+      description: |
+        Replaces the client secret of an application that authenticates with one with a newly
+        generated secret, and returns it. The response is the only time the new secret can be read:
+        it is stored hashed and no read returns it.
+
+        The old secret stops working at once. The tokens issued to the application up to the change
+        are revoked, as for an update that replaces the secret: before the new secret is written, and
+        again once it is, so a token issued while it was being written is revoked too. If the
+        revocation before the write fails, the secret is not changed. If the one after the write
+        fails, the new secret is stored and still returned, with `revocationIncomplete: true`: a token
+        issued while it was being written may stay valid until it expires, and regenerating again
+        revokes it. The attempt is recorded as failed in the audit log.
+
+        An application that authenticates without a client secret (a public client, `none` or
+        `private_key_jwt`), one declared in a file, and one a control plane deployed are refused.
+        The caller needs the same permissions as for updating the application.
+      responses:
+        "200":
+          description: Client secret regenerated
+          headers:
+            Cache-Control:
+              description: Always `no-store`, since the body carries a secret.
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientSecretResponse'
+              example:
+                clientSecret: "pD3fXq9sT7wLk2vB8nR4mZ6cY1hJ5gA0"
+        "400":
+          description: The application's client secret cannot be regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no-client-secret:
+                  summary: The application authenticates without a client secret
+                  value:
+                    code: "APP-1047"
+                    message:
+                      key: "error.applicationservice.application_has_no_client_secret"
+                      defaultValue: "Application has no client secret"
+                    description:
+                      key: "error.applicationservice.application_has_no_client_secret_description"
+                      defaultValue: "A client secret is not applicable to this application: it authenticates without one"
+                declarative-application:
+                  summary: The application is declared in a file
+                  value:
+                    code: "APP-1030"
+                    message:
+                      key: "error.applicationservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.applicationservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "The application is declarative and cannot be modified or deleted"
+                managed-application:
+                  summary: The application was deployed by a control plane
+                  value:
+                    code: "APP-1069"
+                    message:
+                      key: "error.applicationservice.managed_application"
+                      defaultValue: "Cannot modify an application deployed by the control plane"
+                    description:
+                      key: "error.applicationservice.managed_application_description"
+                      defaultValue: "The application was deployed by the control plane and can only be changed there"
+        "403":
+          $ref: '#/components/responses/ApplicationWriteForbidden'
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "APP-1001"
+                message:
+                  key: "error.applicationservice.application_not_found"
+                  defaultValue: "Application not found"
+                description:
+                  key: "error.applicationservice.application_not_found_description"
+                  defaultValue: "The requested application could not be found"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
   /applications/{id}/sharing-policies:
     parameters:
       - $ref: '#/components/parameters/applicationIdPathParam'
@@ -1573,6 +1678,21 @@ components:
               defaultValue: "An unexpected error occurred while processing the request"
 
   schemas:
+    ClientSecretResponse:
+      type: object
+      description: A newly generated client secret, returned only when it is generated.
+      required:
+        - clientSecret
+      properties:
+        clientSecret:
+          type: string
+          description: The new client secret.
+        revocationIncomplete:
+          type: boolean
+          description: |
+            Present and `true` when the secret is stored but revoking the tokens issued while it was
+            being written failed. Those tokens may stay valid until they expire; regenerate again to
+            revoke them.
     ApplicationAllowedAgentTypes:
       type: array
       items:

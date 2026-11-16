@@ -71,8 +71,8 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 			"ApplicationActionValidator:revoke_before_removal", "CriteriaRevocationExecutor:revoke",
 			"SessionRevocationExecutor:",
 		},
-		"system-application-secret-rotate-pre": {
-			"ApplicationActionValidator:revoke_before_action", "CriteriaRevocationExecutor:revoke",
+		"system-entity-secret-rotate-pre": {
+			"EntitySecretRotationValidator:revoke_before_action", "CriteriaRevocationExecutor:revoke",
 		},
 		"system-user-delete-pre": {
 			"PreDeleteExecutor:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",

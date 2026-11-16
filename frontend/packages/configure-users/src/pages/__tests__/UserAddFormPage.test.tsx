@@ -86,12 +86,18 @@ interface RecordedRequest {
   data?: unknown;
 }
 
+// Two types, so the type is chosen from the select. A single type is used without asking.
 const userTypes = {
-  totalResults: 1,
+  totalResults: 2,
   startIndex: 1,
-  count: 1,
-  types: [{id: 'type-1', handle: 'customer', displayName: 'Customer', ouId: 'ou-root'}],
+  count: 2,
+  types: [
+    {id: 'type-1', handle: 'customer', displayName: 'Customer', ouId: 'ou-root'},
+    {id: 'type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-root'},
+  ],
 };
+
+const soleUserType = {...userTypes, totalResults: 1, count: 1, types: [userTypes.types[0]]};
 
 const customerType = {
   id: 'type-1',
@@ -162,7 +168,7 @@ describe('UserAddFormPage', () => {
       ...userTypes,
       totalResults: 2,
       count: 2,
-      types: [...userTypes.types, {id: 'type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-root'}],
+      types: [userTypes.types[0], {id: 'type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-root'}],
     };
     const employeeType = {...customerType, id: 'type-2', handle: 'employee', displayName: 'Employee'};
     mockHttpRequest.mockImplementation((config: RecordedRequest) => {
@@ -600,6 +606,99 @@ describe('UserAddFormPage', () => {
 
     await screen.findByText(/username is required/i);
     expect(requests().some((request) => request.method === 'POST')).toBe(false);
+  });
+
+  describe('with a single user type', () => {
+    beforeEach(() => {
+      const base = mockHttpRequest.getMockImplementation()!;
+      mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+        config.url.includes('/user-types?') ? Promise.resolve({data: soleUserType}) : base(config),
+      );
+    });
+
+    it('uses it without offering the choice, with its organization unit preselected', async () => {
+      const user = userEvent.setup();
+      render(<UserAddFormPage />);
+
+      expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-value', 'ou-root');
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+      expect(screen.queryByText('users:addForm.userType')).not.toBeInTheDocument();
+
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'frank');
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+          ouId: 'ou-root',
+          type: 'customer',
+          attributes: {username: 'frank'},
+        });
+      });
+    });
+
+    it('posts the organization unit picked in place of the preselected one', async () => {
+      const user = userEvent.setup();
+      render(<UserAddFormPage />);
+
+      await user.click(await screen.findByTestId('ou-picker'));
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'frank');
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+          ouId: 'ou-child',
+          type: 'customer',
+          attributes: {username: 'frank'},
+        });
+      });
+    });
+
+    it('uses it inside a project, where the picker chooses the placement', async () => {
+      mockUseGetOrganizationUnits.mockImplementation((params: {placement?: boolean}) =>
+        params.placement
+          ? {data: {totalResults: 2}, isLoading: false}
+          : {data: {totalResults: 1, organizationUnits: []}, isLoading: false},
+      );
+      const user = userEvent.setup();
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserAddFormPage />
+        </ProjectScopeProvider>,
+      );
+
+      const picker = await screen.findByTestId('ou-picker');
+      expect(picker).toHaveAttribute('data-value', '');
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'frank');
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+
+      await user.click(picker);
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+          projectId: 'project-1',
+          ouId: 'ou-child',
+          type: 'customer',
+          attributes: {username: 'frank'},
+        });
+      });
+    });
+  });
+
+  it('names a type without a display name by its handle', async () => {
+    const base = mockHttpRequest.getMockImplementation()!;
+    const unnamed = {...userTypes, types: [{...userTypes.types[0], displayName: ''}, userTypes.types[1]]};
+    mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+      config.url.includes('/user-types?') ? Promise.resolve({data: unnamed}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(<UserAddFormPage />);
+
+    await user.click(await screen.findByRole('combobox'));
+    const listbox = await screen.findByRole('listbox');
+    expect(within(listbox).getByText('customer')).toBeInTheDocument();
+    expect(within(listbox).getByText('Employee')).toBeInTheDocument();
   });
 
   it('says so when no user types exist', async () => {

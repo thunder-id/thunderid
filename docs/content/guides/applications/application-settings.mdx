@@ -123,10 +123,10 @@ On the **Application** sub-tab, configure the access token the application recei
 Client secrets are only present on confidential clients: Full-stack App and Backend Service application types, and MCP Client or Custom App applications configured as confidential. This section does not apply to public clients such as Browser App, Mobile App, or an MCP Client or Custom App configured as public.
 :::
 
-If you need to invalidate the current client secret, open the General tab and click **Regenerate client secret** in the **Danger zone**.
+If you need to invalidate the current client secret, open the General tab and click **Regenerate client secret** in the **Danger zone**. The new secret is shown once. To regenerate it through the API, send `POST /applications/{id}/client-secret/regenerate`, which returns the new secret in its response. It needs the same permission as updating the application.
 
 :::warning
-The current client secret is immediately invalidated. Any running clients using the old secret will lose access. Refresh tokens issued before the rotation are rejected, so their users must sign in again. Update your application configuration right away.
+The current client secret is immediately invalidated. Any running clients using the old secret will lose access. When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued before the rotation are also revoked, as described in [Token Revocation](../protocols/oauth-oidc/token-revocation.mdx#application-deletion-and-secret-regeneration). Users of an application that signs them in must then sign in again, and a machine client (client credentials) must request new tokens with the new secret. With token revocation off, those tokens stay valid until they expire. Update your application configuration right away.
 :::
 
 ## Review OAuth 2.0 Configuration

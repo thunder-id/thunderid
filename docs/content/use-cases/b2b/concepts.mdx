@@ -12,7 +12,7 @@ each one builds on the last. The running example is Wayfinder Enterprise, a corp
 two customer companies: Northstar Labs, whose employees sign in with passwords, and Initech, whose employees must sign
 in through Initech's own identity provider. Its sign-in and sign-up journeys run
 as [flows](../../guides/flows/what-are-flows.mdx): the sequence of screens and checks one journey runs, built in a visual
-designer. You create each of these through the Console, the management APIs, or declarative YAML files. The [quick start](./quick-start.mdx) and the journey pages
+designer. You create each of these through the Console, the management APIs, or declarative YAML files. The [sample app](./try-it-out/index.mdx) and the journey pages
 give the exact steps.
 
 Here is what sits inside the identity layer once Wayfinder Enterprise is running. Each section below builds one piece:
@@ -22,7 +22,7 @@ flowchart TD
   subgraph platform["Wayfinder's platform, defined once"]
     direction LR
     usertype["User type<br/>Wayfinder User"]
-    application["Application<br/>Wayfinder Enterprise Web"]
+    application["Application<br/>Wayfinder Enterprise"]
     roles["Roles<br/>Wayfinder Admin, Wayfinder Member"]
     flows["Flows<br/>company sign-up, sign-in"]
   end
@@ -50,11 +50,10 @@ Wayfinder Enterprise uses two levels:
 
 Every OU has a **handle**, a short URL-safe name that is unique among its siblings, so `northstar` names one
 organization under `wayfinder-enterprise`. A handle path joins the handles from the top of the tree down, such as
-`default/wayfinder-enterprise/northstar` in the quick start setup. An employee who signs in through their company's
+`wayfinder-enterprise/northstar` in the sample app. An employee who signs in through their company's
 identity provider types the company's own handle, `northstar`, to say which company they work for.
 
-**Build it:** create the platform organization in
-[B2B Quick Start with React](./quick-start.mdx#create-the-platform-organization).
+**See it:** the [sample app's import](./try-it-out/index.mdx#what-the-import-creates) creates the platform organization.
 
 ## Members
 
@@ -81,8 +80,7 @@ in the platform organization and reaches the customer organizations directly ben
 
 See [Users and Organization Units](../../guides/users/manage-users.mdx#users-and-organization-units) for the full rules.
 
-**Build it:** define the user type in
-[B2B Quick Start with React](./quick-start.mdx#define-the-account), then choose how members join in
+**See it:** the [sample app's import](./try-it-out/index.mdx#what-the-import-creates) defines the user type. Choose how members join in
 [Let Companies Sign Up](./journeys/organization-sign-up.mdx) and [Invite People In](./journeys/invite-members.mdx).
 
 ## Shared Resources
@@ -95,9 +93,9 @@ Wayfinder shares its application and its two roles with **all child organization
 so each company can set its own identity provider. That policy reaches every organization beneath the platform
 organization, including the ones that sign up tomorrow, so a new company works the moment its sign-up finishes.
 
-A shared resource can be owned by the platform organization or by an OU above it. In the quick start, the application,
-roles, and flows belong to the Control Plane project's own OU, `Default`, which sits above `Wayfinder Enterprise`, and
-sharing them with all child organization units reaches every company the same way.
+A shared resource can be owned by the platform organization or by an OU above it. In the sample app, the application,
+roles, and flows belong to `Wayfinder Enterprise` itself. In the B2B quickstarts, the platform organization sits beneath
+`Default`, and sharing with all child organization units reaches every company the same way.
 
 The resource types you can share are applications, roles, flows, connections to identity providers, users, and agents.
 Groups are never shared: a group belongs to one organization, and its members must live in or be shared into that
@@ -106,8 +104,7 @@ organization.
 See [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx) for every policy mode,
 including exclusions and resharing.
 
-**Build it:** share the roles and the application in
-[B2B Quick Start with React](./quick-start.mdx#create-the-shared-roles).
+**See it:** the [sample app's import](./try-it-out/index.mdx#what-the-import-creates) shares the roles, the sign-in flow, and the application with every company.
 
 ## Roles in an Organization
 
@@ -145,7 +142,7 @@ See [Sign Users In to Organization Units](../../guides/organization-units/sign-i
 option and the errors a refused sign-in returns.
 
 **Build it:** set where the sign-in flow looks for companies in
-[B2B Quick Start with React](./quick-start.mdx#build-the-sign-in-flow).
+[Plug In an Enterprise IdP](./journeys/enterprise-sso.mdx).
 
 ## Organization-Aware Tokens
 
@@ -179,8 +176,7 @@ standard ones:
 reach Northstar's data. See [Token Formats](../../guides/protocols/oauth-oidc/token-formats.mdx) for the standard
 claims.
 
-**Build it:** add the organization claims to the application's tokens in
-[B2B Quick Start with React](./quick-start.mdx#register-the-application).
+**See it:** the [B2B quickstart with React](../../getting-started/connect-your-b2b-application/react.mdx) shows the organization claims and roles of every token it gets.
 
 ## Enterprise Sign-In per Organization
 
@@ -240,9 +236,9 @@ design.
 
 <NextSteps>
   <NextStepsCard
-    title="B2B Quick Start with React"
-    description="Build the platform organization, the shared roles, and a React application that companies sign up to."
-    href="../quick-start"
+    title="See It in a Sample App"
+    description="Run Wayfinder Enterprise, with the platform organization, the shared roles, and the flows already set up."
+    href="../try-it-out"
   />
   <NextStepsCard
     title="Let Companies Sign Up"
