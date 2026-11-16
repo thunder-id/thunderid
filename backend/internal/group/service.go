@@ -1564,7 +1564,11 @@ func (gs *groupService) validateProjectOU(ctx context.Context, projectID, ouID s
 func (gs *groupService) validateGroupOUChange(ctx context.Context, groupID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
+	// A group with more members than the composite store can count has members.
 	memberCount, err := gs.groupStore.GetGroupMemberCount(ctx, groupID)
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ErrorGroupOUChangeNotAllowed
+	}
 	if err != nil {
 		logger.Error(ctx, "Failed to get group member count", log.String("groupID", groupID), log.Error(err))
 		return &tidcommon.InternalServerError
