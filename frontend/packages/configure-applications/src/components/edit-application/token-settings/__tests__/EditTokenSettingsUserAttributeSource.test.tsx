@@ -79,6 +79,7 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
 const attribute = (name: string, credential = false): AggregatedUserTypeAttribute => ({
   attribute: name,
   credential,
+  unique: false,
   userTypes: ['Person'],
 });
 
