@@ -872,6 +872,52 @@ func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_FlowNotFound() {
 	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1008")
 }
 
+// oneTimeUseFlow returns a flow whose prompt asks for the department, marked one time use on the prompt when
+// onPrompt is true and on the executor node otherwise.
+func oneTimeUseFlow(onPrompt bool) FlowDefinition {
+	return FlowDefinition{
+		Name:     "One Time Use Flow",
+		Handle:   generateUniqueHandle("one-time-use-flow"),
+		FlowType: "AUTHENTICATION",
+		Nodes: []NodeDefinition{
+			{ID: "START", Type: "START", OnSuccess: "prompt"},
+			{
+				ID:   "prompt",
+				Type: "PROMPT",
+				Prompts: []PromptDefinition{{
+					Inputs: []InputDefinition{
+						{Type: "TEXT_INPUT", Identifier: "department", OneTimeUse: onPrompt},
+					},
+					Action: &ActionDefinition{Ref: "submit", NextNode: "auth_assert"},
+				}},
+			},
+			{
+				ID:   "auth_assert",
+				Type: "TASK_EXECUTION",
+				Executor: &ExecutorDefinition{Name: "AuthAssertExecutor", Inputs: []InputDefinition{
+					{Type: "TEXT_INPUT", Identifier: "department", OneTimeUse: !onPrompt},
+				}},
+				OnSuccess: "END",
+			},
+			{ID: "END", Type: "END"},
+		},
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_PromptInputOneTimeUseRejected() {
+	suite.createFlowExpectError(oneTimeUseFlow(true), http.StatusBadRequest, "FLM-1024")
+
+	created := suite.createFlow(oneTimeUseFlow(false))
+	suite.trackFlow(created.ID)
+}
+
+func (suite *FlowMgtAPITestSuite) TestUpdateFlow_PromptInputOneTimeUseRejected() {
+	created := suite.createFlow(oneTimeUseFlow(false))
+	suite.trackFlow(created.ID)
+
+	suite.updateFlowExpectError(created.ID, oneTimeUseFlow(true), http.StatusBadRequest, "FLM-1024")
+}
+
 // Helper methods for API interactions
 
 func (suite *FlowMgtAPITestSuite) createFlow(flowDef FlowDefinition) *CompleteFlowDefinition {

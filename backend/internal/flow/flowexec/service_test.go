@@ -24,6 +24,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -3418,6 +3419,84 @@ func (s *ServiceTestSuite) TestLoadContextFromStore_GetFlowGraphError() {
 	result, svcErr := service.loadContextFromStore(context.Background(), "exec-1", log.GetLogger())
 	s.Nil(result)
 	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestPrepareContext_RecordsAdditionalInputs() {
+	ctx := &EngineContext{UserInputs: map[string]string{"username": "alice"}}
+
+	prepareContext(ctx, "", map[string]string{"email": "alice@example.com"})
+
+	s.Equal(map[string]string{"username": "alice", "email": "alice@example.com"}, ctx.UserInputs)
+	s.Equal(map[string]struct{}{"email": {}}, ctx.additionalInputs)
+}
+
+// A value the flow already holds is replaced by a resent one, and is not counted as first submitted.
+func (s *ServiceTestSuite) TestPrepareContext_ResentHeldInputIsNotNew() {
+	ctx := &EngineContext{UserInputs: map[string]string{"ouId": "ou-1", "userType": "person"}}
+
+	prepareContext(ctx, "", map[string]string{"ouId": "ou-2", "userType": "person", "name": "agent"})
+
+	s.Equal(map[string]string{"ouId": "ou-2", "userType": "person", "name": "agent"}, ctx.UserInputs)
+	s.Equal(map[string]struct{}{"name": {}}, ctx.additionalInputs)
+}
+
+// A request continuing a flow carries only the inputs the paused step asks for, and never the authorization params.
+func (s *ServiceTestSuite) TestLoadPrevContext_LimitsInputsToThePausedStep() {
+	t := s.T()
+	rawCtx := "{\"executionID\":\"exec-1\",\"appID\":\"app-1\",\"flowType\":\"ADMINISTRATION\"," +
+		"\"graphID\":\"graph-1\",\"currentNodeID\":\"node-1\"," +
+		"\"userInputs\":\"{\\\"email\\\":\\\"alice@example.com\\\"}\"," +
+		"\"runtimeData\":\"{}\",\"requestedInputs\":[\"otp\",\"requested_permissions\"]," +
+		"\"executionHistory\":\"{}\"}"
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "exec-1").
+		Return(&FlowContextDB{ExecutionID: "exec-1", Context: rawCtx}, nil)
+	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockGraph.EXPECT().GetNode(mock.Anything).Return(nil, false).Maybe()
+	mockGraph.EXPECT().GetType().Return(providers.FlowTypeAdministration).Maybe()
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, mock.Anything).Return(&providers.CompleteFlowDefinition{}, nil)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(mockGraph, nil)
+	service := &flowExecService{
+		flowStore: mockStore, graphBuilder: mockGraphBuilder, flowProvider: mockFlowProvider, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadPrevContext(context.Background(), "exec-1", "",
+		map[string]string{"otp": "123456", "email": "other@example.com",
+			common.RuntimeKeyRequestedPermissions: "read"}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal(map[string]string{"email": "alice@example.com", "otp": "123456"}, engineCtx.UserInputs)
+}
+
+// The request that starts a flow can set the authorization params.
+func (s *ServiceTestSuite) TestLoadNewContext_TakesAuthorizationParams() {
+	security.InitSystemPermissions("")
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("administration-1", providers.FlowTypeAdministration, 1)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "administration-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "administration-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"administration-1", "", "", true, "",
+		map[string]string{"subject": "user-1", common.RuntimeKeyRequestedPermissions: "read"}, "", "",
+		log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("read", engineCtx.UserInputs[common.RuntimeKeyRequestedPermissions])
 }
 
 // ----- firstPositiveExpiry -----
