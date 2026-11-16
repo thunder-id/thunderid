@@ -1058,11 +1058,29 @@ func TestValidateEntityTypeDefinitionReturnsErrorForEmptySchemaObject(t *testing
 		Schema:      emptySchema,
 	}
 
-	err := validateEntityTypeDefinition(context.Background(), TypeCategoryUser, &schema)
+	for _, category := range []TypeCategory{TypeCategoryUser, TypeCategoryAgent} {
+		err := validateEntityTypeDefinition(context.Background(), category, &schema)
 
+		require.NotNil(t, err, category)
+		require.Equal(t, ErrorInvalidEntityTypeRequest.Code, err.Code)
+		require.Contains(t, err.ErrorDescription.String(), "schema cannot be empty")
+	}
+}
+
+func TestValidateEntityTypeDefinitionAllowsOUTypeWithoutAttributes(t *testing.T) {
+	schema := EntityType{
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        testOUID1,
+		Schema:      json.RawMessage(`{}`),
+	}
+
+	require.Nil(t, validateEntityTypeDefinition(context.Background(), TypeCategoryOU, &schema))
+
+	schema.Schema = json.RawMessage(`null`)
+	err := validateEntityTypeDefinition(context.Background(), TypeCategoryOU, &schema)
 	require.NotNil(t, err)
-	require.Equal(t, ErrorInvalidEntityTypeRequest.Code, err.Code)
-	require.Contains(t, err.ErrorDescription.String(), "schema cannot be empty")
+	require.Contains(t, err.ErrorDescription.String(), "schema must be a JSON object")
 }
 
 func TestValidateEntityTypeDefinitionWithComplexSchema(t *testing.T) {
@@ -3193,6 +3211,25 @@ func (s *EntityTypeServiceTestSuite) TestCategoryPermissionHelpers() {
 			s.Equal(tc.update, updateActionForCategory(tc.category))
 			s.Equal(tc.delete, deleteActionForCategory(tc.category))
 			s.Equal(tc.resourceType, resourceTypeForCategory(tc.category))
+		})
+	}
+}
+
+func TestCompileEntityTypeSchema_AllowsEmptySchemaOnlyForOUTypes(t *testing.T) {
+	cases := []struct {
+		category TypeCategory
+		wantErr  error
+	}{
+		{TypeCategoryUser, errEmptySchema},
+		{TypeCategoryAgent, errEmptySchema},
+		{TypeCategoryOU, nil},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.category), func(t *testing.T) {
+			compiled, err := compileEntityTypeSchema(tc.category, json.RawMessage(`{}`))
+
+			require.ErrorIs(t, err, tc.wantErr)
+			require.Equal(t, tc.wantErr == nil, compiled != nil)
 		})
 	}
 }

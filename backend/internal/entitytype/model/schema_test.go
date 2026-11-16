@@ -1024,3 +1024,24 @@ func (s *SchemaValidateTestSuite) TestContactRegex_InvalidDefinitionRejected() {
 		s.Error(err, definition)
 	}
 }
+
+func (s *SchemaValidateTestSuite) TestCompileSchema_WithoutProperties() {
+	empty, err := CompileSchema(json.RawMessage(`{}`))
+	s.Require().NoError(err)
+	s.True(empty.IsEmpty())
+
+	ok, err := empty.Validate(context.Background(), json.RawMessage(`{}`), s.logger, false)
+	s.Require().NoError(err)
+	s.True(ok)
+
+	ok, err = empty.Validate(context.Background(), json.RawMessage(`{"region":"north"}`), s.logger, false)
+	s.Require().NoError(err)
+	s.False(ok, "a schema without properties declares no attributes, so any attribute is undeclared")
+
+	withProperty, err := CompileSchema(json.RawMessage(`{"region":{"type":"string"}}`))
+	s.Require().NoError(err)
+	s.False(withProperty.IsEmpty())
+
+	_, err = CompileSchema(json.RawMessage(`null`))
+	s.ErrorContains(err, "schema must be a JSON object")
+}
