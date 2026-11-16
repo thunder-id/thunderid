@@ -64,10 +64,13 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX
 }
 
 /**
- * Convert API schema to editable property inputs.
+ * Convert API schema to editable property inputs, with credentials last since the server does not keep the order.
  */
 function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyInput[] {
-  return Object.entries(schema).map(([key, value], index) => ({
+  const isCredential = (value: AgentTypeDefinition[string]): boolean =>
+    'credential' in value && value.credential === true;
+  const entries = Object.entries(schema).sort(([, a], [, b]) => Number(isCredential(a)) - Number(isCredential(b)));
+  return entries.map(([key, value], index) => ({
     id: `${index}`,
     name: key,
     displayName: 'displayName' in value ? (value.displayName ?? '') : '',

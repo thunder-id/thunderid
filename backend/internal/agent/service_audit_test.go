@@ -123,6 +123,8 @@ func (s *AgentServiceAuditTestSuite) reset() {
 	s.types = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.types.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
 		Maybe().Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
+	s.types.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+		Maybe().Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 	s.service = &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         s.authz,

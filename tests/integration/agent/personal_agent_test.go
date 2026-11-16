@@ -475,6 +475,93 @@ func (ts *PersonalAgentTestSuite) TestOwnerUpdatesTheirAgent() {
 	ts.Contains(resp.Header.Get("Location"), paUnauthorizedClient, "without grants the agent cannot authorize")
 }
 
+// The owner resets their agent's password. Other callers are refused, and so is an update that names it.
+func (ts *PersonalAgentTestSuite) TestOwnerResetsTheirAgentsPassword() {
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	ownerToken := ts.userToken(ts.ownerUsername)
+	path := "/users/me/agents/" + agent.id + "/update-credentials"
+	body := func(password string) string { return `{"attributes":{"password":"` + password + `"}}` }
+
+	status, response := ts.selfServiceCall(http.MethodPost, path, ownerToken, body("Agent@Pass1234"))
+	ts.Require().Equal(http.StatusNoContent, status, response)
+	status, response = ts.selfServiceCall(http.MethodPost, path, ownerToken, body("Agent@Pass5678"))
+	ts.Equal(http.StatusNoContent, status, "replacing a held credential: %s", response)
+
+	status, _ = ts.selfServiceCall(http.MethodPost, path, ts.userToken(ts.otherUsername), body("Agent@Pass1234"))
+	ts.Equal(http.StatusNotFound, status, "another user's agent is not found")
+	status, _ = ts.selfServiceCall(http.MethodPost, path, ts.obtainToken(ts.ownerUsername).AccessToken,
+		body("Agent@Pass1234"))
+	ts.Equal(http.StatusForbidden, status, "a delegated token is refused")
+	status, _ = ts.selfServiceCall(http.MethodPost, path, "", body("Agent@Pass1234"))
+	ts.Equal(http.StatusUnauthorized, status)
+	for _, refused := range []string{`{}`, `{"attributes":{}}`, `{"attributes":{"password":""}}`,
+		`{"attributes":{"undeclared":"x"}}`} {
+		status, response = ts.selfServiceCall(http.MethodPost, path, ownerToken, refused)
+		ts.Equal(http.StatusBadRequest, status, "%s: %s", refused, response)
+	}
+
+	update := ownedAgentBody(paSuiteAgentName, "x", `["authorization_code"]`, `["`+paRedirectURI+`"]`)
+	withPassword := strings.Replace(update, `{"name":"`+paSuiteAgentName+`"`,
+		`{"name":"`+paSuiteAgentName+`","password":"Agent@Pass1234"`, 1)
+	ts.Require().NotEqual(update, withPassword, "the test body must carry the credential")
+	status, response = ts.selfServiceCall(http.MethodPut, "/users/me/agents/"+agent.id, ownerToken, withPassword)
+	ts.Equal(http.StatusBadRequest, status, response)
+	ts.Contains(response, "AGT-1068")
+
+	request := ts.personalAgentRequest(ts.ownerID, "authorization_code")
+	request["attributes"] = map[string]interface{}{"name": agent.name, "password": "Agent@Pass1234"}
+	resp, err := putAgentRaw(agent.id, request)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	adminBody := readBody(resp)
+	ts.Equal(http.StatusBadRequest, resp.StatusCode, adminBody)
+	ts.Contains(adminBody, "AGT-1068")
+
+	// An administrator cannot reset a personal agent's password.
+	adminReset, err := doPost(testServerURL+agentBasePath+"/"+agent.id+"/update-credentials",
+		map[string]interface{}{"credentials": map[string]string{"password": "Agent@Pass1234"}})
+	ts.Require().NoError(err)
+	defer adminReset.Body.Close()
+	adminResetBody := readBody(adminReset)
+	ts.Equal(http.StatusBadRequest, adminReset.StatusCode, adminResetBody)
+	ts.Contains(adminResetBody, "AGT-1069")
+}
+
+// An administrator resets an ordinary agent's password. An update that names it is refused.
+func (ts *PersonalAgentTestSuite) TestAdminResetsAnOrdinaryAgentsPassword() {
+	ownerID, _ := ts.createUser(ts.seededPersonType(), "pa_ordinary_reset_owner")
+	ordinaryID := ts.createOrdinaryAgentFor(ownerID)
+	defer func() {
+		_ = deleteAgent(ordinaryID)
+		_ = testutils.DeleteUser(ownerID)
+	}()
+	reset := func(password string) (int, string) {
+		resp, err := doPost(testServerURL+agentBasePath+"/"+ordinaryID+"/update-credentials",
+			map[string]interface{}{"credentials": map[string]string{"password": password}})
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		return resp.StatusCode, readBody(resp)
+	}
+
+	status, body := reset("Agent@Pass1234")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	status, body = reset("Agent@Pass5678")
+	ts.Equal(http.StatusNoContent, status, "replacing a held credential: %s", body)
+	status, body = reset("")
+	ts.Equal(http.StatusBadRequest, status, body)
+
+	request := ts.personalAgentRequest(ownerID)
+	delete(request, "kind")
+	request["attributes"] = map[string]interface{}{"name": "pa_ordinary_reset", "password": "Agent@Pass1234"}
+	resp, err := putAgentRaw(ordinaryID, request)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	putBody := readBody(resp)
+	ts.Equal(http.StatusBadRequest, resp.StatusCode, putBody)
+	ts.Contains(putBody, "AGT-1068")
+}
+
 // The owner deletes a personal agent; another user and the agent's own delegated token cannot.
 func (ts *PersonalAgentTestSuite) TestOwnerDeletesTheirAgent() {
 	request := ts.personalAgentRequest(ts.ownerID, "authorization_code")

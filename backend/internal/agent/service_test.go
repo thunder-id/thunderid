@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +58,8 @@ const (
 	testOUID      = "ou-id-abc"
 	testSystemOU  = "system-ou"
 	testAgentLogo = "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
+
+	ownedPasswordBody = `{"password":"s3cret"}`
 )
 
 // newAllowAllAuthz returns a mock SystemAuthorizationServiceInterface that allows all actions.
@@ -208,6 +211,8 @@ func regeneratesThroughTheHolder(svc *agentService, entities *entitymock.EntityS
 // declares no display attribute. Tests narrow it as needed.
 func (suite *AgentServiceTestSuite) newEntityTypeMock() *entitytypemock.EntityTypeServiceInterfaceMock {
 	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+		Maybe().Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 	mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
 		Maybe().Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
 	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
@@ -3968,6 +3973,8 @@ func (suite *AgentServiceTestSuite) placementTypeMock(
 	agentType *entitytype.EntityType, svcErr, callerErr *tidcommon.ServiceError,
 ) *entitytypemock.EntityTypeServiceInterfaceMock {
 	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+		Maybe().Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 	mockType.On("GetEntityTypeByHandle", mock.MatchedBy(security.IsRuntimeContext), entitytype.TypeCategoryAgent,
 		testAgentType).Return(agentType, svcErr)
 	callerType := agentType
@@ -4061,6 +4068,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_AgentTypePlacement() {
 		suite.Run(tc.name, func() {
 			svc, mockEntity, _, mockOU, _ := suite.setupService()
 			mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+			mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+				Maybe().Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 			mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
 				Return(misplacedType, (*tidcommon.ServiceError)(nil)).Maybe()
 			mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
@@ -4959,6 +4968,94 @@ func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_GrantNotPermitted
 	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
 }
 
+// An administrator's write for a personal agent is refused, and nothing is stored.
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_RefusesAPersonalAgent() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(
+		withKind(buildAgentEntityFixture(testAgentName, "", "alice", ""), providers.AgentKindPersonalAssistant), nil)
+
+	svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID, json.RawMessage(ownedPasswordBody))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorPersonalAgentCredentialsNotUpdatable.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// credentialTypeMock returns an entity type service whose agent type declares a password credential.
+func (suite *AgentServiceTestSuite) credentialTypeMock() *entitytypemock.EntityTypeServiceInterfaceMock {
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}},
+			(*tidcommon.ServiceError)(nil)).Maybe()
+	return mockType
+}
+
+// An update through the API refuses a credential attribute, as a user's does.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_RefusesACredentialAttribute() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.entityTypeService = suite.credentialTypeMock()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:       testAgentType,
+		Attributes: json.RawMessage(`{"name":"renamed","password":"s3cret"}`),
+	})
+
+	suite.Nil(resp)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorCredentialUpdateNotAllowed.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A type with no credential, or an update that names none, is not refused.
+func (suite *AgentServiceTestSuite) TestRefuseCredentialAttributes_AllowsWhatIsNotACredential() {
+	svc, _, _, _, _ := suite.setupService()
+
+	suite.Nil(svc.refuseCredentialAttributes(context.Background(), testAgentType, nil))
+	suite.Nil(svc.refuseCredentialAttributes(context.Background(), testAgentType, json.RawMessage(`{"name":"x"}`)))
+
+	svc.entityTypeService = suite.credentialTypeMock()
+	suite.Nil(svc.refuseCredentialAttributes(context.Background(), testAgentType, json.RawMessage(`{"name":"x"}`)))
+	suite.Equal(ErrorInvalidRequestFormat.Code,
+		svc.refuseCredentialAttributes(context.Background(), testAgentType, json.RawMessage(`[1]`)).Code)
+}
+
+// An unknown type is left to other checks, and any other lookup failure refuses the update.
+func (suite *AgentServiceTestSuite) TestRefuseCredentialAttributes_TypeLookupFailures() {
+	cases := []struct {
+		name   string
+		lookup *tidcommon.ServiceError
+		want   string
+	}{
+		{name: "unknown type", lookup: &entitytype.ErrorEntityTypeNotFound},
+		{name: "lookup failure", lookup: &tidcommon.InternalServerError, want: tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+			mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+				Return(([]entitytype.AttributeInfo)(nil), tc.lookup)
+			svc.entityTypeService = mockType
+
+			svcErr := svc.refuseCredentialAttributes(context.Background(), testAgentType,
+				json.RawMessage(`{"password":"s3cret"}`))
+
+			if tc.want == "" {
+				suite.Nil(svcErr)
+				return
+			}
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.want, svcErr.Code)
+		})
+	}
+}
+
 // An update that sets no secret can still hand the agent to new credentials, here a switch to
 // private_key_jwt, so every update needs the caller to hold the agent's permissions.
 func (suite *AgentServiceTestSuite) TestUpdateAgent_GrantNotPermitted() {
@@ -5848,6 +5945,119 @@ func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_LoadFailures() {
 	}
 }
 
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_SetsTheCredentials() {
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
+		Return(nil).Once()
+
+	svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+	suite.Nil(svcErr)
+}
+
+// The entity service revokes what the agent was issued when a credential is replaced. When that revocation fails
+// after the write, the credentials are stored, so the owner still gets the failure.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_ReportsAFailedRevocationAfterTheWrite() {
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
+		Return(fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete)).Once()
+
+	svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
+// Another owner's agent, or one of another kind, is not found and nothing is written.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_RefusesWhatTheCallerDoesNotOwn() {
+	regular := buildAgentEntityFixture(testAgentName, "desc", "alice", "cid-123")
+	cases := []struct {
+		name    string
+		ownerID string
+		stored  *providers.Entity
+	}{
+		{name: "another owner", ownerID: "bob"},
+		{name: "not a personal agent", ownerID: "alice", stored: regular},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+			if tc.stored != nil {
+				clearMockCalls(mockEntity, "GetEntity")
+				mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(tc.stored, nil)
+			}
+
+			svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), tc.ownerID, testAgentID,
+				providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorAgentNotFound.Code, svcErr.Code)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_RefusesARequestWithoutCredentials() {
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+
+	for _, body := range []string{``, `{}`, `{"password":7}`, `[]`} {
+		svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+			providers.AgentKindPersonalAssistant, json.RawMessage(body))
+		suite.Require().NotNil(svcErr, body)
+		suite.Equal(ErrorInvalidRequestFormat.Code, svcErr.Code, body)
+	}
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_RefusesADeclaredAgent() {
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	declared := withKind(buildAgentEntityFixture(testAgentName, "desc", "alice", "cid-123"),
+		providers.AgentKindPersonalAssistant)
+	declared.IsReadOnly = true
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(declared, nil)
+
+	svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorCannotModifyDeclarativeResource.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The owner must hold every permission the agent holds.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_GrantNotPermitted() {
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testAgentID).Return(&sysauthz.ErrorGrantNotPermitted)
+	svc.authzService = authzMock
+
+	svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_RefusesACredentialAttribute() {
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	svc.entityTypeService = suite.credentialTypeMock()
+	req := ownedAgentUpdate([]providers.GrantType{providers.GrantTypeAuthorizationCode},
+		[]string{"https://a.example.com/cb"})
+	req.Attributes = json.RawMessage(`{"name":"renamed","password":"s3cret"}`)
+
+	resp, svcErr := svc.UpdateOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, req)
+
+	suite.Nil(resp)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorCredentialUpdateNotAllowed.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // A failed read of the agent is a server error, not a missing agent.
 func (suite *AgentServiceTestSuite) TestDeleteOwnedAgent_ReadFails() {
 	svc, mockEntity, _, _, _ := suite.setupService()
@@ -5970,6 +6180,8 @@ func (suite *AgentServiceTestSuite) TestGetAgent_AuthzCheckError() {
 // the test agent type; an empty path models a schema that has no display attribute.
 func (suite *AgentServiceTestSuite) withDisplayPaths(svc *agentService, path string) {
 	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+		Maybe().Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
 		mock.Anything).Return(map[string]string{testAgentType: path}, (*tidcommon.ServiceError)(nil)).Maybe()
 	mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).

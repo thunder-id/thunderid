@@ -66,6 +66,8 @@ type AgentServiceInterface interface {
 	UpdateAgent(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (
 		*model.AgentCompleteResponse, *tidcommon.ServiceError)
 	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
+	UpdateOwnedAgentCredentials(ctx context.Context, ownerID, agentID string, kind providers.AgentKind,
+		credentials json.RawMessage) *tidcommon.ServiceError
 	RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *tidcommon.ServiceError)
 	ValidateClientSecretRegeneration(ctx context.Context, agentID string) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
@@ -500,6 +502,9 @@ func (s *agentService) updateOwnedAgent(ctx context.Context, ownerID, agentID st
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.refuseCredentialAttributes(ctx, e.Type, req.Attributes); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1158,7 +1163,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 
 	// Check authz using the existing agent's OU ID. An update can replace the agent's
 	// credentials, so it is control over the agent.
-	if svcErr := s.authorizeUpdate(ctx, existing, agentID); svcErr != nil {
+	if svcErr := s.authorizeUpdateRequest(ctx, existing, agentID, req); svcErr != nil {
 		return fail(svcErr)
 	}
 
@@ -1322,12 +1327,28 @@ func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID strin
 	credentials json.RawMessage) *tidcommon.ServiceError {
 	var written bool
 	svcErr := s.updateAgentCredentials(ctx, agentID, credentials, &written)
-	auditErr := svcErr
-	if written {
-		auditErr = nil
-	}
-	s.publishAgentEvent(ctx, audit.EventAgentCredentialUpdate, audit.ActionUpdate, agentID, auditErr)
+	s.publishCredentialUpdate(ctx, agentID, svcErr, written)
 	return svcErr
+}
+
+// UpdateOwnedAgentCredentials sets the given credentials of a personal agent for its owner, as
+// UpdateAgentCredentials does for an administrator.
+func (s *agentService) UpdateOwnedAgentCredentials(ctx context.Context, ownerID, agentID string,
+	kind providers.AgentKind, credentials json.RawMessage) *tidcommon.ServiceError {
+	var written bool
+	svcErr := s.updateOwnedAgentCredentials(ctx, ownerID, agentID, kind, credentials, &written)
+	s.publishCredentialUpdate(ctx, agentID, svcErr, written)
+	return svcErr
+}
+
+// publishCredentialUpdate audits the attempt. A failure after the credentials are stored is audited as the
+// change it made.
+func (s *agentService) publishCredentialUpdate(ctx context.Context, agentID string, svcErr *tidcommon.ServiceError,
+	written bool) {
+	if written {
+		svcErr = nil
+	}
+	s.publishAgentEvent(ctx, audit.EventAgentCredentialUpdate, audit.ActionUpdate, agentID, svcErr)
 }
 
 // updateAgentCredentials sets the given credentials of an agent without publishing its audit event, and sets
@@ -1337,9 +1358,9 @@ func (s *agentService) updateAgentCredentials(ctx context.Context, agentID strin
 	if agentID == "" {
 		return &ErrorMissingAgentID
 	}
-	var values map[string]string
-	if err := json.Unmarshal(credentials, &values); err != nil || len(values) == 0 {
-		return &ErrorInvalidRequestFormat
+	values, svcErr := parseCredentialValues(credentials)
+	if svcErr != nil {
+		return svcErr
 	}
 	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
@@ -1364,9 +1385,56 @@ func (s *agentService) updateAgentCredentials(ctx context.Context, agentID strin
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
 		return svcErr
 	}
+	// Only the owner sets a personal agent's credentials.
+	if readSystemAttributes(existing.SystemAttributes).Kind == providers.AgentKindPersonalAssistant {
+		return &ErrorPersonalAgentCredentialsNotUpdatable
+	}
+	return s.storeAgentCredentials(ctx, agentID, existing, credentials, values, written)
+}
 
+// updateOwnedAgentCredentials sets the credentials of an owner's agent without publishing its audit event, and
+// sets written once they are stored.
+func (s *agentService) updateOwnedAgentCredentials(ctx context.Context, ownerID, agentID string,
+	kind providers.AgentKind, credentials json.RawMessage, written *bool) *tidcommon.ServiceError {
+	values, svcErr := parseCredentialValues(credentials)
+	if svcErr != nil {
+		return svcErr
+	}
+	e, svcErr := s.loadOwnedAgent(ctx, security.ActionUpdateAgent, ownerID, agentID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if readSystemAttributes(e.SystemAttributes).Kind != kind {
+		return &ErrorAgentNotFound
+	}
+	if svcErr := s.refuseReadOnly(ctx, e); svcErr != nil {
+		return svcErr
+	}
+	// Setting the agent's credentials lets the caller act as the agent, so the caller must hold every permission
+	// the agent holds.
+	if svcErr := s.authzService.CanControlEntity(ctx, agentID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
+		return svcErr
+	}
+	return s.storeAgentCredentials(ctx, agentID, e, credentials, values, written)
+}
+
+func parseCredentialValues(credentials json.RawMessage) (map[string]string, *tidcommon.ServiceError) {
+	var values map[string]string
+	if err := json.Unmarshal(credentials, &values); err != nil || len(values) == 0 {
+		return nil, &ErrorInvalidRequestFormat
+	}
+	return values, nil
+}
+
+// storeAgentCredentials writes the credentials through the entity service, which revokes what the agent was
+// issued when it replaces one the agent holds. It sets written once they are stored.
+func (s *agentService) storeAgentCredentials(ctx context.Context, agentID string, existing *providers.Entity,
+	credentials json.RawMessage, values map[string]string, written *bool) *tidcommon.ServiceError {
 	// The entity service refuses a credential the type does not declare, or an empty one.
-	if err = s.entityService.UpdateCredentials(ctx, agentID, credentials); err != nil {
+	if err := s.entityService.UpdateCredentials(ctx, agentID, credentials); err != nil {
 		if mapped := mapEntityError(err); mapped != nil {
 			return mapped
 		}
@@ -1380,6 +1448,38 @@ func (s *agentService) updateAgentCredentials(ctx context.Context, agentID strin
 		return &tidcommon.InternalServerError
 	}
 	s.captureCredentials(ctx, existing, values)
+	return nil
+}
+
+// refuseCredentialAttributes refuses an update that names a credential attribute of the agent type.
+func (s *agentService) refuseCredentialAttributes(ctx context.Context, agentType string,
+	attributes json.RawMessage) *tidcommon.ServiceError {
+	if len(attributes) == 0 {
+		return nil
+	}
+	credentialInfos, svcErr := s.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryAgent, agentType,
+		entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		// An unknown type is reported by the checks that need it.
+		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {
+			return nil
+		}
+		s.logger.Error(ctx, "Failed to read the agent type's credential attributes",
+			log.String("agentType", agentType), log.String("errorCode", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	if len(credentialInfos) == 0 {
+		return nil
+	}
+	var attrs map[string]json.RawMessage
+	if err := json.Unmarshal(attributes, &attrs); err != nil {
+		return &ErrorInvalidRequestFormat
+	}
+	for _, info := range credentialInfos {
+		if _, ok := attrs[info.Attribute]; ok {
+			return &ErrorCredentialUpdateNotAllowed
+		}
+	}
 	return nil
 }
 
@@ -2868,6 +2968,15 @@ func (s *agentService) authorizeUpdate(ctx context.Context, existing *providers.
 		return svcErr
 	}
 	return s.refuseManaged(ctx, agentID)
+}
+
+// authorizeUpdateRequest checks the caller may update the agent and that the update names no credential.
+func (s *agentService) authorizeUpdateRequest(ctx context.Context, existing *providers.Entity, agentID string,
+	req *model.UpdateAgentRequest) *tidcommon.ServiceError {
+	if svcErr := s.authorizeUpdate(ctx, existing, agentID); svcErr != nil {
+		return svcErr
+	}
+	return s.refuseCredentialAttributes(ctx, req.Type, req.Attributes)
 }
 
 // refuseReadOnly refuses a change to an agent declared in a file.

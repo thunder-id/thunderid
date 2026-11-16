@@ -67,13 +67,19 @@ vi.mock('@/api/useDeleteAgentType', () => ({
 
 vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () => ({
   default: ({
+    properties = [],
     onPropertiesChange,
     disabled = false,
   }: {
+    properties?: {name: string}[];
     onPropertiesChange: (props: unknown[]) => void;
     disabled?: boolean;
   }) => (
-    <div data-testid="edit-schema-settings" data-disabled={String(disabled)}>
+    <div
+      data-testid="edit-schema-settings"
+      data-disabled={String(disabled)}
+      data-property-names={properties.map((property) => property.name).join(',')}
+    >
       {(['email', 'mobile'] as const).map((type) => (
         <button
           key={type}
@@ -367,6 +373,28 @@ describe('ViewAgentTypePage', () => {
       expect(screen.getByRole('tab', {name: 'Schema'})).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByTestId('edit-schema-settings')).toBeInTheDocument();
       expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
+    });
+
+    it('should list credentials after the other attributes, whatever order the server gave', () => {
+      mockUseGetAgentType.mockReturnValue({
+        data: {
+          ...baseAgentType,
+          schema: {
+            name: {type: 'string', required: true, unique: true},
+            password: {type: 'string', credential: true},
+            modelProvider: {type: 'string', enum: ['openai', 'anthropic']},
+          },
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      render(<ViewAgentTypePage />);
+
+      expect(screen.getByTestId('edit-schema-settings')).toHaveAttribute(
+        'data-property-names',
+        'name,modelProvider,password',
+      );
     });
 
     it('should show the danger zone on the Advanced tab', async () => {

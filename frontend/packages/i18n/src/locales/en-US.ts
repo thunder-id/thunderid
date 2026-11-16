@@ -1424,6 +1424,26 @@ const translations = {
     'edit.credentials.sections.secret.hint':
       'A confidential credential used with the Client ID to authenticate this agent. Keep it secret.',
     'edit.credentials.sections.secret.regenerateButton': 'Regenerate client secret',
+    'edit.credentials.sections.reset.title': 'Reset credentials',
+    'edit.credentials.sections.reset.description':
+      'Reset the credentials of this agent. These actions are irreversible.',
+    'edit.credentials.sections.reset.hint':
+      'Resetting will immediately invalidate the current {{label}} and end the tokens and sessions this agent holds.',
+    'edit.credentials.sections.reset.button': 'Reset {{label}}',
+    'edit.credentials.sections.reset.dialog.title': 'Reset {{label}}?',
+    'edit.credentials.sections.reset.dialog.message':
+      'A new {{label}} will be set for this agent. The current {{label}} will be invalidated immediately.',
+    'edit.credentials.sections.reset.dialog.disclaimer':
+      'This action cannot be undone. The tokens and sessions this agent holds will be ended as soon as you confirm.',
+    'edit.credentials.sections.reset.dialog.newValue': 'New {{label}}',
+    'edit.credentials.sections.reset.dialog.newValuePlaceholder': 'Enter new {{label}}',
+    'edit.credentials.sections.reset.dialog.confirmValue': 'Confirm {{label}}',
+    'edit.credentials.sections.reset.dialog.confirmValuePlaceholder': 'Confirm new {{label}}',
+    'edit.credentials.sections.reset.dialog.mismatch': 'Values do not match.',
+    'edit.credentials.sections.reset.dialog.resetting': 'Resetting…',
+    'edit.credentials.sections.reset.dialog.resetButton': 'Reset {{label}}',
+    'updateCredentials.success': 'Credentials updated successfully',
+    'updateCredentials.error': 'Failed to update credentials. Please try again.',
     'edit.credentials.tokenEndpointAuthMethod.title': 'Client authentication method',
     'edit.credentials.tokenEndpointAuthMethod.description':
       'Defines how this agent authenticates at protected endpoints.',

@@ -397,12 +397,10 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGate
 	ts.NotContains(exported.Resources, password)
 
 	rotated := unique("Cp-Agent-Rotated1!")
-	status, raw = ts.call(http.MethodPut, "/agents/"+agentID, map[string]any{
-		"ouId":       ts.ouID,
-		"type":       "default",
-		"attributes": map[string]any{"name": name, "password": rotated},
+	status, raw = ts.call(http.MethodPost, "/agents/"+agentID+"/update-credentials", map[string]any{
+		"credentials": map[string]any{"password": rotated},
 	}, nil)
-	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
 	ts.True(g.holdsValueSoon("secrets", rotated), "the replaced password was not captured")
 	held, _ = g.held("secrets", secretName)
 	ts.Equal(rotated, held)
