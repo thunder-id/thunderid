@@ -17,7 +17,11 @@ const ROW_HEIGHT = 41;
  */
 interface EnvironmentClientIdFieldProps {
   environment: RuntimeEnvironment;
-  applicationId: string;
+  /** The resource's type, as a deploy names it. */
+  resourceType?: string;
+  resourceId: string;
+  /** The field's label. Defaults to the application's client ID label. */
+  label?: string;
   /** Reads what a field holds in an environment, as the console's environments provide it. */
   getValue: RuntimeEnvironmentsContextType['getValue'];
 }
@@ -29,15 +33,16 @@ interface EnvironmentClientIdFieldProps {
  */
 export default function EnvironmentClientIdField({
   environment,
-  applicationId,
+  resourceType = 'application',
+  resourceId,
+  label: labelOverride = undefined,
   getValue,
 }: EnvironmentClientIdFieldProps): JSX.Element {
   const {t} = useTranslation();
-  const label = t('applications:edit.general.labels.clientId', 'Client ID');
+  const label = labelOverride ?? t('applications:edit.general.labels.clientId', 'Client ID');
   const {data, error, refetch} = useQuery<EnvironmentValue>({
-    queryKey: [ApplicationQueryKeys.ENVIRONMENT_VALUE, environment.id, applicationId, 'clientId'],
-    queryFn: () =>
-      getValue(environment.id, {resourceType: 'application', resourceId: applicationId, field: 'clientId'}),
+    queryKey: [ApplicationQueryKeys.ENVIRONMENT_VALUE, environment.id, resourceId, 'clientId'],
+    queryFn: () => getValue(environment.id, {resourceType, resourceId, field: 'clientId'}),
     retry: false,
   });
 

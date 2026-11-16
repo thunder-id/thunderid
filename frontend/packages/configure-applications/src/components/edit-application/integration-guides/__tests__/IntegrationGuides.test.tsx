@@ -546,22 +546,23 @@ describe('IntegrationGuides', () => {
       getValue.mockReset().mockImplementation((environmentId: string) => Promise.resolve(clientIds[environmentId]));
     });
 
-    it('shows no environment choice when the console deploys to a single environment', () => {
+    it("shows a single environment's client ID and endpoints, with no environment choice", async () => {
       renderWithEnvironments([development]);
 
       expect(screen.queryByText('Environment')).not.toBeInTheDocument();
-      expect(screen.getByText('client-123')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+      expect(await screen.findByText('client-dev')).toBeInTheDocument();
+      expect(screen.queryByText('client-123')).not.toBeInTheDocument();
+      expect(screen.getByText('https://dev.example.com/oauth2/authorize')).toBeInTheDocument();
     });
 
     it('shows no client ID or endpoints where the only environment does not have the application', async () => {
       clientIds['env-dev'] = {status: 'absent'};
       renderWithEnvironments([development]);
 
-      expect(await screen.findByText('Not deployed to Development yet')).toBeInTheDocument();
+      expect(await screen.findByRole('status')).toHaveTextContent('Not deployed to Development yet');
       expect(screen.queryByText('Environment')).not.toBeInTheDocument();
       expect(screen.queryByText('client-123')).not.toBeInTheDocument();
-      expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
+      expect(screen.queryByText('https://dev.example.com/oauth2/authorize')).not.toBeInTheDocument();
       expect(screen.getByText('app-123')).toBeInTheDocument();
     });
 

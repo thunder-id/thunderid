@@ -214,7 +214,15 @@ function projectDashboardRoutes(): JSX.Element {
         }
       />
       <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
-      <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+      {/* An agent's client ID and endpoints differ in each environment too. */}
+      <Route
+        path={`${ROUTE_SEGMENTS.agents}/:agentId`}
+        element={
+          <RuntimeEnvironmentsProvider>
+            <AgentEditPage />
+          </RuntimeEnvironmentsProvider>
+        }
+      />
       <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
       <Route path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`} element={<ResourceServerEditPage />} />
       <Route

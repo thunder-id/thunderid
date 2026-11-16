@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {
+  RuntimeEnvironmentsContext,
+  type EnvironmentValue,
+  type RuntimeEnvironment,
+  type RuntimeEnvironmentsContextType,
+} from '@thunderid/contexts';
 import {render, screen, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent, OAuthAgentConfig} from '../../../../models/agent';
@@ -267,5 +273,110 @@ describe('AgentOverview', () => {
 
     expect(screen.getByText('user-1')).toBeInTheDocument();
     expect(screen.queryByText('Bob')).not.toBeInTheDocument();
+  });
+
+  describe('environments', () => {
+    const development: RuntimeEnvironment = {id: 'env-dev', name: 'Development', runtimeUrl: 'https://dev.example.com'};
+    const production: RuntimeEnvironment = {id: 'env-prod', name: 'Production', runtimeUrl: 'https://prod.example.com'};
+    const getValue = vi.fn<RuntimeEnvironmentsContextType['getValue']>();
+    let clientIds: Record<string, EnvironmentValue>;
+
+    const renderWithEnvironments = (environments: RuntimeEnvironment[]) =>
+      render(
+        <RuntimeEnvironmentsContext.Provider value={{environments, getValue, deployPath: '/projects/default/pipeline'}}>
+          <AgentOverview agent={baseAgent} />
+        </RuntimeEnvironmentsContext.Provider>,
+      );
+
+    beforeEach(() => {
+      clientIds = {
+        'env-dev': {status: 'set', value: 'client-dev'},
+        'env-prod': {status: 'set', value: 'client-prod'},
+      };
+      getValue.mockReset().mockImplementation((environmentId: string) => Promise.resolve(clientIds[environmentId]));
+    });
+
+    it('shows no environment choice when the console provides no environments', () => {
+      render(<AgentOverview agent={baseAgent} />);
+
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+      expect(screen.getByText('client-abc')).toBeInTheDocument();
+      expect(screen.getByText('https://localhost:8090/oauth2/token')).toBeInTheDocument();
+    });
+
+    it("shows the first environment's client ID and endpoints, read for the agent", async () => {
+      renderWithEnvironments([development, production]);
+
+      expect(screen.getByRole('button', {name: 'Development'})).toHaveAttribute('aria-pressed', 'true');
+      expect(await screen.findByText('client-dev')).toBeInTheDocument();
+      expect(screen.queryByText('client-abc')).not.toBeInTheDocument();
+      expect(screen.getByText('https://dev.example.com/oauth2/token')).toBeInTheDocument();
+      expect(getValue).toHaveBeenCalledWith('env-dev', {
+        resourceType: 'agent',
+        resourceId: 'agent-123',
+        field: 'clientId',
+      });
+    });
+
+    it('shows the client ID and endpoints of the environment chosen', async () => {
+      const user = userEvent.setup();
+      renderWithEnvironments([development, production]);
+      await screen.findByText('client-dev');
+
+      await user.click(screen.getByRole('button', {name: 'Production'}));
+
+      expect(await screen.findByText('client-prod')).toBeInTheDocument();
+      expect(screen.getByText('https://prod.example.com/oauth2/token')).toBeInTheDocument();
+      expect(screen.queryByText('https://dev.example.com/oauth2/token')).not.toBeInTheDocument();
+    });
+
+    it('shows no client ID or endpoints for an environment the agent is not in, and the way to get it there', async () => {
+      const user = userEvent.setup();
+      clientIds['env-prod'] = {status: 'absent'};
+      renderWithEnvironments([development, production]);
+      await screen.findByText('client-dev');
+
+      await user.click(screen.getByRole('button', {name: 'Production'}));
+
+      expect(await screen.findByText('Not promoted to Production yet')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'There is no client ID or endpoints for Enrollment Agent here. Promote it from Development to get them.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('link', {name: 'Open deployment pipeline'})).toHaveAttribute(
+        'href',
+        '/projects/default/pipeline',
+      );
+      expect(screen.queryByText('Client ID')).not.toBeInTheDocument();
+      expect(screen.queryByText('Useful endpoints')).not.toBeInTheDocument();
+      expect(screen.getByText('agent-123')).toBeInTheDocument();
+    });
+
+    it("shows a single environment's client ID and endpoints, with no environment choice", async () => {
+      renderWithEnvironments([development]);
+
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+      expect(await screen.findByText('client-dev')).toBeInTheDocument();
+      expect(screen.queryByText('client-abc')).not.toBeInTheDocument();
+      expect(screen.getByText('https://dev.example.com/oauth2/token')).toBeInTheDocument();
+    });
+
+    it('says where the only environment does not have the agent', async () => {
+      clientIds['env-dev'] = {status: 'absent'};
+      renderWithEnvironments([development]);
+
+      expect(await screen.findByRole('status')).toHaveTextContent('Not deployed to Development yet');
+      expect(screen.queryByText('Environment')).not.toBeInTheDocument();
+      expect(screen.queryByText('client-abc')).not.toBeInTheDocument();
+      expect(screen.queryByText('https://dev.example.com/oauth2/token')).not.toBeInTheDocument();
+    });
+
+    it('says where an environment runs the agent without a client ID', async () => {
+      clientIds['env-dev'] = {status: 'unset'};
+      renderWithEnvironments([development, production]);
+
+      expect(await screen.findByText('No client ID is set in Development yet.')).toBeInTheDocument();
+    });
   });
 });
