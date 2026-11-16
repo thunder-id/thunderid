@@ -871,20 +871,12 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	}
 	// The version is recorded whether or not the gateway now holds all of it. One it holds in part, as
 	// a selection or a refusal left it, is recorded as partly applied, with the master the apply left,
-	// and the diff goes on offering the rest. An apply that sent nothing leaves a recorded master as it
-	// is; a gateway with none is given its first, so it is not later taken to hold the whole version it
-	// is recorded as applied.
+	// and the diff goes on offering the rest.
 	whole := target
 	if options.whole != nil {
 		whole = options.whole
 	}
-	var write *masterWrite
-	if request.Content != "" || len(request.Deletions) > 0 || previous.Seq == 0 {
-		write = &masterWrite{sent: parseBundle(sent.content), deletions: request.Deletions, answer: answer,
-			source: target.Hash, origin: options.origin, by: actorOf(ctx), at: time.Now().UTC(),
-			earlier: options.revertTo}
-		write.project, write.projectRevert = options.masterProject()
-	}
+	write := masterWriteOf(ctx, target, &request, sent, answer, options, previous)
 	var state appliedState
 	master, svcErr := s.recordOutcome(ctx, previous, write, token,
 		func(txCtx context.Context, master *Master) *tidcommon.ServiceError {
@@ -1181,6 +1173,38 @@ func applyResultOf(gw *Gateway, dryRun bool, diff *Diff, answer json.RawMessage,
 		result.Changed = changed
 	}
 	return result
+}
+
+// masterWriteOf is what an apply writes into the gateway's master, or nil when it changes nothing there.
+// A revert that sent nothing leaves the master as it is. A forward apply that sent nothing still names
+// its version for what the gateway holds as it has it, and the master is written only when that changes
+// something; as it deployed nothing, it is not recorded as a project's deploy. A gateway with no master
+// is given its first, so it is not later taken to hold the whole version it is recorded as applied.
+func masterWriteOf(ctx context.Context, target *Version, request *gatewayImportRequest, sent shipment,
+	answer json.RawMessage, options applyOptions, previous *Master) *masterWrite {
+	first := previous.Seq == 0
+	mode := writeModeOf(options)
+	sentSomething := request.Content != "" || len(request.Deletions) > 0
+	if !sentSomething && !first && mode == revertWrite {
+		return nil
+	}
+	write := &masterWrite{mode: mode, sent: parseBundle(sent.content), deletions: request.Deletions,
+		answer: answer, source: target.Hash, origin: options.origin, by: actorOf(ctx), at: time.Now().UTC(),
+		earlier: options.revertTo}
+	if sentSomething || first {
+		write.project, write.projectRevert = options.masterProject()
+	}
+	if mode == forwardWrite {
+		write.sourceContent = contentHashes(target)
+		// A deploy of a project, or of a selection, deploys no other project as a whole, so it names its
+		// version only for its project's resources and for those of no project. A whole deploy names it
+		// for everything the gateway holds as the version has it.
+		if options.project != "" || options.selection != nil || options.choose != nil {
+			write.scope = options.project
+			write.owners = ownersOf(parseBundle(previous.Resources), parseBundle(target.Resources))
+		}
+	}
+	return write
 }
 
 // settle keeps the version an apply sends as it is from now on, before anything is sent, so a change

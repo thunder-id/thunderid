@@ -74,17 +74,29 @@ var (
 		ID:    "GTV_MGT-04",
 		Query: `SELECT COALESCE(MAX(SEQ), 0) AS latest FROM "CONFIGURATION_VERSION" WHERE DEPLOYMENT_ID = $1`,
 	}
-	// queryPruneVersions removes versions older than the retention bound, except one a gateway holds
-	// or could be reverted to, and one a resource a gateway holds, or held in a master kept for a
-	// rollback, was deployed from.
-	queryPruneVersions = dbmodel.DBQuery{
+	// queryPrunableVersions lists the versions up to the retention bound that no gateway holds or could be
+	// reverted to. Those a resource a gateway runs was deployed from are left out in code (see Prune).
+	queryPrunableVersions = dbmodel.DBQuery{
 		ID: "GTV_MGT-05",
-		Query: `DELETE FROM "CONFIGURATION_VERSION" WHERE SEQ <= $1 ` +
+		Query: `SELECT SEQ, HASH FROM "CONFIGURATION_VERSION" WHERE SEQ <= $1 ` +
 			`AND SEQ NOT IN (SELECT APPLIED_SEQ FROM "GATEWAY_APPLIED_VERSION" WHERE DEPLOYMENT_ID = $2) ` +
 			`AND SEQ NOT IN (SELECT PREVIOUS_SEQ FROM "GATEWAY_APPLIED_VERSION" ` +
 			`WHERE PREVIOUS_SEQ IS NOT NULL AND DEPLOYMENT_ID = $3) ` +
-			`AND NOT EXISTS (SELECT 1 FROM "GATEWAY_MASTER" WHERE "GATEWAY_MASTER".DEPLOYMENT_ID = $4 ` +
-			`AND "GATEWAY_MASTER".MANIFEST LIKE '%"sourceVersion":"' || "CONFIGURATION_VERSION".HASH || '"%') ` +
+			`AND DEPLOYMENT_ID = $4`,
+	}
+	// queryMasterManifests reads the manifest of every master the deployment's gateways keep.
+	queryMasterManifests = dbmodel.DBQuery{
+		ID:    "GTV_MGT-17",
+		Query: `SELECT MANIFEST FROM "GATEWAY_MASTER" WHERE DEPLOYMENT_ID = $1`,
+	}
+	// queryPruneVersion removes one version, unless a gateway came to hold it, or could come to revert
+	// to it, since it was listed.
+	queryPruneVersion = dbmodel.DBQuery{
+		ID: "GTV_MGT-18",
+		Query: `DELETE FROM "CONFIGURATION_VERSION" WHERE SEQ = $1 AND HASH = $2 ` +
+			`AND SEQ NOT IN (SELECT APPLIED_SEQ FROM "GATEWAY_APPLIED_VERSION" WHERE DEPLOYMENT_ID = $3) ` +
+			`AND SEQ NOT IN (SELECT PREVIOUS_SEQ FROM "GATEWAY_APPLIED_VERSION" ` +
+			`WHERE PREVIOUS_SEQ IS NOT NULL AND DEPLOYMENT_ID = $4) ` +
 			`AND DEPLOYMENT_ID = $5`,
 	}
 	// queryUnsettleVersion gives a version back its place as the current one after an apply settled
@@ -446,16 +458,58 @@ func (s *versionStore) Find(ctx context.Context, prefix string) ([]int, error) {
 	return found, nil
 }
 
+// Prune removes the versions numbered up to through that no gateway holds or could be reverted to, and
+// that no resource a kept master records deployed came from. Only a deployed resource's source is kept:
+// project status reads it, while a refused or removed resource's source is never read, and a revert or
+// rollback restores what a master holds from the master itself. A manifest that cannot be read stops
+// the pruning, since a version it names could otherwise go.
 func (s *versionStore) Prune(ctx context.Context, through int) error {
 	if through <= 0 {
 		return nil
 	}
-	if err := s.execute(ctx, queryPruneVersions,
-		through, deployment.Resolve(ctx), deployment.Resolve(ctx), deployment.Resolve(ctx),
-		deployment.Resolve(ctx)); err != nil {
-		return fmt.Errorf("failed to remove old versions: %w", err)
+	id := deployment.Resolve(ctx)
+	rows, err := s.query(ctx, queryPrunableVersions, through, id, id, id)
+	if err != nil {
+		return fmt.Errorf("failed to list old versions: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	deployedFrom, err := s.deployedSources(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		hash := asString(row["hash"])
+		if _, kept := deployedFrom[hash]; kept {
+			continue
+		}
+		if err := s.execute(ctx, queryPruneVersion, asInt(row["seq"]), hash, id, id, id); err != nil {
+			return fmt.Errorf("failed to remove an old version: %w", err)
+		}
 	}
 	return nil
+}
+
+// deployedSources is every version a resource some kept master records deployed came from.
+func (s *versionStore) deployedSources(ctx context.Context) (map[string]struct{}, error) {
+	rows, err := s.query(ctx, queryMasterManifests, deployment.Resolve(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the masters: %w", err)
+	}
+	sources := map[string]struct{}{}
+	for _, row := range rows {
+		entries, err := entriesOf(asString(row["manifest"]))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read a master's manifest: %w", err)
+		}
+		for _, entry := range entries {
+			if entry.State == EntryDeployed && entry.SourceVersion != "" {
+				sources[entry.SourceVersion] = struct{}{}
+			}
+		}
+	}
+	return sources, nil
 }
 
 func (s *versionStore) GetApplied(ctx context.Context, gatewayID string) (*AppliedVersion, error) {

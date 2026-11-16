@@ -68,8 +68,12 @@ shares also names it, and so does `latest`.
   out. The id is recorded either way, so a lookup configured later names the versions already captured.
   A capture after a change names the user who made the last change before it.
 - **Only `gateway.max_versions` versions are kept.** The oldest goes first, except a version some gateway
-  holds or can revert to, or that a resource a gateway holds, or held in a master it keeps, was deployed
-  from. Those are kept even when that leaves more versions than the number. See
+  holds or can revert to, or that a master a gateway keeps names as the `sourceVersion` of a resource
+  it records `deployed`. A `failed` or `removed` resource's `sourceVersion` keeps nothing. Those
+  are kept even when that leaves more versions than the number. Since each apply names the version
+  applied for every resource the gateway holds as that version has it, a version stays named only while
+  a gateway runs a resource as no later version applied to it holds it, or a kept master records one.
+  See
   [Configuration](../../deployment/configuration.mdx).
 
 `GET /configuration-versions` lists the versions, newest first, without their content.
@@ -479,9 +483,14 @@ curl -k https://localhost:8095/gateways/{id}/master \
   last apply, with `failure` as the gateway answered, while `contentHash` names the document the gateway
   last accepted, if it ever did; `removed` for one removed from the gateway, which has no document and
   stays listed until something is deployed under its key again.
-- `sourceVersion` is the version the resource was last applied from, and `origin` the label that apply
-  gave. A resource sent again as the gateway already holds it keeps both, so an apply of a whole version
-  does not rewrite where every resource came from.
+- `sourceVersion` is the newest version applied to the gateway that holds the resource as the gateway
+  does, and `origin` the label that apply gave. After each apply, every resource the gateway holds as the
+  applied version has it names that version, whether the apply sent it or not, while `at` and `by` stay
+  when and by whom it was last written. A resource recorded `removed` names it too when the applied
+  version does not hold the resource either. A resource recorded `failed` that the gateway never
+  accepted, and that the applied version does not hold, is dropped from the master. A resource the applied version holds otherwise, or not at
+  all, keeps the version it was last applied from. A revert keeps the sources the master it returns to
+  records.
 - A resource the gateway's answer does not name is taken as written when the gateway refused nothing it
   did not name, and recorded `failed` otherwise, since it is not known.
 - `master` names the master by what it holds: each resource's content, state, source and origin. Two
