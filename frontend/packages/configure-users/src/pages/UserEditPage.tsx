@@ -49,6 +49,7 @@ import EditUserAttributes from '../components/edit-user/EditUserAttributes';
 import EditOrganizationAccessSettings from '../components/edit-user/organization-access/EditOrganizationAccessSettings';
 import OwnedAgentsSection from '../components/edit-user/OwnedAgentsSection';
 import QuickCopySection from '../components/edit-user/QuickCopySection';
+import UserRolesSection from '../components/edit-user/UserRolesSection';
 import UserDeleteDialog from '../components/UserDeleteDialog';
 import UserConstants from '../constants/user-constants';
 import UserQueryKeys from '../constants/user-query-keys';
@@ -458,6 +459,12 @@ export default function UserEditPage() {
       render: () => <CredentialsTabPanel userId={userId!} credentialFields={credentialFields} />,
     });
   }
+
+  tabs.push({
+    key: 'roles',
+    label: t('users:manageUser.tabs.roles', 'Roles'),
+    render: () => <UserRolesSection userId={user.id} />,
+  });
 
   tabs.push({
     key: 'agents',

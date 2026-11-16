@@ -8,6 +8,7 @@ import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -16,6 +17,7 @@ import {
   MenuItem,
   Select,
   Stack,
+  TextField,
   Typography,
 } from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
@@ -24,10 +26,11 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useAddUserToRoles from '../api/useAddUserToRoles';
 import useCreateUser from '../api/useCreateUser';
+import useGetAssignableRoles from '../api/useGetAssignableRoles';
 import useGetUserType from '../api/useGetUserType';
 import useGetUserTypes from '../api/useGetUserTypes';
 import useUserRoutes from '../hooks/useUserRoutes';
-import type {CreateUserRequest, PropertyDefinition, SchemaInterface} from '../models/users';
+import type {CreateUserRequest, PropertyDefinition, SchemaInterface, UserRole} from '../models/users';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 import orderSchemaAttributes from '../utils/orderSchemaAttributes';
 import renderSchemaField from '../utils/renderSchemaField';
@@ -52,14 +55,14 @@ export default function UserAddFormPage(): JSX.Element {
   // A user added outside any project is an administrator, given the roles the console's config names.
   const {config} = useConfig();
   const administratorRoleIds: string[] = config.administrators?.role_ids ?? [];
-  // An administrator is created and then given the administrators' roles, as one mutation, so the roles are
-  // still given if the page is closed while the user is being created. Should assigning fail, the page stays
-  // and says so, since the user exists without those roles.
-  const addUser = useMutation<void, Error, CreateUserRequest>({
-    mutationFn: async (request: CreateUserRequest): Promise<void> => {
+  // The user is created and then given its roles, as one mutation, so the roles are still given if the page
+  // is closed while the user is being created. Should assigning fail, the page stays and says so, since the
+  // user exists without those roles.
+  const addUser = useMutation<void, Error, {request: CreateUserRequest; roleIds: string[]}>({
+    mutationFn: async ({request, roleIds}): Promise<void> => {
       const created = await createUser.mutateAsync(request);
-      if (!request.projectId && administratorRoleIds.length > 0) {
-        await addToRoles.mutateAsync({userId: created.id, roleIds: administratorRoleIds});
+      if (roleIds.length > 0) {
+        await addToRoles.mutateAsync({userId: created.id, roleIds});
       }
     },
   });
@@ -74,6 +77,16 @@ export default function UserAddFormPage(): JSX.Element {
     refetch: refetchProjectOus,
   } = useGetOrganizationUnits({limit: 1, offset: 0, projectId}, isInProject);
   const hasProjectOus = (projectOus?.totalResults ?? 0) > 0;
+  // Inside a project the user can be given the project's roles, picked on the roles step. The step is
+  // offered only when the project has roles.
+  const {
+    data: projectRoleList,
+    error: projectRolesError,
+    refetch: refetchProjectRoles,
+  } = useGetAssignableRoles(projectId, isInProject);
+  const projectRolesReadError = projectRoleList ? null : projectRolesError;
+  const projectRoles: UserRole[] = projectRoleList?.roles ?? [];
+  const [roles, setRoles] = useState<UserRole[]>([]);
 
   const [typeId, setTypeId] = useState<string>('');
   const [chosenOuId, setOuId] = useState<string>('');
@@ -120,13 +133,23 @@ export default function UserAddFormPage(): JSX.Element {
   };
 
   const onSubmit = handleSubmit((values: AttributeFormData) => {
+    if (!selectedType) return;
+
     // An optional field left empty is omitted rather than posted as an empty string.
     const attributes: AttributeFormData = Object.fromEntries(
       Object.entries(values).filter(([, value]) => value !== '' && value !== undefined && value !== null),
     );
 
     addUser.mutate(
-      {...(isInProject ? {projectId} : {}), ...(ouId ? {ouId} : {}), type: selectedType?.handle ?? '', attributes},
+      {
+        request: {
+          ...(isInProject ? {projectId} : {}),
+          ...(ouId ? {ouId} : {}),
+          type: selectedType.handle,
+          attributes,
+        },
+        roleIds: isInProject ? roles.map((role) => role.id) : administratorRoleIds,
+      },
       {
         onSuccess: () => {
           void navigate(routes.list());
@@ -198,11 +221,17 @@ export default function UserAddFormPage(): JSX.Element {
               </Button>
             }
           >
-            {t(
-              'users:addForm.administratorRolesError',
-              'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
-              {roles: addToRoles.error?.failedRoles.map((role) => role.name).join(', ') ?? ''},
-            )}
+            {isInProject
+              ? t(
+                  'users:addForm.rolesError',
+                  "The user was created, but could not be given the roles {{roles}}. Try again, or assign them from the user's Roles tab.",
+                  {roles: addToRoles.error.failedRoles.map((role) => role.name).join(', ')},
+                )
+              : t(
+                  'users:addForm.administratorRolesError',
+                  'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
+                  {roles: addToRoles.error.failedRoles.map((role) => role.name).join(', ')},
+                )}
           </Alert>
         )}
 
@@ -297,6 +326,48 @@ export default function UserAddFormPage(): JSX.Element {
                 change here. */}
             {orderSchemaAttributes(schema).map(([name, definition]: [string, PropertyDefinition]) =>
               renderSchemaField(name, definition, control, errors, resolveDisplayName),
+            )}
+
+            {selectedType && isInProject && projectRolesReadError && (
+              <QueryErrorNotice
+                variant="inline"
+                error={projectRolesReadError}
+                t={(key, options) => t(key.includes(':') ? key : `users:${key}`, options)}
+                fallbackKey="users:addForm.rolesLoadError"
+                fallbackDefaultValue="The roles of this project could not be loaded. You can still create the user and assign roles later."
+                onRetry={() => {
+                  void refetchProjectRoles();
+                }}
+              />
+            )}
+
+            {selectedType && isInProject && projectRoles.length > 0 && (
+              <FormControl fullWidth>
+                <FormLabel htmlFor="user-roles">{t('users:addForm.roles', 'Roles')}</FormLabel>
+                <Autocomplete
+                  id="user-roles"
+                  multiple
+                  fullWidth
+                  filterSelectedOptions
+                  // The user exists once assigning its roles is tried, so the roles are retried as they were chosen.
+                  disabled={addUser.isPending || addToRoles.isError}
+                  options={projectRoles}
+                  value={roles}
+                  getOptionLabel={(role: UserRole) => role.name}
+                  isOptionEqualToValue={(option: UserRole, value: UserRole) => option.id === value.id}
+                  onChange={(_event, next: UserRole[]) => setRoles(next)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      placeholder={roles.length > 0 ? undefined : t('users:addForm.rolesPlaceholder', 'Select roles')}
+                      helperText={t(
+                        'users:addForm.rolesHint',
+                        'Optional. The roles this user is given in the project.',
+                      )}
+                    />
+                  )}
+                />
+              </FormControl>
             )}
 
             <Stack direction="row" spacing={1}>
