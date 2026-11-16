@@ -1326,7 +1326,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 					&sysauthz.ActionContext{
 						ResourceType: security.ResourceTypeUser,
 						OUID:         "",
-						ResourceID:   userID,
+						ResourceID:   "",
 					}).Return(true, nil).Once()
 			},
 			// Downstream validation rejects empty OU after both authz checks pass.
@@ -1348,7 +1348,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 					&sysauthz.ActionContext{
 						ResourceType: security.ResourceTypeUser,
 						OUID:         "   ",
-						ResourceID:   userID,
+						ResourceID:   "",
 					}).Return(true, nil).Once()
 			},
 			// Downstream validation rejects whitespace OU after both authz checks pass.
@@ -1370,7 +1370,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 					&sysauthz.ActionContext{
 						ResourceType: security.ResourceTypeUser,
 						OUID:         destinationOU,
-						ResourceID:   userID,
+						ResourceID:   "",
 					}).Return(false, nil).Once()
 			},
 			expectedErrorCode: tidcommon.ErrorUnauthorized.Code,
@@ -1391,7 +1391,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 					&sysauthz.ActionContext{
 						ResourceType: security.ResourceTypeUser,
 						OUID:         destinationOU,
-						ResourceID:   userID,
+						ResourceID:   "",
 					}).Return(false, &tidcommon.InternalServerError).Once()
 			},
 			expectedErrorCode: tidcommon.InternalServerError.Code,
@@ -1412,7 +1412,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 					&sysauthz.ActionContext{
 						ResourceType: security.ResourceTypeUser,
 						OUID:         destinationOU,
-						ResourceID:   userID,
+						ResourceID:   "",
 					}).Return(true, nil).Once()
 			},
 			setupExtraMocks: func(
