@@ -99,6 +99,12 @@ type EngineContext struct {
 	// authority is what a flow that acts for its caller runs with. Persisted with the context; executors never
 	// see it.
 	authority *flowAuthority
+	// rollbacks lists what executors created, in creation order, to roll back if the flow ends in an error.
+	// Persisted with the context and shared by every call frame.
+	rollbacks []rollbackEntry
+	// rolledBack marks a step whose failure rolled back what the flow created. The flow cannot be resumed after
+	// it, so its context is removed. Transient, never persisted.
+	rolledBack bool
 	// SessionFlowID overrides the flow whose SSO session this execution operates on. It is set for
 	// sign-out flows, which run a different flow than the one that owns the session: the login (auth)
 	// flow id is carried here so the inbound cookie, SSO inputs, and cookie clear all resolve under
@@ -112,6 +118,12 @@ type EngineContext struct {
 	// expiresAt is when the stored context expires. Set when the context is first stored and persisted
 	// with it, since an update keeps the stored expiry. Zero for a context stored without one.
 	expiresAt time.Time
+}
+
+// rollbackEntry is something an executor created, which it rolls back if the flow ends in an error.
+type rollbackEntry struct {
+	ExecutorName string `json:"executorName"`
+	Ref          string `json:"ref"`
 }
 
 // flowAuthority is the authority a flow that acts for its caller runs with: the caller who started it, as their
@@ -414,7 +426,8 @@ type flowContextContent struct {
 	PromptNodeID          *string `json:"promptNodeId,omitempty"`
 	BoundSubject          string  `json:"boundSubject,omitempty"`
 
-	Authority *flowAuthority `json:"authority,omitempty"`
+	Authority *flowAuthority  `json:"authority,omitempty"`
+	Rollbacks []rollbackEntry `json:"rollbacks,omitempty"`
 }
 
 // graphResolverFunc resolves a flow graph by its flow ID. Used during context deserialization to
@@ -628,6 +641,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		CurrentPromptNodeID:   promptNodeID,
 		boundSubject:          content.BoundSubject,
 		authority:             content.Authority,
+		rollbacks:             content.Rollbacks,
 		expiresAt:             f.ExpiryTime,
 	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
@@ -810,6 +824,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		PromptNodeID:          promptNodeIDStr,
 		BoundSubject:          ctx.boundSubject,
 		Authority:             ctx.authority,
+		Rollbacks:             ctx.rollbacks,
 	}
 
 	contextJSON, err := json.Marshal(content)

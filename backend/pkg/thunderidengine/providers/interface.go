@@ -156,6 +156,9 @@ type OrganizationUnitProvider interface {
 	CreateOrganizationUnit(
 		ctx context.Context, request OrganizationUnitRequestWithID,
 	) (OrganizationUnit, *common.ServiceError)
+	// DeleteOrganizationUnit deletes the organization unit with the given ID, and refuses one that other
+	// resources still depend on.
+	DeleteOrganizationUnit(ctx context.Context, id string) *common.ServiceError
 	IsParent(ctx context.Context, parentID, childID string) (bool, *common.ServiceError)
 	IsOrganizationUnitExists(ctx context.Context, id string) (bool, *common.ServiceError)
 	GetOrganizationUnitChildren(

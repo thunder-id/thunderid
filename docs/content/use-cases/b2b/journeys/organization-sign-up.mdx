@@ -118,7 +118,12 @@ See [What the Sign-In Carries](../../../guides/organization-units/sign-in-to-org
 | The role cannot be assigned | The role is not shared with the new organization, or its assignments are not editable there (`FET-1134`) | The sign-up fails. Share the role with every OU beneath Wayfinder Enterprise and try again |
 
 :::warning
-The organization is created before the account. A sign-up that fails at a later step, such as the role assignment, leaves the organization in place. Fix the cause before you open sign-up to customers.
+The organization is created before the account. When a later step fails, the sign-up deletes the organization so its name and handle can be used again, unless the account already lives inside it:
+
+- **Organization Sign-up:** a failure at account creation deletes the organization. A failure at the role assignment leaves both the organization and the account in place.
+- **Organization Sign-up with Shared Account:** a failure at any later step deletes the organization. An account already created stays in Wayfinder Enterprise.
+
+Fix the cause before you open sign-up to customers.
 :::
 
 For a summary of every organization template, see [Go Further](../../../guides/flows/build-a-flow.mdx#go-further) in Build a Multi-Factor Sign-In Flow.

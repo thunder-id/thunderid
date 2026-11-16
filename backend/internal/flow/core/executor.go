@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -13,6 +15,14 @@ import (
 const (
 	userAttributeUserID = "userID"
 )
+
+// RollbackExecutorInterface is an executor that can roll back what it created when the flow it ran in
+// ends in an error. The executor reports what it created with common.EngineDataKeyRollbackRef.
+type RollbackExecutorInterface interface {
+	providers.Executor
+	// Rollback removes what the executor created and reported under ref.
+	Rollback(ctx context.Context, ref string) error
+}
 
 // executor represents the basic implementation of an executor.
 type executor struct {
