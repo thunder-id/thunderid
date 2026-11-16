@@ -192,7 +192,6 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "INCOMPLETE"
-                    stepId: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
                     challengeToken: "a3f2e1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2"
                     expiresIn: 3540
                     type: "VIEW"
@@ -225,7 +224,6 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "INCOMPLETE"
-                    stepId: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
                     challengeToken: "b4f3e2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3"
                     expiresIn: 3540
                     type: "VIEW"
@@ -263,7 +261,6 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "INCOMPLETE"
-                    stepId: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
                     expiresIn: 3540
                     type: "VIEW"
                     data:
@@ -569,7 +566,6 @@ components:
       required:
         - executionId
         - flowStatus
-        - stepId
         - type
       properties:
         executionId:
@@ -582,10 +578,6 @@ components:
           enum:
             - INCOMPLETE
           example: "INCOMPLETE"
-        stepId:
-          type: string
-          description: Identifier of the current flow step
-          example: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
         challengeToken:
           type: string
           description: Per-step challenge token to be included in the next request
@@ -616,7 +608,6 @@ components:
       required:
         - executionId
         - flowStatus
-        - assertion
       properties:
         executionId:
           type: string
@@ -630,8 +621,16 @@ components:
           example: "COMPLETE"
         assertion:
           type: string
-          description: Authentication assertion. This will be the JWT authentication token
+          description: >-
+            Authentication assertion, the JWT authentication token. Omitted when the flow issues none,
+            such as a sign-out flow.
           example: "<jwt_token>"
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Data'
+          description: >-
+            Data the completed flow returns, such as an invite link in `additionalData`. Omitted when
+            the flow returns none.
         sessionData:
           $ref: '#/components/schemas/FlowResponseSessionData'
         clearedSessions:

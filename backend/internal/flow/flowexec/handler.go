@@ -138,7 +138,6 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 
 	flowResp := FlowResponse{
 		ExecutionID:     flowStep.ExecutionID,
-		StepID:          flowStep.StepID,
 		FlowStatus:      string(flowStep.Status),
 		Type:            string(flowStep.Type),
 		Data:            flowStep.Data,
