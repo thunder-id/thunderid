@@ -535,10 +535,11 @@ func (us *userService) UpdateUser(
 		return nil, svcErr
 	}
 
-	// If the user is moving to a different OU, require authorization for the destination OU as well.
+	// If the user is moving to a different OU, require authorization for the destination OU as well. It names
+	// no user, so the self-service rule does not stand in for access to the destination OU.
 	if user.OUID != existingUser.OUID {
 		if svcErr := us.checkUserAccess(
-			ctx, security.ActionUpdateUser, user.OUID, userID); svcErr != nil {
+			ctx, security.ActionUpdateUser, user.OUID, ""); svcErr != nil {
 			return nil, svcErr
 		}
 	}

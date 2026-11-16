@@ -404,6 +404,109 @@ func (ts *UserAuthzTestSuite) TestUpdateUserInOtherOU() {
 		"user-manager must not update a user in a different OU")
 }
 
+// TestUpdateOwnUserToSiblingOU verifies a user-manager is denied moving their own account to a sibling
+// OU, even with a user type from the shared parent OU that is valid in both.
+func (ts *UserAuthzTestSuite) TestUpdateOwnUserToSiblingOU() {
+	const (
+		typeName = "authz-user-type-parent"
+		username = "authz-user-manager-self"
+		password = "UserMgr@123"
+		rsID     = "https://authz-test.example.com/user-self"
+	)
+
+	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "authz-user-parent", Name: "User Authz Parent OU"})
+	ts.Require().NoError(err, "create parent OU")
+	defer ts.cleanup("parent OU", func() error { return testutils.DeleteOrganizationUnit(parentID) })
+
+	ouAID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "authz-user-child-a", Name: "User Authz Child OU A", Parent: &parentID})
+	ts.Require().NoError(err, "create OU A")
+	defer ts.cleanup("OU A", func() error { return testutils.DeleteOrganizationUnit(ouAID) })
+
+	ouBID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "authz-user-child-b", Name: "User Authz Child OU B", Parent: &parentID})
+	ts.Require().NoError(err, "create OU B")
+	defer ts.cleanup("OU B", func() error { return testutils.DeleteOrganizationUnit(ouBID) })
+
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Name: typeName,
+		OUID: parentID,
+		Schema: map[string]interface{}{
+			"username":     map[string]interface{}{"type": "string"},
+			"password":     map[string]interface{}{"type": "string", "credential": true},
+			"display_name": map[string]interface{}{"type": "string"},
+		},
+	})
+	ts.Require().NoError(err, "create user type in parent OU")
+	defer ts.cleanup("user type", func() error { return testutils.DeleteUserType(typeID) })
+
+	managerID, err := testutils.CreateUser(testutils.User{
+		Type: typeName,
+		OUID: ouAID,
+		Attributes: json.RawMessage(fmt.Sprintf(
+			`{"username": %q, "password": %q, "display_name": "User Manager"}`, username, password)),
+	})
+	ts.Require().NoError(err, "create user-manager in OU A")
+	defer ts.cleanup("user-manager", func() error { return testutils.DeleteUser(managerID) })
+
+	scopedRSID, err := testutils.CreateSystemScopedResourceServer(
+		ouAID, "Authz Test RS (user self)", rsID, "user", "usertype")
+	ts.Require().NoError(err, "create scoped resource server")
+	defer ts.cleanup("resource server", func() error { return testutils.DeleteResourceServerWithChildren(scopedRSID) })
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "User Admin (user-authz-self-test)",
+		OUID: ouAID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: scopedRSID, Permissions: []string{"system:user", "system:usertype:view"}},
+		},
+		Assignments: []testutils.Assignment{{ID: managerID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create user-manager role")
+	defer ts.cleanup("role", func() error { return testutils.DeleteRole(roleID) })
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(userAuthzDevelopClientID, userAuthzDevelopRedirectURI,
+		"system system:user system:usertype:view", username, password, true, "", rsID)
+	ts.Require().NoError(err, "obtain user-manager token")
+	client := testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"type": typeName,
+		"ouId": ouBID,
+		"attributes": map[string]interface{}{
+			"username":     username,
+			"display_name": "User Manager",
+		},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPut, userAuthzServerURL+"/users/"+managerID, bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusForbidden, resp.StatusCode,
+		"user-manager must not move their own account to a sibling OU")
+
+	getResp, err := client.Get(userAuthzServerURL + "/users/" + managerID)
+	ts.Require().NoError(err)
+	defer getResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, getResp.StatusCode)
+
+	var user testutils.User
+	ts.Require().NoError(json.NewDecoder(getResp.Body).Decode(&user))
+	ts.Equal(ouAID, user.OUID, "user-manager must stay in OU A")
+}
+
+// cleanup runs a deferred fixture deletion and logs a failure.
+func (ts *UserAuthzTestSuite) cleanup(name string, del func() error) {
+	if err := del(); err != nil {
+		ts.T().Logf("cleanup: delete %s: %v", name, err)
+	}
+}
+
 // TestDeleteUserInOwnOU verifies the user-manager can delete a user in their own OU.
 func (ts *UserAuthzTestSuite) TestDeleteUserInOwnOU() {
 	resp := ts.doUser(http.MethodDelete, "/users/"+ts.deletableUserOU1ID, nil)
