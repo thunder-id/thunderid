@@ -46,20 +46,25 @@ type OUTypeListResponse struct {
 	Links        []entitytype.Link `json:"links"`
 }
 
-// CreateOUTypeRequest represents the request body for creating an organization unit type.
+// CreateOUTypeRequest represents the request body for creating an organization unit type. ID and OUHandle
+// are not part of the API: only an import sets them, to keep an exported ID and to name the owner by handle.
 type CreateOUTypeRequest struct {
+	ID               string            `json:"-"`
 	Handle           string            `json:"handle" native:"required,min=1,max=100"`
 	DisplayName      string            `json:"displayName" native:"required,min=1"`
 	OUID             string            `json:"ouId" native:"required"`
+	OUHandle         string            `json:"-"`
 	SystemAttributes *SystemAttributes `json:"systemAttributes,omitempty"`
 	Schema           json.RawMessage   `json:"schema" native:"required"`
 }
 
-// UpdateOUTypeRequest represents the request body for updating an organization unit type.
+// UpdateOUTypeRequest represents the request body for updating an organization unit type. OUHandle is not part
+// of the API: only an import sets it, to name the owner by handle.
 type UpdateOUTypeRequest struct {
 	Handle           string            `json:"handle,omitempty"`
 	DisplayName      string            `json:"displayName" native:"required,min=1"`
 	OUID             string            `json:"ouId" native:"required"`
+	OUHandle         string            `json:"-"`
 	SystemAttributes *SystemAttributes `json:"systemAttributes,omitempty"`
 	Schema           json.RawMessage   `json:"schema"`
 }

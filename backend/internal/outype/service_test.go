@@ -127,6 +127,26 @@ func (s *OUTypeServiceTestSuite) TestCreateOUType() {
 	s.Equal(expectedOUType(), created)
 }
 
+func (s *OUTypeServiceTestSuite) TestImportPassesTheIDAndOwnerHandle() {
+	s.entityTypes.On("CreateEntityType", mock.Anything, entitytype.TypeCategoryOU,
+		entitytype.CreateEntityTypeRequestWithID{
+			ID: testOUTypeID, Handle: "partner", DisplayName: "Partner", OUHandle: "default", Schema: testSchema,
+		}).Return(storedEntityType(), nil).Once()
+	s.entityTypes.On("UpdateEntityType", mock.Anything, entitytype.TypeCategoryOU, testOUTypeID,
+		entitytype.UpdateEntityTypeRequest{DisplayName: "Partner", OUHandle: "default", Schema: testSchema}).
+		Return(storedEntityType(), nil).Once()
+
+	_, svcErr := s.service.CreateOUType(context.Background(), CreateOUTypeRequest{
+		ID: testOUTypeID, Handle: "partner", DisplayName: "Partner", OUHandle: "default", Schema: testSchema,
+	})
+	s.Require().Nil(svcErr)
+
+	_, svcErr = s.service.UpdateOUType(context.Background(), testOUTypeID, UpdateOUTypeRequest{
+		DisplayName: "Partner", OUHandle: "default", Schema: testSchema,
+	})
+	s.Require().Nil(svcErr)
+}
+
 func (s *OUTypeServiceTestSuite) TestCreateOUType_RejectsCredentialAttribute() {
 	created, svcErr := s.service.CreateOUType(context.Background(), CreateOUTypeRequest{
 		Handle:      "partner",

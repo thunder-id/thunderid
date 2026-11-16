@@ -34,7 +34,7 @@ func exportedEntityType(t *testing.T, resourceType string, entityType *EntityTyp
 	return "resource_type: " + resourceType + "\n" + string(exported)
 }
 
-// An exported user type and agent type are each shown as their read returns them.
+// An exported user type, agent type and organization unit type are each shown as their read returns them.
 func TestViewResourceShowsAnExportedEntityTypeAsItsRead(t *testing.T) {
 	for _, tc := range []struct {
 		resourceType string
@@ -42,6 +42,7 @@ func TestViewResourceShowsAnExportedEntityTypeAsItsRead(t *testing.T) {
 	}{
 		{resourceTypeEntityType, TypeCategoryUser},
 		{resourceTypeAgentType, TypeCategoryAgent},
+		{resourceTypeOUType, TypeCategoryOU},
 	} {
 		t.Run(tc.resourceType, func(t *testing.T) {
 			document := exportedEntityType(t, tc.resourceType, &EntityType{

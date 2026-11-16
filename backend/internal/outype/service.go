@@ -87,9 +87,11 @@ func (s *ouTypeService) CreateOUType(ctx context.Context, request CreateOUTypeRe
 
 	created, svcErr := s.entityTypeService.CreateEntityType(ctx, entitytype.TypeCategoryOU,
 		entitytype.CreateEntityTypeRequestWithID{
+			ID:               request.ID,
 			Handle:           request.Handle,
 			DisplayName:      request.DisplayName,
 			OUID:             request.OUID,
+			OUHandle:         request.OUHandle,
 			SystemAttributes: toEntityTypeSystemAttributes(request.SystemAttributes),
 			Schema:           request.Schema,
 		})
@@ -122,6 +124,7 @@ func (s *ouTypeService) UpdateOUType(ctx context.Context, id string, request Upd
 			Handle:           request.Handle,
 			DisplayName:      request.DisplayName,
 			OUID:             request.OUID,
+			OUHandle:         request.OUHandle,
 			SystemAttributes: toEntityTypeSystemAttributes(request.SystemAttributes),
 			Schema:           request.Schema,
 		})

@@ -614,6 +614,7 @@ packages:
       translationAdapter:
       groupAdapter:
       userAdapter:
+      ouTypeAdapter:
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:

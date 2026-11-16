@@ -30,15 +30,16 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	bus eventbus.EventBusInterface,
-) (EntityTypeServiceInterface, declarativeresource.ResourceExporter, declarativeresource.ResourceExporter, error) {
+) (EntityTypeServiceInterface, declarativeresource.ResourceExporter, declarativeresource.ResourceExporter,
+	declarativeresource.ResourceExporter, error) {
 	if bus == nil {
-		return nil, nil, nil, errNilEventBus
+		return nil, nil, nil, nil, errNilEventBus
 	}
 	// Step 1: Determine store mode and initialize store and transactioner
 	storeMode := getEntityTypeStoreMode()
 	entityTypeStore, transactioner, err := initializeStore(storeMode, cacheManager)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Step 2: Create service with store
@@ -49,7 +50,7 @@ func Initialize(
 	// Step 3: Load declarative resources into store (if applicable)
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
 		if err := loadDeclarativeResources(entityTypeStore, entityTypeService); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
@@ -64,7 +65,8 @@ func Initialize(
 
 	userTypeExporter := newEntityTypeExporter(entityTypeService, TypeCategoryUser)
 	agentTypeExporter := newEntityTypeExporter(entityTypeService, TypeCategoryAgent)
-	return entityTypeService, userTypeExporter, agentTypeExporter, nil
+	ouTypeExporter := newEntityTypeExporter(entityTypeService, TypeCategoryOU)
+	return entityTypeService, userTypeExporter, agentTypeExporter, ouTypeExporter, nil
 }
 
 // Store Selection (based on entity_type.store configuration):

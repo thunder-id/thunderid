@@ -677,6 +677,38 @@ func (suite *CompositeModeSuite) TestEntityTypeDeclarativeVisibility() {
 	suite.assertMergedCollectionContainsIDs("/user-types", "types", "decl-schema-1", "user_type")
 }
 
+// A declared organization unit type is listed beside runtime ones and is read only.
+func (suite *CompositeModeSuite) TestOUTypeDeclarativeVisibility() {
+	client := testutils.GetHTTPClient()
+	typeURL := fmt.Sprintf("%s/organization-unit-types/decl-ou-type-1", testutils.TestServerURL)
+
+	resp, err := client.Get(typeURL)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, "declarative organization unit type should be visible")
+	var ouType map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&ouType))
+	resp.Body.Close()
+	suite.Equal("declarative-partners", ouType["handle"])
+
+	items := suite.getCollectionItems("/organization-unit-types?limit=100", "types")
+	listed := suite.findCollectionItemByID(items, "decl-ou-type-1")
+	suite.Require().NotNil(listed, "declarative organization unit type should be listed")
+	suite.Equal(true, listed["isReadOnly"])
+
+	update, err := http.NewRequest(http.MethodPut, typeURL, strings.NewReader(
+		`{"displayName":"Renamed","ouId":"decl-ou-1","schema":{"region":{"type":"string"}}}`))
+	suite.Require().NoError(err)
+	update.Header.Set("Content-Type", "application/json")
+	remove, err := http.NewRequest(http.MethodDelete, typeURL, nil)
+	suite.Require().NoError(err)
+	for _, req := range []*http.Request{update, remove} {
+		resp, err = client.Do(req)
+		suite.Require().NoError(err)
+		suite.Equal(http.StatusForbidden, resp.StatusCode, req.Method)
+		suite.Equal("OUT-1010", suite.extractErrorCode(resp), req.Method)
+	}
+}
+
 func (suite *CompositeModeSuite) TestThemeDeclarativeVisibility() {
 	client := testutils.GetHTTPClient()
 	resp, err := client.Get(fmt.Sprintf("%s/design/themes/decl-theme-1", testutils.TestServerURL))

@@ -236,6 +236,44 @@ func (s *OUTypeAPITestSuite) TestSelfRegistrationIsRejected() {
 	}), http.StatusBadRequest, invalidRequestFormatCode)
 }
 
+// The ID and owner handle an import can set are not part of the API, so a request that sends them is refused
+// rather than the field being honoured or silently dropped.
+func (s *OUTypeAPITestSuite) TestImportOnlyFieldsAreRejected() {
+	const requestedID = "019a0000-0000-7000-8000-0000000000c1"
+	created := s.create(s.partnerRequest("ou-type-import-only-fields"))
+
+	s.Run("create with id", func() {
+		s.requireError(s.do(http.MethodPost, ouTypeBasePath, map[string]any{
+			"id":          requestedID,
+			"handle":      "ou-type-with-id",
+			"displayName": "Partner",
+			"ouId":        s.ouID,
+			"schema":      partnerSchema,
+		}), http.StatusBadRequest, invalidRequestFormatCode)
+		s.requireError(s.do(http.MethodGet, ouTypeBasePath+"/"+requestedID, nil),
+			http.StatusNotFound, ouTypeNotFoundCode)
+	})
+
+	s.Run("create with owner handle", func() {
+		s.requireError(s.do(http.MethodPost, ouTypeBasePath, map[string]any{
+			"handle":      "ou-type-with-owner-handle",
+			"displayName": "Partner",
+			"ouId":        s.ouID,
+			"ouHandle":    "default",
+			"schema":      partnerSchema,
+		}), http.StatusBadRequest, invalidRequestFormatCode)
+	})
+
+	s.Run("update with owner handle", func() {
+		s.requireError(s.do(http.MethodPut, ouTypeBasePath+"/"+created.ID, map[string]any{
+			"displayName": "Partner",
+			"ouId":        s.ouID,
+			"ouHandle":    "default",
+			"schema":      partnerSchema,
+		}), http.StatusBadRequest, invalidRequestFormatCode)
+	})
+}
+
 func (s *OUTypeAPITestSuite) TestOwnerOUCannotBeDeletedWhileItHasOUTypes() {
 	ownerID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: "ou-type-owner", Name: "OU Type Owner",

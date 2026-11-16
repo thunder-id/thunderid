@@ -230,6 +230,7 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 		"organization_unit",
 		"user_type",
 		"agent_type",
+		"ou_type",
 		"role",
 		"group",
 		"resource_server",

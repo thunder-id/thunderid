@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/outype"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/user"
@@ -38,6 +39,7 @@ var notFoundErrorCodes = map[string]struct{}{
 	flowmgt.ErrorFlowNotFound.Code:                  {},
 	ou.ErrorOrganizationUnitNotFound.Code:           {},
 	entitytype.ErrorEntityTypeNotFound.Code:         {},
+	outype.ErrorOUTypeNotFound.Code:                 {},
 	role.ErrorRoleNotFound.Code:                     {},
 	group.ErrorGroupNotFound.Code:                   {},
 	resource.ErrorResourceServerNotFound.Code:       {},

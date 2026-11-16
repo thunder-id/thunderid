@@ -19,6 +19,7 @@ const (
 	resourceTypeProject                 = managedresource.TypeProject
 	resourceTypeEntityType              = managedresource.TypeUserType
 	resourceTypeAgentType               = managedresource.TypeAgentType
+	resourceTypeOUType                  = managedresource.TypeOUType
 	resourceTypeResourceServer          = managedresource.TypeResourceServer
 	resourceTypeAuthorizationDetailType = managedresource.TypeAuthorizationDetailType
 	resourceTypeRole                    = managedresource.TypeRole
@@ -108,6 +109,7 @@ func isKnownResourceType(resourceType string) bool {
 		resourceTypeProject:                 {},
 		resourceTypeEntityType:              {},
 		resourceTypeAgentType:               {},
+		resourceTypeOUType:                  {},
 		resourceTypeResourceServer:          {},
 		resourceTypeAuthorizationDetailType: {},
 		resourceTypeRole:                    {},

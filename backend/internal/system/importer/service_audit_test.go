@@ -268,7 +268,7 @@ func (s *ImportServiceAuditTestSuite) TestDeleteResource_PublishesOneEventPerReq
 
 func (s *ImportServiceAuditTestSuite) TestInitialize_RefusesANilEventBus() {
 	service, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	s.Require().ErrorIs(err, errNilEventBus)
 	s.Nil(service)

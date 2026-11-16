@@ -108,6 +108,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 			sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
+		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryOU),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService, sharingWithNoPolicies(suite.T())),
 	}
 
@@ -1677,6 +1678,26 @@ func (suite *ExportServiceTestSuite) TestExportNotificationSenders_WildcardParti
 	if assert.Len(suite.T(), result.Summary.Errors, 1) {
 		assert.Equal(suite.T(), "sender2", result.Summary.Errors[0].ResourceID)
 	}
+}
+
+func (suite *ExportServiceTestSuite) TestExportOUTypes() {
+	suite.mockEntityTypeService.EXPECT().
+		GetEntityType(mock.Anything, entitytype.TypeCategoryOU, "ou-type-1", mock.Anything).
+		Return(&entitytype.EntityType{
+			ID: "ou-type-1", Category: entitytype.TypeCategoryOU, Handle: "partner", DisplayName: "Partner",
+			OUID: "ou1", Schema: []byte(`{"region":{"type":"string"}}`),
+		}, nil)
+
+	result, err := suite.exportService.ExportResources(context.Background(), &ExportRequest{
+		OUTypes: []string{"ou-type-1"},
+		Options: &ExportOptions{Format: "yaml"},
+	})
+
+	suite.Require().Nil(err)
+	suite.Require().Len(result.Files, 1)
+	suite.Equal("ou_type", result.Files[0].ResourceType)
+	suite.Contains(result.Files[0].Content, "resource_type: ou_type")
+	suite.Contains(result.Files[0].Content, "handle: partner")
 }
 
 // TestExportEntityTypes_Success tests successful export of entity types.

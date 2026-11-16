@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/outype"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -228,25 +229,9 @@ func (s *importService) importEntityType(
 		return decodeErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, err)
 	}
 
-	var (
-		schemaBytes []byte
-		err         error
-	)
-	switch v := req.Schema.(type) {
-	case string:
-		schemaBytes = []byte(v)
-	default:
-		schemaBytes, err = json.Marshal(v)
-		if err != nil {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeEntityType,
-				ResourceID:   req.ID,
-				ResourceName: req.DisplayName,
-				Status:       statusFailed,
-				Code:         ErrorInvalidYAMLContent.Code,
-				Message:      fmt.Sprintf("failed to marshal schema: %v", err),
-			}
-		}
+	schemaBytes, err := typeSchemaJSON(req.Schema)
+	if err != nil {
+		return schemaErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, err)
 	}
 
 	category := req.Category
@@ -319,6 +304,105 @@ func (s *importService) importEntityType(
 		return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate, svcErr)
 	}
 	return successOutcome(resourceTypeEntityType, created.ID, created.DisplayName, operationCreate)
+}
+
+// ouTypeDeclarativeYAML is an organization unit type document. Its resource type makes it an organization
+// unit type, so it carries no category.
+type ouTypeDeclarativeYAML struct {
+	ID               string                   `yaml:"id"`
+	Handle           string                   `yaml:"handle"`
+	DisplayName      string                   `yaml:"displayName"`
+	OUID             string                   `yaml:"ouId,omitempty"`
+	OUHandle         string                   `yaml:"ouHandle,omitempty"`
+	SystemAttributes *outype.SystemAttributes `yaml:"systemAttributes,omitempty"`
+	Schema           interface{}              `yaml:"schema"`
+}
+
+// importOUType imports an organization unit type through the organization unit type service, keeping the
+// exported ID.
+func (s *importService) importOUType(
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.ouTypeService == nil {
+		return unsupportedAdapterOutcome(resourceTypeOUType, "organization unit type")
+	}
+
+	var req ouTypeDeclarativeYAML
+	if err := doc.Node.Decode(&req); err != nil {
+		return decodeErrorOutcome(resourceTypeOUType, req.ID, req.DisplayName, err)
+	}
+	schema, err := typeSchemaJSON(req.Schema)
+	if err != nil {
+		return schemaErrorOutcome(resourceTypeOUType, req.ID, req.DisplayName, err)
+	}
+
+	// The upsert looks the type up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.ouTypeService.GetOUType(ctx, req.ID, false)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeOUType, req.ID, req.DisplayName, operationUpdate, svcErr)
+		}
+		exists = svcErr == nil
+	}
+
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeOUType, req.ID, req.DisplayName, operationUpdate)
+		}
+		return successOutcome(resourceTypeOUType, req.ID, req.DisplayName, operationCreate)
+	}
+
+	if exists {
+		updated, svcErr := s.ouTypeService.UpdateOUType(ctx, req.ID, outype.UpdateOUTypeRequest{
+			Handle:           req.Handle,
+			DisplayName:      req.DisplayName,
+			OUID:             req.OUID,
+			OUHandle:         req.OUHandle,
+			SystemAttributes: req.SystemAttributes,
+			Schema:           schema,
+		})
+		if svcErr != nil {
+			return serviceErrorOutcome(resourceTypeOUType, req.ID, req.DisplayName, operationUpdate, svcErr)
+		}
+		return successOutcome(resourceTypeOUType, updated.ID, updated.DisplayName, operationUpdate)
+	}
+
+	created, svcErr := s.ouTypeService.CreateOUType(ctx, outype.CreateOUTypeRequest{
+		ID:               req.ID,
+		Handle:           req.Handle,
+		DisplayName:      req.DisplayName,
+		OUID:             req.OUID,
+		OUHandle:         req.OUHandle,
+		SystemAttributes: req.SystemAttributes,
+		Schema:           schema,
+	})
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeOUType, req.ID, req.DisplayName, operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeOUType, created.ID, created.DisplayName, operationCreate)
+}
+
+// typeSchemaJSON returns the schema of a type document as JSON. A document writes the schema either as a
+// JSON string or as YAML.
+func typeSchemaJSON(schema interface{}) ([]byte, error) {
+	if v, ok := schema.(string); ok {
+		return []byte(v), nil
+	}
+	return json.Marshal(schema)
+}
+
+// schemaErrorOutcome reports a type document whose schema cannot be converted to JSON.
+func schemaErrorOutcome(resourceType, id, name string, err error) ImportItemOutcome {
+	return ImportItemOutcome{
+		ResourceType: resourceType,
+		ResourceID:   id,
+		ResourceName: name,
+		Status:       statusFailed,
+		Code:         ErrorInvalidYAMLContent.Code,
+		Message:      fmt.Sprintf("failed to marshal schema: %v", err),
+	}
 }
 
 func (s *importService) importRole(

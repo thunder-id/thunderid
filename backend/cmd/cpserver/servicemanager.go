@@ -181,13 +181,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	hashService, err := cryptolib.Initialize(hashCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize HashService")
 
-	entityTypeService, entityTypeExporter, agentTypeExporter, err := entitytype.Initialize(
+	entityTypeService, entityTypeExporter, agentTypeExporter, ouTypeExporter, err := entitytype.Initialize(
 		mux, mcpServer, cacheManager, ouService, ouAuthzService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityTypeService")
 	exporters = append(exporters, entityTypeExporter)
 	exporters = append(exporters, agentTypeExporter)
+	exporters = append(exporters, ouTypeExporter)
 
-	_, err = outype.Initialize(mux, entityTypeService, auditBus)
+	ouTypeService, err := outype.Initialize(mux, entityTypeService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize OUTypeService")
 
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
@@ -454,6 +455,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		flowMgtService,
 		ouService,
 		entityTypeService,
+		ouTypeService,
 		roleService,
 		roleAssignmentService,
 		groupService,

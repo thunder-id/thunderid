@@ -25,6 +25,7 @@ var fileStoreDirectoryByResourceType = map[string]string{
 	resourceTypeFlow:                    "flows",
 	resourceTypeOrganizationUnit:        "organization_units",
 	resourceTypeEntityType:              "user_types",
+	resourceTypeOUType:                  "ou_types",
 	resourceTypeRole:                    "roles",
 	resourceTypeResourceServer:          "resource_servers",
 	resourceTypeAuthorizationDetailType: "authorization_detail_types",

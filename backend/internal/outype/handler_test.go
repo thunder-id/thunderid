@@ -122,6 +122,9 @@ func (s *OUTypeHandlerTestSuite) TestCreate_RejectsUnsupportedFields() {
 		{"primary email", `{"handle":"partner","displayName":"Partner","ouId":"` + testOUID +
 			`","systemAttributes":{"primaryEmail":"email"},"schema":{}}`},
 		{"malformed body", `{"handle":`},
+		{"id", `{"id":"` + testOUTypeID + `","handle":"partner","displayName":"Partner","ouId":"` + testOUID +
+			`","schema":{}}`},
+		{"owner handle", `{"handle":"partner","displayName":"Partner","ouHandle":"default","schema":{}}`},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
