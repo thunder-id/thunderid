@@ -268,7 +268,6 @@ const fetchWithStubbedServerMetadata = (input: RequestInfo | URL, init?: Request
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

@@ -109,7 +109,6 @@ vi.mock('@/components/TranslationDeleteDialog', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

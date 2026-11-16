@@ -236,7 +236,6 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 // Allows everything except changing agent types, so a check against the wrong resource leaves the actions on.
 const viewOnly = {
   can: (resource: string, action = 'view') => resource !== 'agenttype' || action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

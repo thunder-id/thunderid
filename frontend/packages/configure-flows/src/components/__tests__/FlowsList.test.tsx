@@ -3,13 +3,29 @@
 
 /* eslint-disable react/require-default-props */
 
-import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  fireEvent,
+  waitFor,
+  type RenderOptions,
+  type RenderResult,
+} from '@testing-library/react';
 import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {DataGrid} from '@wso2/oxygen-ui';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {BasicFlowDefinition} from '../../models/responses';
 import FlowsList from '../FlowsList';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 // Mock logger with accessible mock functions
 const mockLoggerError = vi.fn();
@@ -230,7 +246,6 @@ vi.mock('@wso2/oxygen-ui', async () => {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
