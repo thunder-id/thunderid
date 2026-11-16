@@ -5,6 +5,7 @@ package controlplane
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -101,10 +102,11 @@ func (ts *ControlPlaneTestSuite) TestRoleAndGroupChangesAreAudited() {
 	}
 }
 
-// The Control Plane writes an audit line for each apply to one of its gateways, with the administrator
-// as the actor and the gateway as the target, and for a failed apply the gateway ID the caller sent with
-// no subject. Neither the gateway's key nor the version applied is recorded.
-func (ts *ControlPlaneTestSuite) TestGatewayAppliesAreAudited() {
+// The Control Plane writes an audit line for each gateway it registers, applies to, changes and removes,
+// with the administrator the trusted issuer's token names as the actor and the gateway as the target. A
+// failed apply or removal keeps the gateway ID the caller sent and has no subject. Neither the gateway's
+// name, address or key nor the version applied is recorded.
+func (ts *ControlPlaneTestSuite) TestGatewayChangesAreAudited() {
 	ts.Require().NoError(testutils.RestartServer(), "the Control Plane must restart so its output is captured")
 	reader := testutils.NewAuditLogReader()
 	ts.Require().NoError(reader.Reset())
@@ -123,30 +125,49 @@ func (ts *ControlPlaneTestSuite) TestGatewayAppliesAreAudited() {
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 	status, raw = ts.call(http.MethodPost, "/gateways/"+missing+"/apply", map[string]any{}, nil)
 	ts.Require().Equal(http.StatusNotFound, status, string(raw))
+	renamed := unique("cp-audit-gateway")
+	status, raw = ts.call(http.MethodPut, "/gateways/"+gatewayID, map[string]any{"name": renamed}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	status, raw = ts.call(http.MethodDelete, "/gateways/"+gatewayID, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+	status, raw = ts.call(http.MethodDelete, "/gateways/"+gatewayID, nil, nil)
+	ts.Require().Equal(http.StatusNotFound, status, string(raw))
 
 	admin := testutils.AuditRef{Type: "user", ID: testutils.TrustedIssuerAdminSubject}
+	succeeded := map[string]string{"result": "succeeded"}
+	notFound := map[string]string{"result": "failed", "reason": "gtw_1002"}
 	for _, tc := range []struct {
+		event   string
 		target  string
 		subject bool
 		outcome map[string]string
 	}{
-		{gatewayID, true, map[string]string{"result": "succeeded"}},
-		{missing, false, map[string]string{"result": "failed", "reason": "gtw_1002"}},
+		{"gateway.create", gatewayID, true, succeeded},
+		{"gateway.apply", gatewayID, true, succeeded},
+		{"gateway.apply", missing, false, notFound},
+		{"gateway.update", gatewayID, true, succeeded},
+		{"gateway.delete", gatewayID, true, succeeded},
+		{"gateway.delete", gatewayID, false, notFound},
 	} {
+		name := tc.event + " " + tc.outcome["result"]
 		gatewayRef := testutils.AuditRef{Type: "gateway", ID: tc.target}
 		line, err := reader.Await(func(line testutils.AuditLine) bool {
-			return line.Event == "gateway.apply" && line.Target == gatewayRef && line.Actor == admin
+			return line.Event == tc.event && line.Target == gatewayRef && line.Actor == admin &&
+				line.Outcome["result"] == tc.outcome["result"]
 		})
-		ts.Require().NoError(err, tc.target)
+		ts.Require().NoError(err, name)
 		if tc.subject {
-			ts.Equal(gatewayRef, line.Subject, tc.target)
+			ts.Equal(gatewayRef, line.Subject, name)
 		} else {
-			ts.Equal(testutils.AuditRef{}, line.Subject, tc.target)
+			ts.Equal(testutils.AuditRef{}, line.Subject, "%s: a failed attempt may name no gateway", name)
 		}
-		ts.Equal(tc.outcome, line.Outcome, tc.target)
-		ts.Equal("apply", line.Action, tc.target)
+		ts.Equal(tc.outcome, line.Outcome, name)
+		ts.Equal(strings.TrimPrefix(tc.event, "gateway."), line.Action, name)
 		ts.NotContains(line.Raw, captureGatewayKey, "the gateway's key is never recorded")
 		ts.NotContains(line.Raw, g.server.URL, "the gateway's address is not recorded")
 		ts.NotContains(line.Raw, captured.Version, "the version applied is not recorded")
+		// registerGateway names the gateway apply-gateway-<nanos>.
+		ts.NotContains(line.Raw, "apply-gateway", "the gateway's registered name is not recorded")
+		ts.NotContains(line.Raw, renamed, "the gateway's new name is not recorded")
 	}
 }

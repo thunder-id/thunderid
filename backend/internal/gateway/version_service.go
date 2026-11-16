@@ -167,11 +167,13 @@ func (s *versionService) exportConfiguration(ctx context.Context) (*export.Expor
 // Capture captures the configuration as a version and answers with it, its user named.
 func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Version, *tidcommon.ServiceError) {
 	version, svcErr := s.capture(ctx, req)
+	s.publishCaptureEvent(ctx, version, svcErr)
 	return s.named(ctx, version), svcErr
 }
 
 // capture captures the configuration as a version. Its user is left unnamed: the capture after each
-// change discards the answer, so a name read for it would be an issuer call for nothing.
+// change discards the answer, so a name read for it would be an issuer call for nothing. That capture
+// calls this directly and publishes no event of its own; Capture, the caller's own request, does.
 func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Version, *tidcommon.ServiceError) {
 	exported, svcErr := s.exportConfiguration(ctx)
 	if svcErr != nil {
@@ -258,6 +260,22 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 		log.Int("skipped", len(skipped)))
 	version.Skipped = skipped
 	return version, nil
+}
+
+// publishCaptureEvent publishes the audit event of an attempt to capture the configuration as a version,
+// named by its hash. A capture that matched a version already held created nothing and is not recorded.
+// Nothing of the configuration is recorded.
+func (s *versionService) publishCaptureEvent(ctx context.Context, version *Version,
+	svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeConfigurationVersion}
+	if svcErr == nil {
+		if version.Unchanged {
+			return
+		}
+		target.ID = version.Hash
+	}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, audit.EventConfigurationVersionCreate).With(
+		audit.ChangePayload(ctx, target, audit.ActionCreate, svcErr)))
 }
 
 // named puts the name to the user a version records, through the trusted issuer's user lookup, and
@@ -650,16 +668,12 @@ func (s *versionService) revert(ctx context.Context, gatewayID string,
 // gatewayID, or to revert it, once the attempt is over and what it recorded is committed. A dry run
 // changes nothing and is not recorded. An attempt that fails after the gateway took part of its import
 // is recorded as failed although the gateway may hold some of it: a known limitation.
-func (s *versionService) publishGatewayEvent(ctx context.Context, name string, action audit.Action,
+func (s *versionService) publishGatewayEvent(ctx context.Context, event string, action audit.Action,
 	gatewayID string, dryRun bool, svcErr *tidcommon.ServiceError) {
 	if dryRun {
 		return
 	}
-	// A failed attempt keeps the ID the caller asked for, even one that matches no gateway, as forensic
-	// evidence of what was probed; the payload caps it and the sink escapes it.
-	target := audit.Ref{Type: audit.TargetTypeGateway, ID: gatewayID}
-	eventbus.TryPublish(ctx, s.bus,
-		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
+	publishGatewayChange(ctx, s.bus, event, action, gatewayID, svcErr)
 }
 
 func (s *versionService) Forget(ctx context.Context, gatewayID string) {

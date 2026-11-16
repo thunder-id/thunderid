@@ -257,6 +257,18 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a gateway apply detail", EventGatewayApply,
 			NewPayload(ctx, testGateway, ActionApply, OutcomeSucceeded).
 				WithDetails(map[string]string{"version": "3f2a9c1"}), errDetailNotAllowed},
+		{"a gateway create", EventGatewayCreate,
+			NewPayload(ctx, testGateway, ActionCreate, OutcomeSucceeded), nil},
+		{"a gateway update", EventGatewayUpdate,
+			NewPayload(ctx, testGateway, ActionUpdate, OutcomeFailed("gtw_1004")), nil},
+		{"a gateway delete", EventGatewayDelete,
+			NewPayload(ctx, testGateway, ActionDelete, OutcomeSucceeded), nil},
+		{"a gateway key", EventGatewayCreate,
+			NewPayload(ctx, testGateway, ActionCreate, OutcomeSucceeded).
+				WithDetails(map[string]string{"key": "s3cr3t"}), errDetailNotAllowed},
+		{"a configuration version capture", EventConfigurationVersionCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeConfigurationVersion, ID: "3f2a9c1"}, ActionCreate,
+				OutcomeSucceeded), nil},
 		{"a layout create", EventLayoutCreate,
 			NewPayload(ctx, Ref{Type: TargetTypeLayout, ID: "layout-1"}, ActionCreate, OutcomeSucceeded), nil},
 		{"a layout update", EventLayoutUpdate,
