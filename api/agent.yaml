@@ -65,7 +65,6 @@ paths:
                       isLocal: true
                     attributes:
                       name: "Nightly Sync Worker"
-                      model: "claude-3-5-sonnet"
                       modelProvider: "anthropic"
                     isOwnedByOU: true
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
@@ -80,7 +79,6 @@ paths:
                       isLocal: true
                     attributes:
                       name: "Calendar Agent"
-                      model: "claude-3-5-sonnet"
                       modelProvider: "anthropic"
                     isOwnedByOU: true
                 links:
@@ -168,7 +166,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Nightly Sync Worker"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
               entity-and-inbound:
                 summary: Entity + inbound auth profile (no OAuth)
@@ -183,7 +180,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -209,7 +205,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Data Pipeline Worker"
-                    function: "task-automation"
                     modelProvider: "custom"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   inboundAuthConfig:
@@ -235,7 +230,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -305,7 +299,6 @@ paths:
                   isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -839,7 +832,6 @@ paths:
                   isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
                 isReadOnly: false
                 isOwnedByOU: true
@@ -969,7 +961,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -1041,7 +1032,6 @@ paths:
                   isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -1885,13 +1875,6 @@ paths:
                   type: "string"
                   required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                model:
-                  type: "string"
-                  required: false
-                function:
-                  type: "string"
-                  required: false
-                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
       responses:
         "201":
           description: Agent type created
@@ -1917,13 +1900,6 @@ paths:
                     type: "string"
                     required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                  model:
-                    type: "string"
-                    required: false
-                  function:
-                    type: "string"
-                    required: false
-                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
         "400":
           description: Bad request
           content:
@@ -2026,13 +2002,6 @@ paths:
                     type: "string"
                     required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                  model:
-                    type: "string"
-                    required: false
-                  function:
-                    type: "string"
-                    required: false
-                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
         "404":
           description: Agent type not found
           content:
@@ -2097,13 +2066,6 @@ paths:
                   type: "string"
                   required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                model:
-                  type: "string"
-                  required: false
-                function:
-                  type: "string"
-                  required: false
-                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
       responses:
         "200":
           description: Agent type updated
@@ -2416,7 +2378,6 @@ components:
             are extracted and stored as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         isReadOnly:
           type: boolean
@@ -2559,7 +2520,6 @@ components:
             as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         authFlowId:
           type: string
@@ -2672,7 +2632,6 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         authFlowId:
           type: string
@@ -2768,7 +2727,6 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         status:
           allOf:
@@ -2888,7 +2846,6 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         authFlowId:
           type: string
@@ -3585,13 +3542,6 @@ components:
               type: "string"
               required: false
               enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-            model:
-              type: "string"
-              required: false
-            function:
-              type: "string"
-              required: false
-              enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
 
     AgentTypeListResponse:
       type: object

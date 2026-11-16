@@ -17,6 +17,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -44,6 +45,9 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
 	suite.mockBaseExecutor.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).
@@ -160,6 +164,84 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 				resp.Error.ErrorDescription.Params["entity"])
 			assert.Contains(suite.T(), resp.Error.ErrorDescription.String(), "already associated")
 			suite.mockEntityProvider.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// A conflicting value is cleared and asked for again as a required input.
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflict_AsksForTheAttributeAgain() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"email": "taken@example.com", "nickname": "kept"},
+		RuntimeData: map[string]string{
+			categoryNameKey: string(entitytype.TypeCategoryUser),
+			categoryTypeKey: testUniquenessUserType,
+			"email":         "taken@example.com",
+		},
+	}
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+		Return([]string{"email"}, nil).Once()
+	existingUserID := testExistingUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{"email": "taken@example.com"}).Return(&existingUserID, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.NotContains(suite.T(), ctx.UserInputs, "email", "the conflicting value is dropped from the inputs")
+	assert.Equal(suite.T(), "kept", ctx.UserInputs["nickname"], "the other values are kept")
+	assert.Equal(suite.T(), "", resp.RuntimeData["email"], "the conflicting value is cleared from the runtime data")
+	assert.Equal(suite.T(), []providers.Input{{Identifier: "email", Type: providers.InputTypeText, Required: true}},
+		resp.Inputs)
+	assert.Equal(suite.T(), resp.Inputs, resp.ForwardedData[common.ForwardedDataKeyInputs])
+}
+
+// The re-asked input takes its display name, type and choices from the schema attribute when the schema has it.
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflict_ReaskUsesTheSchemaAttribute() {
+	cases := map[string]struct {
+		info entitytype.AttributeInfo
+		want providers.Input
+	}{
+		"display name": {
+			info: entitytype.AttributeInfo{Attribute: "email", DisplayName: "Email address", Type: "string"},
+			want: providers.Input{Identifier: "email", DisplayName: "Email address", Type: providers.InputTypeText,
+				Required: true},
+		},
+		"number": {
+			info: entitytype.AttributeInfo{Attribute: "email", DisplayName: "Badge", Type: "number"},
+			want: providers.Input{Identifier: "email", DisplayName: "Badge", Type: providers.InputTypeNumber,
+				Required: true},
+		},
+		"enum": {
+			info: entitytype.AttributeInfo{Attribute: "email", DisplayName: "Plan", Type: "string",
+				Enum: []string{"a", "b"}},
+			want: providers.Input{Identifier: "email", DisplayName: "Plan", Type: providers.InputTypeSelect,
+				Options: []string{"a", "b"}, Ref: "email", Required: true},
+		},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockEntityTypeService.ExpectedCalls = nil
+			ctx := &providers.NodeContext{
+				ExecutionID: "flow-1",
+				UserInputs:  map[string]string{"email": "taken@example.com"},
+				RuntimeData: map[string]string{categoryNameKey: string(entitytype.TypeCategoryUser),
+					categoryTypeKey: testUniquenessUserType},
+			}
+			suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+				Return([]string{"email"}, nil).Once()
+			suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUniquenessUserType,
+				mock.Anything).Return([]entitytype.AttributeInfo{tc.info}, (*tidcommon.ServiceError)(nil)).Once()
+			existing := testExistingUserID
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+				map[string]interface{}{"email": "taken@example.com"}).Return(&existing, nil).Once()
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), []providers.Input{tc.want}, resp.Inputs)
 		})
 	}
 }

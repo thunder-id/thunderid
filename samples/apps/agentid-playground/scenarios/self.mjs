@@ -12,7 +12,7 @@ import {checkScopes} from "../lib/readiness.mjs";
 import {decodeJwt} from "../lib/jwt.mjs";
 
 // The agent's own subject and identity claims, plus the two claims that show the token is bound.
-const HIGHLIGHT = ["sub", "aud", "scope", "name", "owner", "ouId", "ouName", "ouHandle", "model", "modelProvider", "function"];
+const HIGHLIGHT = ["sub", "aud", "scope", "name", "owner", "ouId", "ouName", "ouHandle", "modelProvider"];
 
 // What the Concierge asks for on its own behalf. booking:create is deliberately absent: browsing
 // and recommending needs no user, but making a booking does.

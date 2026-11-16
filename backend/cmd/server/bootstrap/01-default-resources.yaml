@@ -88,23 +88,6 @@ schema:
       - gemini
       - mistral
       - custom
-  model:
-    type: string
-    displayName: Model
-    required: false
-  function:
-    type: string
-    displayName: Function
-    required: false
-    enum:
-      - task-automation
-      - rag-retrieval
-      - code-gen
-      - data-analysis
-      - orchestrator
-      - sub-agent
-      - assistant
-      - custom
 ---
 resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020
@@ -2778,7 +2761,7 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: OwnerResolver
-  onSuccess: prompt_agent_details
+  onSuccess: provisioning
   onIncomplete: prompt_owner
   layout:
     size:
@@ -2848,77 +2831,24 @@ nodes:
     - type: BLOCK
       id: block_agent_details
       components:
-      - id: input_agent_name
-        ref: name
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.name.label) }}'
-        required: true
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.name.placeholder) }}'
-      - id: input_agent_model_provider
-        ref: modelProvider
-        type: SELECT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
-        required: false
-        options:
-        - openai
-        - anthropic
-        - gemini
-        - mistral
-        - custom
-      - id: input_agent_model
-        ref: model
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}'
-        required: false
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}'
-      - id: input_agent_function
-        ref: function
-        type: SELECT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
-        required: false
-        options:
-        - task-automation
-        - rag-retrieval
-        - code-gen
-        - data-analysis
-        - orchestrator
-        - sub-agent
-        - assistant
-        - custom
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs_agent_details
       - type: ACTION
         id: action_agent_details
         label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
   prompts:
-  - inputs:
-    - ref: input_agent_name
-      identifier: name
-      type: TEXT_INPUT
-      required: true
-    - ref: input_agent_model_provider
-      identifier: modelProvider
-      type: SELECT
-      required: false
-    - ref: input_agent_model
-      identifier: model
-      type: TEXT_INPUT
-      required: false
-    - ref: input_agent_function
-      identifier: function
-      type: SELECT
-      required: false
+  - inputs: []
     action:
       ref: action_agent_details
       nextNode: agent_attribute_uniqueness
   layout:
     size:
       width: 350
-      height: 954
+      height: 724
     position:
-      x: 3070
+      x: 3580
       y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
@@ -2931,7 +2861,7 @@ nodes:
       width: 312
       height: 117
     position:
-      x: 3580
+      x: 4052
       y: 1089
 - id: provisioning
   type: TASK_EXECUTION
@@ -2942,13 +2872,12 @@ nodes:
     name: ProvisioningExecutor
   onSuccess: agent_credentials
   onIncomplete: prompt_agent_details
-  onFailure: prompt_agent_details
   layout:
     size:
       width: 216
       height: 117
     position:
-      x: 4052
+      x: 3070
       y: 1089
 - id: agent_credentials
   type: PROMPT
@@ -6239,15 +6168,11 @@ translations:
     forms.missing_inputs.subtitle: These details are still needed before the agent can be created.
     forms.missing_inputs.actions.next.label: Continue
     forms.agent_details.title: Agent Details
-    forms.agent_details.subtitle: Name the agent and describe the model it runs on and what it does.
+    forms.agent_details.subtitle: Fill in the details of the agent.
     forms.agent_details.fields.name.label: Name
     forms.agent_details.fields.name.placeholder: Enter a name for the agent
     forms.agent_details.fields.model_provider.label: Model Provider
     forms.agent_details.fields.model_provider.placeholder: Select a model provider
-    forms.agent_details.fields.model.label: Model
-    forms.agent_details.fields.model.placeholder: Enter the model name
-    forms.agent_details.fields.function.label: Function
-    forms.agent_details.fields.function.placeholder: Select a function
     forms.agent_details.actions.submit.label: Create Agent
     forms.credentials.title: Agent Created Successfully
     forms.credentials.message: Copy the client secret now. It is shown only once and cannot be retrieved later.
