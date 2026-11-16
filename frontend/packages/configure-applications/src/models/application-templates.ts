@@ -205,6 +205,16 @@ export interface QuickstartLink {
    * the docs site stay the source of truth.
    */
   docsUrl: string;
+  /**
+   * The coding agent prompt for this platform, for a template that covers several. Either a literal URL
+   * or a `{{documentation.links key}}` reference, resolved as {@link docsUrl} is.
+   */
+  promptUrl?: string;
+  /**
+   * The anchor of the section of the guide that holds the steps, for a page that teaches more than
+   * connecting an application (e.g. 'connect-an-mcp-client' on the MCP server quickstart).
+   */
+  section?: string;
 }
 
 /**

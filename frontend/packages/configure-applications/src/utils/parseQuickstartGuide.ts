@@ -33,6 +33,29 @@ export interface QuickstartGuideStep {
 }
 
 /**
+ * The ready-to-run sample app a quickstart offers, from its "Run the Sample App" section.
+ *
+ * @public
+ */
+export interface QuickstartGuideSample {
+  /** The sample's path in the samples repository (e.g. "quickstarts/react"), which identifies its releases */
+  id: string;
+  /** The section's content: how to configure and run the sample */
+  blocks: QuickstartGuideBlock[];
+}
+
+/**
+ * What the Console shows of a quickstart: the steps that build the app, and the sample app that
+ * runs instead, when the page offers one.
+ *
+ * @public
+ */
+export interface QuickstartGuideContent {
+  steps: QuickstartGuideStep[];
+  sample: QuickstartGuideSample | null;
+}
+
+/**
  * A piece of a code sample. `filled` marks text that replaced a docs placeholder.
  *
  * @public
@@ -48,6 +71,10 @@ export interface QuickstartGuideCodeSegment {
 // parser understands.
 const SETUP_END_HEADING = /^create an application$/i;
 const CLOSING_HEADING = /^what['’]s next$/i;
+// The section that offers the guide's app ready to run, linked to its source in the samples
+// repository. It is an alternative to the steps, not one of them.
+const SAMPLE_HEADING = /^run the sample app$/i;
+const SAMPLE_SOURCE = /github\.com\/[\w.-]+\/samples\/tree\/[^/\s)]+\/([^\s)#?]+)/;
 
 const FENCE = /^(`{3,}|~{3,})\s*(.*)$/;
 const LIST_ITEM = /^([-*]|\d+\.)\s+(.*)$/;
@@ -198,17 +225,64 @@ function parseBlocks(lines: string[]): QuickstartGuideBlock[] {
   return groupLabeledCode(blocks);
 }
 
+/** The anchor the docs site gives a heading (e.g. "Connect an MCP Client" becomes "connect-an-mcp-client"). */
+function headingAnchor(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+/**
+ * The steps of one section of a page: each third-level heading in it and the content under it. A
+ * bold-only line between them is a tab label of the docs page, not content, so it is left out.
+ */
+function parseSectionSteps(lines: string[]): QuickstartGuideStep[] {
+  const steps: {title: string; lines: string[]}[] = [];
+  let fence: string | null = null;
+
+  lines.forEach((line) => {
+    const fenceMatch = FENCE.exec(line);
+    if (fence) {
+      if (closesFence(line, fence)) {
+        fence = null;
+      }
+    } else if (fenceMatch) {
+      [, fence] = fenceMatch;
+    } else if (/^###\s/.test(line)) {
+      steps.push({title: line.replace(/^###\s+/, '').trim(), lines: []});
+      return;
+    } else if (BOLD_ONLY.test(line.trim())) {
+      return;
+    }
+
+    if (steps.length > 0) {
+      steps[steps.length - 1].lines.push(line);
+    }
+  });
+
+  return steps
+    .map((step) => ({title: step.title, blocks: parseBlocks(step.lines)}))
+    .filter((step) => step.blocks.length > 0);
+}
+
 /**
  * Turns the Markdown export of a docs quickstart page into the steps a developer still has to do
  * once the application exists: everything after the "Create an Application" section, up to the
- * closing "What's Next" links.
+ * closing "What's Next" links. A "Run the Sample App" section is kept apart as the sample app.
+ *
+ * A page that teaches more than connecting an application (such as building an MCP server, whose
+ * clients connect in one section of it) names the section that applies instead. Its third-level
+ * headings are the steps.
  *
  * @param markdown - The Markdown export of the quickstart page
- * @returns The steps, or null when the page is not a quickstart in the expected shape
+ * @param section - The anchor of the section that holds the steps, when it is not the whole page
+ * @returns The steps and the sample, or null when the page is not a quickstart in the expected shape
  *
  * @public
  */
-export default function parseQuickstartGuide(markdown: string): QuickstartGuideStep[] | null {
+export default function parseQuickstartGuide(markdown: string, section?: string): QuickstartGuideContent | null {
   const sections: {title: string; lines: string[]}[] = [];
   let fence: string | null = null;
   // The docs export can leave a page component it does not know as raw JSX. Everything from such
@@ -236,18 +310,36 @@ export default function parseQuickstartGuide(markdown: string): QuickstartGuideS
     }
   });
 
-  const setupEnd = sections.findIndex((section) => SETUP_END_HEADING.test(section.title));
+  if (section) {
+    const named = sections.find((entry) => headingAnchor(entry.title) === section);
+    const namedSteps = named ? parseSectionSteps(named.lines) : [];
+    return namedSteps.length > 0 ? {steps: namedSteps, sample: null} : null;
+  }
+
+  const setupEnd = sections.findIndex((entry) => SETUP_END_HEADING.test(entry.title));
   if (setupEnd === -1) {
     return null;
   }
 
-  const closing = sections.findIndex((section, index) => index > setupEnd && CLOSING_HEADING.test(section.title));
+  const closing = sections.findIndex((entry, index) => index > setupEnd && CLOSING_HEADING.test(entry.title));
   const steps = sections
     .slice(setupEnd + 1, closing === -1 ? undefined : closing)
-    .map((section) => ({title: section.title, blocks: parseBlocks(section.lines)}))
+    .filter((entry) => !SAMPLE_HEADING.test(entry.title))
+    .map((entry) => ({title: entry.title, blocks: parseBlocks(entry.lines)}))
     .filter((step) => step.blocks.length > 0);
 
-  return steps.length > 0 ? steps : null;
+  if (steps.length === 0) {
+    return null;
+  }
+
+  const sampleSection = sections.find((entry) => SAMPLE_HEADING.test(entry.title));
+  const sampleId = sampleSection ? SAMPLE_SOURCE.exec(sampleSection.lines.join('\n'))?.[1] : undefined;
+
+  return {
+    steps,
+    sample:
+      sampleSection && sampleId ? {id: sampleId.replace(/\/+$/, ''), blocks: parseBlocks(sampleSection.lines)} : null,
+  };
 }
 
 /**
