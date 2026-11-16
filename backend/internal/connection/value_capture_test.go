@@ -173,7 +173,7 @@ const storedHTTPConnectionID = "http-1"
 func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt() {
 	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.svc = withAllowAllAuthz(s.T(), newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		newAuthZENPDPServiceMock(s.T()), mockHTTP))
+		newAuthZENPDPServiceMock(s.T()), mockHTTP, newDiscardingBus(s.T())))
 	capturer := &recordingCapturer{}
 	s.svc.valueCapturer = capturer
 	values, initErr := export.Initialize(http.NewServeMux(),
@@ -223,7 +223,7 @@ func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt(
 func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
 	_, _, synced, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, &testResourceServerLister{},
 		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()), nil,
-		newSharingServiceMock(s.T()), allowAllAuthz(s.T()))
+		newSharingServiceMock(s.T()), allowAllAuthz(s.T()), newDiscardingBus(s.T()))
 	s.Require().NoError(err)
 	s.IsType(&httpConnectionWriter{}, synced)
 }
