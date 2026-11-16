@@ -368,6 +368,8 @@ type FederatedMappingSuite struct {
 	githubIDPID     string
 	perTestAppIDs   []string
 	perTestFlowIDs  []string
+	syncClientID    string
+	syncResource    string
 
 	// Authorization mapping fixtures: an application whose auth flow runs an AuthorizationExecutor
 	// after the federated login, two resource servers (to prove a mapped permission stays scoped to
@@ -877,6 +879,13 @@ func (s *FederatedMappingSuite) registerEntity(
 	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) *testutils.User {
 	s.T().Helper()
 	s.applyConfig(config)
+	return s.registerWithAppliedConfig(user)
+}
+
+// registerWithAppliedConfig drives the registration flow like registerEntity, under the configuration
+// already applied to the connection.
+func (s *FederatedMappingSuite) registerWithAppliedConfig(user *testutils.OIDCUserInfo) *testutils.User {
+	s.T().Helper()
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
 

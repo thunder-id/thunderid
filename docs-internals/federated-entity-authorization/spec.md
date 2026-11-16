@@ -1,7 +1,7 @@
 # Authorization support for federated entities
 
 - **Status:** Final
-- **Version:** 1.2
+- **Version:** 1.3
 - **Related documents:** [Discussion #5197: Authorization support for federated entities](https://github.com/thunder-id/thunderid/discussions/5197), Issue #5192
 
 ## Summary
@@ -115,7 +115,7 @@ sequenceDiagram
 
 Resolving the issuer to a connection and applying its mapping already happens as part of validating the incoming token, so this adds no additional lookup beyond the shared evaluate-and-combine step. This path needs no local record; it is where authorization for externally managed entities without a ThunderID record works end to end. For ID-JAG, the assertion is minted at issuance with the client's requested scopes, unfiltered by mapping at that point; mapping is what determines the granted access at consumption, when the assertion is presented on the jwt-bearer grant and its own claims are resolved fresh against the connection's mapping.
 
-Neither token exchange nor the jwt-bearer grant issues a refresh token, so mapping is never re-consulted this way. A refresh token issued from the federated login path carries only its granted scopes forward, not the mapping decision that produced them: on renewal, those scopes are re-checked against the subject's own current group memberships, not against the connection's mapping. A scope granted only through mapping (with no matching direct role or group assignment) is therefore dropped on the next refresh, the same as a scope backed by a real assignment that has since been revoked.
+Neither token exchange nor the jwt-bearer grant issues a refresh token, so mapping is never re-consulted this way. A refresh token issued from the federated login path carries its granted scopes forward, and the federated login caches what the mapping granted for the session without storing it on the account: the mapped groups and roles when the connection's groups and roles sync is session only (or the store is declarative-only), and the mapped permissions. On renewal, the scopes are re-checked against the subject's current group memberships plus those cached groups, with their ancestors resolved again at renewal, and roles, and the cached mapped permissions are combined in. The connection's mapping itself isn't re-consulted, so a change at the provider takes effect at the next federated login, or when the refresh token expires. When the grant was issued for an organization unit, the session-only roles are limited at login to those assignable in that unit, the same roles a stored mapping would assign.
 
 Exchanging an external identity token for a ThunderID access token, against a connection configured with `tokenExchangeEnabled: true` and a matching `trustedTokenAudience`:
 
@@ -309,3 +309,4 @@ Not covered by this specification. Tracked separately in [Discussion #5126](http
 | 1.0 | 2026-09-07 | Initial specification, covering rule-based mapping, direct name-based mapping, and their combination across federated login, token exchange, and ID-JAG. |
 | 1.1 | 2026-09-24 | Corrected the refresh token renewal behavior: mapping is never re-consulted on refresh, and neither token exchange nor the jwt-bearer grant issues a refresh token. |
 | 1.2 | 2026-11-07 | Bounded mapped roles, groups, and permissions to the organization unit that owns the connection: rule targets are validated against it at save time only, direct name lookups match only within it, and the console pickers list only it (AC1.6, AC1.7). |
+| 1.3 | 2026-11-11 | Refresh renewal counts the session-only groups, roles and mapped permissions cached at federated login, resolving group ancestors at renewal and limiting roles to the grant's organization unit, as implemented in #6221. |

@@ -63,6 +63,13 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+let mockHasFederatedExecutor = false;
+
+vi.mock('@xyflow/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@xyflow/react')>()),
+  useStore: () => mockHasFederatedExecutor,
+}));
+
 describe('ProvisioningProperties', () => {
   const mockOnChange = vi.fn();
 
@@ -88,6 +95,7 @@ describe('ProvisioningProperties', () => {
       isSuccess: true,
       refetch: vi.fn(),
     };
+    mockHasFederatedExecutor = false;
   });
 
   it('should render the description and checkbox labels', () => {
@@ -354,6 +362,30 @@ describe('ProvisioningProperties', () => {
       expect(screen.getByRole('combobox', {name: /provisioningOU\.label/})).toHaveTextContent(
         'flows:core.executions.provisioning.provisioningOU.userType',
       );
+    });
+  });
+
+  describe('federated override warning', () => {
+    const warning = 'flows:core.executions.provisioning.federatedOverrideWarning';
+
+    it('should warn when a group is assigned in a flow with a federated sign-in', () => {
+      mockHasFederatedExecutor = true;
+      render(
+        <ProvisioningProperties resource={createResource({assignGroup: 'engineering'})} onChange={mockOnChange} />,
+      );
+
+      expect(screen.getByText(warning)).toBeInTheDocument();
+    });
+
+    it('should not warn when nothing is assigned or the flow has no federated sign-in', () => {
+      mockHasFederatedExecutor = true;
+      const {unmount} = render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
+      expect(screen.queryByText(warning)).not.toBeInTheDocument();
+      unmount();
+
+      mockHasFederatedExecutor = false;
+      render(<ProvisioningProperties resource={createResource({assignRole: 'admin'})} onChange={mockOnChange} />);
+      expect(screen.queryByText(warning)).not.toBeInTheDocument();
     });
   });
 });
