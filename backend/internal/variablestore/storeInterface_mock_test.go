@@ -47,20 +47,29 @@ func (_m *storeInterfaceMock) EXPECT() *storeInterfaceMock_Expecter {
 }
 
 // DeleteSecret provides a mock function for the type storeInterfaceMock
-func (_mock *storeInterfaceMock) DeleteSecret(ctx context.Context, name string) error {
+func (_mock *storeInterfaceMock) DeleteSecret(ctx context.Context, name string) (bool, error) {
 	ret := _mock.Called(ctx, name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteSecret")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
 		r0 = returnFunc(ctx, name)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(bool)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // storeInterfaceMock_DeleteSecret_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSecret'
@@ -93,31 +102,40 @@ func (_c *storeInterfaceMock_DeleteSecret_Call) Run(run func(ctx context.Context
 	return _c
 }
 
-func (_c *storeInterfaceMock_DeleteSecret_Call) Return(err error) *storeInterfaceMock_DeleteSecret_Call {
-	_c.Call.Return(err)
+func (_c *storeInterfaceMock_DeleteSecret_Call) Return(b bool, err error) *storeInterfaceMock_DeleteSecret_Call {
+	_c.Call.Return(b, err)
 	return _c
 }
 
-func (_c *storeInterfaceMock_DeleteSecret_Call) RunAndReturn(run func(ctx context.Context, name string) error) *storeInterfaceMock_DeleteSecret_Call {
+func (_c *storeInterfaceMock_DeleteSecret_Call) RunAndReturn(run func(ctx context.Context, name string) (bool, error)) *storeInterfaceMock_DeleteSecret_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteVariable provides a mock function for the type storeInterfaceMock
-func (_mock *storeInterfaceMock) DeleteVariable(ctx context.Context, name string) error {
+func (_mock *storeInterfaceMock) DeleteVariable(ctx context.Context, name string) (bool, error) {
 	ret := _mock.Called(ctx, name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteVariable")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
 		r0 = returnFunc(ctx, name)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(bool)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // storeInterfaceMock_DeleteVariable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteVariable'
@@ -150,12 +168,12 @@ func (_c *storeInterfaceMock_DeleteVariable_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *storeInterfaceMock_DeleteVariable_Call) Return(err error) *storeInterfaceMock_DeleteVariable_Call {
-	_c.Call.Return(err)
+func (_c *storeInterfaceMock_DeleteVariable_Call) Return(b bool, err error) *storeInterfaceMock_DeleteVariable_Call {
+	_c.Call.Return(b, err)
 	return _c
 }
 
-func (_c *storeInterfaceMock_DeleteVariable_Call) RunAndReturn(run func(ctx context.Context, name string) error) *storeInterfaceMock_DeleteVariable_Call {
+func (_c *storeInterfaceMock_DeleteVariable_Call) RunAndReturn(run func(ctx context.Context, name string) (bool, error)) *storeInterfaceMock_DeleteVariable_Call {
 	_c.Call.Return(run)
 	return _c
 }
