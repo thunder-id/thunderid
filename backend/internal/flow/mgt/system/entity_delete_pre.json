@@ -1,20 +1,20 @@
 {
-  "id": "019a1f40-6a1c-7000-8000-5e5713d00011",
-  "handle": "system-user-credential-update-pre",
-  "name": "User credential update, before the change",
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00003",
+  "handle": "system-entity-delete-pre",
+  "name": "Entity deletion, before the change",
   "flowType": "SYSTEM",
   "nodes": [
     {
       "id": "start",
       "type": "START",
-      "onSuccess": "pre_credential_update"
+      "onSuccess": "plan_revocation"
     },
     {
-      "id": "pre_credential_update",
+      "id": "plan_revocation",
       "type": "TASK_EXECUTION",
       "executor": {
-        "name": "PreCredentialUpdateExecutor",
-        "mode": "revoke_before_action"
+        "name": "PreRevocationExecutor",
+        "mode": "identity_deletion"
       },
       "onSuccess": "revoke_tokens"
     },

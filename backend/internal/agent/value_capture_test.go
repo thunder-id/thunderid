@@ -6,11 +6,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
@@ -297,4 +299,24 @@ func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_CapturesTheNewCre
 	assert.Equal(suite.T(), testAgentName, agent.Display)
 	assert.Equal(suite.T(), map[string]interface{}{"password": "rotated"}, agent.Credentials)
 	assert.Empty(suite.T(), agent.InboundAuthConfig)
+}
+
+// Credentials stored before the revocation after the write failed are captured, since they are changed.
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_CapturesCredentialsStoredBeforeAFailedRevocation() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "name")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+	mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, json.RawMessage(`{"password":"rotated"}`)).
+		Return(fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete))
+
+	svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID,
+		json.RawMessage(`{"password":"rotated"}`))
+	suite.Require().NotNil(svcErr)
+
+	agent := capturer.captured(suite)
+	assert.Equal(suite.T(), map[string]interface{}{"password": "rotated"}, agent.Credentials)
 }

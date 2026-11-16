@@ -2452,6 +2452,9 @@ paths:
         Deletes a personal agent the signed-in user owns, in the organization unit the access token names. An
         agent that does not exist, is not a personal agent, belongs to someone else, or is outside that
         organization unit is not found. The token must be the user's own: a delegated token is refused.
+
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        to the agent and those issued through its client ID are revoked, and its sessions end.
       security:
         - OAuth2: []
       parameters:

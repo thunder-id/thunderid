@@ -927,6 +927,15 @@ paths:
 
         A personal agent keeps the owner it was registered for. Leave `owner` out, or send the current owner;
         a different owner is rejected with `AGT-1064`.
+
+        An update that sends a client secret other than the stored one replaces it, as a regeneration does.
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        through the agent's client ID up to the change are revoked, including tokens issued to users
+        through it: before the update is written, and again once it is. Sending the stored secret again
+        revokes nothing. With token revocation off, or on a control plane, nothing is revoked. If the
+        revocation before the write fails, the agent is not changed. If the one after the write fails, the
+        update is stored but the request returns an error, and a token issued while it was being written
+        may stay valid until it expires; regenerating the secret revokes it.
       parameters:
         - in: path
           name: id
@@ -1483,6 +1492,10 @@ paths:
         memberships and role assignments are automatically removed by cascade. The delete is
         fail-closed and retriable: if dependency cleanup fails, the agent is left intact and the
         operation can be retried.
+
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        to the agent and those issued through its client ID, including tokens issued to users through
+        it, are revoked, and its sessions end.
       parameters:
         - in: path
           name: id
@@ -1539,16 +1552,20 @@ paths:
         secret, and returns it. The response is the only time the new secret can be read: it is stored
         hashed and no read returns it.
 
-        The old secret stops working at once. The tokens issued to the agent up to the change are
-        revoked: before the new secret is written, and again once it is, so a token issued while it was
-        being written is revoked too. If the revocation before the write fails, the secret is not
-        changed. If the one after the write fails, the new secret is stored and still returned, with
+        The old secret stops working at once. When token revocation is on
+        (`oauth.token_revocation.enabled`, the default), the tokens issued through the agent's client ID
+        up to the change are revoked, including tokens issued to users through it, as for an update that
+        replaces the secret: before the new secret is written, and again once it is, so a token issued
+        while it was being written is revoked too. With token revocation off, or on a control plane,
+        which issues no tokens, nothing is revoked. If the revocation before the write fails, the secret
+        is not changed. If the one after the write fails, the new secret is stored and still returned, with
         `revocationIncomplete: true`: a token issued while it was being written may stay valid until it
         expires, and regenerating again revokes it. The attempt is recorded as failed in the audit log.
 
         An agent that authenticates without a client secret (a public client, `none` or
         `private_key_jwt`), a personal agent, one declared in a file, and one a control plane deployed
-        are refused. The caller needs the same permissions as for updating the agent.
+        are refused. The caller needs the same permissions as for updating the agent, and every
+        permission the agent holds, since the new secret lets the caller act as the agent.
       parameters:
         - in: path
           name: id
@@ -1601,21 +1618,34 @@ paths:
                       defaultValue: "A personal agent's client secret cannot be regenerated"
         "403":
           description: >
-            Forbidden. The caller may not update the agent, the agent is declared in a file
-            (`AGT-1027`), or it was deployed by a control plane, which only a later deploy from the
-            control plane changes (`AGT-1063`).
+            Forbidden. The caller may not update the agent, lacks a permission the agent holds
+            (`SAZ-4030`), the agent is declared in a file (`AGT-1027`), or it was deployed by a control
+            plane, which only a later deploy from the control plane changes (`AGT-1063`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "AGT-1063"
-                message:
-                  key: "error.agentservice.managed_agent"
-                  defaultValue: "Cannot modify an agent deployed by the control plane"
-                description:
-                  key: "error.agentservice.managed_agent_description"
-                  defaultValue: "The agent was deployed by the control plane and can only be changed there"
+              examples:
+                managed-agent:
+                  summary: The agent was deployed by a control plane
+                  value:
+                    code: "AGT-1063"
+                    message:
+                      key: "error.agentservice.managed_agent"
+                      defaultValue: "Cannot modify an agent deployed by the control plane"
+                    description:
+                      key: "error.agentservice.managed_agent_description"
+                      defaultValue: "The agent was deployed by the control plane and can only be changed there"
+                grant-not-permitted:
+                  summary: The caller lacks a permission the agent holds
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
         "404":
           description: Agent not found
           content:

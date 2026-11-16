@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -19,7 +20,7 @@ import (
 type regenerationFixture struct {
 	svc    *entityService
 	holder *ClientSecretHolderInterfaceMock
-	flows  *SystemFlowProviderInterfaceMock
+	flows  *systemFlowProviderMock
 	order  []string
 	runs   []*flowcommon.SystemFlowContext
 	stored json.RawMessage
@@ -28,17 +29,14 @@ type regenerationFixture struct {
 const testSecretEntityID = "agent-1"
 
 // secretRotationInputs is what the flows around the agent's secret rotation are given.
-var secretRotationInputs = map[string]string{
-	SystemFlowInputEntity:         testSecretEntityID,
-	SystemFlowInputEntityCategory: string(providers.EntityCategoryAgent),
-}
+var secretRotationInputs = map[string]string{systemFlowInputEntity: testSecretEntityID}
 
 func (s *ServiceTestSuite) newRegenerationFixture() *regenerationFixture {
 	f := &regenerationFixture{svc: s.svc.(*entityService)}
 	f.holder = NewClientSecretHolderInterfaceMock(s.T())
 	f.svc.RegisterClientSecretHolder(providers.EntityCategoryAgent, f.holder)
-	f.flows = NewSystemFlowProviderInterfaceMock(s.T())
-	f.svc.SetSystemFlowProvider(f.flows)
+	f.flows = newSystemFlowProviderMock(s.T())
+	f.svc.systemFlows = f.flows
 
 	e := testEntity(testSecretEntityID)
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
@@ -56,8 +54,7 @@ func (s *ServiceTestSuite) newRegenerationFixture() *regenerationFixture {
 
 // allows has the holder allow the regeneration.
 func (f *regenerationFixture) allows() {
-	f.holder.EXPECT().ValidateClientSecretRegeneration(mock.Anything, testSecretEntityID).
-		Return(&ClientSecretProfile{ClientID: "client-1"}, nil)
+	f.holder.EXPECT().ValidateClientSecretRegeneration(mock.Anything, testSecretEntityID).Return(nil)
 }
 
 // recordsFlows records every system flow run, failing the run of the handle named failing with failure.
@@ -74,9 +71,19 @@ func (f *regenerationFixture) recordsFlows(failing string, failure *tidcommon.Se
 		})
 }
 
+// withTokenRevocation sets whether the server enforces token revocation for the rest of the test.
+func (s *ServiceTestSuite) withTokenRevocation(enabled bool) {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.OAuth.TokenRevocation.Enabled = &enabled
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), cfg))
+	s.T().Cleanup(config.ResetServerRuntime)
+}
+
 // A regeneration revokes what the old secret issued before the new one is written, and once it is written
 // moves the cutoff past the write, with what the first flow shared.
 func (s *ServiceTestSuite) TestRegenerateClientSecret_RevokesAroundTheWrite() {
+	s.withTokenRevocation(true)
 	f := s.newRegenerationFixture()
 	f.allows()
 	f.recordsFlows("", nil)
@@ -89,20 +96,35 @@ func (s *ServiceTestSuite) TestRegenerateClientSecret_RevokesAroundTheWrite() {
 	s.True(regenerated.Revoked)
 	s.Nil(regenerated.RevocationError)
 	s.Equal([]*flowcommon.SystemFlowContext{
-		{Handle: SystemFlowSecretRotatePre, Inputs: secretRotationInputs},
+		{Handle: systemFlowSecretRotatePre, Inputs: secretRotationInputs},
 		{Handle: systemFlowRevocationPost, Inputs: secretRotationInputs,
-			RuntimeData: map[string]string{"plan": SystemFlowSecretRotatePre}},
+			RuntimeData: map[string]string{"plan": systemFlowSecretRotatePre}},
 	}, f.runs)
-	s.Equal([]string{SystemFlowSecretRotatePre, "secret", systemFlowRevocationPost}, f.order,
+	s.Equal([]string{systemFlowSecretRotatePre, "secret", systemFlowRevocationPost}, f.order,
 		"the secret was written before the revocation")
 	s.NotContains(string(f.stored), regenerated.ClientSecret, "the secret is stored hashed")
+}
+
+// With token revocation off, nothing enforces what the flows record, so the result does not claim a revocation.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_WithTokenRevocationOff() {
+	s.withTokenRevocation(false)
+	f := s.newRegenerationFixture()
+	f.allows()
+	f.recordsFlows("", nil)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Nil(svcErr)
+	s.Require().NotNil(regenerated)
+	s.False(regenerated.Revoked)
+	s.Nil(regenerated.RevocationError)
 }
 
 // A refusal of the service owning the entity runs no flow and writes nothing.
 func (s *ServiceTestSuite) TestRegenerateClientSecret_HolderRefusalWritesNothing() {
 	f := s.newRegenerationFixture()
 	refusal := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AGT-1001"}
-	f.holder.EXPECT().ValidateClientSecretRegeneration(mock.Anything, testSecretEntityID).Return(nil, refusal)
+	f.holder.EXPECT().ValidateClientSecretRegeneration(mock.Anything, testSecretEntityID).Return(refusal)
 
 	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
 
@@ -116,13 +138,13 @@ func (s *ServiceTestSuite) TestRegenerateClientSecret_PreFlowRefusalWritesNothin
 	f := s.newRegenerationFixture()
 	f.allows()
 	refusal := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "FET-1088"}
-	f.recordsFlows(SystemFlowSecretRotatePre, refusal)
+	f.recordsFlows(systemFlowSecretRotatePre, refusal)
 
 	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
 
 	s.Equal(refusal, svcErr)
 	s.Nil(regenerated)
-	s.Equal([]string{SystemFlowSecretRotatePre}, f.order, "something was written after the refusal")
+	s.Equal([]string{systemFlowSecretRotatePre}, f.order, "something was written after the refusal")
 }
 
 // A revocation that fails once the new secret is written still returns the secret, which is stored by then
@@ -139,7 +161,22 @@ func (s *ServiceTestSuite) TestRegenerateClientSecret_FailedPostFlowStillReturns
 	s.NotEmpty(regenerated.ClientSecret)
 	s.Equal(&tidcommon.InternalServerError, regenerated.RevocationError)
 	s.False(regenerated.Revoked)
-	s.Equal([]string{SystemFlowSecretRotatePre, "secret", systemFlowRevocationPost}, f.order)
+	s.Equal([]string{systemFlowSecretRotatePre, "secret", systemFlowRevocationPost}, f.order)
+}
+
+// A secret that cannot be stored is reported as a server error, and no flow runs after the failed write.
+func (s *ServiceTestSuite) TestRegenerateClientSecret_FailedWriteRunsNoPostFlow() {
+	s.store.On("UpdateSystemCredentials", mock.Anything, testSecretEntityID, mock.IsType(json.RawMessage(nil))).
+		Return(s.testErr).Once()
+	f := s.newRegenerationFixture()
+	f.allows()
+	f.recordsFlows("", nil)
+
+	regenerated, svcErr := f.svc.RegenerateClientSecret(s.ctx, providers.EntityCategoryAgent, testSecretEntityID)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Nil(regenerated)
+	s.Equal([]string{systemFlowSecretRotatePre}, f.order, "a flow ran after the failed write")
 }
 
 // With system flows off, as on a control plane, the secret is still regenerated.
@@ -168,14 +205,28 @@ func (s *ServiceTestSuite) TestRegenerateClientSecret_CategoryWithoutAHolder() {
 	s.Empty(f.order)
 }
 
-// Validation asks the service registered for the category, and returns its profile.
-func (s *ServiceTestSuite) TestValidateClientSecretRegeneration_AsksTheCategorysHolder() {
+// A rotation whose write fails runs no flow after it, and reports the write's failure.
+func (s *ServiceTestSuite) TestRotateClientSecret_FailedWriteRunsNoPostFlow() {
 	f := s.newRegenerationFixture()
-	f.allows()
+	f.recordsFlows("", nil)
 
-	profile, svcErr := f.svc.ValidateClientSecretRegeneration(s.ctx, providers.EntityCategoryAgent,
-		testSecretEntityID)
+	svcErr, revocationErr := f.svc.RotateClientSecret(s.ctx, testSecretEntityID, func() *tidcommon.ServiceError {
+		f.order = append(f.order, "write")
+		return &tidcommon.InternalServerError
+	})
 
-	s.Nil(svcErr)
-	s.Equal(&ClientSecretProfile{ClientID: "client-1"}, profile)
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.Nil(revocationErr)
+	s.Equal([]string{systemFlowSecretRotatePre, "write"}, f.order)
+}
+
+// The server injects the flow engine once it exists; a service that cannot take it is reported.
+func (s *ServiceTestSuite) TestSetSystemFlowProvider() {
+	service := &entityService{}
+	provider := newSystemFlowProviderMock(s.T())
+
+	s.NoError(SetSystemFlowProvider(service, provider))
+	s.Same(provider, service.systemFlows)
+	s.Error(SetSystemFlowProvider(NewEntityServiceInterfaceMock(s.T()), provider))
+	s.Error(SetSystemFlowProvider(nil, provider))
 }

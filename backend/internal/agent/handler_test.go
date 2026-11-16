@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
-	"github.com/thunder-id/thunderid/internal/entity"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -70,9 +69,9 @@ func (s *InlineStubAgentService) RegenerateAgentSecret(context.Context, string) 
 	return nil, nil
 }
 
-func (s *InlineStubAgentService) ValidateClientSecretRegeneration(context.Context, string) (
-	*entity.ClientSecretProfile, *tidcommon.ServiceError) {
-	return nil, nil
+func (s *InlineStubAgentService) ValidateClientSecretRegeneration(context.Context,
+	string) *tidcommon.ServiceError {
+	return nil
 }
 
 func (s *InlineStubAgentService) CreateAgent(

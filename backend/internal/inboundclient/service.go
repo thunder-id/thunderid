@@ -121,6 +121,8 @@ type inboundClientService struct {
 	logger         *log.Logger
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newInboundClientService creates and returns an inboundClientService with all dependencies wired.
@@ -454,11 +456,32 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	return clientIDFromEntity(e)
 }
 
-// DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity.
+// DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity. It
+// revokes what the client issued and detaches it from the sessions it took part in. A failure to revoke before
+// the deletion deletes nothing and is returned. A failure after it is logged and the deletion reported as done,
+// since the client is gone and deleting again could not revoke anything more.
 func (s *inboundClientService) DeleteInboundClient(ctx context.Context, entityID string) error {
 	if s.store.IsDeclarative(ctx, entityID) {
 		return ErrCannotModifyDeclarative
 	}
+	inputs := map[string]string{systemFlowInputEntity: entityID}
+	shared, svcErr := s.runSystemFlow(ctx, systemFlowInboundClientDeletePre, inputs, nil)
+	if svcErr != nil {
+		return fmt.Errorf("%w: %s", errRevocationFailed, svcErr.Code)
+	}
+	if err := s.deleteInboundClient(ctx, entityID); err != nil {
+		return err
+	}
+	if _, svcErr = s.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+		s.logger.Error(ctx, "The inbound client was deleted, but revoking what it issued while it was deleted "+
+			"failed; a token issued in that window can stay valid until it expires",
+			log.MaskedString("entityID", entityID), log.String("code", svcErr.Code))
+	}
+	return nil
+}
+
+// deleteInboundClient removes the inbound client, OAuth profile, and certificates in one transaction.
+func (s *inboundClientService) deleteInboundClient(ctx context.Context, entityID string) error {
 	// Capture OAuth client_id before the caller deletes the entity itself.
 	oauthClientID := s.resolveClientID(ctx, entityID)
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
