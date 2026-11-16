@@ -200,9 +200,10 @@ sent, the control plane asks the gateway's store for each name.
 
 - A dry run lists the names the gateway lacks under `missing`, as `variables` and `secrets`.
   `missing.references` says what each one is for: the resource that refers to it and the field it
-  stands in, as described in [Read What Each Value Is For](#read-what-each-value-is-for). Only the
-  resources the apply sends are checked: one the gateway already holds as it is, or one left out of
-  the selection, needs no value yet.
+  stands in, as described in [Read What Each Value Is For](#read-what-each-value-is-for). A dry run
+  names the values of every change the version offers, one the gateway holds back included, so a
+  caller can ask for the values its selection needs. An apply checks only the resources it sends:
+  one the gateway already holds as it is, or one left out of the selection, needs no value yet.
 - An apply is refused with `409` (`GTW-1017`) until the gateway holds them all. Nothing is sent and
   nothing is recorded.
 
@@ -350,7 +351,9 @@ resources (`GTW-1039`) or leaves out a required change (`GTW-1040`). An unknown 
 `GET /gateways/{id}/project-status?project=<id>` reports where the project stands on the gateway: the
 versions its own resources there were deployed from, when they were last written and by whom, whether
 it can be rolled back, and how many of its own, needed and shared changes a deploy scoped to it would
-send. With `from=<gateway id>` it compares against what promoting that gateway would send.
+send. Changes an earlier deploy left out, which the gateway holds back, are counted apart as
+`heldBack`: they are not pending, but a deploy that selects them brings them. With `from=<gateway id>`
+it compares against what promoting that gateway would send.
 
 Each project can also be synced on its own after every capture. Set `projects` in the `gateway` server
 configuration section, by project id, with `autoSync` and the `firstGateway` its pipeline starts

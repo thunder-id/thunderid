@@ -11,6 +11,7 @@ import GatewaysStrip from './GatewaysStrip';
 import type {VersionRunner} from './GatewayTag';
 import PipelineVersions from './PipelineVersions';
 import useAppliedVersions from '../api/useAppliedVersions';
+import {useTargetsWithChangedValues} from '../api/useChangedValues';
 import {useApplyCheck} from '../api/useGatewayVersions';
 import {usePipeline} from '../api/usePipeline';
 import {useProjectStatuses} from '../api/useProjectStatus';
@@ -137,6 +138,23 @@ export default function GatewaysOverview({
     const status = statusOf(gatewayId);
     return status ? status.project.pending + status.project.required : 0;
   };
+  // What an earlier deploy left out there, of the project's own or shared: not waiting, but still to be
+  // brought, so the gateway stays open to a deploy or promotion that ticks it.
+  const heldBackAt = (gatewayId: string): number => {
+    const status = statusOf(gatewayId);
+    return status ? (status.project.heldBack ?? 0) + (status.shared.heldBack ?? 0) : 0;
+  };
+  // The gateways holding a value set since the version they run was deployed: no version changed, but
+  // the value takes effect only with a deploy, so they stay open to one.
+  const running = useMemo(
+    () =>
+      Object.fromEntries(
+        gateways.map((gateway: Gateway) => [gateway.id, applied.byGateway[gateway.id]?.appliedVersion ?? undefined]),
+      ),
+    [gateways, applied.byGateway],
+  );
+  const withChangedValues = useTargetsWithChangedValues(running);
+  const valuesChangedAt = (gatewayId: string): boolean => withChangedValues.includes(gatewayId);
   const all: Version[] = useMemo(() => versions.data ?? [], [versions.data]);
   const panels = useDeployPanels(gateways, all, applied.byGateway, stages);
   const first = stages[0];
@@ -207,11 +225,26 @@ export default function GatewaysOverview({
     if (!before?.appliedVersion) return undefined;
     if (project) {
       // A project's promotion is offered while its own changes, what they need or shared updates wait.
-      const status = statusOf(stages[index].gateway.id);
-      if (!status || (projectOwes(stages[index].gateway.id) === 0 && status.shared.pending === 0)) return undefined;
+      const gatewayId = stages[index].gateway.id;
+      const status = statusOf(gatewayId);
+      if (
+        !status ||
+        (projectOwes(gatewayId) === 0 &&
+          status.shared.pending === 0 &&
+          heldBackAt(gatewayId) === 0 &&
+          !valuesChangedAt(gatewayId))
+      ) {
+        return undefined;
+      }
       return all.find((version: Version) => version.version === before.appliedVersion);
     }
-    if (here?.appliedVersion === before.appliedVersion && here.complete !== false) return undefined;
+    if (
+      here?.appliedVersion === before.appliedVersion &&
+      here.complete !== false &&
+      !valuesChangedAt(stages[index].gateway.id)
+    ) {
+      return undefined;
+    }
     return all.find((version: Version) => version.version === before.appliedVersion);
   };
 
@@ -276,6 +309,12 @@ export default function GatewaysOverview({
         isLoading={versions.isLoading}
         runners={runners}
         firstRuns={project ? (statusOf(first.gateway.id)?.project.versions[0]?.hash ?? undefined) : firstRuns}
+        firstHoldsAll={
+          !valuesChangedAt(first.gateway.id) &&
+          (project
+            ? projectOwes(first.gateway.id) === 0 && heldBackAt(first.gateway.id) === 0
+            : firstApplied?.complete !== false)
+        }
         firstName={first.name}
         latestChanges={latestChanges}
         onDeploy={deployToFirst}

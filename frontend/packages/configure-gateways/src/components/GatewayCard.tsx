@@ -194,6 +194,8 @@ export default function GatewayCard({
     : previous
       ? t('card.rollBackTo', 'Roll back to {{version}}', {version: previous})
       : t('stage.revert', 'Rollback');
+  // What an earlier deploy left out here, of the project's own or shared, which a deploy that ticks it brings.
+  const heldBack = (projectStatus?.project.heldBack ?? 0) + (projectStatus?.shared.heldBack ?? 0);
   const sharedTypes = (projectStatus?.shared.byType ?? [])
     .map(({resourceType, count}: {resourceType: string; count: number}) =>
       t('card.sharedType', '{{count}} {{type}}', {count, type: resourceType}),
@@ -375,6 +377,24 @@ export default function GatewayCard({
                   count: projectStatus.shared.pending,
                   defaultValue_one: '{{count}} shared update available',
                   defaultValue_other: '{{count}} shared updates available',
+                })}
+              </Highlight>
+            </Box>
+          </Tooltip>
+        )}
+        {projectStatus && heldBack > 0 && (
+          <Tooltip
+            title={t(
+              'card.heldBackHint',
+              'An earlier deploy left these out. They stay out of later deploys until one ticks them.',
+            )}
+          >
+            <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
+              <Highlight tone="info" icon={<Info size={14} />} testId="card-held-back">
+                {t('card.heldBack', {
+                  count: heldBack,
+                  defaultValue_one: '{{count}} change left out',
+                  defaultValue_other: '{{count}} changes left out',
                 })}
               </Highlight>
             </Box>

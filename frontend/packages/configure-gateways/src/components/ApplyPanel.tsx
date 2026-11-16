@@ -3,7 +3,6 @@
 
 import {QueryErrorNotice} from '@thunderid/components';
 import {useHiddenResources} from '@thunderid/contexts';
-import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
   AlertTitle,
@@ -25,7 +24,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {Rocket, Send, X} from '@wso2/oxygen-ui-icons-react';
-import {useCallback, useMemo, useState, type JSX, type ReactNode} from 'react';
+import {useCallback, useContext, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
@@ -37,13 +36,15 @@ import {useRefused} from '../api/useMaster';
 import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
 import {useVersion} from '../api/useVersions';
 import useProjectScope from '../contexts/ProjectScope';
+import ResourceNamesContext from '../contexts/ResourceNames';
 import useChangeName from '../hooks/useChangeName';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
+import {errorCodeOf, failureText, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
 import {carriedWithProject, projectNeeds, sharedByDefault, sharedMissing} from '../utils/changeSummary';
+import {humanize} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';
 import {fieldKey, missingFields, type MissingField, type RefusedFix} from '../utils/missingValues';
 import {withNeeded, withReplaced} from '../utils/needs';
@@ -133,6 +134,22 @@ export default function ApplyPanel({
   const [startWith, setStartWith] = useState<string[] | undefined>(only);
 
   const changes: Change[] = useMemo(() => check.data?.diff.changes ?? [], [check.data]);
+  // What a refusal calls a resource, by its key: its name and kind, for a resource the check or the
+  // gateways' maps know, so a refusal names it as the changes do rather than by its id.
+  const names = useContext(ResourceNamesContext);
+  const nameOfKey = useCallback(
+    (key: string): string | undefined => {
+      const change = changes.find((candidate: Change) => candidate.key === key);
+      if (!change && !names.has(key)) return undefined;
+      const [resourceType, ...rest] = key.split('/');
+      const name = nameOfChange(change ?? {key, resourceType, id: rest.join('/')});
+      // A resource with no name of its own is already called by its kind and the start of its id.
+      if (!change?.name && !names.get(key)) return name;
+      const kind = t(`changes.types.${resourceType}`, humanize(resourceType)).toLowerCase();
+      return t('applyPanel.refusalResource', '{{name}} {{kind}}', {name, kind});
+    },
+    [changes, names, nameOfChange, t],
+  );
   // Under a project whose check places each change, the project's own changes start ticked and can be
   // unticked one by one, what the ticked ones need that the target lacks goes with them, and only what
   // else is ticked goes too; another project's changes are never carried. A check that places none, as
@@ -183,17 +200,25 @@ export default function ApplyPanel({
     setConfirmRemovals(false);
   };
 
+  // What the source holds back it does not run, so a promotion cannot carry it: it is shown, never sent,
+  // and the values only it uses are not asked for.
+  const unrun = useMemo(
+    () =>
+      new Set(active.filter((change: Change) => change.sourceExcluded === true).map((change: Change) => change.key)),
+    [active],
+  );
   const ticked = useMemo(
     () =>
       new Set(
         active
           .filter((change: Change) => {
+            if (unrun.has(change.key)) return false;
             if (scoped) return change.section !== 'other' && !projectNeeds(change) && !excluded.has(change.key);
             return !excluded.has(change.key);
           })
           .map((change: Change) => change.key),
       ),
-    [active, excluded, scoped],
+    [active, excluded, scoped, unrun],
   );
   // What the ticked changes bring along, as the control plane widens the selection; shown ticked and
   // marked, not chosen by hand.
@@ -215,7 +240,10 @@ export default function ApplyPanel({
   }, [active, includeNeeded, scoped, ticked, changes]);
   // An addition always brings the removal of the resource it replaces.
   const required = useMemo(() => withReplaced(ticked, brought, changes), [ticked, brought, changes]);
-  const selected = useMemo(() => new Set([...ticked, ...required.keys()]), [ticked, required]);
+  const selected = useMemo(
+    () => new Set([...ticked, ...required.keys()].filter((key: string) => !unrun.has(key))),
+    [ticked, required, unrun],
+  );
   // The values the deploy lacks that a ticked change uses. A value only unticked changes use is not
   // asked for, nor one whose user the check does not name; a value no reference ties to a change is.
   const fields: MissingField[] = useMemo(() => {
@@ -497,11 +525,11 @@ export default function ApplyPanel({
           resolveErrorMessage={(error, translate, fallbackKey, fallbackDefaultValue) =>
             isForbidden(error)
               ? t('applyPanel.forbiddenFor', 'Your account may not deploy to {{target}}.', {target: envName})
-              : getErrorMessage(
+              : failureText(
                   error,
                   (key: string, options?: Record<string, unknown>) => translate(key, {target: envName, ...options}),
-                  fallbackKey,
-                  fallbackDefaultValue,
+                  translate(fallbackKey, {target: envName, defaultValue: fallbackDefaultValue}),
+                  nameOfKey,
                 )
           }
           onRetry={() => void check.refetch()}
@@ -588,7 +616,7 @@ export default function ApplyPanel({
         <Alert severity="error">
           {isForbidden(error)
             ? t('applyPanel.forbiddenFor', 'Your account may not deploy to {{target}}.', {target: envName})
-            : getErrorMessage(error, tForErrors, 'deploy:applyPanel.failed', 'The version could not be deployed.')}
+            : failureText(error, tForErrors, t('applyPanel.failed', 'The version could not be deployed.'), nameOfKey)}
         </Alert>
       )}
       {after}

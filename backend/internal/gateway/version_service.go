@@ -580,9 +580,17 @@ func (s *versionService) promote(ctx context.Context, req PromoteRequest) (*Appl
 	if sourceGateway, svcErr := s.gateway(ctx, req.SourceGatewayID); svcErr == nil && sourceGateway.Name != "" {
 		sourceName = sourceGateway.Name
 	}
+	// A project's promotion narrows the caller's selection to what the source runs. A change the target
+	// holds back stays out of what it chooses itself, but one the caller names is sent, and so released.
+	named := req.Project != "" && req.Selection != nil
 	return s.write(ctx, gw, version, applyOptions{dryRun: req.DryRun, confirmRemovals: req.ConfirmRemovals,
 		origin: req.SourceGatewayID, promotedFrom: sourceName, project: req.Project, selection: req.Selection,
-		choose: func(diff *Diff) []string { return promoteSelection(master, version, diff) }})
+		choose: func(diff *Diff) []string {
+			if named {
+				return sourceRuns(master, version, diff, true)
+			}
+			return promoteSelection(master, version, diff)
+		}})
 }
 
 // promoteSelection picks the target's changes a promotion sends: a removal, or an addition or update
@@ -591,6 +599,14 @@ func (s *versionService) promote(ctx context.Context, req PromoteRequest) (*Appl
 // not promoted. What the target holds back stays out: selecting it would send it and stop holding it
 // back.
 func promoteSelection(source *Master, version *Version, target *Diff) []string {
+	return sourceRuns(source, version, target, false)
+}
+
+// sourceRuns picks the target's changes the source can carry: a removal, or an addition or update the
+// source's master holds deployed with the version's content. What the target holds back is left out
+// unless withHeldBack is set, as a status counting what waits does: a held-back change the source runs
+// is still to be brought there, though a promotion leaves it out until it is selected.
+func sourceRuns(source *Master, version *Version, target *Diff, withHeldBack bool) []string {
 	inVersion := map[string]string{}
 	for _, resource := range parseBundle(version.Resources) {
 		inVersion[resource.key()] = contentHash(resource.Content)
@@ -603,7 +619,7 @@ func promoteSelection(source *Master, version *Version, target *Diff) []string {
 	}
 	selection := []string{}
 	for _, change := range target.Changes {
-		if change.Change == ChangeUnchanged || change.HeldBack {
+		if change.Change == ChangeUnchanged || (change.HeldBack && !withHeldBack) {
 			continue
 		}
 		if (change.Change == ChangeAdded || change.Change == ChangeUpdated) && !deployed[change.Key] {
@@ -816,7 +832,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		return nil, svcErr
 	}
 	values := valuesToRecord(held, target, changed, diff, applied)
-	missing, svcErr := s.missingValues(ctx, gw, held, sent.content, dryRun)
+	missing, svcErr := s.missingValues(ctx, gw, held, checkedContent(diff, target, sent.content, dryRun), dryRun)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1261,8 +1277,8 @@ func valuesToRecord(held *HeldValues, target *Version, changed *ChangedValues, d
 // missingValues reads, from what the gateway's store holds, the values the content to send refers to
 // that it lacks. A version names values the gateway holds rather than carrying them, so one the
 // gateway lacks would leave a resource unusable once applied: a dry run reports them, and an apply is
-// refused while there are any. Only what is sent is checked: a resource left on offer needs nothing
-// yet.
+// refused while there are any. Which content is checked is checkedContent's: an apply checks only what
+// it sends, a dry run every change the version offers.
 func (s *versionService) missingValues(ctx context.Context, gw *Gateway, held *HeldValues, content string,
 	dryRun bool) (*MissingValues, *tidcommon.ServiceError) {
 	variables, secrets := referencesIn(content)
@@ -1276,6 +1292,29 @@ func (s *versionService) missingValues(ctx context.Context, gw *Gateway, held *H
 		}
 	}
 	return missing, nil
+}
+
+// checkedContent is what an apply checks the gateway holds the values for. An apply checks what it sends:
+// a resource left on offer needs nothing yet. A dry run checks every change the version offers, sent or
+// not, and names the resources that use each missing value, so a caller that then ticks a change the
+// gateway would otherwise hold back knows the values it needs before it applies.
+func checkedContent(diff *Diff, target *Version, sent string, dryRun bool) string {
+	if !dryRun {
+		return sent
+	}
+	offered := map[string]bool{}
+	for _, change := range diff.Changes {
+		if change.Change == ChangeAdded || change.Change == ChangeUpdated {
+			offered[change.Key] = true
+		}
+	}
+	documents := []string{}
+	for _, resource := range parseBundle(target.Resources) {
+		if offered[resource.key()] {
+			documents = append(documents, resource.Content)
+		}
+	}
+	return joinBundle(documents)
 }
 
 // markValueChanged offers as updated each resource that refers to a value set on the gateway again

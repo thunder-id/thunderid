@@ -507,3 +507,26 @@ func (s *DeployTestSuite) TestARevertWithoutAnEarlierMasterReturnsToTheVersionWh
 		})
 	}
 }
+
+// A dry run names the values every change the version offers uses, a change the gateway holds back
+// included, with the resource that uses each, so a caller that ticks it knows what to set first. An apply
+// that leaves it out still needs none of them.
+func (s *DeployTestSuite) TestADryRunNamesTheValuesOfAHeldBackChange() {
+	t := s.T()
+	f := newVersionFixture(t)
+	f.captureReferring(t)
+	f.client.held = map[string]bool{}
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Selection: &[]string{}, LeaveOut: []string{"application/app-1"}})
+	require.Nil(t, svcErr)
+
+	dry, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{DryRun: true})
+
+	require.Nil(t, svcErr)
+	require.NotNil(t, dry.Missing)
+	assert.Equal(t, []string{"APP_CLIENT_ID"}, dry.Missing.Variables)
+	require.NotEmpty(t, dry.Missing.References)
+	assert.Equal(t, "app-1", dry.Missing.References[0].ResourceID)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	assert.Nil(t, svcErr, "an apply that leaves the held-back change out was refused for its values")
+}
