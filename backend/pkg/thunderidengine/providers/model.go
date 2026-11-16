@@ -317,7 +317,7 @@ type InputDefinition struct {
 	Type       string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
 	Identifier string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
 	Required   bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
-	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
+	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed. Supported on executor inputs only."`
 	Validation []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
 }
 
@@ -1295,8 +1295,10 @@ type NodeContext struct {
 
 	NodeProperties map[string]interface{}
 	NodeInputs     []Input
-	UserInputs     map[string]string
-	RuntimeData    map[string]string
+	// UserInputs holds the inputs submitted to the flow. Read them through ConsumeInput. A request continuing a
+	// paused flow carries only the inputs the paused step asks for, and an unused input is dropped on a pause.
+	UserInputs  map[string]string
+	RuntimeData map[string]string
 	// SharedRuntimeData contains trusted data shared by every frame in the execution.
 	SharedRuntimeData map[string]string
 	ForwardedData     map[string]interface{}

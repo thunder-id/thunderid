@@ -161,6 +161,10 @@ var magicLinkRegTestUserSchema = testutils.UserType{
 			"type":     "string",
 			"required": true,
 		},
+		"password": map[string]interface{}{
+			"type":       "string",
+			"credential": true,
+		},
 	},
 	AllowSelfRegistration: true,
 }
@@ -451,6 +455,51 @@ func (ts *MagicLinkRegistrationTestSuite) TestMagicLinkRegistration_Success() {
 	ts.Require().NoError(err)
 	ts.Require().NotNil(user)
 	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+}
+
+// TestMagicLinkRegistration_PasswordSentWithEmail tests that a password sent along with the email,
+// which no step of the flow asks for, is not set on the user created after the link is opened.
+func (ts *MagicLinkRegistrationTestSuite) TestMagicLinkRegistration_PasswordSentWithEmail() {
+	ts.mockSMTP.ClearEmails()
+	emailAddr := common.GenerateUniqueUsername("sentwithemail") + "@example.com"
+	username := common.GenerateUniqueUsername("sentwithemail")
+	earlyPassword := "SentWithEmail789!"
+
+	flowStep, err := common.InitiateRegistrationFlow(ts.appID, false, nil, "")
+	ts.Require().NoError(err)
+
+	step2, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"email": emailAddr, "password": earlyPassword},
+		"magic_link_action", flowStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("INCOMPLETE", step2.FlowStatus)
+
+	token := common.ExtractMagicLinkToken(ts.waitForEmail())
+	ts.Require().NotEmpty(token)
+
+	// Open the link the way the gate does: the execution ID and the token, nothing else.
+	step3, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{"token": token}, "", "")
+	ts.Require().NoError(err)
+	ts.Require().Equal("INCOMPLETE", step3.FlowStatus)
+
+	inputs := map[string]string{
+		"username":    username,
+		"given_name":  "Test",
+		"family_name": "User",
+	}
+	step4, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_schema_attrs",
+		step3.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", step4.FlowStatus)
+
+	user, err := testutils.FindUserByAttribute("email", emailAddr)
+	ts.Require().NoError(err)
+	ts.Require().NotNil(user)
+	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+
+	authenticated, err := testutils.AuthenticateWithCredential("email", emailAddr, "password", earlyPassword)
+	ts.Require().NoError(err)
+	ts.False(authenticated, "The password sent with the email is not set on the created user")
 }
 
 func (ts *MagicLinkRegistrationTestSuite) TestMagicLinkRegistration_ExistingUser() {

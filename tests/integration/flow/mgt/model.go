@@ -92,6 +92,7 @@ type NodeDefinition struct {
 	Meta       interface{}               `json:"meta,omitempty"`
 	Inputs     []InputDefinition         `json:"inputs,omitempty"`
 	Actions    []ActionDefinition        `json:"actions,omitempty"`
+	Prompts    []PromptDefinition        `json:"prompts,omitempty"`
 	Properties map[string]interface{}    `json:"properties,omitempty"`
 	Executor   *ExecutorDefinition       `json:"executor,omitempty"`
 	Flow       *FlowReferenceDefinition  `json:"flow,omitempty"`
@@ -110,6 +111,12 @@ type InputDefinition struct {
 	Type       string `json:"type"`
 	Identifier string `json:"identifier"`
 	Required   bool   `json:"required"`
+	OneTimeUse bool   `json:"oneTimeUse,omitempty"`
+}
+
+type PromptDefinition struct {
+	Inputs []InputDefinition `json:"inputs,omitempty"`
+	Action *ActionDefinition `json:"action,omitempty"`
 }
 
 type ActionDefinition struct {
@@ -118,7 +125,8 @@ type ActionDefinition struct {
 }
 
 type ExecutorDefinition struct {
-	Name string `json:"name"`
+	Name   string            `json:"name"`
+	Inputs []InputDefinition `json:"inputs,omitempty"`
 }
 
 type ConditionDefinition struct {
