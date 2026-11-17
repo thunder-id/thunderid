@@ -260,6 +260,66 @@ func (suite *SecurityServiceTestSuite) TestProcess_RevokedTokenFamily() {
 	mockRevocation.AssertExpectations(suite.T())
 }
 
+// Test Process drops the token's security context when a check on the token fails on a public path,
+// so the handler sees an anonymous runtime caller, and keeps it when the token itself is valid.
+func (suite *SecurityServiceTestSuite) TestProcess_PublicPathTokenContext() {
+	// /flow/execute has no API permission entry, so authorizing a valid token falls back to the root permission.
+	InitSystemPermissions("")
+
+	cases := []struct {
+		name         string
+		canHandle    bool
+		authErr      error
+		revokedErr   error
+		permissions  []string
+		wantRuntime  bool
+		wantIdentity bool
+	}{
+		{name: "no authenticator", wantRuntime: true},
+		{name: "authentication fails", canHandle: true, authErr: errInvalidToken, wantRuntime: true},
+		{name: "token revoked", canHandle: true, revokedErr: errors.New("token has been revoked"),
+			permissions: []string{"system"}, wantRuntime: true},
+		{name: "valid token lacking permission", canHandle: true, permissions: []string{},
+			wantRuntime: true, wantIdentity: true},
+		{name: "valid token", canHandle: true, permissions: []string{"system"}, wantIdentity: true},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+			securityCtx := newSecurityContext("user123", "ou-1", "token", tc.permissions, nil)
+
+			auth := &AuthenticatorInterfaceMock{}
+			auth.On("CanHandle", req).Return(tc.canHandle)
+			if tc.canHandle && tc.authErr != nil {
+				auth.On("Authenticate", req).Return(nil, tc.authErr)
+			} else if tc.canHandle {
+				auth.On("Authenticate", req).Return(securityCtx, nil)
+			}
+			revocation := &RevocationEnforcerInterfaceMock{}
+			revocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(tc.revokedErr).Maybe()
+
+			service, err := newSecurityService(
+				[]AuthenticatorInterface{auth}, revocation, testPublicPaths, apiPermissionEntries)
+			suite.Require().NoError(err)
+
+			ctx, err := service.Process(req)
+
+			suite.Require().NoError(err)
+			auth.AssertExpectations(suite.T())
+			suite.Equal(tc.wantRuntime, IsRuntimeContext(ctx))
+			if tc.wantIdentity {
+				suite.Equal("user123", GetSubject(ctx))
+				return
+			}
+			suite.Nil(getSecurityContext(ctx))
+			suite.Empty(GetSubject(ctx))
+			suite.Empty(GetOUID(ctx))
+			suite.Empty(GetPermissions(ctx))
+		})
+	}
+}
+
 // Test Process consults the enforcer with the token's revocation identifier and proceeds when the
 // token is not revoked.
 func (suite *SecurityServiceTestSuite) TestProcess_NotRevokedToken() {

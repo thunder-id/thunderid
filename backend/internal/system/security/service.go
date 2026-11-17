@@ -109,12 +109,12 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 	// Add authentication context to request context if available
 	ctx := r.Context()
 	if securityCtx != nil {
-		ctx = withSecurityContext(ctx, securityCtx)
-
 		// Reject the request when the presented token has been revoked. This runs after successful
 		// authentication and is format-agnostic: it enforces on the token's jti and its token family
 		// id. A revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does not
 		// disclose that the token was specifically revoked.
+		// The token's security context is attached only once it passes, so a revoked token reaches a
+		// public path with no identity, like an expired one.
 		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, RevocationIdentity{
 			JTI:           securityCtx.revocationID,
 			TokenFamilyID: securityCtx.tokenFamilyID,
@@ -123,6 +123,7 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 		}); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)
 		}
+		ctx = withSecurityContext(ctx, securityCtx)
 	}
 
 	// Authorize the authenticated principal based on the permissions carried in the security context.
