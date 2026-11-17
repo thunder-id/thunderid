@@ -323,6 +323,14 @@ auditConfig:
     # site's own build and dev-server configuration, never from untrusted input, and the code runs
     # only while building or serving the docs locally. Revisit once braces ships a fix.
     - GHSA-vfj7-8cjw-p6xm
+    # JUSTIFICATION: picomatch ReDoS through single-branch repeated extglob patterns. Transitive via
+    # docs -> @docusaurus/core, and the Vite, Vitest, Rollup and file-watcher toolchain. No patched
+    # release exists on npm yet (the advisory lists "Patched: None"; 4.0.7 is the latest), so
+    # neither an upgrade nor an override can fix it. Not exploitable here: the advisory requires an
+    # attacker-controlled glob pattern, and every pattern comes from the repo's own build, test and
+    # dev-server configuration. The code runs only while building, testing or serving locally.
+    # Revisit once picomatch ships a fix.
+    - GHSA-fc5q-39xc-vjpf
 
 minimumReleaseAgeExclude:
   - '@thunderid/*'
