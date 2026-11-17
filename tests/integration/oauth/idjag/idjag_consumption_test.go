@@ -794,3 +794,46 @@ func (ts *IDJAGConsumptionTestSuite) TestIDJAG_DPoPBoundAccessToken() {
 	ts.Require().True(ok, "access token should contain cnf claim")
 	ts.NotEmpty(cnf["jkt"], "cnf.jkt should be present for DPoP-bound token")
 }
+
+// A jwt-bearer token's sub is the external IdP's identifier, not an account of this deployment.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_ExternalSubjectIsNotLocalAccount() {
+	assertion := ts.buildIDJAGAssertion(func(h, c map[string]interface{}) {
+		c["sub"] = ts.userID
+	})
+
+	resp, statusCode, err := ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+
+	ts.Equal(http.StatusUnauthorized, ts.statusWithBearer("/users/me", resp.AccessToken))
+}
+
+// A jwt-bearer token for the System resource server names an external subject, which is not an account of
+// this deployment, so the management APIs refuse it.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_ExternalSubjectTokenOnManagementAPIs() {
+	assertion := ts.buildIDJAGAssertion(func(h, c map[string]interface{}) {
+		c["scope"] = "system"
+		c["resource"] = testutils.SystemResourceIdentifier
+	})
+
+	resp, statusCode, err := ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("system", claims.Additional["scope"])
+
+	ts.Equal(http.StatusUnauthorized, ts.statusWithBearer("/users", resp.AccessToken))
+}
+
+// statusWithBearer calls GET path with token as the bearer credential and returns the status code.
+func (ts *IDJAGConsumptionTestSuite) statusWithBearer(path, token string) int {
+	ts.T().Helper()
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+path, nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	return resp.StatusCode
+}

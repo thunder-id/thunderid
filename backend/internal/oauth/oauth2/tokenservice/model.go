@@ -151,6 +151,9 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// SourceIDP is the external identity provider whose identifier Sub is: the issuer of an external
+	// token, or the idp claim of a self-issued one. Empty when Sub is a subject of this deployment.
+	SourceIDP string
 }
 
 // IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the

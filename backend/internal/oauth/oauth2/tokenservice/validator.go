@@ -602,9 +602,13 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	// Only self-issued tokens participate in deny-list (revocation) enforcement; an external
 	// issuer's jti and token family id have no meaning in this server's deny list.
 	var jti, tokenFamilyID string
+	// An external issuer's sub is its own identifier. A self-issued token names the provider whose
+	// identifier its sub is in the idp claim, set only when it was issued for such a subject.
+	sourceIDP := iss
 	if tv.isSelfIssuer(iss) {
 		jti, _ = extractStringClaim(claims, "jti")
 		tokenFamilyID, _ = extractStringClaim(claims, constants.ClaimTokenFamilyID)
+		sourceIDP, _ = extractStringClaim(claims, constants.ClaimIDP)
 	}
 
 	return &SubjectTokenClaims{
@@ -617,6 +621,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		CnfJkt:         cnfJkt,
 		JTI:            jti,
 		TokenFamilyID:  tokenFamilyID,
+		SourceIDP:      sourceIDP,
 	}, nil
 }
 
