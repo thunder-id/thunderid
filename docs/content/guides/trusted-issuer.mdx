@@ -48,9 +48,15 @@ server:
 |-------|----------|-------------|
 | `issuer` | Yes | The issuer URL of the central authorization server. <ProductName /> matches this against the `iss` claim on every incoming token and rejects any token that does not match exactly, including differences in scheme, host, port, or trailing slash. |
 | `jwks_url` | Yes | The JWKS endpoint on the central server. <ProductName /> fetches the public signing keys from this URL and uses them to verify token signatures. |
-| `audience` | Yes | The `aud` value that tokens from the central server must carry. Set this to the resource-server <ProductName /> instance's own public URL. The client at the central server must include a matching `resource` parameter in the authorization request so the issued token targets this instance. |
+| `audience` | Yes | The `aud` value that tokens from the central server must carry on the REST API. Set this to the resource-server <ProductName /> instance's own public URL. The client at the central server must include a matching `resource` parameter in the authorization request so the issued token targets this instance. The [MCP endpoint](../../working-with-ai/mcp-server) has its own audience, described in [MCP audience](#mcp-audience). |
 | `required_claims` | No | A list of claims that every accepted token must contain, each paired with an expected value. Tokens that are missing a required claim or carry a different value are rejected. Use this to scope accepted tokens further, for example to a specific organization unit. |
 
+
+### MCP audience
+
+The MCP endpoint at `/mcp` is a separate resource server, so it does not accept tokens issued for the REST API. It requires the `aud` claim to equal the MCP resource identifier, `<server URL>/mcp`. The protected resource metadata at `/.well-known/oauth-protected-resource` advertises the same value as `resource`, so an MCP client that follows the metadata requests a token for it.
+
+The central server must therefore be able to issue a token for each audience: the instance's public URL for the REST API, and `<server URL>/mcp` for MCP. All other checks, including `required_claims`, apply to both.
 
 The JWKS cache time-to-live applies to signing keys fetched from this endpoint and is configured at `server.security.jwks_cache_ttl`, not inside the `trusted_issuer` block. See [Security Configuration](../../deployment/configuration#security-configuration) for details.
 
@@ -168,7 +174,7 @@ configuration:
 |---------|--------------|-----|
 | Console sign-in redirect hangs or token exchange fails with a CORS error | <ProductName />'s origin is not in the external authorization server's CORS allowed-origins list | Add the <ProductName /> instance's origin to the authorization server's CORS configuration. |
 | Tokens rejected with "issuer mismatch" | `trusted_issuer.issuer` does not exactly match the `iss` claim on incoming tokens | Set `trusted_issuer.issuer` to match exactly, including scheme, host, port, and trailing slash. |
-| Tokens rejected with "audience mismatch" | The authorization server is not receiving a `resource` parameter and falls back to a default resource server whose identifier does not match <ProductName />'s expected audience | Configure the client to send `resource=<server-url>` in the authorization request, or set `defaultResourceServer` to the expected resource server. |
+| Tokens rejected with "audience mismatch" | The authorization server is not receiving a `resource` parameter and falls back to a default resource server whose identifier does not match <ProductName />'s expected audience | Configure the client to send `resource=<server-url>` in the authorization request, or set `defaultResourceServer` to the expected resource server. For the MCP endpoint, request `resource=<MCP resource identifier>` instead. |
 | Tokens rejected with "required claim missing" | A claim listed under `required_claims` is absent from the token or its value does not match | Remove the entry from `required_claims`, or configure the authorization server to include the claim with the expected value. |
 | JWKS fetch fails | `trusted_issuer.jwks_url` is unreachable, or the authorization server uses a certificate that <ProductName /> does not trust | Verify network connectivity to the URL, and install the authorization server's CA certificate on the <ProductName /> instance if needed. |
 | Console does not redirect to the external authorization server | `consoleClient.trustedIssuer` is not set, or `publicUrl`/`hostname` still point at the local <ProductName /> instance | Verify the `consoleClient.trustedIssuer` block and re-render the Helm chart. |
