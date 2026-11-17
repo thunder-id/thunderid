@@ -164,6 +164,9 @@ type SubjectTokenClaims struct {
 	// Authorization is server-resolved context, not a claim from the token itself — see
 	// MappedAuthorization.
 	Authorization MappedAuthorization
+	// SourceIDP is the external identity provider whose identifier Sub is: the issuer of an external
+	// token, or the idp claim of a self-issued one. Empty when Sub is a subject of this deployment.
+	SourceIDP string
 }
 
 // IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the

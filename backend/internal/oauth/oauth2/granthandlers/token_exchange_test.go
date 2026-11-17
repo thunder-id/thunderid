@@ -3720,3 +3720,38 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestGetScopes_MappedAuthorizati
 	assert.Nil(suite.T(), errResp)
 	assert.Empty(suite.T(), scopes)
 }
+
+// The exchanged token names the source IdP of its subject token: the issuer of an external token, or the
+// idp a self-issued token already carries.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExchangedTokenNamesSourceIDP() {
+	for _, tc := range []struct{ name, iss, idp string }{
+		{"ExternalSubjectToken", "https://external-idp.example.com", "https://external-idp.example.com"},
+		{"SelfIssuedExternalSubject", testCustomIssuer, "https://partner.example.com"},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			now := time.Now().Unix()
+			subjectToken := suite.createTestJWT(map[string]interface{}{
+				"sub": testUserID, "iss": tc.iss, "aud": "app123",
+				"exp": float64(now + 3600), "nbf": float64(now - 60),
+			})
+			req := &model.TokenRequest{
+				GrantType:        string(providers.GrantTypeTokenExchange),
+				ClientID:         testClientID,
+				SubjectToken:     subjectToken,
+				SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
+			}
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+				Return(&tokenservice.SubjectTokenClaims{Sub: testUserID, Iss: tc.iss, SourceIDP: tc.idp}, nil)
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+					return ctx.SourceIDP == tc.idp
+				})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, TokenType: constants.TokenTypeBearer,
+				IssuedAt: now, ExpiresIn: 3600, ClientID: testClientID}, nil)
+
+			_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+			suite.Nil(errResp)
+		})
+	}
+}

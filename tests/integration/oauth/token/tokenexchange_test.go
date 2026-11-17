@@ -27,6 +27,8 @@ const (
 	tokenExchangeTestPassword = "TePassword123!"
 	tokenExchangeTestEmail    = "te_test@example.com"
 	tokenExchangeMockOIDCPort = 8094
+	// A separate port gives the IdP its own issuer URL, so it does not reuse another test's cached keys.
+	tokenExchangeLocalSubjectMockOIDCPort = 8104
 )
 
 type TokenExchangeTestSuite struct {
@@ -449,6 +451,7 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_BasicSuccess() {
 	// Verify the access token is a valid JWT
 	claims, err := testutils.DecodeJWT(resp.AccessToken)
 	ts.Require().NoError(err, "Access token should be a valid JWT")
+	ts.NotContains(claims.Additional, "idp", "A local subject's token names no external identity provider")
 	ts.Equal(ts.userID, claims.Sub, "Subject should match user ID")
 	ts.assertAudienceEquals(claims, "https://resource.example.com")
 }
@@ -527,6 +530,16 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedToken
 		claims.Additional["grant_type"],
 		"Issued token should record token exchange grant type",
 	)
+	ts.Equal(mockOIDCServer.GetURL(), claims.Additional["idp"], "Issued token should name the external issuer")
+
+	// The token's sub is the external IdP's identifier, so the REST APIs do not accept it.
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/users/me", nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+resp.AccessToken)
+	meResp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer meResp.Body.Close()
+	ts.Equal(http.StatusUnauthorized, meResp.StatusCode)
 }
 
 // TestTokenExchange_WithAudience tests that audience does not drive the issued access-token audience.
@@ -869,4 +882,70 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_SubjectTokenUnsupportedIssue
 	ts.Equal(http.StatusBadRequest, statusCode)
 	ts.Equal("invalid_request", resp.Error)
 	ts.Contains(resp.ErrorDescription, "issuer is not registered as a trusted token exchange issuer")
+}
+
+// An external IdP's token is exchanged for a token that names the IdP in idp; its sub is the IdP's
+// identifier, not an account of this deployment.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalSubjectIsNotLocalAccount() {
+	const externalClientID = "external-local-subject-client"
+
+	mockOIDCServer, err := testutils.NewMockOIDCServer(
+		tokenExchangeLocalSubjectMockOIDCPort, externalClientID, "mock-oidc-secret")
+	ts.Require().NoError(err)
+	ts.Require().NoError(mockOIDCServer.Start())
+	defer func() {
+		if stopErr := mockOIDCServer.Stop(); stopErr != nil {
+			ts.T().Logf("Failed to stop mock OIDC server: %v", stopErr)
+		}
+	}()
+
+	idpID, err := testutils.CreateIDP(testutils.IDP{
+		Name:        fmt.Sprintf("Token Exchange Local Subject IdP %d", time.Now().UnixNano()),
+		Description: "Mock OIDC IdP whose subject equals a local user's ID",
+		Type:        "OIDC",
+		Properties: []testutils.IDPProperty{
+			{Name: "issuer", Value: mockOIDCServer.GetURL()},
+			{Name: "jwks_endpoint", Value: mockOIDCServer.GetJWKSURL()},
+			{Name: "token_exchange_enabled", Value: "true"},
+			{Name: "trusted_token_audience", Value: externalClientID},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() {
+		if deleteErr := testutils.DeleteIDP(idpID); deleteErr != nil {
+			ts.T().Logf("Failed to delete mock OIDC IdP: %v", deleteErr)
+		}
+	}()
+
+	now := time.Now()
+	externalToken, err := mockOIDCServer.SignJWT(map[string]interface{}{"typ": "JWT"}, map[string]interface{}{
+		"iss": mockOIDCServer.GetURL(),
+		"sub": ts.userID,
+		"aud": externalClientID,
+		"iat": now.Unix(),
+		"exp": now.Add(5 * time.Minute).Unix(),
+	})
+	ts.Require().NoError(err)
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", externalToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(),
+		"Basic "+basicAuth(tokenExchangeClientID, tokenExchangeClientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode, "%+v", resp)
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(ts.userID, claims.Sub)
+	ts.Equal(mockOIDCServer.GetURL(), claims.Additional["idp"], "the exchanged token names the external issuer")
+
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/users/me", nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+resp.AccessToken)
+	meResp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer meResp.Body.Close()
+	ts.Equal(http.StatusUnauthorized, meResp.StatusCode)
 }
