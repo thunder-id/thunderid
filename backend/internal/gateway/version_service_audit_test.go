@@ -294,10 +294,11 @@ func (s *VersionServiceAuditTestSuite) TestAFailingBusDoesNotFailTheApply() {
 }
 
 func (s *VersionServiceAuditTestSuite) TestInitializeRefusesANilEventBus() {
-	service, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil)
+	service, stopper, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil)
 
 	s.Require().ErrorIs(err, errNilEventBus)
 	s.Nil(service)
+	s.Nil(stopper)
 }
 
 // A capture of a changed configuration creates a version, named by its hash.

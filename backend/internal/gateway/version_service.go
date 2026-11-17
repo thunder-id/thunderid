@@ -111,6 +111,8 @@ type versionService struct {
 	syncRuns *syncRuns
 	// syncSettings writes each project's entry of the gateway section; a plane without one keeps none.
 	syncSettings serverconfig.ServerConfigService
+	// unusedValues removes from a gateway's store, after an apply, the values nothing refers to any more.
+	unusedValues unusedValueSweeperInterface
 	bus          eventbus.EventBusInterface
 	logger       *log.Logger
 }
@@ -129,6 +131,7 @@ func newVersionService(gateways storeInterface, versions versionStoreInterface,
 		pipeline:     p,
 		projects:     noProjects{},
 		syncRuns:     &syncRuns{runs: map[string]AutoSyncRun{}},
+		unusedValues: noUnusedValueSweep{},
 		bus:          bus,
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
 	}
@@ -924,6 +927,9 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayID", gw.ID),
 		log.Int("version", target.Seq), log.Bool("complete", state.complete), log.Int("held", state.held),
 		log.Int("total", state.total))
+	// Once the apply is recorded and the masters past the bound are gone, the values nothing kept refers
+	// to are removed, after the apply has answered.
+	s.unusedValues.afterApply(ctx, gw, key)
 	return result, nil
 }
 

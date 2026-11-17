@@ -33,7 +33,7 @@ import MissingValuesFields from './MissingValuesFields';
 import RefusedFixes from './RefusedFixes';
 import {useApplyCheck, useApplyVersion} from '../api/useGatewayVersions';
 import {useRefused} from '../api/useMaster';
-import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
+import {useSetStoredValue, useStoredValuesNamed} from '../api/useStoredValues';
 import {useVersion} from '../api/useVersions';
 import useProjectScope from '../contexts/ProjectScope';
 import ResourceNamesContext from '../contexts/ResourceNames';
@@ -126,7 +126,6 @@ export default function ApplyPanel({
 
   const refusedEntries = useRefused(target);
   const references = useVersion(version.version, true, target).data?.references;
-  const storedVariables = useStoredValues(target, 'variable').data;
   // What was typed over a value a refused resource uses, by its field key.
   const [fixValues, setFixValues] = useState<Record<string, string>>({});
   // Only the panel opened to retry what was refused starts with just those ticked; another gateway
@@ -297,6 +296,16 @@ export default function ApplyPanel({
         return {change, failure: entry?.failure, predicted: predicted.get(change.key), fields: [...byKey.values()]};
       });
   }, [active, ticked, references, fields, refusedEntries, predicted]);
+  // What the gateway holds for the variables the fixes show, looked up by name rather than read in full.
+  const fixNames = useMemo(
+    () =>
+      fixes
+        .flatMap((fix: RefusedFix) => fix.fields)
+        .filter((field: MissingField) => field.kind === 'variable')
+        .map((field: MissingField) => field.name),
+    [fixes],
+  );
+  const storedVariables = useStoredValuesNamed(target, 'variable', fixNames).data;
   const heldValue = (field: MissingField): string => {
     if (field.kind === 'secret') return '';
     const held = storedVariables?.find((stored: StoredValue) => stored.name === field.name)?.value ?? '';

@@ -104,13 +104,13 @@ func TestDeriveVariableNameSeparatesIDsThatSanitizeAlike(t *testing.T) {
 
 // A hashed ID segment can never be the spelling of a UUID, since it starts with a letter no hex digit has.
 func TestDeriveVariableNameKeepsHashedAndUUIDSegmentsApart(t *testing.T) {
-	if got := idSegment("not-a-uuid"); !strings.HasPrefix(got, hashedIDPrefix) {
+	if got := IDSegment("not-a-uuid"); !strings.HasPrefix(got, hashedIDPrefix) {
 		t.Fatalf("a free-form ID must be hashed, got %q", got)
 	}
-	if got := idSegment(idAlice); strings.HasPrefix(got, hashedIDPrefix) {
+	if got := IDSegment(idAlice); strings.HasPrefix(got, hashedIDPrefix) {
 		t.Fatalf("a lower-case UUID must not be hashed, got %q", got)
 	}
-	if upper := strings.ToUpper(idAlice); idSegment(upper) == idSegment(idAlice) {
+	if upper := strings.ToUpper(idAlice); IDSegment(upper) == IDSegment(idAlice) {
 		t.Fatalf("an upper-case UUID is a different ID and must not share a spelling with the lower-case one")
 	}
 }
@@ -138,6 +138,63 @@ func TestDeriveVariableNameSeparatorNeverAppearsInsideAPart(t *testing.T) {
 	for _, part := range parts {
 		if part == "" || strings.Contains(part, segmentSeparator) {
 			t.Fatalf("a part must be non-empty and free of the separator: %q in %q", part, name)
+		}
+	}
+}
+
+// Every name DeriveVariableName writes is one IDSegmentOf reads an ID segment from, and a name chosen
+// by hand, or one that only looks like a derived name, is not.
+func TestIDSegmentOfRecognizesExactlyTheDerivedNames(t *testing.T) {
+	for _, name := range []string{
+		DeriveVariableName("application", idAlice, "ClientSecret"),
+		DeriveVariableName("resource_server", idAlice, "identifier"),
+		DeriveVariableName("agent", idOther, "inboundAuthConfig[].config.clientId"),
+		DeriveVariableName("connection", "my-connection", "client_id"),
+		DeriveVariableName("", idAlice, "password"),
+		DeriveVariableName("", "free-form", "password"),
+		DeriveVariableName("user", "", "password"),
+	} {
+		if _, ok := IDSegmentOf(name); !ok {
+			t.Errorf("%q was derived but is not recognized", name)
+		}
+	}
+	for _, name := range []string{
+		"HOST",
+		"DATA_PLANE_URL",
+		"APPLICATION__MY_APP__CLIENT_SECRET",
+		"APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B__CLIENT_SECRET",
+		"APPLICATION__0198f3a17c2e7b109a445d3e8f21c6b7__CLIENT_SECRET",
+		"APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__",
+		"APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT__SECRET",
+		"APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_SECRET_",
+	} {
+		if _, ok := IDSegmentOf(name); ok {
+			t.Errorf("%q is recognized but is not a derived name", name)
+		}
+	}
+}
+
+// The ID segment read back from a derived name is IDSegment of the ID it was derived for, with or
+// without a type, for a generated ID and a hashed one, and a name chosen by hand has none.
+func TestIDSegmentOfReadsTheSegmentIDSegmentWrites(t *testing.T) {
+	for _, id := range []string{idAlice, "my-declared-app", "1-starts-with-a-digit", ""} {
+		for _, name := range []string{
+			DeriveVariableName("application", id, "clientSecret"),
+			DeriveVariableName("", id, "host"),
+		} {
+			segment, ok := IDSegmentOf(name)
+			if !ok || segment != IDSegment(id) {
+				t.Errorf("IDSegmentOf(%q) = %q, %v, want %q", name, segment, ok, IDSegment(id))
+			}
+		}
+	}
+	if segment, ok := IDSegmentOf(DeriveVariableName("application", idOther, "host")); !ok ||
+		segment == IDSegment(idAlice) {
+		t.Errorf("another ID's name read as %q", segment)
+	}
+	for _, name := range []string{"HOST", "APPLICATION__MY_APP__CLIENT_SECRET"} {
+		if _, ok := IDSegmentOf(name); ok {
+			t.Errorf("%q has no ID segment, but one was read", name)
 		}
 	}
 }

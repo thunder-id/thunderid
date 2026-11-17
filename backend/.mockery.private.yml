@@ -35,6 +35,36 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: gateway
           filename: "{{.InterfaceName}}_mock_test.go"
+      valueStoreClient:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      configurationExporter:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      unusedValueSweeperInterface:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      sweepRunner:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      versionStoreInterface:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice:
     interfaces:

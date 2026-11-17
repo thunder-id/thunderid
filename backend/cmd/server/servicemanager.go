@@ -136,7 +136,7 @@ var observabilitySvc observability.ObservabilityServiceInterface
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface, *mcpsdk.Server,
-	backchannel.DispatcherInterface, identitygovernance.LockNotifierInterface) {
+	backchannel.DispatcherInterface, identitygovernance.LockNotifierInterface, gateway.StopperInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -616,7 +616,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, nil, exporters, nil,
+	gatewayService, gatewayStopper, err := gateway.Initialize(mux, mcpServer, exportService, nil, exporters, nil,
 		serverConfigService, nil, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
@@ -712,7 +712,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService, mcpServer, dispatcher, lockNotifier
+	return jwtService, runtimeCryptoSvc, importService, mcpServer, dispatcher, lockNotifier, gatewayStopper
 }
 
 // initAttestationProvider initializes the platform attestation provider, terminating server startup

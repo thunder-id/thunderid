@@ -40,7 +40,10 @@ const stored: Record<string, {name: string; value?: string}[]> = {
 };
 
 const runningReferences = vi.fn((targetId: string) => Promise.resolve(references[targetId] ?? []));
-const values = vi.fn((targetId: string) => Promise.resolve(stored[targetId] ?? []));
+const listValues = vi.fn((targetId: string, _kind: string, query?: {names?: string[]}) => {
+  const values = (stored[targetId] ?? []).filter((value) => !query?.names || query.names.includes(value.name));
+  return Promise.resolve({values, totalResults: values.length});
+});
 
 /** A source with four stages, the third of which names no base URL. */
 function source(pipelineFails = false): DeploySource {
@@ -57,7 +60,7 @@ function source(pipelineFails = false): DeploySource {
     applyCheck: unused,
     apply: unused,
     revert: unused,
-    values,
+    listValues,
     setValue: unused,
     deleteValue: unused,
     pipeline: () =>
@@ -142,7 +145,10 @@ describe('RuntimeEnvironmentsProvider', () => {
       provided()!.getValue('env-dev', {resourceType: 'application', resourceId: 'app-orders', field: 'clientId'}),
     ).resolves.toEqual({status: 'set', value: 'orders-dev'});
     expect(runningReferences).toHaveBeenCalledWith('env-dev');
-    expect(values).toHaveBeenCalledWith('env-dev', 'variable');
+    expect(listValues).toHaveBeenCalledWith('env-dev', 'variable', {
+      names: ['APPLICATION__ORDERS__CLIENT_ID'],
+      limit: 1,
+    });
   });
 
   it('tells an environment that runs the resource without a value from one that does not run it', async () => {

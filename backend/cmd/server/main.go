@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -91,7 +92,7 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier :=
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier, gatewayStopper :=
 		registerServices(mux, cacheManager, auditBus)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
@@ -164,7 +165,7 @@ func main() {
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
 	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher, lockNotifier,
-		auditStopper)
+		gatewayStopper, auditStopper)
 }
 
 // initSystemPermissions activates the Data Plane's permissions: the deployment-wide system root and the org
@@ -360,6 +361,7 @@ func gracefulShutdown(
 	revocationSyncer revocationcache.Syncer,
 	backchannelDispatcher backchannel.DispatcherInterface,
 	lockNotifier identitygovernance.LockNotifierInterface,
+	gatewayStopper gateway.StopperInterface,
 	auditStopper eventbus.StopperInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
@@ -382,6 +384,10 @@ func gracefulShutdown(
 	}
 	if lockNotifier != nil {
 		lockNotifier.Stop()
+	}
+	// Stop the sweeps of gateways' stores that applies started, before the database closes under them.
+	if gatewayStopper != nil {
+		gatewayStopper.Stop()
 	}
 
 	// Stop audit once the HTTP server and the background workers have stopped, so their last events

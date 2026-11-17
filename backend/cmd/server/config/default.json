@@ -499,6 +499,8 @@
     "removal_confirmation_threshold": 5,
     "store": "composite",
     "apply_timeout_seconds": 300,
+    "unused_value_grace_seconds": 3600,
+    "unused_value_sweep_interval_seconds": 300,
     "pipeline": []
   },
   "import": {
