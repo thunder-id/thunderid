@@ -7244,8 +7244,15 @@ const translations = {
     'errors.GTW-1029': 'Another deploy to this gateway is running. Try again once it finishes.',
     'errors.GTW-1032':
       'A selected resource needs one the gateway does not hold. Tick what it needs as well, or deploy with what these need.',
+    'errors.GTW-1032.details':
+      'Some selected resources need ones the gateway does not hold: {{missing}}. Tick what they need as well, or deploy with what these need.',
     'errors.GTW-1033':
       'A resource to remove is still needed by one the gateway keeps. Remove those in the same deploy, deploy an update that stops them needing it first, or leave it in place.',
+    'errors.GTW-1033.details':
+      'Resources the gateway keeps still need what this deploy removes: {{referenced}}. Remove or update them in the same deploy, or leave it in place.',
+    'errors.GTW-1042': 'The source does not run what this promotion needs. Deploy the version to it first.',
+    'errors.GTW-1042.details':
+      '{{source}} does not run {{missing}}{{referenced}} as the version has it, so this promotion cannot carry it. Deploy the version to {{source}} first.',
     'errors.GTW-5001': 'The gateway could not apply the configuration.',
     'errors.GTW-5003': 'The deploy took too long to prepare and sent nothing to the gateway. Try again.',
     'errors.VAR-1002':
@@ -7275,6 +7282,7 @@ const translations = {
     'applyPanel.doneWithFailures_one': 'Deployed to {{gateway}}; {{count}} resource was refused.',
     'applyPanel.doneWithFailures_other': 'Deployed to {{gateway}}; {{count}} resources were refused.',
     'applyPanel.failed': 'The version could not be deployed.',
+    'applyPanel.refusalResource': '{{name}} {{kind}}',
     'applyPanel.forbidden': 'Your account may not deploy to this gateway.',
     'applyPanel.forbiddenFor': 'Your account may not deploy to {{target}}.',
     'applyPanel.gateway': 'Gateway',
@@ -7340,6 +7348,9 @@ const translations = {
     'card.retry': 'Retry',
     'card.rollBackTo': 'Roll back to {{version}}',
     'card.undoLastDeploy': 'Undo last deploy',
+    'card.heldBack_one': '{{count}} change left out',
+    'card.heldBack_other': '{{count}} changes left out',
+    'card.heldBackHint': 'An earlier deploy left these out. They stay out of later deploys until one ticks them.',
     'card.sharedAvailable_one': '{{count}} shared update available',
     'card.sharedAvailable_other': '{{count}} shared updates available',
     'card.sharedHint':

@@ -32,10 +32,17 @@ export interface ProjectStatus {
     pending: number;
     /** What the project's resources need that the gateway lacks or refused. */
     required: number;
+    /**
+     * The project's own changes, and what they need, that the gateway holds back because an earlier
+     * deploy left them out: not waiting, but still to be brought there. Absent from older servers.
+     */
+    heldBack?: number;
   };
   /** Changes that belong to no project, which go with any project's promotion when ticked. */
   shared: {
     pending: number;
+    /** The shared changes the gateway holds back, which a deploy brings only when ticked. */
+    heldBack?: number;
     byType: {resourceType: string; count: number}[];
   };
   /** What the project's resources need that the gateway holds in another form. */
