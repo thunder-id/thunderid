@@ -3,7 +3,7 @@
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
 import {useCapabilitiesContext} from '@thunderid/contexts';
-import {Button, Grid, PageContent, PageTitle, SearchBar, Stack, Typography} from '@wso2/oxygen-ui';
+import {Box, Button, PageContent, PageTitle, SearchBar, Stack, Typography} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -66,13 +66,11 @@ export default function ProjectsListPage(): ReactNode {
     }
 
     return (
-      <Grid container spacing={2}>
+      <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 2}}>
         {filtered.map((project) => (
-          <Grid key={project.id} size={{xs: 12, sm: 6, md: 4, xl: 3}}>
-            <ProjectCard project={project} onOpen={handleOpen} onDelete={setProjectToDelete} />
-          </Grid>
+          <ProjectCard key={project.id} project={project} onOpen={handleOpen} onDelete={setProjectToDelete} />
         ))}
-      </Grid>
+      </Box>
     );
   };
 
