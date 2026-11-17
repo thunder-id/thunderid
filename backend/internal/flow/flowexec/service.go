@@ -596,7 +596,7 @@ func (s *flowExecService) loadPrevContext(ctx context.Context, executionID, acti
 		return nil, err
 	}
 
-	prepareContext(engineCtx, action, inputs)
+	prepareContext(engineCtx, action, engineCtx.onlyRequestedInputs(inputs))
 	return engineCtx, nil
 }
 
@@ -896,10 +896,7 @@ func isComplete(step FlowStep) bool {
 
 // prepareContext prepares the flow context by merging any data.
 func prepareContext(ctx *EngineContext, action string, inputs map[string]string) {
-	// Append any inputs present to the context
-	if len(inputs) > 0 {
-		ctx.UserInputs = sysutils.MergeStringMaps(ctx.UserInputs, inputs)
-	}
+	ctx.mergeInputs(inputs)
 
 	if ctx.UserInputs == nil {
 		ctx.UserInputs = make(map[string]string)
