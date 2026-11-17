@@ -15,7 +15,7 @@ import (
 )
 
 // storeValue writes a variable or a secret to this deployment's store, and returns a cleanup that
-// removes it.
+// removes it. The store takes only the management API key where one is configured, as it is here.
 func (s *ApplicationImportExportSuite) storeValue(collection, name, value string) func() {
 	s.T().Helper()
 	body, err := json.Marshal(map[string]string{"name": name, "value": value})
@@ -23,7 +23,7 @@ func (s *ApplicationImportExportSuite) storeValue(collection, name, value string
 	req, err := http.NewRequest(http.MethodPost, testServerURL+"/"+collection, bytes.NewReader(body))
 	s.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	s.Require().NoError(err)
 	_ = resp.Body.Close()
 	s.Require().Equal(http.StatusCreated, resp.StatusCode, "the %s %s was not stored", collection, name)
@@ -32,7 +32,7 @@ func (s *ApplicationImportExportSuite) storeValue(collection, name, value string
 		if err != nil {
 			return
 		}
-		if resp, err := testutils.GetHTTPClient().Do(del); err == nil {
+		if resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(del); err == nil {
 			_ = resp.Body.Close()
 		}
 	}

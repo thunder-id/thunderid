@@ -19,7 +19,7 @@ func TestInitTestSuite(t *testing.T) {
 }
 
 func (s *InitTestSuite) TestInitialize_RefusesANilEventBus() {
-	service, resolver, err := Initialize(http.NewServeMux(), reversingCrypto{}, nil, nil)
+	service, resolver, err := Initialize(http.NewServeMux(), reversingCrypto{}, nil, nil, false)
 
 	s.ErrorIs(err, errNilEventBus)
 	s.Nil(service)
