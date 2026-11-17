@@ -3490,3 +3490,44 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_Undecodable
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "failed to decode token")
 }
+
+// A token issued for an external identity provider's subject carries that provider in idp. Exchanging it
+// keeps the provider on the claims, and a token for a local subject has none.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_SelfIssuedCarriesSourceIDP() {
+	now := time.Now().Unix()
+	for _, tc := range []struct {
+		name string
+		idp  interface{}
+		want string
+	}{
+		{"ExternalSubject", "https://partner.example.com", "https://partner.example.com"},
+		{"LocalSubject", nil, ""},
+	} {
+		suite.Run(tc.name, func() {
+			claims := map[string]interface{}{
+				"sub": "user123",
+				"iss": "https://example.com",
+				"aud": suite.getDefaultAudience(),
+				"exp": float64(now + 3600),
+				"nbf": float64(now - 60),
+			}
+			if tc.idp != nil {
+				claims["idp"] = tc.idp
+			}
+			token := suite.createTestJWT(claims)
+			suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+			result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, result.SourceIDP)
+		})
+	}
+}
+
+// A subject token from an external issuer names that issuer's subject, so the issuer is its source IdP.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIssuerIsSourceIDP() {
+	result := suite.validateConfiguredAudienceSubjectToken(testTrustedTokenAudience)
+
+	assert.Equal(suite.T(), testExternalIssuer, result.SourceIDP)
+}

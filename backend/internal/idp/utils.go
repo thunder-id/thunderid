@@ -427,7 +427,6 @@ func ResolveAuthorizationMapping(
 	}
 	if idp != nil && idp.AttributeConfiguration != nil && idp.AttributeConfiguration.AuthorizationMapping != nil {
 		mapping := idp.AttributeConfiguration.AuthorizationMapping
-		resolved.Configured = len(mapping.Rules) > 0 || len(mapping.Direct) > 0
 		note := func(t providers.AuthorizationTargetType) {
 			resolved.MapsGroups = resolved.MapsGroups || t == providers.AuthorizationTargetGroup
 			resolved.MapsRoles = resolved.MapsRoles || t == providers.AuthorizationTargetRole
