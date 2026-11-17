@@ -298,7 +298,7 @@ func (as *applicationService) createApplication(ctx context.Context, app *model.
 	// Surface the Flow Secret once, on creation only.
 	returnDTO.FlowSecret = flowSecret
 
-	as.captureValues(ctx, returnDTO)
+	as.captureValues(ctx, returnDTO, flowSecret)
 	return returnDTO, nil
 }
 
@@ -823,7 +823,7 @@ func (as *applicationService) updateApplication(ctx context.Context, appID strin
 	// The update changes no runtime state, so the status read before the write still holds.
 	returnDTO.Status = existingApp.Status
 
-	as.captureValues(ctx, returnDTO)
+	as.captureValues(ctx, returnDTO, flowSecretToSet(app, inboundAuthConfig))
 	return returnDTO, nil
 }
 
@@ -867,8 +867,8 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	// public nor redirect-based and have the token-exchange grant — may have one set; a value
 	// supplied for an ineligible app is ignored. Credential updates merge, so this preserves the
 	// stored client secret, and an empty value leaves the existing Flow Secret intact.
-	if app.FlowSecret != "" && isFlowSecretEligible(app.Type, inboundAuthConfig) {
-		flowSecretJSON, marshalErr := buildSystemCredentials("", app.FlowSecret)
+	if flowSecret := flowSecretToSet(app, inboundAuthConfig); flowSecret != "" {
+		flowSecretJSON, marshalErr := buildSystemCredentials("", flowSecret)
 		if marshalErr != nil {
 			as.logger.Error(ctx, "Failed to build flow secret credentials for update", log.Error(marshalErr))
 			return &tidcommon.InternalServerError
@@ -909,6 +909,16 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	}
 
 	return nil
+}
+
+// flowSecretToSet returns the Flow Secret an update sets: the one supplied, when the application may
+// hold one, and empty otherwise.
+func flowSecretToSet(app *model.ApplicationDTO,
+	inboundAuthConfig *providers.InboundAuthConfigWithSecret) string {
+	if app.FlowSecret == "" || !isFlowSecretEligible(app.Type, inboundAuthConfig) {
+		return ""
+	}
+	return app.FlowSecret
 }
 
 // isFlowSecretEligible reports whether an application may hold a Flow Secret. Browser (public
