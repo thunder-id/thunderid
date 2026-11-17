@@ -261,22 +261,18 @@ func isEmptyAttribute(value interface{}) bool {
 }
 
 // resolveKnownRecipient returns the stored attribute of the user the flow knows, falling back to the value
-// the attribute collector resolved for that user. known is false when the flow doesn't know the user.
+// the attribute collector resolved for that user, then to the submitted value when that user is the one signed
+// in to the flow and has none stored. known is false when the flow doesn't know the user.
 func resolveKnownRecipient(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
 	authnProvider providers.AuthnProviderManager, entityProvider entityprovider.EntityProviderInterface,
 	attribute string, logger *log.Logger) (recipient string, known bool, err error) {
 	userID := ctx.RuntimeData[userAttributeUserID]
-	if userID == "" && authnProvider != nil && ctx.AuthUser.IsAuthenticated() {
-		authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
-		if svcErr != nil && svcErr.Type == tidcommon.ServerErrorType {
-			return "", true, fmt.Errorf("failed to resolve the authenticated user: %s", svcErr.Code)
+	signedInUserID, signedInResolved := "", false
+	if userID == "" {
+		if signedInUserID, err = resolveSignedInUserID(ctx, execResp, authnProvider); err != nil {
+			return "", true, err
 		}
-		if svcErr == nil {
-			execResp.AuthUser = authUser
-			if entityRef != nil {
-				userID = entityRef.EntityID
-			}
-		}
+		userID, signedInResolved = signedInUserID, true
 	}
 	if userID == "" {
 		return "", false, nil
@@ -298,6 +294,37 @@ func resolveKnownRecipient(ctx *providers.NodeContext, execResp *providers.Execu
 	if resolved := ctx.RuntimeData[attribute]; resolved != "" {
 		return resolved, true, nil
 	}
+	if submitted := ctx.UserInputs[attribute]; submitted != "" {
+		if !signedInResolved {
+			if signedInUserID, err = resolveSignedInUserID(ctx, execResp, authnProvider); err != nil {
+				return "", true, err
+			}
+		}
+		if signedInUserID == userID {
+			return submitted, true, nil
+		}
+	}
 	logger.Debug(ctx.Context, "Recipient attribute not found on user entity", log.String("attribute", attribute))
 	return "", true, nil
+}
+
+// resolveSignedInUserID returns the ID of the user signed in to the flow, or an empty ID when no user is signed in
+// or the signed in user has no account.
+func resolveSignedInUserID(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager) (string, error) {
+	if authnProvider == nil || !ctx.AuthUser.IsAuthenticated() {
+		return "", nil
+	}
+	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return "", fmt.Errorf("failed to resolve the authenticated user: %s", svcErr.Code)
+		}
+		return "", nil
+	}
+	execResp.AuthUser = authUser
+	if entityRef == nil {
+		return "", nil
+	}
+	return entityRef.EntityID, nil
 }
