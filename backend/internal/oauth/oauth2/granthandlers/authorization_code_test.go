@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"testing"
 	"time"
 
@@ -2033,34 +2032,6 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DenyListUna
 	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
 }
 
-// boundSessions is the SSO sessions the callback kept on the test code.
-var boundSessions = []model.SessionData{
-	{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
-	{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
-}
-
-// boundCode returns the test code keeping the SSO sessions the callback bound to it.
-func (suite *AuthorizationCodeGrantHandlerTestSuite) boundCode() authz.AuthorizationCode {
-	code := suite.testAuthzCode
-	code.SubjectID = "user-entity-id"
-	code.SessionData = boundSessions
-	return code
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_CarriesTheBoundSessions() {
-	suite.handler.deviceSecretValidity = time.Hour
-	code := suite.boundCode()
-	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
-		mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
-			return c.OAuthApp == suite.oauthApp && c.SubjectID == "user-entity-id" &&
-				slices.Equal(c.SessionData, boundSessions) && c.ValidityPeriod == 3600
-		})).Return(&model.TokenDTO{Token: "device-secret"}, nil)
-
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
-
-	suite.Equal("device-secret", got.Token)
-}
-
 // postedSessions returns sessions as the callback posts them, each saying it has the given seconds left; a nil
 // one says nothing.
 func postedSessions(expiresIn ...*int64) []model.SessionData {
@@ -2073,32 +2044,37 @@ func postedSessions(expiresIn ...*int64) []model.SessionData {
 	return sessions
 }
 
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_LastsUntilItsSessionsEnd() {
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecret_LastsUntilItsSessionsEnd() {
 	suite.handler.deviceSecretValidity = time.Hour
-	code := suite.boundCode()
+	code := suite.testAuthzCode
+	code.SubjectID = "subject-entity"
 	code.TimeCreated = time.Now()
 	code.SessionData = postedSessions(new(int64(600)))
-	var validity int64
+	var built *tokenservice.DeviceSecretBuildContext
 	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
 		RunAndReturn(func(_ context.Context, c *tokenservice.DeviceSecretBuildContext) (*model.TokenDTO, error) {
-			validity = c.ValidityPeriod
+			built = c
 			return &model.TokenDTO{Token: "device-secret"}, nil
 		})
 
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+	got := suite.handler.deviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
 
 	suite.Equal("device-secret", got.Token)
-	suite.LessOrEqual(validity, int64(600), "the device secret ends with its session, not the validity")
-	suite.Positive(validity)
+	suite.Require().NotNil(built)
+	suite.Equal("subject-entity", built.SubjectID)
+	suite.NotEqual(code.AuthorizedUserID, built.SubjectID)
+	suite.Equal(code.SessionData, built.SessionData)
+	suite.LessOrEqual(built.ValidityPeriod, int64(600), "the device secret ends with its session, not the validity")
+	suite.Positive(built.ValidityPeriod)
 }
 
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenItsSessionsHaveEnded() {
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecret_NoneWhenItsSessionsHaveEnded() {
 	suite.handler.deviceSecretValidity = time.Hour
-	code := suite.boundCode()
+	code := suite.testAuthzCode
 	code.TimeCreated = time.Now().Add(-10 * time.Minute)
 	code.SessionData = postedSessions(new(int64(60)), new(int64(120)))
 
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+	got := suite.handler.deviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
 
 	suite.Empty(got.Token)
 	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
@@ -2136,33 +2112,4 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecretLifetime() 
 			suite.Equal(tc.want, got)
 		})
 	}
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenTheCodeKeepsNoSession() {
-	code := suite.testAuthzCode
-
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
-
-	suite.Empty(got.Token)
-	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWithoutASessionService() {
-	code := suite.boundCode()
-
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
-
-	suite.Empty(got.Token)
-	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_BuildFailureIsNotFatal() {
-	suite.handler.deviceSecretValidity = time.Hour
-	code := suite.boundCode()
-	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
-		Return(nil, errors.New("signing failed"))
-
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
-
-	suite.Empty(got.Token)
 }

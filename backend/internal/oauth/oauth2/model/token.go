@@ -107,7 +107,8 @@ type TokenResponseDTO struct {
 	// alongside is stamped with it. Taken from the access token's ouId claim when unset. Never returned to the
 	// client.
 	OUID string
-	// DeviceSecret is the token carrying the SSO sessions the code kept, returned on a code exchange.
+	// DeviceSecret is the token carrying the SSO sessions the grant kept, returned on a code exchange or a device
+	// code token response.
 	DeviceSecret TokenDTO
 	// IssuesRefreshToken marks a response whose grant path issues a refresh token although its grant
 	// type does not otherwise, subject to the client allowing the refresh token grant.

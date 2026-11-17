@@ -721,13 +721,11 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	claims := assertionClaims{
 		userID:           base.UserID,
+		subjectID:        base.SubjectID,
 		attributeCacheID: base.AttributeCacheID,
 		completedACR:     base.CompletedACR,
 	}
 
-	if v, ok := payload[oauth2const.ClaimSubjectID].(string); ok {
-		claims.subjectID = v
-	}
 	if v, ok := payload[oauth2const.ClaimSubjectType].(string); ok {
 		claims.subjectCategory = v
 	}

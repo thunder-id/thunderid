@@ -397,8 +397,8 @@ const (
 // Standard OIDC scope names.
 const (
 	ScopeOpenID = "openid"
-	// ScopeDeviceSSO asks for the device secret, the SSO session the code was issued from, in the code
-	// exchange response (OpenID Connect Native SSO for Mobile Apps).
+	// ScopeDeviceSSO asks for the device secret, the SSO session the grant was issued from, in the code
+	// exchange or device code token response (OpenID Connect Native SSO for Mobile Apps).
 	ScopeDeviceSSO = "device_sso"
 )
 

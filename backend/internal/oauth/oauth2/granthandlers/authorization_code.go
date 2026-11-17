@@ -5,7 +5,6 @@ package granthandlers
 
 import (
 	"context"
-	"math"
 	"slices"
 	"strings"
 	"time"
@@ -125,7 +124,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	if errResp != nil {
 		return nil, errResp
 	}
-	tokenResponse.DeviceSecret = h.buildDeviceSecret(ctx, authCode, oauthApp, logger)
+	tokenResponse.DeviceSecret = h.deviceSecret(ctx, authCode, oauthApp, logger)
 
 	return tokenResponse, nil
 }
@@ -288,30 +287,17 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 	return tokenResponse, nil
 }
 
-// buildDeviceSecret returns the device secret carrying the SSO sessions kept with the code. It returns an
-// empty token when the code keeps none, and a failure to build it is logged rather than failing the
-// exchange, since the code has already been spent.
-func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
+// deviceSecret returns the device secret carrying the SSO sessions kept with the code, lasting until the last
+// of them ends, or none when every one has ended.
+func (h *authorizationCodeGrantHandler) deviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
 	oauthApp *providers.OAuthClient, logger *log.Logger) model.TokenDTO {
-	if h.deviceSecretValidity == 0 || len(authCode.SessionData) == 0 {
-		return model.TokenDTO{}
-	}
 	// The sessions were posted in the request that minted the code.
 	validity, alive := h.deviceSecretLifetime(authCode.SessionData, authCode.TimeCreated, time.Now())
 	if !alive {
 		return model.TokenDTO{}
 	}
-	token, err := h.tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
-		OAuthApp:       oauthApp,
-		SubjectID:      authCode.SubjectID,
-		SessionData:    authCode.SessionData,
-		ValidityPeriod: int64(math.Ceil(validity.Seconds())),
-	})
-	if err != nil {
-		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
-		return model.TokenDTO{}
-	}
-	return *token
+	return buildDeviceSecret(ctx, h.tokenBuilder, validity, oauthApp, authCode.SubjectID, authCode.SessionData,
+		logger)
 }
 
 func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
