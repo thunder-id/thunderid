@@ -5,6 +5,36 @@ package variablestore
 
 import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 
+// The narrowing and paging a listing applies, shared by both collections. These are fixed text
+// joined at compile time, never built from a request: every optional part is always present and is
+// switched off by its parameter rather than left out of the statement.
+//
+// Parameters, the same for the list and the count:
+//
+//	$1 the deployment
+//	$2 the names= lookup as a JSON array of strings, or NULL when the request named none
+//	$3 the exact name from a filter, or empty when there is none
+//	$4 the prefix from a filter, or empty when there is none
+//	$5 that prefix as a LIKE pattern, its %, _ and \ escaped and a % appended, or empty with no prefix
+//
+// and for the list only, $6 the limit and $7 the offset.
+//
+// SQLite's LIKE ignores ASCII case, so there the prefix is also compared exactly with substr. Order
+// is by the name's bytes on both, which is what the listing has always promised.
+const (
+	listWherePostgres = `WHERE DEPLOYMENT_ID = $1 ` +
+		`AND ($2::json IS NULL OR NAME IN (SELECT json_array_elements_text($2::json))) ` +
+		`AND ($3::text = '' OR NAME = $3::text) ` +
+		`AND ($4::text = '' OR NAME LIKE $5::text ESCAPE '\') `
+	listPagePostgres = `ORDER BY NAME COLLATE "C" LIMIT $6 OFFSET $7`
+
+	listWhereSQLite = `WHERE DEPLOYMENT_ID = $1 ` +
+		`AND ($2 IS NULL OR NAME IN (SELECT value FROM json_each($2))) ` +
+		`AND ($3 = '' OR NAME = $3) ` +
+		`AND ($4 = '' OR (NAME LIKE $5 ESCAPE '\' AND substr(NAME, 1, length($4)) = $4)) `
+	listPageSQLite = `ORDER BY NAME LIMIT $6 OFFSET $7`
+)
+
 // Queries for both collections. They are written per table rather than parameterised by table name,
 // because a table name cannot be a bind parameter and building one by string would be the first step
 // toward reading a secret through a query meant for variables.
@@ -47,7 +77,15 @@ var (
 	queryListVariables = dbmodel.DBQuery{
 		ID: "VARQ-09",
 		Query: `SELECT NAME, VALUE, DESCRIPTION, CREATED_AT, UPDATED_AT FROM "VARIABLE" ` +
-			`WHERE DEPLOYMENT_ID = $1 ORDER BY NAME`,
+			listWherePostgres + listPagePostgres,
+		SQLiteQuery: `SELECT NAME, VALUE, DESCRIPTION, CREATED_AT, UPDATED_AT FROM "VARIABLE" ` +
+			listWhereSQLite + listPageSQLite,
+	}
+
+	queryCountVariables = dbmodel.DBQuery{
+		ID:          "VARQ-14",
+		Query:       `SELECT COUNT(*) AS total FROM "VARIABLE" ` + listWherePostgres,
+		SQLiteQuery: `SELECT COUNT(*) AS total FROM "VARIABLE" ` + listWhereSQLite,
 	}
 
 	queryDeleteVariable = dbmodel.DBQuery{
@@ -92,7 +130,15 @@ var (
 		ID: "VARQ-10",
 		// No VALUE column: a listing of secrets reports names, never contents.
 		Query: `SELECT NAME, DESCRIPTION, CREATED_AT, UPDATED_AT FROM "SECRET" ` +
-			`WHERE DEPLOYMENT_ID = $1 ORDER BY NAME`,
+			listWherePostgres + listPagePostgres,
+		SQLiteQuery: `SELECT NAME, DESCRIPTION, CREATED_AT, UPDATED_AT FROM "SECRET" ` +
+			listWhereSQLite + listPageSQLite,
+	}
+
+	queryCountSecrets = dbmodel.DBQuery{
+		ID:          "VARQ-15",
+		Query:       `SELECT COUNT(*) AS total FROM "SECRET" ` + listWherePostgres,
+		SQLiteQuery: `SELECT COUNT(*) AS total FROM "SECRET" ` + listWhereSQLite,
 	}
 
 	queryDeleteSecret = dbmodel.DBQuery{

@@ -222,13 +222,6 @@ func TestPaginationLinksKeepTheFilter(t *testing.T) {
 	}
 }
 
-func TestPageBoundsClampsPastTheEnd(t *testing.T) {
-	start, end := pageBounds(3, listQuery{limit: 10, offset: 50})
-	if start != 3 || end != 3 {
-		t.Fatalf("expected an empty page at the end, got [%d:%d]", start, end)
-	}
-}
-
 func (s *HandlerTestSuite) TestReplacingAVariableReturnsOK() {
 	s.service.On("UpdateVariable", mock.Anything, "API_URL",
 		VariableUpdateRequest{Value: "https://new.test"}).
