@@ -158,7 +158,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
 	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
 	if identifier == "" {
-		identifier = ctx.UserInputs[common.RuntimeKeyResourceServerIdentifier]
+		identifier, _ = ctx.ConsumeInput(common.RuntimeKeyResourceServerIdentifier)
 	}
 	if a.resourceService == nil {
 		a.logger.Debug(ctx.Context,
@@ -181,7 +181,7 @@ func extractRequestedPermissions(ctx *providers.NodeContext) []string {
 	if requestedPermissions != "" {
 		return utils.ParseStringArray(requestedPermissions, " ")
 	}
-	requestedPermissions = ctx.UserInputs[requestedPermissionsKey]
+	requestedPermissions, _ = ctx.ConsumeInput(requestedPermissionsKey)
 	return utils.ParseStringArray(requestedPermissions, " ")
 }
 

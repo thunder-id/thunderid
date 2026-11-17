@@ -571,7 +571,7 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 // Credential attrs are satisfied only by UserInputs or RuntimeData.
 // Non-credential attrs also fall back to AuthenticatedUser.Attributes.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr string) bool {
-	if val, ok := ctx.UserInputs[attr]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(attr); ok && val != "" {
 		return true
 	}
 	if val, ok := ctx.RuntimeData[attr]; ok && val != "" {
@@ -603,13 +603,13 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 
 	for _, a := range schemaAttrs {
 		if a.Credential {
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				credentialAttrs[a.Attribute] = value
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)

@@ -669,6 +669,7 @@ var defaultMessages = map[string]string{
 	"error.flowmgtservice.node_references_nonexistent_description": "Node '{{param(sourceNodeID)}}' references non-existent node '{{param(targetNodeID)}}' in '{{param(fieldName)}}'",
 	"error.flowmgtservice.orphan_session_executor_description": "SessionExecutor node '{{param(nodeID)}}' is not referenced by any SSOCheckExecutor via checkpointRef",
 	"error.flowmgtservice.orphaned_node_description": "Node '{{param(nodeID)}}' is not reachable from the START node",
+	"error.flowmgtservice.prompt_input_one_time_use_description": "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' cannot be one time use. Mark it one time use on the executor node that uses it",
 	"error.flowmgtservice.prompt_missing_action_description": "PROMPT node '{{param(nodeID)}}': prompt at index {{param(index)}} must have an action with nextNode",
 	"error.flowmgtservice.prompt_node_has_both_prompts_and_next_description": "PROMPT node '{{param(nodeID)}}' must have either prompts or next, not both",
 	"error.flowmgtservice.prompt_node_missing_prompts_or_next_description": "PROMPT node '{{param(nodeID)}}' must have either prompts or next",

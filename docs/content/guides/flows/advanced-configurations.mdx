@@ -1530,7 +1530,7 @@ Evaluates whether the authenticated user holds the required permissions. The aut
 
 If no permissions are configured, the executor completes immediately with an empty permission set.
 
-**Input Configuration:** None. The executor reads `requested_permissions` from user inputs or the OIDC scope; it has no registered node input defaults.
+**Input Configuration:** None. The executor reads `requested_permissions` from user inputs or the OIDC scope; it has no registered node input defaults. A `/flow/execute` caller sends `requested_permissions` and `resource_server_identifier` with the request that starts the flow. A request that continues a flow can't set them.
 
 **Example:**
 

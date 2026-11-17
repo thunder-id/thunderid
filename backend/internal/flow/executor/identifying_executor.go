@@ -132,11 +132,8 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 		RuntimeData:    make(map[string]string),
 	}
 
-	loginHint := ctx.UserInputs[userInputLoginHint]
-	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
-
-	if loginHintAttr != "" {
-		if loginHint == "" {
+	if loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string); loginHintAttr != "" {
+		if loginHint, _ := ctx.ConsumeInput(userInputLoginHint); loginHint == "" {
 			execResp.Inputs = append(execResp.Inputs,
 				providers.Input{Identifier: userInputLoginHint, Required: true})
 			execResp.Status = providers.ExecUserInputRequired
@@ -227,12 +224,15 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	// may generate inputs (e.g., ouHandle, userType) that are not defined in the node's
 	// required inputs, so we merge user inputs to ensure they are used for filtering.
 	// We exclude non-searchable inputs and internal identifiers to prevent injection.
+	dynamicInputs := make([]string, 0)
 	for key, value := range ctx.UserInputs {
 		if _, exists := userSearchAttributes[key]; !exists && value != "" &&
 			!slices.Contains(nonSearchableInputs, key) && key != userAttributeUserID {
 			userSearchAttributes[key] = value
+			dynamicInputs = append(dynamicInputs, key)
 		}
 	}
+	ctx.AppendConsumedInputs(dynamicInputs)
 
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
@@ -305,7 +305,7 @@ func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
 // the identifier without hardcoding a specific attribute.
 func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[string]interface{} {
 	if hintAttr, ok := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string); ok && hintAttr != "" {
-		if hint, exists := ctx.UserInputs[userInputLoginHint]; exists && hint != "" {
+		if hint, exists := ctx.ConsumeInput(userInputLoginHint); exists && hint != "" {
 			return map[string]interface{}{hintAttr: hint}
 		}
 	}

@@ -68,6 +68,10 @@ func (v *flowValidator) ValidateFlowDefinition(
 		return err
 	}
 
+	if err := v.validatePromptInputsNotOneTimeUse(flowDef.Nodes); err != nil {
+		return err
+	}
+
 	if err := v.validateInterceptors(flowDef.Interceptors, nodeIndex); err != nil {
 		return err
 	}
@@ -510,6 +514,26 @@ func buildAdjacencyList(nodes []providers.NodeDefinition) map[string][]string {
 // ---------------------------------------------------------------------------
 // Scope: Node-type-specific validation
 // ---------------------------------------------------------------------------
+
+// validatePromptInputsNotOneTimeUse rejects a prompt input marked one time use. A prompt only collects the
+// input, so the executor that uses it declares it one time use.
+func (v *flowValidator) validatePromptInputsNotOneTimeUse(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	for _, node := range nodes {
+		for _, prompt := range node.Prompts {
+			for _, input := range prompt.Inputs {
+				if input.OneTimeUse {
+					return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+						Key: "error.flowmgtservice.prompt_input_one_time_use_description",
+						DefaultValue: "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' cannot be one " +
+							"time use. Mark it one time use on the executor node that uses it",
+						Params: map[string]string{"nodeID": node.ID, "inputID": input.Identifier},
+					})
+				}
+			}
+		}
+	}
+	return nil
+}
 
 // validateNodes validates each node's configuration and registry-dependent checks.
 func (v *flowValidator) validateNodes(
