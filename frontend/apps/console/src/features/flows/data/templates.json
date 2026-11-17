@@ -4910,7 +4910,7 @@
               ],
               "action": {
                 "ref": "action_phone_signin",
-                "nextNode": "attribute_collect"
+                "nextNode": "generate_otp"
               }
             }
           ]
@@ -5071,6 +5071,32 @@
             "name": "OTPExecutor",
             "mode": "verify"
           },
+          "onSuccess": "save_mobile"
+        },
+        {
+          "id": "save_mobile",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 2337,
+              "y": 750
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
           "onSuccess": "authorization_check"
         },
         {
@@ -5112,6 +5138,996 @@
             "position": {
               "x": 3506,
               "y": 579
+            }
+          }
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "MFA",
+    "type": "BASIC_SMS_OTP_MFA",
+    "flowType": "AUTHENTICATION",
+    "display": {
+      "label": "Password + SMS OTP",
+      "description": "Password login with SMS OTP as second factor authentication",
+      "image": "assets/images/icons/mobile-message.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Password + SMS OTP Sign-in Flow",
+      "handle": "password-sms-otp-signin-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prompt_credentials",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 434
+            }
+          }
+        },
+        {
+          "id": "prompt_credentials",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_001",
+                "label": "{{ t(signin:forms.credentials.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_001",
+                "components": [
+                  {
+                    "id": "input_001",
+                    "ref": "username",
+                    "type": "TEXT_INPUT",
+                    "label": "{{ t(signin:forms.credentials.fields.username.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(signin:forms.credentials.fields.username.placeholder) }}"
+                  },
+                  {
+                    "id": "input_002",
+                    "ref": "password",
+                    "type": "PASSWORD_INPUT",
+                    "label": "{{ t(signin:forms.credentials.fields.password.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_001",
+                    "label": "{{ t(signin:forms.credentials.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_001",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_002",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_001",
+                "nextNode": "credentials_auth"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 683
+            },
+            "position": {
+              "x": 463,
+              "y": 110
+            }
+          }
+        },
+        {
+          "id": "credentials_auth",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialsAuthExecutor"
+          },
+          "onSuccess": "attribute_collect",
+          "onIncomplete": "prompt_credentials",
+          "layout": {
+            "size": {
+              "width": 217,
+              "height": 113
+            },
+            "position": {
+              "x": 1133,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "attribute_collect",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1450,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "generate_otp",
+          "onIncomplete": "prompt_mobile"
+        },
+        {
+          "id": "prompt_mobile",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 603
+            },
+            "position": {
+              "x": 1450,
+              "y": 700
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_logo_phone_signin",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_phone_heading_signin",
+                "label": "{{ t(signin:forms.phone.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_phone_desc_signin",
+                "label": "{{ t(signin:forms.phone.description) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "BODY_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_phone_signin",
+                    "inputType": "tel",
+                    "label": "{{ t(signin:forms.phone.fields.phone.label) }}",
+                    "placeholder": "{{ t(signin:forms.phone.fields.phone.placeholder) }}",
+                    "ref": "mobile_number",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_phone_signin",
+                    "label": "{{ t(signin:forms.phone.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_phone_signin",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_phone_signin",
+                  "type": "PHONE_INPUT",
+                  "identifier": "mobile_number",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_phone_signin",
+                "nextNode": "generate_otp"
+              }
+            }
+          ]
+        },
+        {
+          "id": "generate_otp",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1800,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "sms_send"
+        },
+        {
+          "id": "sms_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 2100,
+              "y": 442
+            }
+          },
+          "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "OTP"
+          },
+          "executor": {
+            "name": "SMSExecutor"
+          },
+          "onSuccess": "prompt_otp"
+        },
+        {
+          "id": "prompt_otp",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 676
+            },
+            "position": {
+              "x": 2400,
+              "y": 110
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_logo_otp",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_otp_heading",
+                "label": "{{ t(signin:forms.otp.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_otp_desc",
+                "label": "{{ t(signin:forms.otp.description) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "BODY_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_005",
+                    "inputType": "text",
+                    "label": "{{ t(signin:forms.otp.fields.otp.label) }}",
+                    "ref": "otp",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "OTP_INPUT"
+                  },
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_004",
+                    "label": "{{ t(signin:forms.otp.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_otp",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_005",
+                  "identifier": "otp",
+                  "type": "OTP_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_004",
+                "nextNode": "verify_sms"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify_sms",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 2850,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "save_mobile"
+        },
+        {
+          "id": "save_mobile",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 3150,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AuthorizationExecutor"
+          },
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 3450,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "auth_assert",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 3750,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AuthAssertExecutor"
+          },
+          "onSuccess": "end"
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 4100,
+              "y": 474
+            }
+          }
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "MFA",
+    "type": "BASIC_EMAIL_OTP_MFA",
+    "flowType": "AUTHENTICATION",
+    "display": {
+      "label": "Password + Email OTP",
+      "description": "Password login with Email OTP as second factor authentication",
+      "image": "assets/images/icons/email-down.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Password + Email OTP Sign-in Flow",
+      "handle": "password-email-otp-signin-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prompt_credentials",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 434
+            }
+          }
+        },
+        {
+          "id": "prompt_credentials",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_001",
+                "label": "{{ t(signin:forms.credentials.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_001",
+                "components": [
+                  {
+                    "id": "input_001",
+                    "ref": "username",
+                    "type": "TEXT_INPUT",
+                    "label": "{{ t(signin:forms.credentials.fields.username.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(signin:forms.credentials.fields.username.placeholder) }}"
+                  },
+                  {
+                    "id": "input_002",
+                    "ref": "password",
+                    "type": "PASSWORD_INPUT",
+                    "label": "{{ t(signin:forms.credentials.fields.password.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_001",
+                    "label": "{{ t(signin:forms.credentials.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_001",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_002",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_001",
+                "nextNode": "credentials_auth"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 683
+            },
+            "position": {
+              "x": 463,
+              "y": 110
+            }
+          }
+        },
+        {
+          "id": "credentials_auth",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialsAuthExecutor"
+          },
+          "onSuccess": "attribute_collect",
+          "onIncomplete": "prompt_credentials",
+          "layout": {
+            "size": {
+              "width": 217,
+              "height": 113
+            },
+            "position": {
+              "x": 1133,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "attribute_collect",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1450,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_email",
+                "type": "EMAIL_INPUT",
+                "identifier": "email",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "generate_otp",
+          "onIncomplete": "prompt_email"
+        },
+        {
+          "id": "prompt_email",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 603
+            },
+            "position": {
+              "x": 1450,
+              "y": 700
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_logo_email",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_email_heading",
+                "label": "{{ t(signin:forms.email.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_email_desc",
+                "label": "{{ t(signin:forms.email.description) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "BODY_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_email_prompt",
+                    "inputType": "email",
+                    "label": "{{ t(signin:forms.email.fields.email.label) }}",
+                    "placeholder": "{{ t(signin:forms.email.fields.email.placeholder) }}",
+                    "ref": "email",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "EMAIL_INPUT"
+                  },
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_email",
+                    "label": "{{ t(signin:forms.email.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_email",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_email_prompt",
+                  "identifier": "email",
+                  "type": "EMAIL_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_email",
+                "nextNode": "generate_otp"
+              }
+            }
+          ]
+        },
+        {
+          "id": "generate_otp",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1800,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "generate",
+            "inputs": [
+              {
+                "ref": "input_email",
+                "type": "EMAIL_INPUT",
+                "identifier": "email",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "email_send"
+        },
+        {
+          "id": "email_send",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 2100,
+              "y": 442
+            }
+          },
+          "properties": {
+            "emailTemplate": "OTP"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "ref": "input_email",
+                "type": "EMAIL_INPUT",
+                "identifier": "email",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "prompt_otp"
+        },
+        {
+          "id": "prompt_otp",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 676
+            },
+            "position": {
+              "x": 2400,
+              "y": 110
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_logo_otp",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_otp_heading",
+                "label": "{{ t(signin:forms.email_otp.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_otp_desc",
+                "label": "{{ t(signin:forms.email_otp.description) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "BODY_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_otp",
+                    "inputType": "text",
+                    "label": "{{ t(signin:forms.otp.fields.otp.label) }}",
+                    "ref": "otp",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "OTP_INPUT"
+                  },
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_otp",
+                    "label": "{{ t(signin:forms.otp.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_otp",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_otp",
+                  "identifier": "otp",
+                  "type": "OTP_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_otp",
+                "nextNode": "verify_email"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify_email",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 2850,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "OTPExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "save_email"
+        },
+        {
+          "id": "save_email",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 3150,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_email",
+                "type": "EMAIL_INPUT",
+                "identifier": "email",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AuthorizationExecutor"
+          },
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 3450,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "auth_assert",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 3750,
+              "y": 442
+            }
+          },
+          "executor": {
+            "name": "AuthAssertExecutor"
+          },
+          "onSuccess": "end"
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 4100,
+              "y": 474
             }
           }
         }

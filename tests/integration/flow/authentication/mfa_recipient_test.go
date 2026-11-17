@@ -39,6 +39,7 @@ type MFARecipientTestSuite struct {
 	userTypeID    string
 	smsSenderID   string
 	smsAppID      string
+	enrollAppID   string
 }
 
 func TestMFARecipientTestSuite(t *testing.T) {
@@ -73,11 +74,15 @@ func (ts *MFARecipientTestSuite) SetupSuite() {
 	ts.smsSenderID = smsSenderID
 
 	ts.smsAppID = ts.createApp("mfa_recipient_sms_client", buildPasswordSMSOTPFlow(smsSenderID))
+	ts.enrollAppID = ts.createApp("mfa_recipient_sms_enroll_client", buildPasswordSMSOTPEnrollFlow(smsSenderID))
 }
 
 func (ts *MFARecipientTestSuite) TearDownSuite() {
-	if ts.smsAppID != "" {
-		if err := testutils.DeleteApplication(ts.smsAppID); err != nil {
+	for _, appID := range []string{ts.smsAppID, ts.enrollAppID} {
+		if appID == "" {
+			continue
+		}
+		if err := testutils.DeleteApplication(appID); err != nil {
 			ts.T().Logf("Failed to delete application during teardown: %v", err)
 		}
 	}
@@ -160,6 +165,38 @@ func (ts *MFARecipientTestSuite) TestPasswordSMSOTP_UserWithoutMobileEnrollsOne(
 	ts.Equal("+1555666777", ts.storedAttribute(username, "mobile_number"), "The collected mobile number is stored")
 }
 
+func (ts *MFARecipientTestSuite) TestPasswordSMSOTP_MobileIsStoredOnlyAfterVerification() {
+	username := ts.createUser("")
+
+	step := ts.submitMobile(ts.submitPassword(ts.enrollAppID, username, nil), "+1555000111")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+	ts.Nil(ts.storedAttribute(username, "mobile_number"), "An unverified mobile number isn't stored")
+
+	step = ts.submitMobile(ts.submitPassword(ts.enrollAppID, username, nil), "+1555666777")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+
+	var message *testutils.SMSMessage
+	ts.Require().Eventually(func() bool {
+		message = ts.mockSMSServer.GetLastMessage()
+		return message != nil
+	}, 5*time.Second, 100*time.Millisecond, "The OTP should be sent")
+
+	finalStep, err := common.CompleteFlow(step.ExecutionID, map[string]string{"otp": message.OTP}, "action_otp",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OTP")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus)
+	ts.Equal("+1555666777", ts.storedAttribute(username, "mobile_number"), "The verified mobile number is stored")
+}
+
+func (ts *MFARecipientTestSuite) TestPasswordSMSOTP_StoredMobileSkipsTheMobilePrompt() {
+	username := ts.createUser(`"mobile_number": "+1222333444"`)
+
+	step := ts.submitPassword(ts.enrollAppID, username, nil)
+
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	ts.True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+}
+
 // createApp creates the flow and an application that signs in with it, and returns the application ID.
 func (ts *MFARecipientTestSuite) createApp(clientID string, flow testutils.Flow) string {
 	flowID, err := testutils.CreateFlow(flow)
@@ -212,6 +249,19 @@ func (ts *MFARecipientTestSuite) submitPassword(appID, username string,
 	}
 	step, err = common.CompleteFlow(step.ExecutionID, inputs, "", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the password")
+	return step
+}
+
+// submitMobile checks that the step asks for a mobile number, submits the given one and returns the next step.
+func (ts *MFARecipientTestSuite) submitMobile(step *common.FlowStep, mobile string) *common.FlowStep {
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "mobile_number"), "The mobile number should be collected")
+	ts.mockSMSServer.ClearMessages()
+
+	step, err := common.CompleteFlow(step.ExecutionID, map[string]string{"mobile_number": mobile}, "action_mobile",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the mobile number")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
 	return step
 }
 
@@ -285,6 +335,89 @@ func buildPasswordSMSOTPFlow(senderID string) testutils.Flow {
 				"id":        "verify_otp",
 				"type":      "TASK_EXECUTION",
 				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "verify"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
+// buildPasswordSMSOTPEnrollFlow builds a password then SMS OTP flow that stores a collected mobile number only
+// after the OTP is verified.
+func buildPasswordSMSOTPEnrollFlow(senderID string) testutils.Flow {
+	mobileInput := []map[string]interface{}{
+		{"ref": "input_mobile", "identifier": "mobile_number", "type": "PHONE_INPUT", "required": true},
+	}
+	return testutils.Flow{
+		Name:     "MFA Recipient Password SMS OTP Enrollment",
+		FlowType: "AUTHENTICATION",
+		Handle:   "mfa_recipient_password_sms_otp_enroll",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "credentials_auth"},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor"},
+				"onSuccess": "attribute_collect",
+			},
+			{
+				"id":           "attribute_collect",
+				"type":         "TASK_EXECUTION",
+				"executor":     map[string]interface{}{"name": "AttributeCollector", "inputs": mobileInput},
+				"onSuccess":    "generate_otp",
+				"onIncomplete": "prompt_mobile",
+			},
+			{
+				"id":   "prompt_mobile",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": mobileInput,
+						"action": map[string]interface{}{"ref": "action_mobile", "nextNode": "generate_otp"},
+					},
+				},
+			},
+			{
+				"id":        "generate_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "generate", "inputs": mobileInput},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":         "sms_send",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"senderId": senderID, "smsTemplate": "OTP"},
+				"executor":   map[string]interface{}{"name": "SMSExecutor"},
+				"onSuccess":  "prompt_otp",
+			},
+			{
+				"id":   "prompt_otp",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_otp", "identifier": "otp", "type": "OTP_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_otp", "nextNode": "verify_otp"},
+					},
+				},
+			},
+			{
+				"id":        "verify_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "verify"},
+				"onSuccess": "save_mobile",
+			},
+			{
+				"id":        "save_mobile",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AttributeCollector", "inputs": mobileInput},
 				"onSuccess": "auth_assert",
 			},
 			{
