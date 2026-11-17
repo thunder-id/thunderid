@@ -379,6 +379,104 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithPartialDefaults() {
 	ts.registeredAppIDs = append(ts.registeredAppIDs, response.AppID)
 }
 
+<<<<<<< HEAD
+=======
+// TestDCRRegistrationRevokedToken verifies that a revoked token carrying the system permission can no
+// longer register a client. The registration endpoint is a public path, so the request reaches the
+// handler, which must not see the revoked token's permissions.
+//
+// Revocation is enforced from an in-process cache synced on token_revocation.sync_interval_seconds
+// (2s in tests/integration/resources/deployment.yaml). The test waits for a protected endpoint to
+// reject the token before calling the registration endpoint, so a slow sync cannot register stray
+// clients.
+func (ts *DCRTestSuite) TestDCRRegistrationRevokedToken() {
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
+		"CONSOLE",
+		testServerURL+"/console",
+		"system",
+		testutils.AdminUsername,
+		testutils.AdminPassword,
+		true,
+	)
+	ts.Require().NoError(err, "Failed to obtain admin access token")
+	ts.Require().NotEmpty(tokenResp.AccessToken)
+	token := tokenResp.AccessToken
+
+	before := DCRRegistrationRequest{
+		OUID:         "decl-ou-1",
+		RedirectURIs: []string{"https://revoked-token-before.example.com/callback"},
+		ClientName:   "Revoked Token Client Before",
+	}
+	statusCode, appID := ts.registerClientWithToken(before, token)
+	ts.Require().Equal(http.StatusCreated, statusCode, "the token must register a client before it is revoked")
+	ts.registeredAppIDs = append(ts.registeredAppIDs, appID)
+
+	ts.revokeToken(token)
+
+	ts.Require().Eventually(func() bool {
+		req, err := http.NewRequest(http.MethodGet, testServerURL+"/applications", nil)
+		if err != nil {
+			return false
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := testutils.GetRawHTTPClient().Do(req)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusUnauthorized
+	}, 5*time.Second, 250*time.Millisecond,
+		"a protected endpoint must reject the token once the revocation cache has synced")
+
+	after := DCRRegistrationRequest{
+		OUID:         "decl-ou-1",
+		RedirectURIs: []string{"https://revoked-token-after.example.com/callback"},
+		ClientName:   "Revoked Token Client After",
+	}
+	statusCode, appID = ts.registerClientWithToken(after, token)
+	if appID != "" {
+		ts.registeredAppIDs = append(ts.registeredAppIDs, appID)
+	}
+	ts.Assert().Equal(http.StatusUnauthorized, statusCode, "a revoked token must not register a client")
+}
+
+// registerClientWithToken sends a registration request with the given bearer token and returns the
+// status code and, when a client was registered, its application ID.
+func (ts *DCRTestSuite) registerClientWithToken(request DCRRegistrationRequest, token string) (int, string) {
+	requestJSON, err := json.Marshal(request)
+	ts.Require().NoError(err, "Failed to marshal request")
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+dcrEndpoint, bytes.NewReader(requestJSON))
+	ts.Require().NoError(err, "Failed to create request")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to send request")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return resp.StatusCode, ""
+	}
+	var response DCRRegistrationResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&response), "Failed to decode response")
+	return resp.StatusCode, response.AppID
+}
+
+// revokeToken revokes an access token issued to the public CONSOLE client (RFC 7009).
+func (ts *DCRTestSuite) revokeToken(token string) {
+	form := url.Values{"token": {token}, "client_id": {"CONSOLE"}}
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/oauth2/revoke", strings.NewReader(form.Encode()))
+	ts.Require().NoError(err, "Failed to create revoke request")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to send revoke request")
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "revoke request failed")
+}
+
+>>>>>>> e9becbc65 (Send the revoked token on the DCR revocation probe)
 func (ts *DCRTestSuite) registerClient(request DCRRegistrationRequest) (*DCRRegistrationResponse, int) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
