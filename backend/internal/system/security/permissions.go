@@ -970,6 +970,8 @@ func activatePermissions(p *SystemPermissions) {
 		apiPermissionEntries = append(apiPermissionEntries,
 			apiPermissionEntry{"GET /projects", p.ProjectView},
 			apiPermissionEntry{"POST /projects", p.ProjectCreate},
+			// The deletion check answers as the delete would, so it needs what the delete needs.
+			apiPermissionEntry{"GET /projects/*/deletion-check", p.ProjectDelete},
 			apiPermissionEntry{"GET /projects/**", p.ProjectView},
 			apiPermissionEntry{"PUT /projects/**", p.ProjectUpdate},
 			apiPermissionEntry{"DELETE /projects/**", p.ProjectDelete},

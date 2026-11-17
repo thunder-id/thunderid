@@ -130,6 +130,28 @@ func (ts *ProjectAPITestSuite) TestDeleteProjectWithApplicationIsRefused() {
 	ts.Equal(http.StatusNoContent, status, body)
 }
 
+func (ts *ProjectAPITestSuite) TestProjectDeletionCheck() {
+	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Checked"}`, ts.handle("deletion-check")))
+	checkPath := "/projects/" + created.ID + "/deletion-check"
+
+	status, body := ts.do(http.MethodGet, checkPath, "")
+	ts.Equal(http.StatusNoContent, status, body)
+
+	app := ts.createApp(ts.appBody("deletion-check", `"projectId":%q`, created.ID))
+	status, body = ts.do(http.MethodGet, checkPath, "")
+	ts.Equal(http.StatusConflict, status, body)
+	ts.Equal("PRJ-1013", codeOf(ts.T(), body))
+	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &project{}), "the check deletes nothing")
+
+	ts.Require().NoError(testutils.DeleteApplication(app.ID))
+	status, body = ts.do(http.MethodGet, checkPath, "")
+	ts.Equal(http.StatusNoContent, status, body)
+	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &project{}), "the check deletes nothing")
+
+	status, body = ts.do(http.MethodGet, "/projects/019a0000-0000-7000-8000-00000000dead/deletion-check", "")
+	ts.Equal(http.StatusNotFound, status, body)
+}
+
 func (ts *ProjectAPITestSuite) TestApplicationWithUnknownProject() {
 	const unknownProjectID = "019a0000-0000-7000-8000-00000000dead"
 
