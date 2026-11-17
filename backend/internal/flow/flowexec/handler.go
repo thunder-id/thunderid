@@ -123,9 +123,9 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	}
 
 	if h.ssoTransport != nil {
-		// Emit the per-flow SSO handle when the flow minted a new session handle. This must happen
-		// before the response body is written.
-		if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
+		// Emit the per-flow SSO handle for a session the step started or joined, unless the request
+		// presented that handle. This must happen before the response body is written.
+		if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" && !flowStep.SSOHandleReused {
 			// The handle has no TTL of its own; bound it to the session's configured absolute lifetime.
 			h.ssoTransport.Write(ssoExchange, flowStep.SSOFlowID, flowStep.SSOHandleOut, h.ssoHandleTTL)
 		}

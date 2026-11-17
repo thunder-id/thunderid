@@ -2938,6 +2938,11 @@ func (suite *AuthorizeServiceTestSuite) TestBindDeviceSession() {
 				{FlowIdentifier: "identifier", SessionHandle: overLong}, longest},
 			[]oauth2model.SessionData{longest}},
 		{"no more than maxDeviceSessions are kept", "device_sso", tooMany, tooMany[:maxDeviceSessions]},
+		{"a posted time left is kept as posted", "device_sso",
+			[]oauth2model.SessionData{{FlowIdentifier: first.FlowIdentifier, SessionHandle: first.SessionHandle,
+				ExpiresIn: new(int64(600))}},
+			[]oauth2model.SessionData{{FlowIdentifier: first.FlowIdentifier, SessionHandle: first.SessionHandle,
+				ExpiresIn: new(int64(600))}}},
 	}
 
 	for _, tc := range cases {
@@ -2949,6 +2954,17 @@ func (suite *AuthorizeServiceTestSuite) TestBindDeviceSession() {
 			suite.Equal(tc.want, code.SessionData)
 		})
 	}
+}
+
+func (suite *AuthorizeServiceTestSuite) TestFromFlowSessionData_KeepsTheTimeLeft() {
+	got := fromFlowSessionData([]flowexec.IssuedSessionData{{
+		SessionData: flowexec.SessionData{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"},
+		ExpiresIn:   600,
+	}})
+
+	suite.Equal([]oauth2model.SessionData{
+		{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1", ExpiresIn: new(int64(600))},
+	}, got)
 }
 
 const (

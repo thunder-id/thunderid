@@ -5,6 +5,7 @@ package granthandlers
 
 import (
 	"context"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -295,12 +296,16 @@ func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, a
 	if h.deviceSecretValidity == 0 || len(authCode.SessionData) == 0 {
 		return model.TokenDTO{}
 	}
+	// The sessions were posted in the request that minted the code.
+	validity, alive := h.deviceSecretLifetime(authCode.SessionData, authCode.TimeCreated, time.Now())
+	if !alive {
+		return model.TokenDTO{}
+	}
 	token, err := h.tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
-		OAuthApp:    oauthApp,
-		SubjectID:   authCode.SubjectID,
-		SessionData: authCode.SessionData,
-		// Each session's own deadline is checked when it is exchanged.
-		ValidityPeriod: int64(h.deviceSecretValidity.Seconds()),
+		OAuthApp:       oauthApp,
+		SubjectID:      authCode.SubjectID,
+		SessionData:    authCode.SessionData,
+		ValidityPeriod: int64(math.Ceil(validity.Seconds())),
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
@@ -349,6 +354,36 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 		}
 	}
 	return authCode, nil
+}
+
+// deviceSecretLifetime returns how long from now a device secret carrying sessions posted at postedAt lasts:
+// until the last of them ends, as each one's expiresIn said, and never longer than the device secret
+// validity. A session that did not say, or an unknown postedAt, gives the full validity; a session that
+// said zero or less has ended. It reports false when every session has ended.
+func (h *authorizationCodeGrantHandler) deviceSecretLifetime(sessionData []model.SessionData,
+	postedAt, now time.Time) (time.Duration, bool) {
+	if postedAt.IsZero() {
+		return h.deviceSecretValidity, true
+	}
+	var lastEnd time.Time
+	for _, entry := range sessionData {
+		if entry.ExpiresIn == nil {
+			return h.deviceSecretValidity, true
+		}
+		if *entry.ExpiresIn <= 0 {
+			continue
+		}
+		// Clamped to the validity before it becomes a duration, so no posted value can overflow it.
+		left := time.Duration(min(*entry.ExpiresIn, int64(h.deviceSecretValidity/time.Second))) * time.Second
+		if end := postedAt.Add(left); end.After(lastEnd) {
+			lastEnd = end
+		}
+	}
+	remaining := lastEnd.Sub(now)
+	if lastEnd.IsZero() || remaining <= 0 {
+		return 0, false
+	}
+	return min(remaining, h.deviceSecretValidity), true
 }
 
 // validateAuthorizationCode validates the authorization code against the token request.

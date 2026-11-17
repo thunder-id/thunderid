@@ -126,12 +126,12 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_Defaul
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_PassesSessionData() {
 	suite.mockAuthZ.EXPECT().
 		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", []oauth2model.SessionData{
-			{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-1"},
+			{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-1", ExpiresIn: new(int64(600))},
 		}).
 		Return("https://client.example.com/cb?code=xyz", nil)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion",` +
-		`"sessionData":[{"flowIdentifier":"f51bdb0f22d906bb","sessionHandle":"handle-1"}]}`)
+		`"sessionData":[{"flowIdentifier":"f51bdb0f22d906bb","sessionHandle":"handle-1","expiresIn":600}]}`)
 
 	suite.Equal(http.StatusOK, w.Code)
 }

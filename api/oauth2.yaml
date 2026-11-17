@@ -231,7 +231,10 @@ paths:
         the `device_sso` scope, the code keeps the posted sessions, up to ten, and the code exchange
         returns them in `device_secret`. They are kept as posted; a token exchange that presents them
         checks they are the user's. An entry with a missing field, or a field longer than 128
-        characters, is ignored and does not fail the sign-in. The request body is limited to 1 MiB.
+        characters, is ignored and does not fail the sign-in. When every kept session carries its
+        `expiresIn`, the device secret ends when the last of them does, never later than the session
+        absolute timeout, and none is returned when every session has ended. The request body is
+        limited to 1 MiB.
       tags:
         - Authorization
       requestBody:
@@ -1240,6 +1243,14 @@ components:
               sessionHandle:
                 type: string
                 description: The session handle.
+              expiresIn:
+                type: integer
+                format: int64
+                description: >-
+                  Whole seconds the session has left, from the flow execution API's `expiresIn` for it,
+                  less the time since it was returned. Optional. Zero or less means the session has
+                  ended. A session without it leaves the device secret lasting the session absolute
+                  timeout.
 
     AuthCallbackResponse:
       type: object
@@ -1453,12 +1464,15 @@ components:
           description: >-
             The SSO sessions the callback posted for the authorization code (authorization code grant
             only). Returned only when the authorization request asked for the `device_sso` scope and the
-            callback posted sessions, so a sign-in that reused an existing session, which returns none
-            to post, gets none. A JWT signed by the server and typed `sso-session+jwt`. Its `aud` is
-            this server, since it is presented back here as a token exchange `subject_token`; its `sub`
-            is the resource ID of the user who signed in, not the application's token subject, so it
-            is the same for every application; its `exp` the session absolute timeout from now, and its
-            `session_data` claim lists the sessions as `flow_identifier` and `session_handle` pairs, as
+            callback posted sessions, and not when every posted session's `expiresIn` said it has ended,
+            even though the granted scope still lists `device_sso`. A sign-in returns its session to post
+            whether it started the session or reused it. A JWT signed by the server and typed
+            `sso-session+jwt`. Its `aud` is this server, since it is presented back here as a token
+            exchange `subject_token`; its `sub` is the resource ID of the user who signed in, not the
+            application's token subject, so it is the same for every application; its `exp` the session
+            absolute timeout from now, unless every session carried `expiresIn`, in which case when the
+            last of them ends; and its `session_data` claim lists the sessions as `flow_identifier` and
+            `session_handle` pairs, as
             the flow execution API's `sessionData` does. The handles resume the sessions, so keep it as
             secret as a credential.
 
