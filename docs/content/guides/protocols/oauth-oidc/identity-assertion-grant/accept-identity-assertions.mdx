@@ -133,6 +133,7 @@ The token is DPoP-bound when the request includes a DPoP proof. A `resource` par
 
 - There is no replay cache. <ProductName /> checks that `jti` is present but does not track previously seen values, so keep assertion expiry short.
 - No local account mapping occurs, regardless of Authorization Mapping. The token's `sub` is the external identifier as-is; nothing links it to a local user record.
+- <ProductName />'s own APIs, the management APIs and the MCP server, do not accept the token, even when Authorization Mapping is configured. Its `sub` is not a local user. To call those APIs with an identity from an external provider, use the [trusted issuer](../../../../trusted-issuer).
 - <ProductName /> does not advertise ID-JAG or Enterprise-Managed Authorization discovery metadata in its well-known documents.
 - The Console's Authorization Mapping tab is not yet available on a connection created through the **Trusted Token Issuer** wizard, even though it is the same OIDC connection type and the backend applies its mapping the same way. Configure it through the Connections API directly until the Console adds it.
 
