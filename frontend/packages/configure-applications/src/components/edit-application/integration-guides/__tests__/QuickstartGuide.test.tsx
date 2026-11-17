@@ -92,13 +92,64 @@ CLIENT_ID=<your-client-id>
 \`\`\`
 `;
 
+const serviceGuide = `## Create an Application
+
+Create it.
+
+## Authenticate as the Service
+
+> [!NOTE]
+> **Client ID**
+>
+> Replace \`<your-client-id>\` with your Client ID.
+
+\`\`\`js title="index.mjs"
+init({clientId: '<your-client-id>', clientSecret: '<your-client-secret>'})
+\`\`\`
+
+> [!WARNING]
+> **Configuration**
+>
+> Replace \`<your-client-id>\` and \`<your-client-secret>\` with your credentials.
+
+> [!TIP]
+> **Scopes**
+>
+> Ask only for the scopes you use.
+`;
+
+const alertsGuide = `## Create an Application
+
+Create it.
+
+## Authenticate as the Service
+
+> [!NOTE]
+> **Lifecycle**
+>
+> Call the \`constructor\` only once.
+
+> [!WARNING]
+> **Credentials**
+>
+> Replace \`<your-client-id>\` and the values below.
+>
+> | Placeholder | Value |
+> | --- | --- |
+> | \`<your-client-secret>\` | Your client secret |
+`;
+
 const reactSource = {label: 'React', docsUrl: 'https://example.com/docs/react/'};
+const serviceSource = {label: 'Node.js', docsUrl: 'https://example.com/docs/service/'};
+const alertsSource = {label: 'Express', docsUrl: 'https://example.com/docs/alerts/'};
 const vueSource = {label: 'Vue', docsUrl: 'https://example.com/docs/vue/'};
 
 const pages: Record<string, string> = {
   'https://example.com/docs/react.md': reactGuide,
   'https://example.com/docs/vue.md': vueGuide,
   'https://example.com/docs/react-sample.md': reactGuideWithSample,
+  'https://example.com/docs/service.md': serviceGuide,
+  'https://example.com/docs/alerts.md': alertsGuide,
 };
 
 const mockFetch = vi.fn();
@@ -173,6 +224,53 @@ describe('QuickstartGuide', () => {
     await waitFor(() => {
       expect(mockWriteText).toHaveBeenCalledWith('<Provider clientId="client-123" />');
     });
+  });
+
+  it('leaves out an alert whose placeholders are all filled in', async () => {
+    renderGuide(serviceSource);
+
+    expect(await screen.findByLabelText('index.mjs')).toHaveTextContent("clientId: 'client-123'");
+    const alertTitles = screen
+      .getAllByRole('alert')
+      .map((alert) => alert.querySelector('.MuiAlertTitle-root')?.textContent);
+    expect(alertTitles).toEqual(['Configuration', 'Scopes']);
+  });
+
+  it('marks the filled-in placeholders of an alert that still asks for others', async () => {
+    renderGuide(serviceSource);
+
+    await screen.findByLabelText('index.mjs');
+    const configuration = screen.getAllByRole('alert')[0];
+    expect(within(configuration).getAllByLabelText('Filled in')).toHaveLength(1);
+    expect(within(configuration).getByText('<your-client-id>')).toHaveStyle({textDecoration: 'line-through'});
+    expect(within(configuration).getByText('<your-client-secret>')).not.toHaveStyle({textDecoration: 'line-through'});
+  });
+
+  it('keeps every alert when no placeholder is filled in', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <QuickstartGuide guide={serviceSource} codeValues={{'<your-client-id>': undefined}} onOpenLink={onOpenLink} />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByLabelText('index.mjs');
+    expect(screen.getAllByRole('alert')).toHaveLength(3);
+    expect(screen.queryByLabelText('Filled in')).not.toBeInTheDocument();
+  });
+
+  it('keeps an alert whose code spans only match names inherited from Object', async () => {
+    renderGuide(alertsSource);
+
+    const lifecycle = await screen.findByText('Lifecycle');
+    expect(within(lifecycle.closest('[role="alert"]')!).queryByLabelText('Filled in')).not.toBeInTheDocument();
+  });
+
+  it('keeps an alert whose table names a placeholder that is not filled in', async () => {
+    renderGuide(alertsSource);
+
+    const credentials = (await screen.findByText('Credentials')).closest('[role="alert"]')!;
+    expect(within(credentials).getByRole('table')).toBeInTheDocument();
+    expect(within(credentials).getAllByLabelText('Filled in')).toHaveLength(1);
   });
 
   it('opens docs links as pages rather than their Markdown export', async () => {

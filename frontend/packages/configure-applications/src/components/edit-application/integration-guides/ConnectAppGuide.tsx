@@ -162,7 +162,15 @@ function TechnologyMenu({
         startIcon={selected.icon}
         endIcon={<ChevronDown size={18} aria-hidden />}
         onClick={(event) => setAnchor(event.currentTarget)}
-        sx={{font: 'inherit', textTransform: 'none', borderRadius: 1, py: 0.25, px: 1.25}}
+        sx={{
+          font: 'inherit',
+          textTransform: 'none',
+          borderRadius: 1,
+          py: 0.25,
+          px: 1.25,
+          borderColor: 'divider',
+          '&:hover': {borderColor: 'text.secondary'},
+        }}
       >
         {selected.label}
       </Button>
@@ -530,7 +538,14 @@ export default function ConnectAppGuide({
               variant="h5"
               component="h2"
               // In a row, so a technology menu in the sentence lines up with the words around it.
-              sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', whiteSpace: 'pre-wrap', rowGap: 0.5}}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                whiteSpace: 'pre-wrap',
+                rowGap: 0.5,
+                columnGap: 1,
+              }}
             >
               {/* A template covering several technologies names the one in a menu that switches it, the first
                   chosen until another is. */}

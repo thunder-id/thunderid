@@ -3635,6 +3635,7 @@ const translations = {
     'edit.overview.guide.unavailable': 'Follow the step-by-step guide on the docs site.',
     'edit.overview.guide.codeOptions': 'Code sample options',
     'edit.overview.guide.codeSample': 'Code sample',
+    'edit.overview.guide.placeholderFilled': 'Filled in',
     'edit.overview.agentPrompt.title': 'Integrate with a coding agent',
     'edit.overview.agentPrompt.description': 'Copy a ready-made prompt for Claude, Cursor, or any agent.',
     'edit.overview.agentPrompt.action': 'Copy prompt',
