@@ -56,6 +56,7 @@ export interface AuthorizationMappingSectionProps {
   initialDirectConfig?: AuthorizationDirectMapping[];
   onRuleChange: (mappings: AuthorizationRuleMapping[] | undefined, valid: boolean) => void;
   onDirectChange: (mappings: AuthorizationDirectMapping[] | undefined, valid: boolean) => void;
+  description?: string;
 }
 
 const VALUE_TYPES: AuthorizationValueType[] = ['string', 'number', 'boolean', 'array'];
@@ -503,6 +504,7 @@ export default function AuthorizationMappingSection({
   initialDirectConfig = undefined,
   onRuleChange,
   onDirectChange,
+  description = undefined,
 }: AuthorizationMappingSectionProps): JSX.Element {
   const {t} = useTranslation('connections');
   const {data: serversData} = useGetResourceServers({limit: PICKER_PAGE_SIZE});
@@ -531,7 +533,16 @@ export default function AuthorizationMappingSection({
   const removeMapping = (key: number): void => emit(mappings.filter((m) => m.key !== key));
 
   return (
-    <SettingsCard title={t('authorizationMapping.title')} description={t('authorizationMapping.description')}>
+    <SettingsCard
+      title={t('authorizationMapping.title')}
+      description={
+        description ??
+        t(
+          'authorizationMapping.description',
+          'Map values this provider asserts, such as group membership, to local roles, groups, or permissions.',
+        )
+      }
+    >
       <Stack direction="column" spacing={2.5}>
         {mappings.map((mapping) => (
           <MappingRow
