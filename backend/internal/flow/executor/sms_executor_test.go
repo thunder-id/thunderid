@@ -776,6 +776,98 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserGetsThe
 	suite.Equal(providers.ExecComplete, resp.Status)
 }
 
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_UserWithoutAStoredMobile() {
+	for name, test := range map[string]struct {
+		signedInAs string
+		sent       bool
+	}{
+		"signed in user gets the submitted mobile":    {signedInAs: "test-user-id", sent: true},
+		"user signed in as someone else gets nothing": {signedInAs: "other-user-id"},
+		"identified user gets nothing":                {},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+			entityProvider.On("GetEntity", "test-user-id").Return(
+				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
+			suite.executor.entityProvider = entityProvider
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-flow-id",
+				ExecutorMode: ExecutorModeSend,
+				UserInputs:   map[string]string{common.AttributeMobileNumber: "+94770000000"},
+				RuntimeData:  map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{
+					propertyKeyNotificationSenderID: "sender-uuid-001",
+					propertyKeySMSTemplate:          string(template.ScenarioSelfRegistration),
+				},
+			}
+			if test.signedInAs != "" {
+				ctx.AuthUser = newAuthenticatedAuthUser()
+				authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+				authnProvider.On("GetEntityReference", mock.Anything, ctx.AuthUser).Return(ctx.AuthUser,
+					&providers.EntityReference{EntityID: test.signedInAs}, (*tidcommon.ServiceError)(nil))
+				suite.executor.authnProvider = authnProvider
+			}
+			if test.sent {
+				suite.expectSMS("+94770000000")
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			if test.sent {
+				suite.Equal(providers.ExecComplete, resp.Status)
+				return
+			}
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrSMSRecipientMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
+			suite.mockSMSSenderSvc.AssertNumberOfCalls(suite.T(), "Send", 0)
+		})
+	}
+}
+
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SignedInUserLookupFailsForASubmittedMobile() {
+	for name, svcErr := range map[string]*tidcommon.ServiceError{
+		"when the lookup fails":     &tidcommon.InternalServerError,
+		"when the user isn't found": {Type: tidcommon.ClientErrorType, Code: "AUP-1001"},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			authUser := newAuthenticatedAuthUser()
+			authnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+			authnProvider.On("GetEntityReference", mock.Anything, authUser).
+				Return(authUser, (*providers.EntityReference)(nil), svcErr)
+			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+			entityProvider.On("GetEntity", "test-user-id").Return(
+				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
+			suite.executor.authnProvider = authnProvider
+			suite.executor.entityProvider = entityProvider
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-flow-id",
+				ExecutorMode: ExecutorModeSend,
+				AuthUser:     authUser,
+				UserInputs:   map[string]string{common.AttributeMobileNumber: "+94770000000"},
+				RuntimeData:  map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{
+					propertyKeyNotificationSenderID: "sender-uuid-001",
+					propertyKeySMSTemplate:          string(template.ScenarioSelfRegistration),
+				},
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			if svcErr.Type == tidcommon.ServerErrorType {
+				suite.Error(err)
+				suite.Nil(resp)
+			} else {
+				suite.Require().NoError(err)
+				suite.Equal(providers.ExecFailure, resp.Status)
+			}
+			suite.mockSMSSenderSvc.AssertNumberOfCalls(suite.T(), "Send", 0)
+		})
+	}
+}
+
 // expectSMS expects one SMS to the given number.
 func (suite *SMSExecutorTestSuite) expectSMS(recipient string) {
 	suite.mockTemplateService.On("Render", mock.Anything, mock.Anything, template.TemplateTypeSMS, mock.Anything).
