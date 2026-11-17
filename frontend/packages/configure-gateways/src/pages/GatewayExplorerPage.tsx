@@ -12,7 +12,7 @@ import useGateways from '../api/useGateways';
 import {useAppliedConfiguration, useApplyCheck, useRunningReferences} from '../api/useGatewayVersions';
 import {useMaster, useResourceHistory} from '../api/useMaster';
 import {usePipeline} from '../api/usePipeline';
-import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
+import {useSetStoredValue, useStoredValueCount, useStoredValuesNamed} from '../api/useStoredValues';
 import {useVersions} from '../api/useVersions';
 import ExplorerCanvas from '../components/explorer/ExplorerCanvas';
 import ExplorerPanel from '../components/explorer/ExplorerPanel';
@@ -27,6 +27,7 @@ import type {Gateway} from '../models/gateway';
 import type {PipelineStage} from '../models/pipeline';
 import {versionLabel} from '../utils/format';
 import {fromListText, toListText} from '../utils/listValue';
+import {referencedNames} from '../utils/valueRows';
 
 /**
  * The explorer of one gateway: a map of every resource it runs and the lines between them, with a
@@ -57,8 +58,13 @@ export default function GatewayExplorerPage(): JSX.Element {
   );
   const versions = useVersions(gatewayId);
   const references = useRunningReferences(gatewayId);
-  const variables = useStoredValues(gatewayId, 'variable');
-  const secrets = useStoredValues(gatewayId, 'secret');
+  // Only the values the running version refers to are looked up, by name; the rest are only counted.
+  const variableNames = useMemo(() => referencedNames(references.data ?? [], 'variable'), [references.data]);
+  const secretNames = useMemo(() => referencedNames(references.data ?? [], 'secret'), [references.data]);
+  const variables = useStoredValuesNamed(gatewayId, 'variable', variableNames, references.isSuccess);
+  const secrets = useStoredValuesNamed(gatewayId, 'secret', secretNames, references.isSuccess);
+  const variableCount = useStoredValueCount(gatewayId, 'variable');
+  const secretCount = useStoredValueCount(gatewayId, 'secret');
   const setVariable = useSetStoredValue(gatewayId, 'variable');
   const setSecret = useSetStoredValue(gatewayId, 'secret');
 
@@ -141,10 +147,10 @@ export default function GatewayExplorerPage(): JSX.Element {
           all[runningIndex].number ?? all.length - runningIndex,
         );
   const counts =
-    variables.data || secrets.data
+    variableCount.data !== undefined || secretCount.data !== undefined
       ? t('stage.valuesSummary', '{{variables}} variables, {{secrets}} secrets', {
-          variables: held.size,
-          secrets: heldSecrets.size,
+          variables: variableCount.data ?? 0,
+          secrets: secretCount.data ?? 0,
         })
       : undefined;
 

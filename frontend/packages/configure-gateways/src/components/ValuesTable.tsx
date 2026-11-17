@@ -23,12 +23,13 @@ import {
 import {Check, ChevronRight, Pencil, Trash2, X} from '@wso2/oxygen-ui-icons-react';
 import {Fragment, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import {ValueName, ValueText} from './ValueCells';
 import {useDeleteStoredValue, useSetStoredValue} from '../api/useStoredValues';
 import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {StoredValue, ValueKind, ValueReference} from '../models/deploy';
 import groupByResource, {humanize, type ResourceGroup, type TypeGroup} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';
-import {fieldLabel, parseValueName} from '../utils/valueLabels';
+import {isHeld, isListRow} from '../utils/valueRows';
 
 /** One name a gateway holds or is asked to hold, with what refers to it. */
 export interface ValueRow {
@@ -69,12 +70,6 @@ const TYPE_LABELS: Record<string, string> = {
   user_type: 'User types',
 };
 
-/** Where a row's value is used: by the running version if it is, otherwise by the current configuration. */
-const placesOf = (row: ValueRow): ValueReference[] => (row.references.length > 0 ? row.references : row.current);
-
-const isHeld = (row: ValueRow, secret: boolean): boolean =>
-  secret ? Boolean(row.stored) && row.stored?.exists !== false : row.stored?.value !== undefined;
-
 const countOf = (resources: ResourceGroup[]): number =>
   resources.reduce((total: number, resource: ResourceGroup) => total + resource.rows.length, 0);
 
@@ -111,14 +106,13 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     resourceType
       ? t(`values.types.${resourceType}`, {defaultValue: TYPE_LABELS[resourceType] ?? humanize(resourceType)})
       : t('values.other', 'Not used by the version this gateway runs');
-  const labelOf = (field: string | undefined): string => fieldLabel(t, field);
 
   const start = (row: ValueRow): void => {
     setError(null);
     setEditing(row.name);
     setDraft(secret ? '' : toListText(row.stored?.value ?? ''));
   };
-  const isList = (row: ValueRow): boolean => placesOf(row).some((reference: ValueReference) => reference.list === true);
+  const isList = isListRow;
   const save = async (row: ValueRow): Promise<void> => {
     setError(null);
     try {
@@ -159,55 +153,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     );
   }
 
-  const nameCell = (row: ValueRow): JSX.Element => {
-    const places = placesOf(row);
-    // The running version does not use it: the current configuration does, or nothing does.
-    const notRunning = row.references.length === 0;
-    // A name the server derived reads back as a type and a field, which says more than the name does.
-    const derived = places.length === 0 ? parseValueName(row.name) : null;
-    let title = row.name;
-    if (places.length > 0) {
-      title = labelOf(places[0].field);
-    } else if (derived) {
-      title = `${t(`values.typeNames.${derived.resourceType}`, {defaultValue: humanize(derived.resourceType)})} · ${labelOf(derived.field)}`;
-    }
-    const others = [
-      ...new Set(
-        places
-          .slice(1)
-          .map((reference: ValueReference) =>
-            [reference.resourceName ?? reference.resourceId, labelOf(reference.field)].filter(Boolean).join(' · '),
-          ),
-      ),
-    ];
-    return (
-      <Box>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography variant="body2" sx={{fontWeight: 500}}>
-            {title}
-          </Typography>
-          {notRunning && places.length > 0 && (
-            <Chip size="small" variant="outlined" label={t('values.notRunning', 'Not used by the running version')} />
-          )}
-          {others.length > 0 && (
-            <Tooltip title={others.join(', ')}>
-              <Typography component="span" variant="body2" color="text.secondary">
-                {t('values.more', '+{{count}} more', {count: others.length})}
-              </Typography>
-            </Tooltip>
-          )}
-        </Stack>
-        {(places.length > 0 || derived) && (
-          <Typography variant="caption" color="text.secondary" sx={{fontFamily: 'monospace'}}>
-            {row.name}
-          </Typography>
-        )}
-      </Box>
-    );
-  };
-
   const valueCell = (row: ValueRow): JSX.Element => {
-    const held = isHeld(row, secret);
     if (editing === row.name) {
       return (
         <TextField
@@ -226,16 +172,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
         />
       );
     }
-    if (!held) return <Chip size="small" color="error" variant="outlined" label={t('values.notSet', 'Not set')} />;
-    if (secret) return <Chip size="small" variant="outlined" label={t('values.stored', 'Stored')} />;
-    return (
-      <Typography
-        variant="body2"
-        sx={{fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-all'}}
-      >
-        {toListText(row.stored?.value ?? '') || t('values.empty', '(empty)')}
-      </Typography>
-    );
+    return <ValueText row={row} kind={kind} />;
   };
 
   const actionsCell = (row: ValueRow): JSX.Element | null => {
@@ -320,7 +257,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
                 {resource.rows.map((row: ValueRow) => (
                   <TableRow key={row.name} data-testid={`value-row-${row.name}`}>
                     <TableCell sx={{pl: resource.label ? 3 : 2, verticalAlign: 'top', width: '40%'}}>
-                      {nameCell(row)}
+                      <ValueName row={row} />
                     </TableCell>
                     <TableCell sx={{verticalAlign: 'top', minWidth: 280}}>{valueCell(row)}</TableCell>
                     <TableCell align="right" sx={{verticalAlign: 'top', whiteSpace: 'nowrap'}}>

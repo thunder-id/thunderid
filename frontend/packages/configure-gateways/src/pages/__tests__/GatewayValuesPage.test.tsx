@@ -4,7 +4,7 @@
 import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, queryOf, SERVER, storeListing, type Call} from '../../__tests__/fakeHttp';
 import GatewayValuesPage from '../GatewayValuesPage';
 
 let http = fakeHttp({});
@@ -23,7 +23,13 @@ vi.mock('react-router', async (importOriginal) => {
 });
 
 const hash = '2f2d727aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-const page = (kind: string, values: unknown[]) => ({totalResults: values.length, [kind]: values});
+const page = (kind: 'variables' | 'secrets', values: {name: string; value?: string; exists?: boolean}[]) =>
+  storeListing(kind, values);
+/** The reads of a gateway's variables or secrets, each by its query. */
+const reads = (collection: string): Record<string, string>[] =>
+  http.calls
+    .filter((call: Call) => call.method === 'GET' && call.url.split('?')[0].endsWith(`/gw-dev/${collection}`))
+    .map(queryOf);
 let routes: Record<string, unknown>;
 
 beforeEach(() => {
@@ -69,32 +75,41 @@ beforeEach(() => {
 });
 
 describe('GatewayValuesPage', () => {
-  it('groups what the gateway holds by resource type and resource, the missing values first and open', async () => {
+  it('shows the missing values first and open, and lists what the gateway holds a page at a time', async () => {
     render(<GatewayValuesPage />);
 
     expect(await screen.findByText('Configure Dev')).toBeInTheDocument();
     expect(await screen.findByText('The version Dev runs refers to 2 values it does not hold.')).toBeInTheDocument();
-    const table = await screen.findByTestId('values-variable');
-    const groups = within(table)
-      .getAllByTestId(/^values-group-/)
-      .map((row) => row.getAttribute('data-testid'));
-    expect(groups).toEqual(['values-group-missing', 'values-group-application', 'values-group-other']);
+    const missing = await screen.findByTestId('values-variable');
+    expect(
+      within(missing)
+        .getAllByTestId(/^values-group-/)
+        .map((row) => row.getAttribute('data-testid')),
+    ).toEqual(['values-group-missing']);
     expect(within(screen.getByTestId('values-group-missing')).getByText('1')).toBeInTheDocument();
     expect(screen.getByText('Applications: Orders')).toBeInTheDocument();
     expect(
       within(screen.getByTestId('value-row-APP_ORDERS_REDIRECT_URIS')).getByText('Redirect URIs'),
     ).toBeInTheDocument();
     expect(within(screen.getByTestId('value-row-APP_ORDERS_REDIRECT_URIS')).getByText('Not set')).toBeInTheDocument();
-    expect(screen.queryByTestId('value-row-APP_ORDERS_CLIENT_ID')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', {name: 'Applications'}));
-    const held = await screen.findByTestId('value-row-APP_ORDERS_CLIENT_ID');
-    expect(within(held).getByText('Client ID')).toBeInTheDocument();
-    expect(within(held).getByText('orders')).toBeInTheDocument();
-    expect(screen.getByText('Orders')).toBeInTheDocument();
+    const list = screen.getByTestId('values-list-variable');
+    expect(await within(list).findByText('orders')).toBeInTheDocument();
+    expect(within(list).getByText('Client ID')).toBeInTheDocument();
+    expect(within(list).getByText('Application: Orders')).toBeInTheDocument();
+    expect(within(list).getByText('LEFTOVER')).toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: 'Variables (2)'})).toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: 'Secrets (0)'})).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', {name: 'Not used by the version this gateway runs'}));
-    expect(await screen.findByTestId('value-row-LEFTOVER')).toBeInTheDocument();
+    // Only the names the running version refers to are looked up; everything else is read a page at a time.
+    expect(reads('variables')).toEqual(
+      expect.arrayContaining([
+        {limit: '100', offset: '0', names: 'APP_ORDERS_CLIENT_ID,APP_ORDERS_REDIRECT_URIS'},
+        {limit: '10', offset: '0'},
+      ]),
+    );
+    expect(reads('variables').every((query) => Number(query.limit) <= 100)).toBe(true);
+    expect(reads('secrets')).toContainEqual({limit: '100', offset: '0', names: 'APP_ORDERS_CLIENT_SECRET'});
   });
 
   it('names the resource a value belongs to from the current configuration when the running version does not refer to it', async () => {
@@ -120,16 +135,13 @@ describe('GatewayValuesPage', () => {
     ]);
     render(<GatewayValuesPage />);
 
-    await userEvent.click(await screen.findByRole('button', {name: 'Applications'}));
-    const row = await screen.findByTestId(`value-row-${adminConsole}`);
-    expect(screen.getByText('Admin Console')).toBeInTheDocument();
-    expect(within(row).getByText('Client ID')).toBeInTheDocument();
-    expect(within(row).getByText(adminConsole)).toBeInTheDocument();
-    expect(within(row).getByText('Not used by the running version')).toBeInTheDocument();
+    const list = await screen.findByTestId('values-list-variable');
+    expect(await within(list).findByText('Application: Admin Console')).toBeInTheDocument();
+    expect(within(list).getByText('Client ID')).toBeInTheDocument();
+    expect(within(list).getByText(adminConsole)).toBeInTheDocument();
+    expect(within(list).getByText('Not used by the running version')).toBeInTheDocument();
+    expect(within(list).getByText('LEFTOVER')).toBeInTheDocument();
     expect(screen.queryByText(/refers to .* values it does not hold/)).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', {name: 'Not used by the version this gateway runs'}));
-    expect(await screen.findByTestId('value-row-LEFTOVER')).toBeInTheDocument();
   });
 
   it('saves a list value of a row labelled from the current configuration as a JSON list', async () => {
@@ -155,9 +167,9 @@ describe('GatewayValuesPage', () => {
     routes[`PUT /gateways/gw-dev/variables/${redirectUris}`] = {name: redirectUris};
     render(<GatewayValuesPage />);
 
-    await userEvent.click(await screen.findByRole('button', {name: 'Applications'}));
     await userEvent.click(await screen.findByRole('button', {name: `Set ${redirectUris}`}));
-    const field = screen.getByLabelText(redirectUris);
+    const field = await screen.findByLabelText(redirectUris);
+    expect(field).toHaveValue('https://a.test/cb');
     await userEvent.clear(field);
     await userEvent.type(field, 'https://a.test/cb{enter}https://a.test/alt');
     await userEvent.click(screen.getByRole('button', {name: 'Save'}));
@@ -185,11 +197,10 @@ describe('GatewayValuesPage', () => {
     ]);
     render(<GatewayValuesPage />);
 
-    await userEvent.click(await screen.findByRole('button', {name: 'Not used by the version this gateway runs'}));
-    const row = await screen.findByTestId(`value-row-${derived}`);
-    expect(within(row).getByText('Application · Client ID')).toBeInTheDocument();
-    expect(within(row).getByText(derived)).toBeInTheDocument();
-    expect(within(await screen.findByTestId('value-row-LEFTOVER')).getByText('LEFTOVER')).toBeInTheDocument();
+    const list = await screen.findByTestId('values-list-variable');
+    expect(await within(list).findByText('Application · Client ID')).toBeInTheDocument();
+    expect(within(list).getByText(derived)).toBeInTheDocument();
+    expect(within(list).getByText('LEFTOVER')).toBeInTheDocument();
   });
 
   it('sets a list one item per line, and a secret without reading it back', async () => {
@@ -230,9 +241,11 @@ describe('GatewayValuesPage', () => {
     routes['DELETE /gateways/gw-dev/variables/LEFTOVER'] = {};
     render(<GatewayValuesPage />);
 
-    await userEvent.click(await screen.findByRole('button', {name: 'Not used by the version this gateway runs'}));
     await userEvent.click(await screen.findByRole('button', {name: 'Remove LEFTOVER'}));
     await waitFor(() => expect(http.calls.some((call: Call) => call.method === 'DELETE')).toBe(true));
+    // The removal reads the page and the count again, rather than keeping what it showed.
+    const pageReads = (): number => reads('variables').filter((query) => query.limit === '10').length;
+    await waitFor(() => expect(pageReads()).toBe(2));
     await userEvent.click(screen.getByText('Deploy'));
     expect(navigate).toHaveBeenCalledWith('/deploy');
   });
@@ -244,7 +257,6 @@ describe('GatewayValuesPage', () => {
       </CapabilitiesProvider>,
     );
 
-    await userEvent.click(await screen.findByRole('button', {name: 'Not used by the version this gateway runs'}));
     expect(await screen.findByText('LEFTOVER')).toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Remove LEFTOVER'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Set LEFTOVER'})).not.toBeInTheDocument();
@@ -258,6 +270,7 @@ describe('GatewayValuesPage', () => {
       await screen.findByText('Which values the version Dev runs refers to could not be read.'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('values-variable')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('values-list-variable')).not.toBeInTheDocument();
   });
 
   it('closes an open editor when the tab changes, so a draft never carries over', async () => {
@@ -313,5 +326,62 @@ describe('GatewayValuesPage', () => {
     expect(screen.getByText(/Orders/)).toBeInTheDocument();
     expect(screen.queryByText('ADMIN_CLIENT_ID')).not.toBeInTheDocument();
     expect(screen.queryByText(/Admin Console/)).not.toBeInTheDocument();
+  });
+
+  it('pages through what the gateway holds on the server, asking for each page by limit and offset', async () => {
+    routes['GET /gateways/gw-dev/variables'] = page(
+      'variables',
+      Array.from({length: 30}, (_, index) => ({name: `VALUE_${String(index).padStart(2, '0')}`, value: `v${index}`})),
+    );
+    render(<GatewayValuesPage />);
+
+    const list = await screen.findByTestId('values-list-variable');
+    expect(await within(list).findByText('VALUE_00')).toBeInTheDocument();
+    expect(within(list).queryByText('VALUE_10')).not.toBeInTheDocument();
+    expect(within(list).getByText(/1.10 of 30/)).toBeInTheDocument();
+
+    await userEvent.click(within(list).getByRole('button', {name: /next page/i}));
+    expect(await within(list).findByText('VALUE_10')).toBeInTheDocument();
+    expect(within(list).queryByText('VALUE_00')).not.toBeInTheDocument();
+    expect(reads('variables')).toContainEqual({limit: '10', offset: '10'});
+    // No read asks for more than one page, and none walks the whole store.
+    expect(
+      reads('variables')
+        .filter((query) => !query.names)
+        .map((query) => query.offset),
+    ).not.toContain('20');
+  });
+
+  it('searches by the start of a name on the server, from the first page, once typing settles', async () => {
+    routes['GET /gateways/gw-dev/variables'] = page('variables', [
+      {name: 'APP_ORDERS_CLIENT_ID', value: 'orders'},
+      {name: 'LEFTOVER', value: 'x'},
+    ]);
+    render(<GatewayValuesPage />);
+
+    const list = await screen.findByTestId('values-list-variable');
+    expect(await within(list).findByText('LEFTOVER')).toBeInTheDocument();
+    await userEvent.type(within(list).getByLabelText('Search variables'), 'LEFT');
+
+    await waitFor(() => expect(within(list).queryByText('orders')).not.toBeInTheDocument());
+    expect(within(list).getByText('LEFTOVER')).toBeInTheDocument();
+    const searches = reads('variables').filter((query) => query.filter);
+    // The search waits for typing to settle, so it asks once rather than once a keystroke.
+    expect(searches).toEqual([{limit: '10', offset: '0', filter: 'name sw "LEFT"'}]);
+  });
+
+  it('does not ask the server for a search no name could match, and says why', async () => {
+    render(<GatewayValuesPage />);
+
+    const list = await screen.findByTestId('values-list-variable');
+    await within(list).findByText('LEFTOVER');
+    await userEvent.type(within(list).getByLabelText('Search variables'), '1-x');
+
+    expect(
+      await within(list).findByText(
+        'A name starts with a letter or an underscore and holds only letters, digits and underscores.',
+      ),
+    ).toBeInTheDocument();
+    expect(reads('variables').some((query) => query.filter)).toBe(false);
   });
 });
