@@ -152,7 +152,7 @@ func (s *DefaultResourceServerTestSuite) TestNoResourceWithPermissionScopeUsesCo
 	s.Equal(defaultRSTestIdentifier, claims.Aud)
 }
 
-func (s *DefaultResourceServerTestSuite) TestNoResourceWithoutDefaultAndNoScopesUsesClientIDAudience() {
+func (s *DefaultResourceServerTestSuite) TestNoResourceWithoutDefaultAndNoScopesUsesIssuerAudience() {
 	s.Require().NoError(testutils.PutDefaultResourceServer(""))
 
 	status, body := s.requestClientCredentials("", "")
@@ -163,7 +163,7 @@ func (s *DefaultResourceServerTestSuite) TestNoResourceWithoutDefaultAndNoScopes
 
 	claims, err := testutils.DecodeJWT(token)
 	s.Require().NoError(err)
-	s.Equal(defaultRSTestClientID, claims.Aud)
+	s.Equal(testutils.TestServerURL, claims.Aud)
 	s.NotContains(body, "scope")
 }
 
@@ -248,7 +248,7 @@ func (s *DefaultResourceServerTestSuite) requestClientCredentialsAs(
 }
 
 // A scopeless request that is not bound to a resource server uses the app's configured default
-// audience for the aud claim instead of the client_id.
+// audience for the aud claim instead of the server issuer ID.
 func (s *DefaultResourceServerTestSuite) TestScopelessWithConfiguredDefaultAudienceUsesIt() {
 	appID := s.createOAuthAppWithDefaultAudience()
 	defer func() { _ = testutils.DeleteApplication(appID) }()

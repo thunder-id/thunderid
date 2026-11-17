@@ -302,8 +302,10 @@ func (ts *AttributeCacheTestSuite) assertUserClaims(claims map[string]interface{
 // after a refresh_token grant, while the access token only references the cache via the aci claim.
 // It is mode-agnostic: the caller runs it with encryption on or off and expects the same result.
 func (ts *AttributeCacheTestSuite) assertRoundTrip() {
+	// No resource indicator is requested so the token's audience is the client's own default
+	// audience, which the UserInfo endpoint accepts.
 	tokens, err := testutils.ObtainAccessTokenWithPassword(clientID, redirectURI, "openid profile email",
-		testUsername, testPassword, false, clientSecret, resourceServerIdentifier)
+		testUsername, testPassword, false, clientSecret)
 	ts.Require().NoError(err, "failed to obtain tokens via authorization_code flow")
 	ts.Require().NotEmpty(tokens.AccessToken, "access token should not be empty")
 	ts.Require().NotEmpty(tokens.IDToken, "id token should not be empty")

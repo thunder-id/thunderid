@@ -38,6 +38,22 @@ var (
 		},
 	}
 
+	// errorAudienceNotAccepted is returned when the access token's audience does not match the
+	// client's own default audience, i.e. the token was minted for a different resource server via
+	// the 'resource' parameter and must not be redeemable at the UserInfo endpoint.
+	errorAudienceNotAccepted = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_token",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.audience_not_accepted",
+			DefaultValue: "Invalid access token",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.audience_not_accepted_description",
+			DefaultValue: "The access token audience is not accepted by the UserInfo endpoint",
+		},
+	}
+
 	// errorClientCredentialsNotSupported is returned when the access token was issued using client_credentials grant
 	errorClientCredentialsNotSupported = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

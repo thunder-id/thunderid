@@ -115,14 +115,15 @@ func (suite *OAuthClientTestSuite) TestOAuthClient_ResolveDefaultAudience() {
 		client := &OAuthClient{Token: &OAuthTokenConfig{AccessToken: &AccessTokenConfig{
 			DefaultAudience: "https://api.example.com",
 		}}}
-		assert.Equal(t, "https://api.example.com", client.ResolveDefaultAudience("client-123"))
+		assert.Equal(t, "https://api.example.com", client.ResolveDefaultAudience("https://issuer.example.com"))
 	})
-	suite.T().Run("falls back to client_id when default audience unset", func(t *testing.T) {
+	suite.T().Run("falls back to issuer when default audience unset", func(t *testing.T) {
 		client := &OAuthClient{Token: &OAuthTokenConfig{AccessToken: &AccessTokenConfig{}}}
-		assert.Equal(t, "client-123", client.ResolveDefaultAudience("client-123"))
+		assert.Equal(t, "https://issuer.example.com", client.ResolveDefaultAudience("https://issuer.example.com"))
 	})
-	suite.T().Run("falls back to client_id when token config unset", func(t *testing.T) {
-		assert.Equal(t, "client-123", (&OAuthClient{}).ResolveDefaultAudience("client-123"))
+	suite.T().Run("falls back to issuer when token config unset", func(t *testing.T) {
+		assert.Equal(t,
+			"https://issuer.example.com", (&OAuthClient{}).ResolveDefaultAudience("https://issuer.example.com"))
 	})
 }
 
