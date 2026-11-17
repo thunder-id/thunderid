@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -37,7 +38,7 @@ func Initialize(
 	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	return cibaSvc
 }
 
@@ -51,7 +52,8 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg engineconfig.ClientAssertionConfig,
+	jwtLeeway int64,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -62,7 +64,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg, jwtLeeway)
 	authHandler := clientAuthMiddleware(http.HandlerFunc(cibaHandler.HandleBackchannelAuthRequest))
 
 	authPattern, wrappedAuthHandler := middleware.WithCORS(

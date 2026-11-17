@@ -231,6 +231,14 @@ type CIBAConfig struct {
 	IDTokenHintMaxAgeDays int `yaml:"id_token_hint_max_age_days" json:"id_token_hint_max_age_days"`
 }
 
+// ClientAssertionConfig holds the private_key_jwt client assertion validation policy.
+type ClientAssertionConfig struct {
+	// MaxLifetime caps how far (seconds) 'exp' may exceed 'iat' (or now, if 'iat' is absent).
+	MaxLifetime int64 `yaml:"max_lifetime" json:"max_lifetime"`
+	// MaxIatAge caps how far (seconds) 'iat' may be in the past, when present.
+	MaxIatAge int64 `yaml:"max_iat_age" json:"max_iat_age"`
+}
+
 // OAuthConfig holds the OAuth configuration details.
 type OAuthConfig struct {
 	RefreshToken         RefreshTokenConfig         `yaml:"refresh_token"               json:"refresh_token"`
@@ -241,6 +249,7 @@ type OAuthConfig struct {
 	DPoP                 DPoPConfig                 `yaml:"dpop"                        json:"dpop"`
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`
 	CIBA                 CIBAConfig                 `yaml:"ciba"                        json:"ciba"`
+	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
 	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.

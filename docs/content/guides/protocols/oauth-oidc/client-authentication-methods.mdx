@@ -70,8 +70,8 @@ The client builds and signs a JWT with these claims:
 | `sub` | The `client_id` |
 | `aud` | The token endpoint URL (`https://{{productSlug}}.example.com/oauth2/token`) |
 | `jti` | A unique identifier; <ProductName /> rejects replays |
-| `exp` | A short expiry (seconds, not minutes) |
-| `iat` | Issued-at time |
+| `exp` | Required. Must not be more than [`oauth.client_assertion.max_lifetime`](../../../../deployment/configuration#oauth-configuration) seconds after `iat`, or after the current time when `iat` is absent |
+| `iat` | Optional. When present, must not be more than [`jwt.leeway`](../../../../deployment/configuration#jwt-configuration) seconds in the future or more than [`oauth.client_assertion.max_iat_age`](../../../../deployment/configuration#oauth-configuration) seconds in the past |
 
 ### Example Request
 

@@ -243,6 +243,9 @@ oauth:
   dcr:
     enabled: {{ .Values.configuration.oauth.dcr.enabled }}
     insecure: {{ .Values.configuration.oauth.dcr.insecure }}
+  client_assertion:
+    max_lifetime: {{ .Values.configuration.oauth.clientAssertion.maxLifetime }}
+    max_iat_age: {{ .Values.configuration.oauth.clientAssertion.maxIatAge }}
   send_server_errors_to_client: {{ .Values.configuration.oauth.sendServerErrorsToClient }}
   allowed_auth_methods:
   {{- range .Values.configuration.oauth.allowedAuthMethods }}

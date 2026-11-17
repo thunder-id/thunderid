@@ -415,6 +415,10 @@ configuration:
     dcr:
       enabled: true
       insecure: false
+    # Validation policy for private_key_jwt client assertions, in seconds.
+    clientAssertion:
+      maxLifetime: 300
+      maxIatAge: 60
     # Report an authentication flow failure that maps to the OAuth server_error code to the client.
     sendServerErrorsToClient: false
     # Client token endpoint auth methods allowed during registration.
