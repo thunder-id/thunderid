@@ -449,6 +449,8 @@ export default function AgentEditPage(): JSX.Element {
           agent={agent}
           oauth2Config={oauth2Config}
           onGoToAdvanced={() => handleNavigateToTab('advanced')}
+          onGoToAccess={() => handleNavigateToTab('access')}
+          onGoToFlows={hasOAuth ? () => handleNavigateToTab('flows') : undefined}
         />
       ),
     },

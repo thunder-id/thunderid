@@ -138,7 +138,33 @@ vi.mock('../../api/useUpdateAgent', () => ({
 
 // Mock heavy child components — focus on page wiring.
 vi.mock('../../components/edit-agent/overview/AgentOverview', () => ({
-  default: () => <div data-testid="agent-overview" />,
+  default: ({
+    onGoToAdvanced = undefined,
+    onGoToAccess = undefined,
+    onGoToFlows = undefined,
+  }: {
+    onGoToAdvanced?: () => void;
+    onGoToAccess?: () => void;
+    onGoToFlows?: () => void;
+  }) => (
+    <div data-testid="agent-overview">
+      {onGoToAdvanced && (
+        <button type="button" onClick={onGoToAdvanced}>
+          Go to advanced
+        </button>
+      )}
+      {onGoToAccess && (
+        <button type="button" onClick={onGoToAccess}>
+          Go to access
+        </button>
+      )}
+      {onGoToFlows && (
+        <button type="button" onClick={onGoToFlows}>
+          Go to flows
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('../../components/edit-agent/attributes/EditAgentAttributes', () => ({
@@ -472,6 +498,38 @@ describe('AgentEditPage', () => {
 
       await user.click(screen.getByText('Enter a valid external owner'));
       expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+    });
+
+    it('opens the tab the Overview leads to', async () => {
+      mockUseLocation.mockReturnValue({state: null, search: ''});
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('button', {name: 'Go to access'}));
+      expect(screen.getByRole('tab', {name: /Access/i})).toHaveAttribute('aria-selected', 'true');
+
+      await user.click(screen.getByRole('tab', {name: 'Overview'}));
+      await user.click(screen.getByRole('button', {name: 'Go to flows'}));
+      expect(screen.getByRole('tab', {name: /Flows/i})).toHaveAttribute('aria-selected', 'true');
+
+      await user.click(screen.getByRole('tab', {name: 'Overview'}));
+      await user.click(screen.getByRole('button', {name: 'Go to advanced'}));
+      expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('gives the Overview no way to a Flows tab the agent does not have', () => {
+      mockUseLocation.mockReturnValue({state: null, search: ''});
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, inboundAuthConfig: []},
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+      render(<AgentEditPage />);
+
+      expect(screen.queryByRole('tab', {name: /Flows/i})).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Go to access'})).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Go to flows'})).not.toBeInTheDocument();
     });
 
     it('leaves the tab a link names once another is chosen', async () => {

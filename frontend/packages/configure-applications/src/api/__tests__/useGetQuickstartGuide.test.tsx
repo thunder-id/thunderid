@@ -36,6 +36,28 @@ describe('useGetQuickstartGuide', () => {
     });
   });
 
+  it('returns the steps for the choices given, of a page written for several', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () =>
+        Promise.resolve(
+          '## Register an Agent\n\nAdd it.\n\n## Run the Agent\n\n<!-- variant mode=own -->\n\nRun it alone.\n\n<!-- /variant -->\n\n<!-- variant mode=obo -->\n\nRun it for a user.\n\n<!-- /variant -->',
+        ),
+    });
+
+    const {result} = renderHook(() =>
+      useGetQuickstartGuide('https://example.com/docs/langchain/', undefined, {mode: 'obo'}),
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(result.current.data?.steps).toEqual([
+      {title: 'Run the Agent', blocks: [{type: 'paragraph', text: 'Run it for a user.'}]},
+    ]);
+  });
+
   it('returns null for a page that is not a quickstart', async () => {
     mockFetch.mockResolvedValue({ok: true, status: 200, text: () => Promise.resolve('<!doctype html>')});
 
