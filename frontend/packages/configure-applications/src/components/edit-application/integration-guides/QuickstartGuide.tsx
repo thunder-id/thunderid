@@ -20,7 +20,7 @@ import {
   Typography,
   Paper,
 } from '@wso2/oxygen-ui';
-import {Download} from '@wso2/oxygen-ui-icons-react';
+import {Check, Download} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import GuideCode from './GuideCode';
@@ -93,6 +93,8 @@ interface GuideRenderContext {
   /** The code group option (e.g. a package manager) last picked, applied to every group. */
   codeOption: string | undefined;
   onCodeOptionChange: (label: string) => void;
+  /** Whether a code span naming a placeholder that has been filled in shows as done, as in an alert. */
+  marksFilledPlaceholders?: boolean;
 }
 
 const ALERT_SEVERITY: Record<QuickstartGuideAlertKind, 'info' | 'success' | 'warning' | 'error'> = {
@@ -104,9 +106,56 @@ const ALERT_SEVERITY: Record<QuickstartGuideAlertKind, 'info' | 'success' | 'war
 };
 
 const INLINE_MARKDOWN = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:[^)\s]+)\)/g;
+const CODE_SPAN = /`([^`]+)`/g;
+// How the docs write a value for the reader to supply, such as `<your-client-secret>`, including ones the
+// console has no value for.
+const PLACEHOLDER = /^<[\w-]+>$/;
 
-/** Renders the inline Markdown of a guide: code spans, bold text, and links. */
-function GuideText({text, onOpenLink}: {text: string; onOpenLink: (url: string) => void}): ReactNode {
+/** The value the guide has filled in for a placeholder, if any. Names inherited from Object, such as `constructor`, have none. */
+function filledValue(codeValues: Record<string, string | undefined> | undefined, code: string): string | undefined {
+  return codeValues && Object.hasOwn(codeValues, code) ? codeValues[code] : undefined;
+}
+
+/** The placeholders that the given text names in code spans, such as `<your-client-id>`. */
+function textPlaceholders(text: string, codeValues: Record<string, string | undefined>): string[] {
+  return Array.from(text.matchAll(CODE_SPAN), (match) => match[1]).filter(
+    (code) => Object.hasOwn(codeValues, code) || PLACEHOLDER.test(code),
+  );
+}
+
+/** The placeholders that text in the given blocks names in code spans, such as `<your-client-id>`. */
+function namedPlaceholders(blocks: QuickstartGuideBlock[], codeValues: Record<string, string | undefined>): string[] {
+  return blocks.flatMap((block) => {
+    switch (block.type) {
+      case 'paragraph':
+      case 'heading':
+        return textPlaceholders(block.text, codeValues);
+      case 'list':
+        return block.items.flatMap((item) => namedPlaceholders(item, codeValues));
+      case 'alert':
+        return namedPlaceholders(block.blocks, codeValues);
+      case 'table':
+        return [...block.header, ...block.rows.flat()].flatMap((cell) => textPlaceholders(cell, codeValues));
+      default:
+        return [];
+    }
+  });
+}
+
+/**
+ * Renders the inline Markdown of a guide: code spans, bold text, and links. Given the filled-in values, a code
+ * span naming a placeholder that has one shows as done.
+ */
+function GuideText({
+  text,
+  onOpenLink,
+  filledValues = undefined,
+}: {
+  text: string;
+  onOpenLink: (url: string) => void;
+  filledValues?: Record<string, string | undefined>;
+}): ReactNode {
+  const {t} = useTranslation();
   const nodes: ReactNode[] = [];
   let position = 0;
 
@@ -115,7 +164,31 @@ function GuideText({text, onOpenLink}: {text: string; onOpenLink: (url: string) 
     if (match.index > position) {
       nodes.push(text.slice(position, match.index));
     }
-    if (code !== undefined) {
+    if (code !== undefined && filledValue(filledValues, code)) {
+      nodes.push(
+        <Box
+          key={match.index}
+          component="span"
+          sx={{display: 'inline-flex', alignItems: 'center', gap: 0.25, verticalAlign: 'bottom'}}
+        >
+          <Check size={14} aria-label={t('applications:edit.overview.guide.placeholderFilled', 'Filled in')} />
+          <Box
+            component="code"
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: '0.9em',
+              bgcolor: 'action.hover',
+              borderRadius: 0.5,
+              px: 0.5,
+              textDecoration: 'line-through',
+              opacity: 0.7,
+            }}
+          >
+            {code}
+          </Box>
+        </Box>,
+      );
+    } else if (code !== undefined) {
       nodes.push(
         <Box
           key={match.index}
@@ -161,6 +234,7 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
   return (
     <Stack spacing={1.5} sx={{minWidth: 0}}>
       {blocks.map((block, index) => {
+        const filledValues = context.marksFilledPlaceholders ? context.codeValues : undefined;
         // Blocks come from a parsed document that never reorders, so the position is a stable key.
         const key = `${block.type}-${index}`;
 
@@ -168,13 +242,13 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
           case 'paragraph':
             return (
               <Typography key={key} variant="body2">
-                <GuideText text={block.text} onOpenLink={context.onOpenLink} />
+                <GuideText text={block.text} onOpenLink={context.onOpenLink} filledValues={filledValues} />
               </Typography>
             );
           case 'heading':
             return (
               <Typography key={key} variant="subtitle2" component="h4">
-                <GuideText text={block.text} onOpenLink={context.onOpenLink} />
+                <GuideText text={block.text} onOpenLink={context.onOpenLink} filledValues={filledValues} />
               </Typography>
             );
           case 'code':
@@ -209,13 +283,22 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
                 ))}
               </Stack>
             );
-          case 'alert':
+          case 'alert': {
+            // An alert that only asks for placeholders the guide has already filled in has nothing left to ask.
+            const placeholders = namedPlaceholders(block.blocks, context.codeValues);
+            if (
+              placeholders.length > 0 &&
+              placeholders.every((placeholder) => filledValue(context.codeValues, placeholder))
+            ) {
+              return null;
+            }
             return (
               <Alert key={key} severity={ALERT_SEVERITY[block.kind]} sx={{'& .MuiAlert-message': {minWidth: 0}}}>
                 {block.title && <AlertTitle>{block.title}</AlertTitle>}
-                <GuideBlocks blocks={block.blocks} context={context} />
+                <GuideBlocks blocks={block.blocks} context={{...context, marksFilledPlaceholders: true}} />
               </Alert>
             );
+          }
           default:
             return (
               <TableContainer key={key}>
@@ -224,7 +307,7 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
                     <TableRow>
                       {block.header.map((cell) => (
                         <TableCell key={cell}>
-                          <GuideText text={cell} onOpenLink={context.onOpenLink} />
+                          <GuideText text={cell} onOpenLink={context.onOpenLink} filledValues={filledValues} />
                         </TableCell>
                       ))}
                     </TableRow>
@@ -235,7 +318,7 @@ function GuideBlocks({blocks, context}: {blocks: QuickstartGuideBlock[]; context
                         {row.map((cell, cellIndex) => (
                           // eslint-disable-next-line react/no-array-index-key
                           <TableCell key={cellIndex}>
-                            <GuideText text={cell} onOpenLink={context.onOpenLink} />
+                            <GuideText text={cell} onOpenLink={context.onOpenLink} filledValues={filledValues} />
                           </TableCell>
                         ))}
                       </TableRow>
