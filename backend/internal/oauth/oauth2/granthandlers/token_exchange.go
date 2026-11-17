@@ -308,6 +308,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
 		TokenFamilyID:     exchangedTokenFamilyID,
+		SourceIDP:         subjectClaims.SourceIDP,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to generate token", log.Error(err))

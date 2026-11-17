@@ -38,6 +38,10 @@ const (
 	// claimAccessTokenSubject carries the end user behind a token minted for a delegated call. When
 	// present it, not sub, is the subject the deny list is evaluated against.
 	claimAccessTokenSubject = "access_token_sub"
+
+	// claimSourceIDP names the external identity provider whose subject a self-issued access token was
+	// issued for. Its sub is that provider's identifier, not an account of this deployment.
+	claimSourceIDP = "idp"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -98,6 +102,14 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 		return nil, errInvalidToken
 	}
 
+	// A self-issued token for an external identity provider's subject names no account of this
+	// deployment, so it does not authenticate here.
+	issuer, _ := attributes[claimIssuer].(string)
+	selfIssued := issuer == config.GetServerRuntime().Config.JWT.Issuer
+	if _, external := attributes[claimSourceIDP]; selfIssued && external {
+		return nil, errInvalidToken
+	}
+
 	// Step 4: Extract subject information and build SecurityContext
 	subject := ""
 	if sub, ok := attributes["sub"].(string); ok && sub != "" {
@@ -116,7 +128,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	securityCtx.tokenFamilyID = extractAttribute(attributes, claimTokenFamilyID)
 	// Subject-dimension revocation is only meaningful for subjects this deployment issued, so a
 	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
-	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
+	if selfIssued {
 		securityCtx.revocationSubject = subject
 		if accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string); accessTokenSubject != "" {
 			securityCtx.revocationSubject = accessTokenSubject
