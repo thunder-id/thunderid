@@ -137,11 +137,9 @@ type RefreshTokenClaims struct {
 // MappedAuthorization is server-resolved authorization context for a subject token's issuing
 // connection, not claims from the token itself. Zero value when self-issued or unmapped.
 type MappedAuthorization struct {
-	// Targets are the resolved roles, groups, and permissions. Empty if unconfigured or unmatched.
+	// Targets are the resolved roles, groups, and permissions. Empty if unconfigured or unmatched, and
+	// then an external token is granted no permission scopes.
 	Targets []providers.AuthorizationTarget
-	// Configured distinguishes "configured but unmatched" (grants nothing) from "no mapping at all"
-	// (falls back to the token's own scope claim) — both leave Targets empty.
-	Configured bool
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).

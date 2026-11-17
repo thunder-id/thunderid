@@ -258,9 +258,12 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		}
 	}
 
+	// An external subject token gets permission scopes only from its connection's authorization
+	// mapping; without one, none.
+	externalSubject := subjectClaims.Iss != h.cfg.JWT.Issuer
+
 	// Determine final scopes
-	finalScopes, errResp := h.getScopes(
-		tokenRequest, subjectClaims.Scopes, subjectClaims.Authorization.Configured)
+	finalScopes, errResp := h.getScopes(tokenRequest, subjectClaims.Scopes, externalSubject)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -293,7 +296,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 		permissionScopes, errResp = tokenservice.ApplyMappedAuthorization(
 			ctx, h.authzService, h.actorProvider, subjectClaims.Authorization.Targets, targetRS.ID,
-			permissionScopes, subjectClaims.Authorization.Configured, logger)
+			permissionScopes, externalSubject, logger)
 		if errResp != nil {
 			return nil, errResp
 		}
@@ -481,9 +484,10 @@ func (h *tokenExchangeGrantHandler) validateAccessTokenType(
 	return nil
 }
 
-// getScopes validates and determines the scopes for the new token. When authorityIsMapping, the
-// subject token's own scope claim is skipped; requested scopes are only candidates for
-// ApplyMappedAuthorization to decide, with no fallback if the mapping resolves nothing.
+// getScopes validates and determines the scopes for the new token. When authorityIsMapping (an external
+// subject token), the subject token's own scope claim is skipped; requested scopes are only candidates
+// for ApplyMappedAuthorization to decide, with no fallback when the mapping resolves nothing or the
+// connection has none.
 func (h *tokenExchangeGrantHandler) getScopes(
 	tokenRequest *model.TokenRequest,
 	subjectScopes []string,
@@ -507,8 +511,8 @@ func (h *tokenExchangeGrantHandler) getScopes(
 		return requestedScopes, nil
 	}
 
-	// If subject token has no scopes, reject requests asking for scopes: with no mapping configured,
-	// the subject token's own scope claim is the only possible authority.
+	// If subject token has no scopes, reject requests asking for scopes: for a self-issued subject
+	// token, its own scope claim is the only authority.
 	if len(subjectScopes) == 0 {
 		return nil, &model.ErrorResponse{
 			Error: constants.ErrorInvalidScope,

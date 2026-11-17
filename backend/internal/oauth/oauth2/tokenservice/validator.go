@@ -493,8 +493,7 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 
 // resolveMappedAuthorization resolves both AuthorizationRuleMapping (explicit value rules) and
 // AuthorizationDirectMapping (direct name-based lookup) for idpDTO against claims, unioning their
-// targets. The connection's authorization mapping is configured, and therefore the sole authority
-// for scopes, when either list is non-empty.
+// targets. The mapping is the only authority for an external token's permission scopes.
 func (tv *tokenValidator) resolveMappedAuthorization(
 	ctx context.Context, idpDTO *providers.IDPDTO, claims map[string]interface{},
 ) (MappedAuthorization, error) {
@@ -512,7 +511,7 @@ func (tv *tokenValidator) resolveMappedAuthorization(
 		return MappedAuthorization{}, fmt.Errorf("%s", svcErr.Error.DefaultValue)
 	}
 
-	return MappedAuthorization{Targets: resolved.Targets, Configured: resolved.Configured}, nil
+	return MappedAuthorization{Targets: resolved.Targets}, nil
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.

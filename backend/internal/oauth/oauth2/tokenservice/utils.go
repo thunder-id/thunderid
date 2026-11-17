@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
@@ -723,7 +723,8 @@ func FilterAuthorizedScopes(scopes []string, evaluations []providers.AccessEvalu
 }
 
 // ApplyMappedAuthorization grants permission scopes from mapped permissions and mapped roles/groups
-// (via the RBAC engine, no local entity id) when the mapping is the sole authority. A no-op otherwise.
+// (via the RBAC engine, no local entity id) when the mapping is the sole authority, as it is for every
+// external token: no targets grant nothing. A no-op otherwise.
 func ApplyMappedAuthorization(
 	ctx context.Context,
 	authzService providers.AuthorizationProvider,
@@ -737,6 +738,13 @@ func ApplyMappedAuthorization(
 	if !authorityIsMapping || len(permissionScopes) == 0 {
 		return permissionScopes, nil
 	}
+
+	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
+	granted := idp.UnionMappedPermissionTargets(nil, permissionScopes, mappedPermissions, resourceServerID)
+	if len(roleIDs) == 0 && len(groupIDs) == 0 {
+		return granted, nil
+	}
+
 	if authzService == nil {
 		logger.Error(ctx, "Authorization provider unavailable while mapping is the sole authority for scopes")
 		return nil, &model.ErrorResponse{
@@ -744,8 +752,6 @@ func ApplyMappedAuthorization(
 			ErrorDescription: "Failed to generate token",
 		}
 	}
-
-	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
 	groupIDs, err := expandMappedGroupAncestors(actorProvider, groupIDs)
 	if err != nil {
 		logger.Error(ctx, "Failed to resolve ancestors of a mapped group", log.Error(err))
@@ -753,12 +759,6 @@ func ApplyMappedAuthorization(
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to generate token",
 		}
-	}
-
-	granted := idp.UnionMappedPermissionTargets(nil, permissionScopes, mappedPermissions, resourceServerID)
-
-	if len(roleIDs) == 0 && len(groupIDs) == 0 {
-		return granted, nil
 	}
 	pending := make([]string, 0, len(permissionScopes))
 	for _, scope := range permissionScopes {
