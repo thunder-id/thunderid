@@ -27,10 +27,11 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {ChevronDown, ChevronRight, Info, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {ArrowDown, ArrowUp, ChevronDown, ChevronRight, Info, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, useRef, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import AttributeLibraryPanel from './AttributeLibraryPanel';
+import useMoveRows from '../../hooks/useMoveRows';
 import type {LibraryAttribute, SchemaPropertyInput, UIPropertyType} from '../../types/user-types';
 import {invalidateI18nCache} from '../../utils/invalidateI18nCache';
 import {getMissingPrimaryContactTypes} from '../../utils/primaryContacts';
@@ -83,7 +84,7 @@ export default function SchemaPropertyEditor({
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const {rowRefs, moveRow: handleMoveProperty} = useMoveRows(properties, onPropertiesChange);
   const pendingScrollId = useRef<string | null>(null);
   const [pendingCredentialRemoveId, setPendingCredentialRemoveId] = useState<string | null>(null);
 
@@ -97,7 +98,7 @@ export default function SchemaPropertyEditor({
     if (!pendingScrollId.current) return;
     rowRefs.current[pendingScrollId.current]?.scrollIntoView({behavior: 'auto', block: 'center'});
     pendingScrollId.current = null;
-  }, [properties]);
+  }, [properties, rowRefs]);
 
   const toggleExpanded = (id: string): void => {
     setExpandedIds((prev) => ({...prev, [id]: !prev[id]}));
@@ -199,7 +200,7 @@ export default function SchemaPropertyEditor({
       <AttributeLibraryPanel existingNames={existingNames} onAdd={handleAddAttribute} disabled={disabled} />
 
       <Stack direction="column" spacing={3}>
-        {properties.map((property) => (
+        {properties.map((property, index) => (
           <Paper
             key={property.id}
             ref={(el: HTMLDivElement | null) => {
@@ -213,61 +214,88 @@ export default function SchemaPropertyEditor({
               '&:hover': {borderColor: 'primary.main'},
             }}
           >
-            {/* Row header - click to expand the configuration */}
-            <Box
-              role="button"
-              tabIndex={0}
-              aria-label={
-                property.displayName
-                  ? resolveDisplayName(property.displayName)
-                  : property.name || t('userTypes:newAttribute', 'New property')
-              }
-              aria-expanded={expandedIds[property.id] ?? false}
-              onClick={() => toggleExpanded(property.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  toggleExpanded(property.id);
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5}}>
+              {/* Row header - click to expand the configuration */}
+              <Box
+                role="button"
+                tabIndex={0}
+                aria-label={
+                  property.displayName
+                    ? resolveDisplayName(property.displayName)
+                    : property.name || t('userTypes:newAttribute', 'New property')
                 }
-              }}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 2,
-                py: 1.5,
-                cursor: 'pointer',
-                userSelect: 'none',
-              }}
-            >
-              {expandedIds[property.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-              <Typography
-                variant="subtitle2"
-                sx={{fontWeight: 600, color: property.name ? 'text.primary' : 'text.secondary'}}
+                aria-expanded={expandedIds[property.id] ?? false}
+                onClick={() => toggleExpanded(property.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleExpanded(property.id);
+                  }
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  flexGrow: 1,
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
               >
-                {property.displayName
-                  ? resolveDisplayName(property.displayName)
-                  : property.name || t('userTypes:newAttribute', 'New property')}
-              </Typography>
-              {property.required && (
-                <Chip label={t('common:form.required', 'Required')} size="small" variant="outlined" />
+                {expandedIds[property.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                <Typography
+                  variant="subtitle2"
+                  sx={{fontWeight: 600, color: property.name ? 'text.primary' : 'text.secondary'}}
+                >
+                  {property.displayName
+                    ? resolveDisplayName(property.displayName)
+                    : property.name || t('userTypes:newAttribute', 'New property')}
+                </Typography>
+                {property.required && (
+                  <Chip label={t('common:form.required', 'Required')} size="small" variant="outlined" />
+                )}
+                {property.unique && <Chip label={t('userTypes:unique', 'Unique')} size="small" variant="outlined" />}
+                {property.primary && <Chip label={t('userTypes:primary', 'Primary')} size="small" variant="outlined" />}
+                {property.credential && (
+                  <Chip label={t('userTypes:credential', 'Credential')} size="small" variant="outlined" />
+                )}
+              </Box>
+              {!disabled && (
+                <>
+                  <Tooltip title={t('userTypes:moveUp', 'Move up')}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={t('userTypes:moveUp', 'Move up')}
+                        data-move="up"
+                        disabled={index === 0}
+                        onClick={() => handleMoveProperty(index, -1)}
+                      >
+                        <ArrowUp size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={t('userTypes:moveDown', 'Move down')}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={t('userTypes:moveDown', 'Move down')}
+                        data-move="down"
+                        disabled={index === properties.length - 1}
+                        onClick={() => handleMoveProperty(index, 1)}
+                      >
+                        <ArrowDown size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </>
               )}
-              {property.unique && <Chip label={t('userTypes:unique', 'Unique')} size="small" variant="outlined" />}
-              {property.primary && <Chip label={t('userTypes:primary', 'Primary')} size="small" variant="outlined" />}
-              {property.credential && (
-                <Chip label={t('userTypes:credential', 'Credential')} size="small" variant="outlined" />
-              )}
-              <Box sx={{flexGrow: 1}} />
               {!disabled && (
                 <Tooltip title={t('userTypes:removeProperty', 'Remove property')}>
                   <IconButton
                     size="small"
                     color="error"
                     aria-label={t('userTypes:removeProperty', 'Remove property')}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveProperty(property.id);
-                    }}
+                    onClick={() => handleRemoveProperty(property.id)}
                   >
                     <Trash2 size={16} />
                   </IconButton>
@@ -342,7 +370,7 @@ export default function SchemaPropertyEditor({
                 />
 
                 {/* Checkbox options with info tooltips */}
-                <Box sx={{display: 'flex', gap: 3}}>
+                <Box sx={{display: 'flex', flexWrap: 'wrap', columnGap: 3}}>
                   <Tooltip
                     title={t('userTypes:tooltips.required', 'Users must provide a value for this field')}
                     placement="top"
@@ -364,6 +392,32 @@ export default function SchemaPropertyEditor({
                       }
                     />
                   </Tooltip>
+                  {!property.required && (
+                    <Tooltip
+                      title={t(
+                        'userTypes:tooltips.promptOnCreate',
+                        'Prompt for this optional field when an account is created: added by an admin, accepted from an invite, or signed up',
+                      )}
+                      placement="top"
+                      arrow
+                    >
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={!property.hiddenOnCreate}
+                            onChange={(e) => handlePropertyChange(property.id, 'hiddenOnCreate', !e.target.checked)}
+                            disabled={disabled}
+                          />
+                        }
+                        label={
+                          <Stack direction="row" alignItems="center" spacing={0.5} sx={{whiteSpace: 'nowrap'}}>
+                            <span>{t('userTypes:promptOnCreate', 'Ask when created')}</span>
+                            <Info size={14} color="inherit" />
+                          </Stack>
+                        }
+                      />
+                    </Tooltip>
+                  )}
                   {supportsUnique(property.type) && (
                     <Tooltip
                       title={t('userTypes:tooltips.unique', 'Each user must have a distinct value for this field')}

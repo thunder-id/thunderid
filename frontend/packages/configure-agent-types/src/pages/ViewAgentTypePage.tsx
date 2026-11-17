@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
-import {getBreakingSchemaChanges} from '@thunderid/configure-user-types';
+import {convertPropertiesToSchema, getBreakingSchemaChanges} from '@thunderid/configure-user-types';
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -10,6 +10,8 @@ import {
   getContactTypesMissingRegex,
   getErrorMessage,
   isEqualIgnoringEmpty,
+  isHiddenOnCreate,
+  orderAttributes,
   resolveAttributeRegex,
 } from '@thunderid/utils';
 import {
@@ -40,7 +42,6 @@ import AgentTypeDeleteDialog from '../components/edit-agent-type/AgentTypeDelete
 import EditSchemaSettings from '../components/edit-agent-type/schema-settings/EditSchemaSettings';
 import useAgentTypeRoutes from '../hooks/useAgentTypeRoutes';
 import type {AgentTypeDefinition, SchemaPropertyInput} from '../models/property-definition';
-import convertPropertiesToSchema from '../utils/convertPropertiesToSchema';
 import isDisplayAttributeAvailable from '../utils/isDisplayAttributeAvailable';
 
 interface TabPanelProps {
@@ -64,14 +65,12 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX
 }
 
 /**
- * Convert API schema to editable property inputs, with credentials last since the server does not keep the order.
+ * Convert API schema to editable property inputs, in the order the add agent form uses.
  */
 function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyInput[] {
-  const isCredential = (value: AgentTypeDefinition[string]): boolean =>
-    'credential' in value && value.credential === true;
-  const entries = Object.entries(schema).sort(([, a], [, b]) => Number(isCredential(a)) - Number(isCredential(b)));
-  return entries.map(([key, value], index) => ({
-    id: `${index}`,
+  // Rows are keyed by name, so an expanded row stays with its attribute after a reorder is saved.
+  return orderAttributes(schema).map(([key, value]) => ({
+    id: `attr-${key}`,
     name: key,
     displayName: 'displayName' in value ? (value.displayName ?? '') : '',
     type:
@@ -83,6 +82,7 @@ function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyI
     credential: 'credential' in value ? (value.credential ?? false) : false,
     enum: 'enum' in value ? (value.enum ?? []) : [],
     regex: resolveAttributeRegex(value.type, 'regex' in value ? value.regex : undefined),
+    hiddenOnCreate: isHiddenOnCreate(value),
     ...('items' in value ? {items: value.items} : {}),
     ...('properties' in value ? {properties: value.properties} : {}),
   }));
@@ -219,6 +219,17 @@ export default function ViewAgentTypePage(): JSX.Element {
         t('agentTypes:validationErrors.duplicateProperties', {
           duplicates: [...new Set(duplicates)].join(', '),
           defaultValue: 'Duplicate property names found: {{duplicates}}',
+        }),
+      );
+      return;
+    }
+
+    const emptyEnums = effectiveProperties.filter((p) => p.name.trim() && p.type === 'enum' && p.enum.length === 0);
+    if (emptyEnums.length > 0) {
+      setValidationError(
+        t('agentTypes:validationErrors.enumValuesRequired', {
+          properties: emptyEnums.map((p) => p.name.trim()).join(', '),
+          defaultValue: 'Add at least one allowed value to: {{properties}}',
         }),
       );
       return;

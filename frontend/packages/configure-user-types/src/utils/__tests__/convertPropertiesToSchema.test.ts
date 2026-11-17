@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, it, expect} from 'vitest';
-import type {SchemaPropertyInput} from '../../models/property-definition';
+import type {SchemaPropertyInput} from '../../types/user-types';
 import convertPropertiesToSchema from '../convertPropertiesToSchema';
 
 const property = (overrides: Partial<SchemaPropertyInput>): SchemaPropertyInput => ({
@@ -43,7 +43,7 @@ describe('convertPropertiesToSchema', () => {
     });
   });
 
-  it('should keep the regex for strings and always for contact types', () => {
+  it('should keep the regex for strings and always for contact types, and save a changed order', () => {
     expect(
       convertPropertiesToSchema([
         property({name: 'code', regex: '^[A-Z]+$'}),
@@ -51,9 +51,9 @@ describe('convertPropertiesToSchema', () => {
         property({name: 'mail', type: 'email', regex: ''}),
       ]),
     ).toEqual({
-      code: {type: 'string', required: false, regex: '^[A-Z]+$'},
-      plain: {type: 'string', required: false},
-      mail: {type: 'email', required: false, regex: ''},
+      code: {type: 'string', required: false, display: {order: 0}, regex: '^[A-Z]+$'},
+      plain: {type: 'string', required: false, display: {order: 1}},
+      mail: {type: 'email', required: false, display: {order: 2}, regex: ''},
     });
   });
 
@@ -70,8 +70,34 @@ describe('convertPropertiesToSchema', () => {
         property({name: 'meta', type: 'object', properties: {team: {type: 'string'}}}),
       ]),
     ).toEqual({
-      tags: {type: 'array', required: false, items: {type: 'string'}},
-      meta: {type: 'object', required: false, properties: {team: {type: 'string'}}},
+      tags: {type: 'array', required: false, display: {order: 0}, items: {type: 'string'}},
+      meta: {type: 'object', required: false, display: {order: 1}, properties: {team: {type: 'string'}}},
+    });
+  });
+
+  it('should leave out the display order while the properties keep the default order', () => {
+    expect(
+      convertPropertiesToSchema([
+        property({name: 'label', required: true}),
+        property({name: 'model', hiddenOnCreate: true}),
+        property({name: 'apiKey', credential: true}),
+      ]),
+    ).toEqual({
+      label: {type: 'string', required: true},
+      model: {type: 'string', required: false, display: {onCreate: {hidden: true}}},
+      apiKey: {type: 'string', required: false, credential: true},
+    });
+  });
+
+  it('should save an optional property that is not asked for on create', () => {
+    expect(
+      convertPropertiesToSchema([
+        property({name: 'model', hiddenOnCreate: true}),
+        property({name: 'label', required: true, hiddenOnCreate: true}),
+      ]),
+    ).toEqual({
+      model: {type: 'string', required: false, display: {order: 0, onCreate: {hidden: true}}},
+      label: {type: 'string', required: true, display: {order: 1}},
     });
   });
 });

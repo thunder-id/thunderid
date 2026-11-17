@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {I18nTextInput} from '@thunderid/components';
+import {useMoveRows} from '@thunderid/configure-user-types';
 import {isContactAttributeType, resolveAttributeRegex} from '@thunderid/utils';
 import {
   Box,
@@ -25,7 +26,7 @@ import {
   DialogContentText,
   DialogActions,
 } from '@wso2/oxygen-ui';
-import {Trash2, Plus, Info} from '@wso2/oxygen-ui-icons-react';
+import {ArrowDown, ArrowUp, Trash2, Plus, Info} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SchemaPropertyInput, PropertyType} from '../../../models/property-definition';
@@ -56,6 +57,7 @@ export default function EditSchemaSettings({
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
+  const {rowRefs, moveRow: handleMoveProperty} = useMoveRows(properties, onPropertiesChange);
   const [credentialRemoveDialogOpen, setCredentialRemoveDialogOpen] = useState(false);
   const [pendingCredentialRemoveId, setPendingCredentialRemoveId] = useState<string | null>(null);
 
@@ -134,9 +136,12 @@ export default function EditSchemaSettings({
 
   return (
     <Box>
-      {properties.map((property) => (
+      {properties.map((property, index) => (
         <Paper
           key={property.id}
+          ref={(el: HTMLDivElement | null) => {
+            rowRefs.current[property.id] = el;
+          }}
           variant="outlined"
           sx={{
             position: 'relative',
@@ -148,27 +153,48 @@ export default function EditSchemaSettings({
             '&:hover .property-delete-btn': {opacity: 1},
           }}
         >
-          {/* Remove button - visible on hover and on keyboard focus */}
+          {/* Move buttons, and the remove button, visible on hover and on keyboard focus */}
           {!disabled && properties.length > 1 && (
-            <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
-              <IconButton
-                className="property-delete-btn"
-                size="small"
-                color="error"
-                aria-label={t('agentTypes:removeProperty', 'Remove property')}
-                onClick={() => handleRemoveProperty(property.id)}
-                sx={{
-                  position: 'absolute',
-                  top: 8,
-                  right: 8,
-                  opacity: 0,
-                  transition: 'opacity 0.2s',
-                  '&:focus-visible': {opacity: 1},
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            <Stack direction="row" sx={{position: 'absolute', top: 8, right: 8}}>
+              <Tooltip title={t('agentTypes:moveUp', 'Move up')}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={t('agentTypes:moveUp', 'Move up')}
+                    data-move="up"
+                    disabled={index === 0}
+                    onClick={() => handleMoveProperty(index, -1)}
+                  >
+                    <ArrowUp size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title={t('agentTypes:moveDown', 'Move down')}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={t('agentTypes:moveDown', 'Move down')}
+                    data-move="down"
+                    disabled={index === properties.length - 1}
+                    onClick={() => handleMoveProperty(index, 1)}
+                  >
+                    <ArrowDown size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
+                <IconButton
+                  className="property-delete-btn"
+                  size="small"
+                  color="error"
+                  aria-label={t('agentTypes:removeProperty', 'Remove property')}
+                  onClick={() => handleRemoveProperty(property.id)}
+                  sx={{opacity: 0, transition: 'opacity 0.2s', '&:focus-visible': {opacity: 1}}}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           )}
 
           <Stack spacing={2}>
@@ -238,7 +264,7 @@ export default function EditSchemaSettings({
             />
 
             {/* Checkbox options with info tooltips */}
-            <Box sx={{display: 'flex', gap: 3}}>
+            <Box sx={{display: 'flex', flexWrap: 'wrap', columnGap: 3}}>
               <Tooltip
                 title={t('agentTypes:tooltips.required', 'This field must be provided when creating a user')}
                 placement="top"
@@ -260,6 +286,32 @@ export default function EditSchemaSettings({
                   }
                 />
               </Tooltip>
+              {!property.required && (
+                <Tooltip
+                  title={t(
+                    'agentTypes:tooltips.promptOnCreate',
+                    'Prompt for this optional field when an agent is created: added by an admin or onboarded through a flow',
+                  )}
+                  placement="top"
+                  arrow
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!property.hiddenOnCreate}
+                        disabled={disabled}
+                        onChange={(e) => handlePropertyChange(property.id, 'hiddenOnCreate', !e.target.checked)}
+                      />
+                    }
+                    label={
+                      <Stack direction="row" alignItems="center" spacing={0.5} sx={{whiteSpace: 'nowrap'}}>
+                        <span>{t('agentTypes:promptOnCreate', 'Ask when created')}</span>
+                        <Info size={14} color="inherit" />
+                      </Stack>
+                    }
+                  />
+                </Tooltip>
+              )}
               {(property.type === 'string' ||
                 isContactAttributeType(property.type) ||
                 property.type === 'number' ||

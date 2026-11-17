@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -663,4 +664,33 @@ func entityScopeCriterion(entityID string, scope revocation.AudienceScope) revoc
 func isClientDeletionPlan(plan revocationPlan) bool {
 	return plan.TargetID != "" &&
 		(plan.Reason == revocation.ReasonClientRemoved || plan.Reason == revocation.ReasonApplicationRemoved)
+}
+
+// orderByDisplayOrder moves the inputs whose attribute sets a display order to the front, lowest
+// first and by attribute name for the same order, and keeps the others after them in their order.
+func orderByDisplayOrder(inputs []providers.Input, attrs []entitytype.AttributeInfo) {
+	order := make(map[string]int, len(attrs))
+	for _, attr := range attrs {
+		if attr.DisplayOrder != nil {
+			order[attr.Attribute] = *attr.DisplayOrder
+		}
+	}
+	if len(order) == 0 {
+		return
+	}
+
+	slices.SortStableFunc(inputs, func(a, b providers.Input) int {
+		orderA, hasA := order[a.Identifier]
+		orderB, hasB := order[b.Identifier]
+		switch {
+		case hasA && hasB:
+			return cmp.Or(cmp.Compare(orderA, orderB), cmp.Compare(a.Identifier, b.Identifier))
+		case hasA:
+			return -1
+		case hasB:
+			return 1
+		default:
+			return 0
+		}
+	})
 }

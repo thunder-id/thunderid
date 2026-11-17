@@ -1614,8 +1614,8 @@ describe('ViewUserTypePage', () => {
       // Go to schema tab and remove the email property (the display attribute).
       await goToSchemaTab(user);
 
-      const emailHeader = screen.getByRole('button', {name: 'email'});
-      const removeButton = within(emailHeader).getByRole('button', {name: /remove property/i});
+      const emailRow = screen.getByRole('button', {name: 'email'}).parentElement!;
+      const removeButton = within(emailRow).getByRole('button', {name: /remove property/i});
       await user.click(removeButton);
 
       // Save should not include the display attribute since it became ineligible.
@@ -1850,6 +1850,166 @@ describe('ViewUserTypePage', () => {
       }),
     );
   });
+  it('lists attributes by display order and saves the order after a move', async () => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        systemAttributes: {display: 'username'},
+        schema: {
+          nickname: {type: 'string'},
+          email: {type: 'string', display: {order: 1}},
+          username: {type: 'string', required: true, display: {order: 0}},
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockUpdateMutateAsync.mockResolvedValue(undefined);
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByRole('tab', {name: /schema/i}));
+
+    const rowNames = (): string[] =>
+      screen
+        .getAllByRole('button', {expanded: false})
+        .map((row) => row.getAttribute('aria-label') ?? '')
+        .filter((label) => ['username', 'email', 'nickname'].includes(label));
+    expect(rowNames()).toEqual(['username', 'email', 'nickname']);
+
+    expect(screen.getAllByRole('button', {name: 'Move up'})[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', {name: 'Move down'})[2]).toBeDisabled();
+    await user.click(screen.getAllByRole('button', {name: 'Move up'})[2]);
+    expect(rowNames()).toEqual(['username', 'nickname', 'email']);
+
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+    await waitFor(() =>
+      expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+        userTypeId: 'schema-123',
+        data: expect.objectContaining({
+          schema: {
+            username: {type: 'string', required: true, display: {order: 0}},
+            nickname: {type: 'string', required: false, display: {order: 1}},
+            email: {type: 'string', required: false, display: {order: 2}},
+          },
+        }),
+      }),
+    );
+  });
+
+  it('adds no display settings when a rename keeps the default order', async () => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        systemAttributes: {display: 'username'},
+        schema: {
+          sub: {type: 'string'},
+          email: {type: 'string', required: true},
+          username: {type: 'string', required: true},
+          given_name: {type: 'string'},
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockUpdateMutateAsync.mockResolvedValue(undefined);
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByRole('button', {name: /edit user type name/i}));
+    const name = screen.getByRole('textbox', {name: /user type name/i});
+    await user.clear(name);
+    await user.type(name, 'Renamed{Enter}');
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+
+    await waitFor(() =>
+      expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+        userTypeId: 'schema-123',
+        data: expect.objectContaining({
+          schema: {
+            email: {type: 'string', required: true},
+            username: {type: 'string', required: true},
+            given_name: {type: 'string', required: false},
+            sub: {type: 'string', required: false},
+          },
+        }),
+      }),
+    );
+  });
+
+  it('moves an attribute from the keyboard without toggling its row', async () => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        systemAttributes: {display: 'username'},
+        schema: {
+          username: {type: 'string', required: true, display: {order: 0}},
+          nickname: {type: 'string', display: {order: 1}},
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByRole('tab', {name: /schema/i}));
+
+    screen.getAllByRole('button', {name: 'Move up'})[1].focus();
+    await user.keyboard('{Enter}');
+
+    const rows = screen
+      .getAllByRole('button', {expanded: false})
+      .map((row) => row.getAttribute('aria-label'))
+      .filter((label) => label === 'username' || label === 'nickname');
+    expect(rows).toEqual(['nickname', 'username']);
+    // Move up is now disabled on the moved row, so focus stays on the row's Move down button.
+    expect(screen.getAllByRole('button', {name: 'Move down'})[0]).toHaveFocus();
+  });
+
+  it('saves an optional attribute hidden on create', async () => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        ...mockUserType,
+        systemAttributes: {display: 'username'},
+        schema: {
+          username: {type: 'string', required: true, display: {order: 0}},
+          nickname: {type: 'string', display: {order: 1}},
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockUpdateMutateAsync.mockResolvedValue(undefined);
+    render(<ViewUserTypePage />);
+    await user.click(screen.getByRole('tab', {name: /schema/i}));
+
+    await user.click(screen.getByRole('button', {name: 'username'}));
+    expect(screen.queryByLabelText(/ask when created/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'username'}));
+
+    await user.click(screen.getByRole('button', {name: 'nickname'}));
+    const prompt = screen.getByLabelText(/ask when created/i);
+    expect(prompt).toBeChecked();
+    await user.click(prompt);
+    expect(prompt).not.toBeChecked();
+
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+    await waitFor(() =>
+      expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+        userTypeId: 'schema-123',
+        data: expect.objectContaining({
+          schema: {
+            username: {type: 'string', required: true},
+            nickname: {type: 'string', required: false, display: {onCreate: {hidden: true}}},
+          },
+        }),
+      }),
+    );
+  });
+
   it.each(['email', 'mobile'] as const)('blocks saving an empty %s regex', async (type) => {
     const user = userEvent.setup();
     mockUseGetUserType.mockReturnValue({
@@ -1874,6 +2034,25 @@ describe('ViewUserTypePage', () => {
           : 'Enter a regular expression for mobile attributes.',
       ).length,
     ).toBeGreaterThan(0);
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('blocks saving an enum attribute with no allowed values', async () => {
+    const user = userEvent.setup();
+    mockUseGetUserType.mockReturnValue({
+      data: {...mockUserType, schema: {tier: {type: 'string', enum: ['gold']}}},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    render(<ViewUserTypePage />);
+    await goToSchemaTab(user);
+    await expandProperty(user, 'tier');
+    const goldChip = (await screen.findByText('gold')).closest('.MuiChip-root');
+    await user.click(within(goldChip as HTMLElement).getByTestId('CancelIcon'));
+    await user.click(screen.getByRole('button', {name: /^save$/i}));
+
+    expect(screen.getAllByText('Add at least one allowed value to: tier').length).toBeGreaterThan(0);
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
   });
 });
