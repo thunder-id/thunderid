@@ -27,7 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
 	authnOAuth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnOIDC "github.com/thunder-id/thunderid/internal/authn/oidc"
-	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
+	authnOpenID4VP "github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
@@ -62,6 +62,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/openid4vp"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/openid4vci"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -665,6 +666,7 @@ func initializeVCServices(
 	openid4vpSvc, err := openid4vp.Initialize(mux, runtimeCrypto, configCrypto, jwtService, openid4vpDefSvc,
 		runtimeStoreProvider)
 	fatalOnError(ctx, logger, err, "Failed to initialize OpenID4VP verifier service")
+	authnOpenID4VP.Initialize(mux, openid4vpSvc)
 
 	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")

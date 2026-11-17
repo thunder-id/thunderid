@@ -290,3 +290,17 @@ type RuntimeCryptoProvider interface {
 	// GetSupportedEncryptionAlgorithms returns the list of algorithms supported by Encrypt and Decrypt.
 	GetSupportedEncryptionAlgorithms() []string
 }
+
+// VCVerifierClientConfigProvider defines the interface for verifiable credential (VC) verifier configuration operations.
+type VCVerifierClientConfigProvider interface {
+	GetVCVerifierClientByID(ctx context.Context, verifierID string) (*VCVerifierClient, *common.ServiceError)
+}
+
+// VCVerifierProvider represents the common interface for all VC format verifiers
+type VCVerifierProvider interface {
+	Verify(ctx context.Context,
+		credential string,
+		vcType string,
+		nonce string,
+		params map[string]interface{}) (VerifiedCredential, error)
+}

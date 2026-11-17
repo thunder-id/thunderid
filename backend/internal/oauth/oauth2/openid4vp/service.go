@@ -30,6 +30,8 @@ type OpenID4VPServiceInterface interface {
 	Authenticate(ctx context.Context, cred *authncommon.OpenID4VPCredential) (
 		*authncommon.AuthnResult, *tidcommon.ServiceError,
 	)
+	// GetTrustAnchors returns the configured trust anchors (root CAs).
+	GetTrustAnchors() []TrustAnchorInfo
 }
 
 var _ OpenID4VPServiceInterface = (*openid4vpService)(nil)

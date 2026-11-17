@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/openid4vp"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -42,6 +42,10 @@ func (f *fakeOpenID4VPService) Authenticate(
 	_ context.Context, _ *authncommon.OpenID4VPCredential,
 ) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
 	return nil, nil
+}
+
+func (f *fakeOpenID4VPService) GetTrustAnchors() []openid4vp.TrustAnchorInfo {
+	return nil
 }
 
 func newTestOpenID4VPExecutor(t *testing.T, service openid4vp.OpenID4VPServiceInterface) providers.Executor {

@@ -30,7 +30,6 @@ type walletInterface interface {
 		*VerifiedPresentation, string, *tidcommon.ServiceError,
 	)
 	SubmitError(ctx context.Context, state, code, description string) *tidcommon.ServiceError
-	GetTrustAnchors() []TrustAnchorInfo
 }
 
 // OpenID4VP protocol constants.

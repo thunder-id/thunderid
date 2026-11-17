@@ -1390,3 +1390,14 @@ func newTestRootCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	require.NoError(t, err)
 	return cert, key
 }
+
+func (suite *OpenID4VPServiceTestSuite) TestGetTrustAnchors() {
+	b := newPIDBuilder(suite.T())
+	svc, _ := newTestService(suite.T(), b)
+
+	anchors := svc.GetTrustAnchors()
+
+	suite.Require().Len(anchors, 1)
+	suite.Equal("test-root", anchors[0].Name)
+	suite.NotEmpty(anchors[0].Subject)
+}
