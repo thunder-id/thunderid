@@ -6,8 +6,19 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import AuthorizationMappingSection from '../AuthorizationMappingSection';
 
 vi.mock('@thunderid/components', () => ({
-  SettingsCard: ({title, children}: {title: string; children: React.ReactNode}) => (
-    <section aria-label={title}>{children}</section>
+  SettingsCard: ({
+    title,
+    description = undefined,
+    children,
+  }: {
+    title: string;
+    description?: string;
+    children: React.ReactNode;
+  }) => (
+    <section aria-label={title}>
+      <p>{description}</p>
+      {children}
+    </section>
   ),
 }));
 
@@ -62,6 +73,24 @@ describe('AuthorizationMappingSection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('shows the default description, or the one passed in', () => {
+    const {unmount} = render(
+      <AuthorizationMappingSection onRuleChange={onRuleChange} onDirectChange={onDirectChange} />,
+    );
+    expect(screen.getByText(/to local roles, groups, or permissions/)).toBeInTheDocument();
+    unmount();
+
+    render(
+      <AuthorizationMappingSection
+        onRuleChange={onRuleChange}
+        onDirectChange={onDirectChange}
+        description="Custom mapping description"
+      />,
+    );
+    expect(screen.getByText('Custom mapping description')).toBeInTheDocument();
+    expect(screen.queryByText(/to local roles, groups, or permissions/)).not.toBeInTheDocument();
   });
 
   it('defaults a new mapping to the simple (non-advanced) side, Role target type, no resource server picker', () => {
