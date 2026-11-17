@@ -365,6 +365,14 @@ auditConfig:
     # an override can fix it. Not exploitable here: @svgr/plugin-svgo only merges this repo's own
     # SVGO configuration at docs build time. Added 2026-11-05. Revisit once deepmerge publishes 4.3.2.
     - GHSA-gcqx-w48m-w2h4
+    # JUSTIFICATION: picomatch ReDoS through single-branch repeated extglobs. The advisory names
+    # 4.0.8 as the fix, but no such release exists on npm (4.0.7 is the latest), so neither an
+    # upgrade nor the picomatch override above can fix it. Not exploitable here: picomatch reaches
+    # the tree only through build, dev-server, and test tooling (Docusaurus via micromatch, Vite,
+    # Vitest, tinyglobby, anymatch, the Rollup and rolldown plugins), which match this repo's own
+    # glob patterns and never untrusted input, and it is not part of any shipped bundle.
+    # Added 2026-11-17. Revisit once picomatch publishes 4.0.8, then raise the override instead.
+    - GHSA-fc5q-39xc-vjpf
 
 minimumReleaseAgeExclude:
   - '@thunderid/*'

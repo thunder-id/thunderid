@@ -60,6 +60,10 @@ export interface QuickstartGuideSource {
    * The anchor of the section of the guide that holds the steps, when it is not the whole page
    */
   section?: string;
+  /**
+   * The choices to show the guide for, by kind, when its page is written for several (e.g. an agent's mode)
+   */
+  variants?: Record<string, string>;
 }
 
 /**
@@ -84,6 +88,10 @@ export interface QuickstartGuideProps {
    * What to show: the steps that build the app (the default), or the sample app that runs instead
    */
   view?: 'steps' | 'sample';
+  /**
+   * Whether a step with long content, such as a whole sample file, starts collapsed
+   */
+  collapseLongSteps?: boolean;
 }
 
 /** What every block of a guide needs to render, passed down unchanged through nested blocks. */
@@ -338,16 +346,19 @@ function GuideSteps({
   steps,
   codeValues,
   onOpenLink,
+  collapseLongSteps,
 }: {
   steps: QuickstartGuideStep[];
   codeValues: Record<string, string | undefined>;
   onOpenLink: (url: string) => void;
+  collapseLongSteps: boolean;
 }): JSX.Element {
   const [codeOption, setCodeOption] = useState<string | undefined>(undefined);
   const context: GuideRenderContext = {codeValues, onOpenLink, codeOption, onCodeOptionChange: setCodeOption};
 
   return (
     <GuideStepList
+      collapseLongSteps={collapseLongSteps}
       steps={steps.map((step) => ({
         key: step.title,
         title: <GuideText text={step.title} onOpenLink={onOpenLink} />,
@@ -446,9 +457,15 @@ export default function QuickstartGuide({
   codeValues,
   onOpenLink,
   view = 'steps',
+  collapseLongSteps = false,
 }: QuickstartGuideProps): JSX.Element {
   const {t} = useTranslation();
-  const {data: content, isLoading, error, refetch} = useGetQuickstartGuide(guide.docsUrl, guide.section);
+  const {
+    data: content,
+    isLoading,
+    error,
+    refetch,
+  } = useGetQuickstartGuide(guide.docsUrl, guide.section, guide.variants);
   const steps = content === undefined ? undefined : (content?.steps ?? null);
   const sample = content?.sample;
 
@@ -480,7 +497,13 @@ export default function QuickstartGuide({
       )}
 
       {view === 'steps' && steps && (
-        <GuideSteps key={guide.docsUrl} steps={steps} codeValues={codeValues} onOpenLink={onOpenLink} />
+        <GuideSteps
+          key={guide.docsUrl}
+          steps={steps}
+          codeValues={codeValues}
+          onOpenLink={onOpenLink}
+          collapseLongSteps={collapseLongSteps}
+        />
       )}
 
       {view === 'sample' && sample && (

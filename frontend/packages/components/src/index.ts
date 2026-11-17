@@ -83,6 +83,9 @@ export type {
 } from './ServiceAuthenticationMethods/outboundAuthentication';
 export {default as StackblitzQuickstartCard} from './StackblitzQuickstartCard/StackblitzQuickstartCard';
 export type {StackblitzQuickstartCardProps} from './StackblitzQuickstartCard/StackblitzQuickstartCard';
+export {default as GuideOptionMenu} from './GuideOptionMenu/GuideOptionMenu';
+export type {GuideOption, GuideOptionMenuProps} from './GuideOptionMenu/GuideOptionMenu';
+export {default as SEGMENTED_CONTROL_SX} from './SegmentedControl/segmentedControlSx';
 export {default as ToggleCard} from './ToggleCard/ToggleCard';
 export type {ToggleCardProps} from './ToggleCard/ToggleCard';
 
@@ -105,6 +108,7 @@ export {default as ExpressIcon} from './icons/logos/vendor/ExpressIcon';
 export {default as NodeIcon} from './icons/logos/vendor/NodeIcon';
 export {default as JavaScriptIcon} from './icons/logos/vendor/JavaScriptIcon';
 export {default as PythonLogo} from './icons/logos/vendor/PythonLogo';
+export {default as TypeScriptLogo} from './icons/logos/vendor/TypeScriptLogo';
 export {default as LangChainLogo} from './icons/logos/vendor/LangChainLogo';
 export {default as JsonLogo} from './icons/logos/vendor/JsonLogo';
 export {default as JwtLogo} from './icons/logos/vendor/JwtLogo';

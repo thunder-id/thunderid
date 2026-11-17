@@ -26,6 +26,7 @@ import PnpmIcon from '../PnpmIcon';
 import PythonLogo from '../PythonLogo';
 import ReactIcon from '../ReactIcon';
 import StackblitzIcon from '../StackblitzIcon';
+import TypeScriptLogo from '../TypeScriptLogo';
 import VueIcon from '../VueIcon';
 import YarnIcon from '../YarnIcon';
 
@@ -121,6 +122,13 @@ const ASPECT_ICONS: AspectIconCase[] = [
     defaultSize: 64,
     heightFromSize: (size) => size * 1.018,
     name: 'PythonLogo',
+    widthFromSize: (size) => size,
+  },
+  {
+    Component: TypeScriptLogo,
+    defaultSize: 64,
+    heightFromSize: (size) => size,
+    name: 'TypeScriptLogo',
     widthFromSize: (size) => size,
   },
   {

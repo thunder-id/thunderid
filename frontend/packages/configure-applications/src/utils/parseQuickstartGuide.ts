@@ -66,15 +66,20 @@ export interface QuickstartGuideCodeSegment {
 }
 
 // The docs quickstarts all open with the same setup sections, ending with the one that creates the
-// application in the Console. Someone reading the guide on an application's own page has done all
-// of that, so the steps start after it. A page without this section is not a quickstart this
-// parser understands.
-const SETUP_END_HEADING = /^create an application$/i;
+// application, or registers the agent, in the Console. Someone reading the guide on that resource's
+// own page has done all of that, so the steps start after it. A page without this section is not a
+// quickstart this parser understands.
+const SETUP_END_HEADING = /^(create an application|register an agent)$/i;
 const CLOSING_HEADING = /^what['’]s next$/i;
 // The section that offers the guide's app ready to run, linked to its source in the samples
 // repository. It is an alternative to the steps, not one of them.
 const SAMPLE_HEADING = /^run the sample app$/i;
 const SAMPLE_SOURCE = /github\.com\/[\w.-]+\/samples\/tree\/[^/\s)]+\/([^\s)#?]+)/;
+
+// The docs export marks content a page shows for one choice only, such as an agent's mode or a code
+// sample's language, with the choice it belongs to.
+const VARIANT_OPEN = /^<!--\s*variant\s+([\w-]+)=([\w-]+)\s*-->$/;
+const VARIANT_CLOSE = /^<!--\s*\/variant\s*-->$/;
 
 const FENCE = /^(`{3,}|~{3,})\s*(.*)$/;
 const LIST_ITEM = /^([-*]|\d+\.)\s+(.*)$/;
@@ -85,6 +90,50 @@ const TABLE_DIVIDER = /^\|?\s*:?-{2,}/;
 function closesFence(line: string, fence: string): boolean {
   const trimmed = line.trim();
   return trimmed.startsWith(fence) && trimmed.replace(new RegExp(`^\\${fence[0]}+`), '') === '';
+}
+
+/**
+ * Keeps the content written for the choices given and drops what is written for another choice.
+ * Content marked for a kind of choice that is not given is kept whole.
+ *
+ * @returns The remaining lines, or null when choices are given and the page marks none, as a page
+ * exported before the docs marked them does: its content for every choice runs together.
+ */
+function selectVariants(lines: string[], variants?: Record<string, string>): string[] | null {
+  const kept: string[] = [];
+  // Whether each open marker, innermost last, is for a choice that was made.
+  const open: boolean[] = [];
+  let fence: string | null = null;
+  let isMarked = false;
+
+  lines.forEach((line) => {
+    const fenceMatch = FENCE.exec(line);
+    if (fence) {
+      if (closesFence(line, fence)) {
+        fence = null;
+      }
+    } else if (fenceMatch) {
+      [, fence] = fenceMatch;
+    } else {
+      const openMatch = VARIANT_OPEN.exec(line.trim());
+      if (openMatch) {
+        const chosen = variants?.[openMatch[1]];
+        open.push(chosen === undefined || chosen === openMatch[2]);
+        isMarked = true;
+        return;
+      }
+      if (VARIANT_CLOSE.test(line.trim())) {
+        open.pop();
+        return;
+      }
+    }
+
+    if (open.every(Boolean)) {
+      kept.push(line);
+    }
+  });
+
+  return variants && !isMarked ? null : kept;
 }
 
 function dedent(lines: string[]): string[] {
@@ -276,20 +325,33 @@ function parseSectionSteps(lines: string[]): QuickstartGuideStep[] {
  * clients connect in one section of it) names the section that applies instead. Its third-level
  * headings are the steps.
  *
+ * A page written for several choices at once, such as an agent acting on its own or on behalf of
+ * a user, marks the content of each. Naming the choices keeps their content and drops the rest.
+ *
  * @param markdown - The Markdown export of the quickstart page
  * @param section - The anchor of the section that holds the steps, when it is not the whole page
+ * @param variants - The choices to show the page for, by kind (e.g. `{mode: 'own', lang: 'python'}`)
  * @returns The steps and the sample, or null when the page is not a quickstart in the expected shape
  *
  * @public
  */
-export default function parseQuickstartGuide(markdown: string, section?: string): QuickstartGuideContent | null {
+export default function parseQuickstartGuide(
+  markdown: string,
+  section?: string,
+  variants?: Record<string, string>,
+): QuickstartGuideContent | null {
+  const lines = selectVariants(markdown.split(/\r?\n/), variants);
+  if (!lines) {
+    return null;
+  }
+
   const sections: {title: string; lines: string[]}[] = [];
   let fence: string | null = null;
   // The docs export can leave a page component it does not know as raw JSX. Everything from such
   // a tag to the end of its section is dropped rather than shown as text.
   let skipping = false;
 
-  markdown.split(/\r?\n/).forEach((line) => {
+  lines.forEach((line) => {
     const fenceMatch = FENCE.exec(line);
     if (fence) {
       if (closesFence(line, fence)) {

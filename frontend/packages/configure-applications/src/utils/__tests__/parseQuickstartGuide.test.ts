@@ -283,6 +283,108 @@ describe('parseQuickstartGuide', () => {
   });
 });
 
+describe('parseQuickstartGuide for a page written for several choices', () => {
+  const agentGuide = `# LangChain Quickstart
+
+## Register an Agent
+
+Add the agent in the Console.
+
+## Create the Project
+
+<!-- variant lang=python -->
+
+\`\`\`bash
+pip install langchain
+\`\`\`
+
+<!-- /variant -->
+
+<!-- variant lang=typescript -->
+
+\`\`\`bash
+npm install langchain
+\`\`\`
+
+<!-- /variant -->
+
+## Build the Agent
+
+<!-- variant mode=own -->
+
+The tool gets an agent token.
+
+<!-- variant lang=python -->
+
+\`\`\`python title="agent_own.py"
+# <!-- variant mode=obo -->
+token = get_agent_token()
+\`\`\`
+
+<!-- /variant -->
+
+<!-- variant lang=typescript -->
+
+\`\`\`ts title="agent_own.ts"
+const token = await getAgentToken();
+\`\`\`
+
+<!-- /variant -->
+
+<!-- /variant -->
+
+<!-- variant mode=obo -->
+
+The tool signs the user in.
+
+<!-- /variant -->
+
+## What's Next
+
+- More guides
+`;
+
+  it('starts after the agent is registered', () => {
+    const steps = parseQuickstartGuide(agentGuide)?.steps;
+
+    expect(steps?.map((step) => step.title)).toEqual(['Create the Project', 'Build the Agent']);
+  });
+
+  it('keeps the content of the choices named and drops the rest, also where choices nest', () => {
+    const steps = parseQuickstartGuide(agentGuide, undefined, {mode: 'own', lang: 'python'})?.steps;
+
+    expect(steps?.[0].blocks).toEqual([
+      {type: 'code', language: 'bash', title: undefined, code: 'pip install langchain'},
+    ]);
+    expect(steps?.[1].blocks).toEqual([
+      {type: 'paragraph', text: 'The tool gets an agent token.'},
+      {
+        type: 'code',
+        language: 'python',
+        title: 'agent_own.py',
+        code: '# <!-- variant mode=obo -->\ntoken = get_agent_token()',
+      },
+    ]);
+  });
+
+  it('keeps every choice of a kind that is not named, without its markers', () => {
+    const steps = parseQuickstartGuide(agentGuide, undefined, {mode: 'obo'})?.steps;
+
+    expect(steps?.[0].blocks).toEqual([
+      {type: 'code', language: 'bash', title: undefined, code: 'pip install langchain'},
+      {type: 'code', language: 'bash', title: undefined, code: 'npm install langchain'},
+    ]);
+    expect(steps?.[1].blocks).toEqual([{type: 'paragraph', text: 'The tool signs the user in.'}]);
+  });
+
+  it('returns null when choices are named and the page marks none', () => {
+    const unmarked = '## Register an Agent\n\nAdd it.\n\n## Build the Agent\n\nBuild it.';
+
+    expect(parseQuickstartGuide(unmarked, undefined, {mode: 'own'})).toBeNull();
+    expect(parseQuickstartGuide(unmarked)?.steps).toHaveLength(1);
+  });
+});
+
 describe('fillQuickstartGuideCode', () => {
   it('replaces placeholders that have a value and marks the replaced parts', () => {
     expect(

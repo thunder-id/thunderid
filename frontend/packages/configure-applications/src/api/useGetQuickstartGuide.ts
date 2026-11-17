@@ -13,6 +13,7 @@ import parseQuickstartGuide, {type QuickstartGuideContent} from '../utils/parseQ
  *
  * @param docsUrl - The URL of the quickstart page on the docs site
  * @param section - The anchor of the section that holds the steps, when it is not the whole page
+ * @param variants - The choices to show the page for, by kind, when it is written for several
  * @returns TanStack Query result holding the steps and the sample, or null when the page is not a
  * quickstart the Console can show inline
  *
@@ -21,9 +22,10 @@ import parseQuickstartGuide, {type QuickstartGuideContent} from '../utils/parseQ
 export default function useGetQuickstartGuide(
   docsUrl: string | undefined,
   section?: string,
+  variants?: Record<string, string>,
 ): UseQueryResult<QuickstartGuideContent | null> {
   return useQuery<QuickstartGuideContent | null>({
-    queryKey: [ApplicationQueryKeys.QUICKSTART_GUIDE, docsUrl, section],
+    queryKey: [ApplicationQueryKeys.QUICKSTART_GUIDE, docsUrl, section, variants],
     queryFn: async (): Promise<QuickstartGuideContent | null> => {
       const response = await fetch(`${docsUrl!.replace(/\/+$/, '')}.md`);
 
@@ -31,7 +33,7 @@ export default function useGetQuickstartGuide(
         throw new Error(`Failed to fetch the quickstart guide: ${response.status}`);
       }
 
-      return parseQuickstartGuide(await response.text(), section);
+      return parseQuickstartGuide(await response.text(), section, variants);
     },
     enabled: Boolean(docsUrl),
     staleTime: Infinity,

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {GuideOptionMenu, QueryErrorNotice, SEGMENTED_CONTROL_SX} from '@thunderid/components';
 import {useCopyToClipboard} from '@thunderid/hooks';
 import {
   alpha,
@@ -12,10 +12,6 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
   Paper,
   Stack,
   ToggleButton,
@@ -95,35 +91,6 @@ export interface ConnectAppGuideProps {
   onOpenLink: (url: string) => void;
 }
 
-/**
- * A segmented control's look: a bordered, rounded track holding the options, the chosen one filled in.
- * Used for every choice the guide offers, so they read as one family.
- */
-const SEGMENTED_CONTROL_SX = {
-  alignSelf: 'flex-start',
-  flexWrap: 'wrap',
-  p: 0.5,
-  gap: 0.5,
-  border: 1,
-  borderColor: 'divider',
-  // The theme's corner radius, as the cards around it use.
-  borderRadius: 1,
-  '& .MuiToggleButtonGroup-grouped, & .MuiToggleButtonGroup-grouped:not(:first-of-type)': {
-    gap: 1,
-    m: 0,
-    px: 2,
-    py: 0.75,
-    border: 0,
-    borderRadius: 1,
-    textTransform: 'none',
-    color: 'text.secondary',
-  },
-  '& .MuiToggleButtonGroup-grouped.Mui-selected, & .MuiToggleButtonGroup-grouped.Mui-selected:hover': {
-    bgcolor: 'action.selected',
-    color: 'text.primary',
-  },
-} as const;
-
 /** Fills a prompt's `{{placeholder}}` slots, leaving any without a value as written. */
 function fillPrompt(text: string, values: Record<string, string | undefined>): string {
   return Object.entries(values).reduce((result, [key, value]) => {
@@ -133,73 +100,6 @@ function fillPrompt(text: string, values: Record<string, string | undefined>): s
     // A callback, so the value goes in as written: a replacement string reads `$&`, `$$`, and the like.
     return result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), () => value);
   }, text);
-}
-
-/**
- * The technology a guide is for, as a button in its heading that opens a menu of the others the
- * template covers.
- */
-function TechnologyMenu({
-  guides,
-  selected,
-  onSelect,
-}: {
-  guides: QuickstartGuideSource[];
-  selected: QuickstartGuideSource;
-  onSelect: (label: string) => void;
-}): JSX.Element {
-  const {t} = useTranslation();
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-
-  return (
-    <>
-      <Button
-        variant="outlined"
-        color="inherit"
-        aria-haspopup="menu"
-        aria-expanded={Boolean(anchor)}
-        aria-controls={anchor ? 'connect-app-technology-menu' : undefined}
-        startIcon={selected.icon}
-        endIcon={<ChevronDown size={18} aria-hidden />}
-        onClick={(event) => setAnchor(event.currentTarget)}
-        sx={{
-          font: 'inherit',
-          textTransform: 'none',
-          borderRadius: 1,
-          py: 0.25,
-          px: 1.25,
-          borderColor: 'divider',
-          '&:hover': {borderColor: 'text.secondary'},
-        }}
-      >
-        {selected.label}
-      </Button>
-      <Menu
-        id="connect-app-technology-menu"
-        anchorEl={anchor}
-        open={Boolean(anchor)}
-        onClose={() => setAnchor(null)}
-        slotProps={{list: {'aria-label': t('applications:edit.overview.connect.technology', 'Technology')}}}
-      >
-        {guides.map((entry) => (
-          <MenuItem
-            key={entry.label}
-            role="menuitemradio"
-            aria-checked={entry.label === selected.label}
-            selected={entry.label === selected.label}
-            onClick={() => {
-              onSelect(entry.label);
-              setAnchor(null);
-            }}
-          >
-            {entry.icon && <ListItemIcon>{entry.icon}</ListItemIcon>}
-            <ListItemText>{entry.label}</ListItemText>
-            {entry.label === selected.label && <Check size={16} aria-hidden />}
-          </MenuItem>
-        ))}
-      </Menu>
-    </>
-  );
 }
 
 /** One of a pair of choices, as a card with an icon, a title, and a line on what it means. */
@@ -554,7 +454,16 @@ export default function ConnectAppGuide({
                   i18nKey="applications:edit.overview.connect.titleWithChoice"
                   defaults="Connect your <choice/> app"
                   components={{
-                    choice: <TechnologyMenu guides={guides} selected={guide} onSelect={setSelectedLabel} />,
+                    choice: (
+                      // The technology the guide is for, in a menu of the others the template covers.
+                      <GuideOptionMenu
+                        id="connect-app-technology-menu"
+                        menuLabel={t('applications:edit.overview.connect.technology', 'Technology')}
+                        options={guides.map((entry) => ({value: entry.label, label: entry.label, icon: entry.icon}))}
+                        value={guide.label}
+                        onSelect={setSelectedLabel}
+                      />
+                    ),
                   }}
                 />
               )}
