@@ -344,7 +344,7 @@ func (ts *DCRTestSuite) TestDCRRegistrationRevokedToken() {
 			return false
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := testutils.GetHTTPClient().Do(req)
+		resp, err := testutils.GetRawHTTPClient().Do(req)
 		if err != nil {
 			return false
 		}
