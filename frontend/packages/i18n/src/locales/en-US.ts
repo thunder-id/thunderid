@@ -729,6 +729,20 @@ const translations = {
     'manageUser.sections.ownedAgents.columns.agentId': 'Agent ID',
     'manageUser.sections.ownedAgents.columns.kind': 'Kind',
     'manageUser.sections.ownedAgents.empty': "This user doesn't own any agents.",
+    'manageUser.sections.roles.title': 'Assigned roles',
+    'manageUser.sections.roles.description':
+      'Manage the roles assigned to this user. Roles held through a group are not listed.',
+    'manageUser.sections.roles.columns.name': 'Name',
+    'manageUser.sections.roles.columns.id': 'ID',
+    'manageUser.sections.roles.columns.description': 'Description',
+    'manageUser.sections.roles.columns.actions': 'Actions',
+    'manageUser.sections.roles.remove': 'Remove {{role}}',
+    'manageUser.sections.roles.empty': 'This user does not have any roles assigned.',
+    'manageUser.sections.roles.error': 'Failed to load the roles of this user.',
+    'manageUser.sections.roles.assignError': 'Could not assign the roles {{roles}}. Try again.',
+    'manageUser.sections.roles.removeError': 'Failed to remove the role. Please try again.',
+    'manageUser.sections.roles.dialog.title': 'Add roles',
+    'manageUser.sections.roles.dialog.empty': 'There are no more roles to assign.',
 
     // Create page
     'createUser.title': 'Create user',
@@ -738,6 +752,13 @@ const translations = {
     'addForm.administratorRolesError':
       'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
     'addForm.retryRoles': 'Try again',
+    'addForm.roles': 'Roles',
+    'addForm.rolesError':
+      "The user was created, but could not be given the roles {{roles}}. Try again, or assign them from the user's Roles tab.",
+    'addForm.rolesHint': 'Optional. The roles this user is given in the project.',
+    'addForm.rolesLoadError':
+      'The roles of this project could not be loaded. You can still create the user and assign roles later.',
+    'addForm.rolesPlaceholder': 'Select roles',
     'addForm.creating': 'Creating...',
     'addForm.noUserTypes': 'No user types are defined yet. Create one before adding a user.',
     'addForm.organizationUnit': 'Organization unit',
@@ -828,6 +849,9 @@ const translations = {
     'listing.error': 'Failed to load users',
     'manageUser.loadError': 'Failed to load user information',
     'manageUser.notFound': 'User not found',
+
+    // Roles
+    'manageUser.tabs.roles': 'Roles',
 
     // Owned agents
     'manageUser.tabs.agents': 'Agents',
