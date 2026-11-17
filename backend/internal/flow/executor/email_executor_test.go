@@ -1287,6 +1287,46 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserWithoutA
 	suite.mockEmailClient.AssertNumberOfCalls(suite.T(), "Send", 0)
 }
 
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_SignedInUserWithoutAnEmail() {
+	for name, test := range map[string]struct {
+		signedInAs string
+		sent       bool
+	}{
+		"signed in user gets the submitted email":     {signedInAs: "test-user-id", sent: true},
+		"user signed in as someone else gets nothing": {signedInAs: "other-user-id"},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			authUser := newAuthenticatedAuthUser()
+			ctx := &providers.NodeContext{
+				ExecutionID:    "test-execution-id",
+				ExecutorMode:   ExecutorModeSend,
+				AuthUser:       authUser,
+				UserInputs:     map[string]string{userAttributeEmail: testOtherEmail},
+				RuntimeData:    map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "MAGIC_LINK"},
+			}
+			suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
+			suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, authUser).Return(authUser,
+				&providers.EntityReference{EntityID: test.signedInAs}, (*tidcommon.ServiceError)(nil))
+			if test.sent {
+				suite.expectEmail(testOtherEmail)
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			if test.sent {
+				suite.Equal(providers.ExecComplete, resp.Status)
+				return
+			}
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.mockEmailClient.AssertNumberOfCalls(suite.T(), "Send", 0)
+		})
+	}
+}
+
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserGetsTheStoredEmail() {
 	for name, test := range map[string]struct {
 		entityRef *providers.EntityReference
