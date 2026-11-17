@@ -43,6 +43,7 @@ export default function TextInputAdapter({
   resolve,
   onInputChange,
   onBlur,
+  isAutoFocusDisabled = false,
 }: FlowFieldProps): JSX.Element | null {
   const {t} = useTranslation();
   const {ref} = component;
@@ -52,7 +53,7 @@ export default function TextInputAdapter({
   const variant = resolveTextVariant(String(component.type));
   const htmlType = HTML_INPUT_TYPE[variant];
   const autoComplete = AUTO_COMPLETE_MAP[variant](ref);
-  const autoFocus = ref === 'username';
+  const autoFocus = !isAutoFocusDisabled && ref === 'username';
   const hasError = !!(touched?.[ref] && fieldErrors?.[ref]);
   const value = values[ref] ?? '';
   // A hint says why the field is asked for, so it shows whether or not the field has a value. The resolved
