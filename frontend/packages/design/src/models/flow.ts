@@ -82,6 +82,8 @@ export interface FlowFieldProps {
   onBlur?: (field: string) => void;
   /** Additional step data from the flow response */
   additionalData?: Record<string, unknown>;
+  /** Stops the field from taking focus when it mounts */
+  isAutoFocusDisabled?: boolean;
 }
 
 /**
@@ -140,4 +142,6 @@ export interface FlowComponentRendererProps {
    * default, where such a block shows nothing.
    */
   rendersInputsWithoutSubmit?: boolean;
+  /** Stops the inputs from taking focus when they mount, for a preview that must not move the page's focus. */
+  isAutoFocusDisabled?: boolean;
 }

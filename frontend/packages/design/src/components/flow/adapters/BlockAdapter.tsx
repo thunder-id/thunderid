@@ -45,6 +45,8 @@ interface BlockContext {
   isSubmitDisabled?: boolean;
   /** Draws the inputs of a block that has no submit action. Off by default, where such a block shows nothing. */
   rendersInputsWithoutSubmit?: boolean;
+  /** Stops the inputs from taking focus when they mount */
+  isAutoFocusDisabled?: boolean;
 }
 
 // The primary submit action approves a consent prompt; any other submit action denies it.
@@ -168,6 +170,7 @@ function renderFormSubComponent(
     onInputChange: ctx.onInputChange,
     onBlur: ctx.onBlur,
     additionalData: ctx.additionalData,
+    isAutoFocusDisabled: ctx.isAutoFocusDisabled,
   };
 
   const customField = ctx.renderField?.(sub, fieldProps);
