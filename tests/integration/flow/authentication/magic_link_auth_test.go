@@ -6,6 +6,7 @@ package authentication
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"testing"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
+
+// emailOTPRegex matches the OTP in the email OTP template.
+var emailOTPRegex = regexp.MustCompile(`>\s*(\d{4,10})\s*</td>`)
 
 var magicLinkAuthFlow = testutils.Flow{
 	Name:     "Magic Link Auth Flow",
@@ -808,6 +812,63 @@ func (ts *magicLinkAuthFlowTestSuite) TestPasswordMagicLink_UserWithoutEmailEnro
 	ts.Equal("enrolled@example.com", ts.storedAttribute(username, "email"), "The collected email is stored")
 }
 
+func (ts *magicLinkAuthFlowTestSuite) TestPasswordEmailOTP_EmailIsStoredOnlyAfterVerification() {
+	appID := ts.createPasswordEmailOTPApp()
+	username := ts.createPasswordUser("")
+
+	step := ts.submitEmail(ts.submitPassword(appID, username, nil), "wrong@example.com")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+	ts.Equal([]string{"wrong@example.com"}, common.AwaitEmail(ts.Require(), ts.mockSMTP).To)
+	ts.Nil(ts.storedAttribute(username, "email"), "An unverified email isn't stored")
+
+	step = ts.submitEmail(ts.submitPassword(appID, username, nil), "right@example.com")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	ts.Equal([]string{"right@example.com"}, email.To)
+	match := emailOTPRegex.FindStringSubmatch(email.Body)
+	ts.Require().Len(match, 2, "The email should carry the OTP")
+
+	finalStep, err := common.CompleteFlow(step.ExecutionID, map[string]string{"otp": match[1]}, "action_otp",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OTP")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus)
+	ts.Equal("right@example.com", ts.storedAttribute(username, "email"), "The verified email is stored")
+}
+
+func (ts *magicLinkAuthFlowTestSuite) TestPasswordEmailOTP_StoredEmailSkipsTheEmailPrompt() {
+	appID := ts.createPasswordEmailOTPApp()
+	username := ts.createPasswordUser(`"email": "stored@example.com"`)
+	ts.mockSMTP.ClearEmails()
+
+	step := ts.submitPassword(appID, username, nil)
+
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	ts.True(common.HasInput(step.Data.Inputs, "otp"), "The OTP should be requested")
+	ts.Equal([]string{"stored@example.com"}, common.AwaitEmail(ts.Require(), ts.mockSMTP).To)
+}
+
+// createPasswordEmailOTPApp creates a password then email OTP flow and an application for it, deleted when the
+// test ends.
+func (ts *magicLinkAuthFlowTestSuite) createPasswordEmailOTPApp() string {
+	flowID, err := testutils.CreateFlow(buildPasswordEmailOTPEnrollFlow())
+	ts.Require().NoError(err, "Failed to create the password email OTP flow")
+	ts.T().Cleanup(func() {
+		_ = testutils.DeleteFlow(flowID)
+	})
+
+	app := magicLinkTestApp
+	app.Name = "Magic Link Test App Password Email OTP"
+	app.ClientID = "magic_link_test_client_password_email_otp"
+	app.AuthFlowID = flowID
+	app.OUID = ts.ouID
+	appID, err := testutils.CreateApplication(app)
+	ts.Require().NoError(err, "Failed to create the password email OTP application")
+	ts.T().Cleanup(func() {
+		_ = testutils.DeleteApplication(appID)
+	})
+	return appID
+}
+
 // createPasswordMagicLinkApp creates a password then magic link flow and an application for it, deleted when the
 // test ends.
 func (ts *magicLinkAuthFlowTestSuite) createPasswordMagicLinkApp() string {
@@ -864,6 +925,19 @@ func (ts *magicLinkAuthFlowTestSuite) submitPassword(appID, username string,
 	}
 	step, err = common.CompleteFlow(step.ExecutionID, inputs, "", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the password")
+	return step
+}
+
+// submitEmail checks that the step asks for an email, submits the given one and returns the next step.
+func (ts *magicLinkAuthFlowTestSuite) submitEmail(step *common.FlowStep, email string) *common.FlowStep {
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "email"), "The email should be collected")
+	ts.mockSMTP.ClearEmails()
+
+	step, err := common.CompleteFlow(step.ExecutionID, map[string]string{"email": email}, "action_email",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the email")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
 	return step
 }
 
@@ -932,6 +1006,89 @@ func buildPasswordMagicLinkFlow() testutils.Flow {
 				"id":        "verify_magic_link",
 				"type":      "TASK_EXECUTION",
 				"executor":  map[string]interface{}{"name": "MagicLinkExecutor", "mode": "verify"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
+// buildPasswordEmailOTPEnrollFlow builds a password then email OTP flow that stores a collected email only after
+// the OTP is verified.
+func buildPasswordEmailOTPEnrollFlow() testutils.Flow {
+	emailInput := []map[string]interface{}{
+		{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+	}
+	return testutils.Flow{
+		Name:     "Magic Link Test Password Email OTP",
+		FlowType: "AUTHENTICATION",
+		Handle:   "magic_link_test_password_email_otp",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "credentials_auth"},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor"},
+				"onSuccess": "attribute_collect",
+			},
+			{
+				"id":           "attribute_collect",
+				"type":         "TASK_EXECUTION",
+				"executor":     map[string]interface{}{"name": "AttributeCollector", "inputs": emailInput},
+				"onSuccess":    "generate_otp",
+				"onIncomplete": "prompt_email",
+			},
+			{
+				"id":   "prompt_email",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": emailInput,
+						"action": map[string]interface{}{"ref": "action_email", "nextNode": "generate_otp"},
+					},
+				},
+			},
+			{
+				"id":        "generate_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "generate", "inputs": emailInput},
+				"onSuccess": "email_send",
+			},
+			{
+				"id":         "email_send",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"emailTemplate": "OTP"},
+				"executor":   map[string]interface{}{"name": "EmailExecutor", "mode": "send", "inputs": emailInput},
+				"onSuccess":  "prompt_otp",
+			},
+			{
+				"id":   "prompt_otp",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_otp", "identifier": "otp", "type": "OTP_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_otp", "nextNode": "verify_otp"},
+					},
+				},
+			},
+			{
+				"id":        "verify_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "verify"},
+				"onSuccess": "save_email",
+			},
+			{
+				"id":        "save_email",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AttributeCollector", "inputs": emailInput},
 				"onSuccess": "auth_assert",
 			},
 			{
