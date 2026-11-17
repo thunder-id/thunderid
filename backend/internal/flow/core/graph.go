@@ -269,6 +269,7 @@ func (g *graph) ToJSON() (string, error) {
 		NextNodeIDList     []string       `json:"nextNodeIds"`
 		PreviousNodeIDList []string       `json:"previousNodeIds"`
 		Inputs             []JSONInputs   `json:"inputs,omitempty"`
+		IdentifierInputs   []JSONInputs   `json:"identifierInputs,omitempty"`
 		Executor           string         `json:"executor,omitempty"`
 		Condition          *JSONCondition `json:"condition,omitempty"`
 	}
@@ -278,6 +279,24 @@ func (g *graph) ToJSON() (string, error) {
 		Nodes       map[string]JSONNode `json:"nodes"`
 		Edges       map[string][]string `json:"edges"`
 		StartNodeID string              `json:"startNodeId"`
+	}
+
+	toJSONInputs := func(inputs []providers.Input) []JSONInputs {
+		if len(inputs) == 0 {
+			return nil
+		}
+		converted := make([]JSONInputs, len(inputs))
+		for i, input := range inputs {
+			converted[i] = JSONInputs{
+				Ref:        input.Ref,
+				Identifier: input.Identifier,
+				Type:       input.Type,
+				Required:   input.Required,
+				OneTimeUse: input.OneTimeUse,
+				Options:    input.Options,
+			}
+		}
+		return converted
 	}
 
 	jsonGraph := JSONGraph{
@@ -305,20 +324,8 @@ func (g *graph) ToJSON() (string, error) {
 				jsonNode.Executor = executorName
 			}
 
-			inputs := executableNode.GetInputs()
-			if len(inputs) > 0 {
-				jsonNode.Inputs = make([]JSONInputs, len(inputs))
-				for i, input := range inputs {
-					jsonNode.Inputs[i] = JSONInputs{
-						Ref:        input.Ref,
-						Identifier: input.Identifier,
-						Type:       input.Type,
-						Required:   input.Required,
-						OneTimeUse: input.OneTimeUse,
-						Options:    input.Options,
-					}
-				}
-			}
+			jsonNode.Inputs = toJSONInputs(executableNode.GetInputs())
+			jsonNode.IdentifierInputs = toJSONInputs(executableNode.GetIdentifierInputs())
 		}
 
 		// Set condition if present

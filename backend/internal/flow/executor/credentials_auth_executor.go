@@ -76,9 +76,11 @@ func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*provider
 		AuthUser:       ctx.AuthUser,
 	}
 
-	// When a userID is pre-resolved (e.g., by an IdentifyingExecutor in resolve mode),
-	// only credential inputs are required — skip the identifier input check.
+	// When a userID is pre-resolved, only credential inputs are required -
+	// identifier resolution and its ambiguity validation are skipped entirely.
 	hasPreResolvedUser := ctx.RuntimeData[userAttributeUserID] != ""
+
+	var identifierInput *providers.Input
 	if hasPreResolvedUser {
 		credentialInputs := b.getCredentialInputs(ctx)
 		hasMissingCredentials := false
@@ -93,16 +95,33 @@ func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*provider
 			execResp.Inputs = credentialInputs
 			return execResp, nil
 		}
-	} else if !b.HasRequiredInputs(ctx, execResp) {
-		logger.Debug(ctx.Context, "Required inputs for credentials authentication executor is not provided")
-		execResp.Status = providers.ExecUserInputRequired
-		return execResp, nil
+	} else {
+		// A node may declare mutually exclusive identifier inputs; exactly one must be supplied.
+		resolvedInput, identifierMatches := resolveIdentifierInput(ctx)
+		if identifierMatches > 1 {
+			logger.Debug(ctx.Context, "More than one identifier input provided")
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrAmbiguousIdentifier
+			return execResp, nil
+		}
+		identifierInput = resolvedInput
+
+		missingInputs := !b.HasRequiredInputs(ctx, execResp)
+		missingIdentifier := len(ctx.NodeIdentifierInputs) > 0 && identifierMatches == 0
+		if missingIdentifier {
+			execResp.Inputs = append(execResp.Inputs, ctx.NodeIdentifierInputs...)
+		}
+		if missingInputs || missingIdentifier {
+			logger.Debug(ctx.Context, "Required inputs for credentials authentication executor is not provided")
+			execResp.Status = providers.ExecUserInputRequired
+			return execResp, nil
+		}
 	}
 
 	// TODO: Should handle client errors here. Service should return a ServiceError and
 	//  client errors should be appended as a failure.
 	//  For the moment handling returned error as a authentication failure.
-	err := b.authenticateUser(ctx, execResp)
+	err := b.authenticateUser(ctx, execResp, identifierInput)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserAuthFailed
@@ -142,10 +161,24 @@ func (b *credentialsAuthExecutor) getCredentialInputs(ctx *providers.NodeContext
 	return credentials
 }
 
+// resolveIdentifierInput returns the single supplied identifier input along with the number of
+// the node's identifier inputs that were supplied. Returns (nil, 0) when the node declares none.
+func resolveIdentifierInput(ctx *providers.NodeContext) (*providers.Input, int) {
+	var resolved *providers.Input
+	matches := 0
+	for i, input := range ctx.NodeIdentifierInputs {
+		if ctx.UserInputs[input.Identifier] != "" {
+			resolved = &ctx.NodeIdentifierInputs[i]
+			matches++
+		}
+	}
+	return resolved, matches
+}
+
 // authenticateUser perform authentication based on the provided identifying and
 // credential attributes and returns the authenticated user details.
 func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse) error {
+	execResp *providers.ExecutorResponse, identifierInput *providers.Input) error {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	userIdentifiers := map[string]interface{}{}
@@ -154,6 +187,12 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 	// When a userID is pre-resolved, use it as the identifier for authentication.
 	if preResolvedUserID, ok := ctx.RuntimeData[userAttributeUserID]; ok {
 		userIdentifiers[userAttributeUserID] = preResolvedUserID
+	}
+
+	// The resolved identifier is passed under its own name, so the authn provider can tell
+	// which kind of identifier the user supplied.
+	if identifierInput != nil {
+		userIdentifiers[identifierInput.Identifier] = ctx.UserInputs[identifierInput.Identifier]
 	}
 
 	for _, inputData := range b.GetRequiredInputs(ctx) {

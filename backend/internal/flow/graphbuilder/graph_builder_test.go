@@ -278,6 +278,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
 	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
 	mockTaskNode.EXPECT().SetExecutorName("test-executor")
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
@@ -322,6 +323,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_ExecutorNotRegistered() {
 		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, true).Return(
 		mockTaskNode, nil)
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("unknown-executor").Return(false)
 
@@ -378,6 +380,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
 	mockTaskNode.EXPECT().SetOnSuccess("end")
 	mockTaskNode.EXPECT().SetOnFailure("error-prompt")
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
 	mockTaskNode.EXPECT().SetExecutorName("test-executor")
@@ -517,6 +520,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 		{Ref: "username", Type: "string", Identifier: "user", Required: true},
 		{Ref: "password", Type: "string", Identifier: "pass", Required: true},
 	})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
@@ -594,7 +598,9 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
 		return true
 	}))
 	mockTask1Node.EXPECT().SetInputs([]providers.Input{})
+	mockTask1Node.EXPECT().SetIdentifierInputs([]providers.Input{})
 	mockTask2Node.EXPECT().SetInputs([]providers.Input{})
+	mockTask2Node.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
 	mockGraph.EXPECT().AddNode(mockPromptNode).Return(nil)
@@ -762,6 +768,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 
 	mockStartNode.EXPECT().SetOnSuccess("task")
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 	mockTaskNode.EXPECT().SetCondition(&core.NodeCondition{
 		Key:    "userType",
 		Value:  "premium",
@@ -1039,6 +1046,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 	mockTaskNode.EXPECT().SetExecutorName("OTPExecutor")
 	mockTaskNode.EXPECT().SetMode("generate")
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
@@ -1653,6 +1661,58 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled
 
 	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, map[string][]string{})
 	s.Nil(err)
+}
+
+func (s *GraphBuilderTestSuite) TestConfigureNodeInputs_IdentifierInputsValidationCompiled() {
+	nodeDef := &providers.NodeDefinition{
+		ID:   "task-1",
+		Type: "TASK_EXECUTION",
+		Executor: &providers.ExecutorDefinition{
+			IdentifierInputs: []providers.InputDefinition{
+				{
+					Identifier: "phone",
+					Validation: []providers.ValidationRuleDefinition{
+						{Type: "regex", Value: `^\+[0-9]+@phone$`, Message: "invalid.phone"},
+					},
+				},
+			},
+		},
+	}
+
+	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs(mock.MatchedBy(func(inputs []providers.Input) bool {
+		if len(inputs) != 1 || inputs[0].Identifier != "phone" || len(inputs[0].Validation) != 1 {
+			return false
+		}
+		rule := inputs[0].Validation[0]
+		return rule.Type == providers.ValidationTypeRegex && rule.CompiledRegex != nil
+	}))
+
+	err := s.builder.configureNodeInputs(context.Background(), nodeDef, mockTaskNode)
+	s.Nil(err)
+}
+
+func (s *GraphBuilderTestSuite) TestConfigureNodeInputs_InvalidValidationRegexReturnsError() {
+	nodeDef := &providers.NodeDefinition{
+		ID:   "task-1",
+		Type: "TASK_EXECUTION",
+		Executor: &providers.ExecutorDefinition{
+			IdentifierInputs: []providers.InputDefinition{
+				{
+					Identifier: "phone",
+					Validation: []providers.ValidationRuleDefinition{
+						{Type: "regex", Value: "[unclosed", Message: "bad"},
+					},
+				},
+			},
+		},
+	}
+
+	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+
+	err := s.builder.configureNodeInputs(context.Background(), nodeDef, mockTaskNode)
+	s.Error(err)
 }
 
 // CALL node tests
