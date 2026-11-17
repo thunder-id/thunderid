@@ -30,8 +30,6 @@ type ResolvedAuthorizationMapping struct {
 	// Ambiguous holds the groups and roles a direct mapping name matched more than once. They are
 	// neither granted nor removed.
 	Ambiguous []providers.AuthorizationTarget
-	// Configured reports whether the connection has any rule or direct mapping.
-	Configured bool
 	// MapsGroups and MapsRoles report whether the mapping can resolve groups and roles.
 	MapsGroups bool
 	MapsRoles  bool

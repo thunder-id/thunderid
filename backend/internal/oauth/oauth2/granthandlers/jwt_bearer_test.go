@@ -150,6 +150,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_Success() {
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "read", "write"),
+			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read", "write"}).Return([]string{}, nil)
@@ -308,6 +311,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_ScopeIntersection()
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "read", "write"),
+			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read"}).Return([]string{}, nil)
@@ -348,6 +354,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_EmptyAppScopes_Asse
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "read", "write"),
+			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read", "write"}).Return([]string{}, nil)
@@ -384,10 +393,11 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionResource_A
 
 	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
 		Return(&tokenservice.IDJAGAssertionClaims{
-			Sub:       testUserID,
-			Iss:       testCustomIssuer,
-			Scopes:    []string{"read", "write"},
-			Resources: []string{testRS01URI},
+			Sub:           testUserID,
+			Iss:           testCustomIssuer,
+			Scopes:        []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{Targets: permissionTargets(testRS01URI, "read", "write")},
+			Resources:     []string{testRS01URI},
 		}, nil)
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
@@ -573,7 +583,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleCannotGra
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -620,7 +629,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsSco
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
@@ -681,7 +689,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedPermissionGra
 					{Type: providers.AuthorizationTargetPermission,
 						ResourceServerID: testJWTBearerDefaultRSID, Permission: "read"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
@@ -723,12 +730,10 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedAuthorization
 
 	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
 		Return(&tokenservice.IDJAGAssertionClaims{
-			Sub:    testUserID,
-			Iss:    testCustomIssuer,
-			Scopes: []string{"read", "write"},
-			Authorization: tokenservice.MappedAuthorization{
-				Configured: true,
-			},
+			Sub:           testUserID,
+			Iss:           testCustomIssuer,
+			Scopes:        []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read", "write"}).Return([]string{}, nil)
@@ -774,7 +779,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsSco
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
@@ -798,4 +802,101 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsSco
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), []string{testScopeRead, testScopeWrite}, result.AccessToken.Scopes)
+}
+
+// A connection with no authorization mapping grants no permission scopes: the assertion's own scope
+// claim is not an authority. OIDC scopes are unaffected and the engine is never consulted.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_NoMapping_GrantsNoPermissionScopes() {
+	now := time.Now().Unix()
+	suite.oauthApp.ScopeClaims = map[string][]string{constants.ScopeOpenID: {"sub"}}
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+		Scope:     "openid read write",
+	}
+
+	// No .On("EvaluateAccessBatch", ...) expectation: a call would fail the mock.
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &jwtBearerGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: suite.mockResourceService,
+		authzService:    mockAuthzService,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{constants.ScopeOpenID, "read", "write"},
+		}, nil)
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
+		[]string{"read", "write"}).Return([]string{}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == constants.ScopeOpenID
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 3600, Scopes: []string{constants.ScopeOpenID},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{constants.ScopeOpenID}, result.AccessToken.Scopes)
+}
+
+// Several mapped permission targets are granted directly whatever order the assertion and request list
+// them in, and a requested permission with no mapped target is not granted. No engine call is made.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_DirectPermissionMapping_GrantsOnlyMappedTargets() {
+	now := time.Now().Unix()
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+		Scope:     "read unmapped delete",
+	}
+
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &jwtBearerGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: suite.mockResourceService,
+		authzService:    mockAuthzService,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{"delete", "unmapped", "read"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "delete", "read"),
+			},
+		}, nil)
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
+		mock.Anything).Return([]string{}, nil)
+	var granted []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			granted = args.Get(1).(*tokenservice.AccessTokenBuildContext).Scopes
+		}).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 3600}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.ElementsMatch(suite.T(), []string{"delete", "read"}, granted)
+}
+
+// permissionTargets builds direct-mapping permission targets on one resource server.
+func permissionTargets(resourceServerID string, permissions ...string) []providers.AuthorizationTarget {
+	targets := make([]providers.AuthorizationTarget, 0, len(permissions))
+	for _, permission := range permissions {
+		targets = append(targets, providers.AuthorizationTarget{
+			Type: providers.AuthorizationTargetPermission, ResourceServerID: resourceServerID, Permission: permission,
+		})
+	}
+	return targets
 }

@@ -1996,7 +1996,6 @@ func (s *IDPUtilsTestSuite) TestResolveAuthorizationMapping() {
 	s.Nil(svcErr)
 	s.Equal(providers.SyncModeOverrideReceived, resolved.AttributesSyncMode)
 	s.Equal(providers.SyncModeOverrideAll, resolved.GroupsAndRolesSyncMode)
-	s.True(resolved.Configured)
 	s.True(resolved.MapsGroups)
 	s.True(resolved.MapsRoles)
 	s.True(resolved.Complete)
@@ -2022,7 +2021,6 @@ func (s *IDPUtilsTestSuite) TestResolveAuthorizationMapping_NoMapping() {
 			return nil, nil, nil
 		})
 	s.Nil(svcErr)
-	s.False(resolved.Configured)
 	s.False(resolved.MapsGroups)
 	s.False(resolved.MapsRoles)
 	s.True(resolved.Complete)

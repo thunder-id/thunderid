@@ -493,8 +493,7 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 
 // resolveMappedAuthorization resolves both AuthorizationRuleMapping (explicit value rules) and
 // AuthorizationDirectMapping (direct name-based lookup) for idpDTO against claims, unioning their
-// targets. The connection's authorization mapping is configured, and therefore the sole authority
-// for scopes, when either list is non-empty.
+// targets. The mapping is the only authority for an external token's permission scopes.
 func (tv *tokenValidator) resolveMappedAuthorization(
 	ctx context.Context, idpDTO *providers.IDPDTO, claims map[string]interface{},
 ) (MappedAuthorization, error) {
@@ -512,7 +511,7 @@ func (tv *tokenValidator) resolveMappedAuthorization(
 		return MappedAuthorization{}, fmt.Errorf("%s", svcErr.Error.DefaultValue)
 	}
 
-	return MappedAuthorization{Targets: resolved.Targets, Configured: resolved.Configured}, nil
+	return MappedAuthorization{Targets: resolved.Targets}, nil
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.
@@ -646,9 +645,13 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	// Only self-issued tokens participate in deny-list (revocation) enforcement; an external
 	// issuer's jti and token family id have no meaning in this server's deny list.
 	var jti, tokenFamilyID string
+	// An external issuer's sub is its own identifier. A self-issued token names the provider whose
+	// identifier its sub is in the idp claim, set only when it was issued for such a subject.
+	sourceIDP := iss
 	if tv.isSelfIssuer(iss) {
 		jti, _ = extractStringClaim(claims, "jti")
 		tokenFamilyID, _ = extractStringClaim(claims, constants.ClaimTokenFamilyID)
+		sourceIDP, _ = extractStringClaim(claims, constants.ClaimIDP)
 	}
 
 	return &SubjectTokenClaims{
@@ -662,6 +665,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		JTI:            jti,
 		TokenFamilyID:  tokenFamilyID,
 		Authorization:  authorization,
+		SourceIDP:      sourceIDP,
 	}, nil
 }
 
