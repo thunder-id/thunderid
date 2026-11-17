@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -276,6 +277,181 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_Success() {
 
 	// Restore password for other tests.
 	ts.testPassword = newPassword
+}
+
+// TestBasicRecoveryFlow_PasswordSentWithUsername tests that a password sent along with the username
+// is not used for the new password step. Opening the recovery link still prompts for the new password.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_PasswordSentWithUsername() {
+	ts.mockSMTP.ClearEmails()
+	earlyPassword := "SentWithUsername789!"
+	newPassword := "NewPassword789!"
+
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+
+	flowStep, err = common.CompleteFlow(
+		flowStep.ExecutionID,
+		map[string]string{"username": ts.testUsername, "password": earlyPassword},
+		"action_submit_username",
+		flowStep.ChallengeToken,
+	)
+	ts.Require().NoError(err, "Failed to submit username")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+
+	email := awaitEmail(ts.Require(), ts.mockSMTP)
+	recoveryToken := testutils.ExtractQueryParam(email.ExtractRecoveryLink(), "inviteToken")
+	ts.Require().NotEmpty(recoveryToken, "Expected inviteToken query param in recovery link")
+
+	// Open the link the way the gate does: the execution ID and the token, nothing else.
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"inviteToken": recoveryToken}, "", "")
+	ts.Require().NoError(err, "Failed to submit recovery token")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Opening the link stops at the new password prompt")
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
+		"Expected password input at prompt_new_password")
+
+	ok, err := testutils.AuthenticateWithCredential("username", ts.testUsername, "password", earlyPassword)
+	ts.Require().NoError(err)
+	ts.Require().False(ok, "The password sent with the username is not set")
+	ok, err = testutils.AuthenticateWithCredential("username", ts.testUsername, "password", ts.testPassword)
+	ts.Require().NoError(err)
+	ts.Require().True(ok, "The current password still works until a new one is submitted")
+
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"password": newPassword},
+		"action_submit_password", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit new password")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Expected COMPLETE after setting new password")
+
+	ok, err = testutils.AuthenticateWithCredential("username", ts.testUsername, "password", newPassword)
+	ts.Require().NoError(err)
+	ts.Require().True(ok, "The password submitted at the prompt is set")
+	ts.testPassword = newPassword
+}
+
+// TestBasicRecoveryFlow_PasswordSentWithFirstRequest tests that a password sent with the request that starts
+// recovery is not used for the new password step.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_PasswordSentWithFirstRequest() {
+	ts.mockSMTP.ClearEmails()
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false,
+		map[string]string{"username": ts.testUsername, "password": "SentOnStart789!"}, "action_submit_username")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+
+	ts.requireLinkAsksForNewPassword(flowStep, "SentOnStart789!")
+}
+
+// TestBasicRecoveryFlow_PasswordSentThroughSignInForgotPassword tests that a password sent with the sign-in
+// flow's forgot password action, which calls the recovery flow, is not used for the new password step.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_PasswordSentThroughSignInForgotPassword() {
+	ts.mockSMTP.ClearEmails()
+	authFlowID, err := testutils.CreateFlow(buildSignInFlowCallingRecovery(ts.recoveryFlowID))
+	ts.Require().NoError(err, "Failed to create the sign-in flow")
+	defer func() {
+		if err := testutils.DeleteFlow(authFlowID); err != nil {
+			ts.T().Logf("Failed to delete the sign-in flow: %v", err)
+		}
+	}()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.testOUID,
+		Name:                  "Basic Recovery Forgot Password Test App",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "basic_recovery_forgot_password_client",
+		ClientSecret:          "basic_recovery_forgot_password_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{basicRecoveryUserSchema.Name},
+		AuthFlowID:            authFlowID,
+		RecoveryFlowID:        ts.recoveryFlowID,
+	})
+	ts.Require().NoError(err, "Failed to create the application")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the application: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate the sign-in flow")
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"username": ts.testUsername, "password": "SentWithForgot789!"}, "action_forgot_password",
+		flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to choose forgot password")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+
+	ts.requireLinkAsksForNewPassword(flowStep, "SentWithForgot789!")
+}
+
+// requireLinkAsksForNewPassword opens the recovery link the way the gate does, checks that it asks for a new
+// password and that sentPassword was not set, then completes recovery.
+func (ts *EmailLinkPasswordRecoveryTestSuite) requireLinkAsksForNewPassword(flowStep *common.FlowStep,
+	sentPassword string) {
+	email := awaitEmail(ts.Require(), ts.mockSMTP)
+	recoveryToken := testutils.ExtractQueryParam(email.ExtractRecoveryLink(), "inviteToken")
+	ts.Require().NotEmpty(recoveryToken, "Expected inviteToken query param in recovery link")
+
+	flowStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{"inviteToken": recoveryToken}, "", "")
+	ts.Require().NoError(err, "Failed to submit recovery token")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Opening the link stops at the new password prompt")
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
+		"Expected password input at prompt_new_password")
+
+	ok, err := testutils.AuthenticateWithCredential("username", ts.testUsername, "password", sentPassword)
+	ts.Require().NoError(err)
+	ts.Require().False(ok, "The password sent before the link was opened is not set")
+
+	newPassword := "Chosen" + sentPassword
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"password": newPassword},
+		"action_submit_password", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit new password")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Expected COMPLETE after setting new password")
+	ts.testPassword = newPassword
+}
+
+// buildSignInFlowCallingRecovery returns a sign-in flow whose forgot password action calls the given recovery
+// flow.
+func buildSignInFlowCallingRecovery(recoveryFlowID string) testutils.Flow {
+	return testutils.Flow{
+		Name:     "Basic Recovery Forgot Password Sign-in Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   "basic-recovery-forgot-password-signin",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_credentials"},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+							{"ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT",
+								"required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_sign_in", "nextNode": "credentials_auth"},
+					},
+					{
+						"action": map[string]interface{}{"ref": "action_forgot_password", "nextNode": "call_recovery"},
+					},
+				},
+			},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{
+				"id":        "call_recovery",
+				"type":      "CALL",
+				"flow":      map[string]interface{}{"ref": recoveryFlowID},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
 }
 
 // TestBasicRecoveryFlow_UnknownUsername tests that an unknown username still reaches
@@ -560,4 +736,14 @@ func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
 			},
 		},
 	}
+}
+
+// awaitEmail waits for the mock SMTP server to receive an email and returns it, failing the test after five seconds.
+func awaitEmail(r *require.Assertions, smtp *testutils.MockSMTPServer) *testutils.EmailMessage {
+	var email *testutils.EmailMessage
+	r.Eventually(func() bool {
+		email = smtp.GetLastEmail()
+		return email != nil
+	}, 5*time.Second, 100*time.Millisecond, "Expected an email to be sent")
+	return email
 }

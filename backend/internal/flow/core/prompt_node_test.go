@@ -98,6 +98,43 @@ func (s *PromptOnlyNodeTestSuite) TestExecuteWithRequiredData() {
 	}
 }
 
+func (s *PromptOnlyNodeTestSuite) TestExecuteConsumesOnlyTheActionInputs() {
+	tests := []struct {
+		name     string
+		action   string
+		expected []string
+	}{
+		{"the action's inputs", "action_forgot_password", []string{"username"}},
+		{"every input of a larger action", "action_signin", []string{"username", "password"}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+			node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+				{
+					Inputs: []providers.Input{
+						{Identifier: "username", Required: true},
+						{Identifier: "password", Required: true},
+					},
+					Action: &common.Action{Ref: "action_signin", NextNode: "authenticate"},
+				},
+				{
+					Inputs: []providers.Input{{Identifier: "username", Required: true}},
+					Action: &common.Action{Ref: "action_forgot_password", NextNode: "recovery"},
+				},
+			})
+			ctx := &providers.NodeContext{ExecutionID: "test-flow", CurrentAction: tt.action,
+				UserInputs: map[string]string{"username": "alice", "password": "secret"}}
+
+			resp, err := node.Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(common.NodeStatusComplete, resp.Status)
+			s.Equal(tt.expected, ctx.GetConsumedInputs())
+		})
+	}
+}
+
 func (s *PromptOnlyNodeTestSuite) TestExecuteWithOptionalData() {
 	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
 	promptNode := node.(PromptNodeInterface)
@@ -3050,6 +3087,38 @@ func (s *PromptOnlyNodeTestSuite) TestLoginOptionsVariant_SingleACRFilter() {
 	s.Equal("otp", ctx.CurrentAction, "context must have the auto-selected action")
 	s.Equal("urn:thunder:acr:generated-code", resp.RuntimeData[common.RuntimeKeySelectedAuthClass],
 		"selected_auth_class must be recorded for the auto-selected ACR")
+}
+
+func (s *PromptOnlyNodeTestSuite) TestLoginOptionsVariant_ConsumesOnlyTheActionInputs() {
+	node := newPromptNode("login-chooser", loginOptionsProps(), false, false)
+	pn := node.(PromptNodeInterface)
+	pn.SetVariant(providers.NodeVariantLoginOptions)
+	pn.SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{
+				{Identifier: "username", Required: true},
+				{Identifier: "password", Required: true},
+			},
+			Action: &common.Action{Ref: "pwd", NextNode: "pwd-node"},
+		},
+		{
+			Inputs: []providers.Input{{Identifier: "mobile_number", Required: true}},
+			Action: &common.Action{Ref: "otp", NextNode: "otp-node"},
+		},
+	})
+
+	ctx := &providers.NodeContext{
+		ExecutionID:   "test-flow",
+		CurrentAction: "pwd",
+		UserInputs:    map[string]string{"username": "alice", "password": "secret", "mobile_number": "+94771234567"},
+		RuntimeData:   map[string]string{},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("pwd-node", resp.NextNodeID)
+	s.Equal([]string{"username", "password"}, ctx.GetConsumedInputs())
 }
 
 func (s *PromptOnlyNodeTestSuite) TestLoginOptionsVariant_PreferenceOrder() {

@@ -662,6 +662,8 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.NotContains(suite.T(), result, "userID")
 	assert.NotContains(suite.T(), result, "code")
+	assert.Equal(suite.T(), []string{"username"}, ctx.GetConsumedInputs(),
+		"Only the submitted schema attributes are consumed")
 }
 
 // TestGetAttributesForProvisioning_RequiredAttrsFromMultipleSources verifies that required schema
@@ -2585,6 +2587,27 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredCreden
 	assert.True(suite.T(), ok)
 	assert.Len(suite.T(), fwdInputs, 1)
 	assert.Equal(suite.T(), providers.InputTypePassword, fwdInputs[0].Type)
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_ConsumesSubmittedAttributes() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: attributeEmail, DisplayName: "Email", Required: true},
+			{Attribute: attributePassword, DisplayName: "Password", Required: true, Credential: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{attributePassword: "secret"},
+		RuntimeData: map[string]string{userTypeKey: testUserType},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	result := suite.executor.HasRequiredInputs(ctx, execResp)
+
+	assert.False(suite.T(), result)
+	assert.Equal(suite.T(), []string{attributePassword}, ctx.GetConsumedInputs())
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredCredentialSatisfied_ReturnsTrue() {

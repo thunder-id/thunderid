@@ -295,6 +295,7 @@ func TestAuthorizationExecutor_Execute_ResourceServerFromUserInputFallback(t *te
 	assert.NoError(t, err)
 	assert.Equal(t, providers.ExecComplete, resp.Status)
 	assert.Equal(t, "read", resp.RuntimeData[authorizedPermissionsKey])
+	assert.Equal(t, []string{common.RuntimeKeyResourceServerIdentifier}, ctx.GetConsumedInputs())
 	mockAuthzService.AssertExpectations(t)
 }
 
@@ -604,6 +605,7 @@ func TestExtractRequestedPermissions(t *testing.T) {
 		runtimeData map[string]string
 		UserInputs  map[string]string
 		expected    []string
+		consumed    []string
 	}{
 		{
 			name: "Space-separated permissions",
@@ -637,6 +639,7 @@ func TestExtractRequestedPermissions(t *testing.T) {
 				requestedPermissionsKey: "edit:documents share:documents",
 			},
 			expected: []string{"edit:documents", "share:documents"},
+			consumed: []string{requestedPermissionsKey},
 		},
 		{
 			name: "Permissions Priority to Runtime Data",
@@ -660,6 +663,7 @@ func TestExtractRequestedPermissions(t *testing.T) {
 
 			permissions := extractRequestedPermissions(ctx)
 			assert.Equal(t, tt.expected, permissions)
+			assert.Equal(t, tt.consumed, ctx.GetConsumedInputs())
 		})
 	}
 }

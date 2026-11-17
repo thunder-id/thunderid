@@ -132,6 +132,9 @@ var magicLinkTestUserSchema = testutils.UserType{
 		"family_name": map[string]interface{}{
 			"type": "string",
 		},
+		"mobile_number": map[string]interface{}{
+			"type": "string",
+		},
 	},
 }
 
@@ -468,6 +471,108 @@ func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow_UsernameSendsToStor
 	emailMessage := ts.waitForEmail()
 	ts.Equal([]string{username + "@example.com"}, emailMessage.To,
 		"The magic link goes to the email on the user's profile")
+}
+
+func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow_AttributeSentWithEmailIsPromptedAfterLink() {
+	email := common.GenerateUniqueUsername("magiclinkcollect") + "@example.com"
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID:       ts.ouID,
+		Type:       magicLinkTestUserSchema.Name,
+		Attributes: json.RawMessage(`{"email": "` + email + `"}`),
+	})
+	ts.Require().NoError(err, "Failed to create the test user")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the test user: %v", err)
+		}
+	}()
+
+	b, err := json.Marshal(magicLinkAuthFlow)
+	ts.Require().NoError(err, "Failed to marshal magicLinkAuthFlow")
+	var collectFlow testutils.Flow
+	ts.Require().NoError(json.Unmarshal(b, &collectFlow), "Failed to unmarshal magicLinkAuthFlow")
+	collectFlow.Handle = "auth_flow_magic_link_test_collect"
+	collectFlow.Name = "Magic Link Auth Flow Attribute Collect"
+	collectNode := map[string]interface{}{
+		"id":   "attribute_collect",
+		"type": "TASK_EXECUTION",
+		"executor": map[string]interface{}{
+			"name": "AttributeCollector",
+			"inputs": []map[string]interface{}{
+				{"ref": "input_002", "identifier": "mobile_number", "type": "TEXT_INPUT", "required": true},
+			},
+		},
+		"onSuccess": "auth_assert",
+	}
+	var nodes []interface{}
+	for _, n := range collectFlow.Nodes.([]interface{}) {
+		node := n.(map[string]interface{})
+		switch node["id"] {
+		case "send_magic_link":
+			node["executor"].(map[string]interface{})["inputs"] = []map[string]interface{}{
+				{"ref": "input_001", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+			}
+		case "verify_magic_link":
+			node["onSuccess"] = "attribute_collect"
+		}
+		nodes = append(nodes, node)
+		if node["id"] == "verify_magic_link" {
+			nodes = append(nodes, collectNode)
+		}
+	}
+	collectFlow.Nodes = nodes
+
+	flowID, err := testutils.CreateFlow(collectFlow)
+	ts.Require().NoError(err, "Failed to create the attribute collect magic link flow")
+	defer func() {
+		_ = testutils.DeleteFlow(flowID)
+	}()
+
+	app := magicLinkTestApp
+	app.Name = "Magic Link Test App Attribute Collect"
+	app.ClientID = "magic_link_test_client_collect"
+	app.AuthFlowID = flowID
+	app.OUID = ts.ouID
+	appID, err := testutils.CreateApplication(app)
+	ts.Require().NoError(err, "Failed to create the attribute collect test application")
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+
+	// The request that asks for the link also sends a mobile number, either with the email step or as the
+	// request that starts the flow.
+	for _, onStart := range []bool{false, true} {
+		ts.mockSMTP.ClearEmails()
+		inputs := map[string]string{"email": email, "mobile_number": "+1999000111"}
+		var step2 *common.FlowStep
+		if onStart {
+			step2, err = common.InitiateAuthenticationFlow(appID, false, inputs, "magic_link_action")
+			ts.Require().NoError(err, "Failed to initiate the flow")
+		} else {
+			flowStep, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+			ts.Require().NoError(err, "Failed to initiate the flow")
+			step2, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "magic_link_action",
+				flowStep.ChallengeToken)
+			ts.Require().NoError(err, "Failed to submit the email")
+		}
+		ts.Require().Equal("INCOMPLETE", step2.FlowStatus)
+
+		token := common.ExtractMagicLinkToken(ts.waitForEmail())
+		ts.Require().NotEmpty(token, "Expected magic link token to be present in the email body")
+
+		// The link is opened with only the token, as the gate sends it.
+		step3, err := common.CompleteFlow(step2.ExecutionID, map[string]string{"token": token}, "", "")
+		ts.Require().NoError(err, "Failed to submit the magic link token")
+		ts.Equal("INCOMPLETE", step3.FlowStatus, "The mobile number should be prompted after the link")
+		ts.True(common.HasInput(step3.Data.Inputs, "mobile_number"), "The mobile number input should be requested")
+
+		user, err := testutils.FindUserByAttribute("email", email)
+		ts.Require().NoError(err, "Failed to read the user back")
+		ts.Require().NotNil(user, "The user should exist")
+		attrs, err := testutils.GetUserAttributes(*user)
+		ts.Require().NoError(err, "Failed to read the user's attributes")
+		ts.Nil(attrs["mobile_number"], "The mobile number sent with the email should not be stored")
+	}
 }
 
 // buildUsernameMagicLinkFlow builds a magic link authentication flow that identifies the user by username.
