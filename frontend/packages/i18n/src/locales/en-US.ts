@@ -2818,6 +2818,7 @@ const translations = {
     'detail.back': 'Back to connections',
     'detail.loadError': 'Failed to load trusted issuer.',
     'detail.duplicateName': 'A trusted issuer with this name already exists.',
+    'detail.tabs.ariaLabel': 'Trusted issuer settings',
     'detail.general.title': 'General',
     'detail.general.description': 'Core identity of this trusted issuer.',
     'detail.tokenExchange.title': 'Token exchange',
@@ -2828,6 +2829,9 @@ const translations = {
     'detail.consumption.title': 'Identity Assertion JWT Authorization Grant (ID-JAG)',
     'detail.idJag.description': 'Accept and exchange signed identity assertions from this issuer for access tokens.',
     'detail.idJag.enabledNote': 'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
+    'detail.authorizationMapping.description':
+      'Map values in tokens from this issuer to local roles, groups, or permissions. ' +
+      'When a mapping is set, these tokens carry only the permissions it grants.',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.delete.title': 'Delete trusted issuer',
     'detail.dangerZone.delete.description':
