@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
@@ -20,6 +20,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -1217,4 +1218,49 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_FallsBackToServ
 	result := ResolveTokenConfig(cfg, oauthApp, TokenTypeRefresh, 0)
 
 	suite.Equal(int64(86400), result.ValidityPeriod)
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorization_NilAuthzService_PermissionTargetsGranted() {
+	targets := []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "delete"},
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-2", Permission: "write"},
+	}
+
+	granted, errResp := ApplyMappedAuthorization(context.Background(), nil, nil, targets, "rs-1",
+		[]string{"read", "write", "admin", "delete"}, true, log.GetLogger())
+
+	assert.Nil(suite.T(), errResp)
+	assert.ElementsMatch(suite.T(), []string{"delete", "read"}, granted,
+		"only permissions mapped on the target resource server are granted")
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorization_NilAuthzService_NoTargetsGrantsNothing() {
+	granted, errResp := ApplyMappedAuthorization(context.Background(), nil, nil, nil, "rs-1",
+		[]string{"read", "write"}, true, log.GetLogger())
+
+	assert.Nil(suite.T(), errResp)
+	assert.Empty(suite.T(), granted)
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorization_NilAuthzService_RoleTargetIsServerError() {
+	targets := []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+		{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
+	}
+
+	granted, errResp := ApplyMappedAuthorization(context.Background(), nil, nil, targets, "rs-1",
+		[]string{"read", "write"}, true, log.GetLogger())
+
+	assert.Nil(suite.T(), granted)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorization_MappingNotAuthority_ScopesUnchanged() {
+	granted, errResp := ApplyMappedAuthorization(context.Background(), nil, nil, nil, "rs-1",
+		[]string{"read", "write"}, false, log.GetLogger())
+
+	assert.Nil(suite.T(), errResp)
+	assert.Equal(suite.T(), []string{"read", "write"}, granted)
 }

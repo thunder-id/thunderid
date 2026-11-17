@@ -38,11 +38,13 @@ const (
 	testTokenExchangeJWT = "test-token-exchange-jwt" //nolint:gosec
 	testScopeReadWrite   = "read write"
 	testCustomIssuer     = "https://custom.issuer.com"
-	testUserEmail        = "user@example.com"
-	testClientID         = "client123"
-	testUserID           = "user123"
-	testScopeRead        = "read"
-	testScopeWrite       = "write"
+	// testLocalIssuer is the server's own issuer; subject tokens carrying it are self-issued.
+	testLocalIssuer = testIDJAGServerIssuer
+	testUserEmail   = "user@example.com"
+	testClientID    = "client123"
+	testUserID      = "user123"
+	testScopeRead   = "read"
+	testScopeWrite  = "write"
 	// testTokenExchangeDefaultRSID / testTokenExchangeDefaultRSAudience model the
 	// deployment-configured default resource server used when a request carries no explicit
 	// resource parameter.
@@ -97,6 +99,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 	suite.handler = &tokenExchangeGrantHandler{
+		cfg:             oauthconfig.Config{JWT: testConfig.JWT},
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: suite.mockResourceService,
@@ -180,7 +183,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) setupSuccessfulJWTMock(
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         []string{"read", "write"},
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
@@ -210,7 +213,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) setupSuccessfulJWTMockWithScope
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         tokenservice.ParseScopes(expectedScope),
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
@@ -420,7 +423,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Basic()
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   "user123",
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"aud":   "app123",
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
@@ -438,7 +441,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Basic()
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         []string{"read", "write"},
 			UserAttributes: map[string]interface{}{"email": testUserEmail},
 			NestedAct:      nil,
@@ -586,7 +589,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithSco
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   "user123",
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write delete",
@@ -613,7 +616,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PreservesOIDCSc
 	resourceURI := "https://rs.example.com"
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   testUserID,
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "openid profile read write",
@@ -622,7 +625,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PreservesOIDCSc
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         []string{"openid", "profile", "read", "write"},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
@@ -804,7 +807,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceParamet
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": "user123",
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -844,7 +847,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithMul
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   "user123",
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write",
@@ -1220,7 +1223,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidScope() 
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   "user123",
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write",
@@ -1237,7 +1240,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidScope() 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         []string{"read", "write"},
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
@@ -1434,7 +1437,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ScopeEscalation
 	// Subject token has NO scopes
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": "user123",
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -1451,7 +1454,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ScopeEscalation
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         []string{}, // No scopes in subject token
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
@@ -1627,7 +1630,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   "user123",
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"aud":   "original-audience",
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
@@ -1649,7 +1652,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_CompleteTokenExchan
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:    testUserID,
-			Iss:    testCustomIssuer,
+			Iss:    testLocalIssuer,
 			Scopes: []string{"read", "write"},
 			UserAttributes: map[string]interface{}{
 				"email": testUserEmail,
@@ -1924,7 +1927,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ScopeDownscopingEnf
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   "user123",
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write delete",
@@ -1942,7 +1945,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ScopeDownscopingEnf
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Scopes:         []string{"read", "write", "delete"},
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
@@ -2142,7 +2145,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	now := time.Now().Unix()
 	claims := map[string]interface{}{
 		"sub":                    testUserID,
-		"iss":                    testCustomIssuer,
+		"iss":                    testLocalIssuer,
 		"aud":                    defaultAudience, // Match default audience
 		"exp":                    float64(now + 3600),
 		"nbf":                    float64(now - 60),
@@ -2162,7 +2165,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Aud:            []string{defaultAudience},
 			Scopes:         []string{"read:documents", "write:documents"}, // Mapped from authorized_permissions
 			UserAttributes: map[string]interface{}{"userType": "person"},
@@ -2308,7 +2311,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	now := time.Now().Unix()
 	claims := map[string]interface{}{
 		"sub":                    testUserID,
-		"iss":                    testCustomIssuer,
+		"iss":                    testLocalIssuer,
 		"aud":                    suite.oauthApp.ID, // Match client app_id
 		"exp":                    float64(now + 3600),
 		"nbf":                    float64(now - 60),
@@ -2328,7 +2331,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ServerAuthAsser
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
-			Iss:            testCustomIssuer,
+			Iss:            testLocalIssuer,
 			Aud:            []string{suite.oauthApp.ID},
 			Scopes:         []string{"read:documents", "write:documents"},
 			UserAttributes: map[string]interface{}{"userType": "person"},
@@ -2428,7 +2431,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_Defa
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -2437,6 +2440,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_Defa
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read"},
 			UserAttributes: map[string]interface{}{},
@@ -2457,7 +2461,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -2470,6 +2474,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: rsvc,
@@ -2477,6 +2482,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read"},
 			UserAttributes: map[string]interface{}{},
@@ -2494,7 +2500,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceParamIg
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -2504,6 +2510,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceParamIg
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read"},
 			UserAttributes: map[string]interface{}{},
@@ -2560,7 +2567,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   testUserID,
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write admin",
@@ -2578,6 +2585,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}).
 		Return([]string{"admin"}, nil)
 	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: rsvc,
@@ -2585,6 +2593,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read", "write", "admin"},
 			UserAttributes: map[string]interface{}{},
@@ -2614,7 +2623,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   testUserID,
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write admin",
@@ -2633,6 +2642,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}).
 		Return([]string{"write"}, nil)
 	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: rsvc,
@@ -2640,6 +2650,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read", "write", "admin"},
 			UserAttributes: map[string]interface{}{},
@@ -2668,7 +2679,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub":   testUserID,
-		"iss":   testCustomIssuer,
+		"iss":   testLocalIssuer,
 		"exp":   float64(now + 3600),
 		"nbf":   float64(now - 60),
 		"scope": "read write",
@@ -2678,6 +2689,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read", "write"},
 			UserAttributes: map[string]interface{}{},
@@ -2869,7 +2881,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DownscopeValida
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -2882,12 +2894,14 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DownscopeValida
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
 	handler := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: rsvc,
 	}
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"read"},
 			UserAttributes: map[string]interface{}{},
@@ -3552,7 +3566,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoReso
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
-		"iss": testCustomIssuer,
+		"iss": testLocalIssuer,
 		"exp": float64(now + 3600),
 		"nbf": float64(now - 60),
 	})
@@ -3561,6 +3575,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoReso
 
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
+			Iss:            testLocalIssuer,
 			Sub:            testUserID,
 			Scopes:         []string{"openid"},
 			UserAttributes: map[string]interface{}{},
@@ -3602,6 +3617,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrant
 		Return([]string{}, nil)
 	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
 	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: rsvc,
@@ -3611,12 +3627,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrant
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testCustomIssuer,
 			UserAttributes: map[string]interface{}{},
 			Authorization: tokenservice.MappedAuthorization{
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
@@ -3668,6 +3684,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	// permission grant never reaches the engine.
 	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
 	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: rsvc,
@@ -3677,12 +3694,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testCustomIssuer,
 			UserAttributes: map[string]interface{}{},
 			Authorization: tokenservice.MappedAuthorization{
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetPermission, ResourceServerID: testRS01URI, Permission: "read"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -3697,6 +3714,136 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), []string{"read"}, result.AccessToken.Scopes)
+}
+
+// An external subject token whose connection has no authorization mapping gets no permission scopes,
+// whatever its own scope claim or the request says. OIDC scopes are kept and the engine is not called.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExternalSubjectNoMapping_GrantsNoPermissionScopes() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer,
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Resources = []string{testRS01URI}
+	tokenRequest.Scope = "openid read write"
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil)
+	// No .On("EvaluateAccessBatch", ...) expectation: a call would fail the mock.
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+		authzService:    mockAuthzService,
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			Scopes:         []string{"openid", "read", "write"},
+			UserAttributes: map[string]interface{}{},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == "openid"
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200, Scopes: []string{"openid"},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"openid"}, result.AccessToken.Scopes)
+}
+
+// A self-issued subject token (issuer is this server) keeps its own scope claim as the authority: a
+// request may narrow it but not widen it, and no authorization mapping is involved.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SelfIssuedSubject_ScopesBoundedBySubjectScopes() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testLocalIssuer,
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	claims := &tokenservice.SubjectTokenClaims{
+		Sub: testUserID, Iss: testLocalIssuer, Scopes: []string{"read"}, UserAttributes: map[string]interface{}{},
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(claims, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200, Scopes: []string{testScopeRead},
+	}, nil)
+
+	widen := suite.createBasicTokenRequest(subjectToken)
+	widen.Scope = testScopeReadWrite
+	result, errResp := suite.handler.HandleGrant(context.Background(), widen, suite.oauthApp)
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes,
+		"a scope the subject token lacks is not granted")
+
+	narrow := suite.createBasicTokenRequest(subjectToken)
+	narrow.Scope = testScopeRead
+	result, errResp = suite.handler.HandleGrant(context.Background(), narrow, suite.oauthApp)
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes)
+}
+
+// Several mapped permission targets are granted directly whatever order the request lists them in, and
+// a requested permission with no mapped target is not granted. No engine call is made.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DirectPermissionMapping_GrantsOnlyMappedTargets() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer,
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Resources = []string{testRS01URI}
+	tokenRequest.Scope = "read unmapped delete"
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil)
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+		authzService:    mockAuthzService,
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testRS01URI, "delete", "read"),
+			},
+		}, nil)
+	var granted []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			granted = args.Get(1).(*tokenservice.AccessTokenBuildContext).Scopes
+		}).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.ElementsMatch(suite.T(), []string{"delete", "read"}, granted)
 }
 
 // TestGetScopes_MappedAuthorizationIsSingleAuthority is a direct unit test of the getScopes gate:

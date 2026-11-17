@@ -132,7 +132,6 @@ Without Authorization Mapping configured, the granted scope narrows the requeste
 
 - Only JWT tokens are supported. Opaque tokens (for example, GitHub access tokens) cannot be exchanged.
 - The external user's `sub` is passed through as-is. No local user lookup or just-in-time provisioning occurs.
-- The issued token carries an `idp` claim naming the external issuer. <ProductName />'s own APIs, the management APIs and the MCP server, do not accept it, even when Authorization Mapping is configured. To call those APIs with an identity from an external provider, use the [trusted issuer](../../trusted-issuer).
 - External token scopes are narrowed by the existing intersection logic, or by the connection's Authorization Mapping when one is configured (see [Attribute Configuration](#attribute-configuration) above). External claims can be renamed to local attributes via the IdP's `attributeConfiguration`; the resulting attributes are still filtered by the application's `userAttributes` configuration.
 - Token exchange is available to all applications that have the token exchange grant type. No per-application IdP restriction applies.
 

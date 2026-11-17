@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package token
@@ -29,6 +29,7 @@ const (
 	tokenExchangeMockOIDCPort = 8094
 	// A separate port gives the IdP its own issuer URL, so it does not reuse another test's cached keys.
 	tokenExchangeLocalSubjectMockOIDCPort = 8104
+	tokenExchangeUnmappedMockOIDCPort     = 8105
 )
 
 type TokenExchangeTestSuite struct {
@@ -948,4 +949,79 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalSubjectIsNotLocalAcc
 	ts.Require().NoError(err)
 	defer meResp.Body.Close()
 	ts.Equal(http.StatusUnauthorized, meResp.StatusCode)
+}
+
+// A trusted issuer whose connection has no authorization mapping grants no permission scopes: the
+// external token's own scope claim, and the scope requested, are not an authority. OIDC scopes are kept.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_UnmappedExternalIssuerGetsNoPermissionScopes() {
+	const (
+		externalClientID = "external-unmapped-client"
+		rsIdentifier     = "https://unmapped-issuer-rs.example.com"
+	)
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "Token Exchange Unmapped Issuer RS", Identifier: rsIdentifier, OUID: ts.oUID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read permission"}})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() {
+		if deleteErr := testutils.DeleteResourceServerWithChildren(rsID); deleteErr != nil {
+			ts.T().Logf("Failed to delete resource server: %v", deleteErr)
+		}
+	})
+
+	mockOIDCServer, err := testutils.NewMockOIDCServer(
+		tokenExchangeUnmappedMockOIDCPort, externalClientID, "mock-oidc-secret")
+	ts.Require().NoError(err)
+	ts.Require().NoError(mockOIDCServer.Start())
+	ts.T().Cleanup(func() {
+		if stopErr := mockOIDCServer.Stop(); stopErr != nil {
+			ts.T().Logf("Failed to stop mock OIDC server: %v", stopErr)
+		}
+	})
+
+	idpID, err := testutils.CreateIDP(testutils.IDP{
+		Name:        fmt.Sprintf("Token Exchange Unmapped IdP %d", time.Now().UnixNano()),
+		Description: "Mock OIDC IdP with no authorization mapping",
+		Type:        "OIDC",
+		Properties: []testutils.IDPProperty{
+			{Name: "issuer", Value: mockOIDCServer.GetURL()},
+			{Name: "jwks_endpoint", Value: mockOIDCServer.GetJWKSURL()},
+			{Name: "token_exchange_enabled", Value: "true"},
+			{Name: "trusted_token_audience", Value: externalClientID},
+		},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() {
+		if deleteErr := testutils.DeleteIDP(idpID); deleteErr != nil {
+			ts.T().Logf("Failed to delete mock OIDC IdP: %v", deleteErr)
+		}
+	})
+
+	now := time.Now()
+	externalToken, err := mockOIDCServer.SignJWT(map[string]interface{}{"typ": "JWT"}, map[string]interface{}{
+		"iss":   mockOIDCServer.GetURL(),
+		"sub":   "external-unmapped-subject",
+		"aud":   externalClientID,
+		"scope": "openid read",
+		"iat":   now.Unix(),
+		"exp":   now.Add(5 * time.Minute).Unix(),
+	})
+	ts.Require().NoError(err)
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", externalToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	formData.Set("resource", rsIdentifier)
+	formData.Set("scope", "openid read")
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(),
+		"Basic "+basicAuth(tokenExchangeClientID, tokenExchangeClientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode, "%+v", resp)
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal([]string{"openid"}, strings.Fields(fmt.Sprint(claims.Additional["scope"])),
+		"an unmapped issuer's token carries no permission scopes")
+	ts.assertAudienceEquals(claims, rsIdentifier)
 }
