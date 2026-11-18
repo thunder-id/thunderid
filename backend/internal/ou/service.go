@@ -479,6 +479,9 @@ func (ous *organizationUnitService) listProjectChildren(
 
 	total, err := ous.ouStore.GetOrganizationUnitChildrenCountInProject(ctx, parentID, projectID)
 	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceeded
+		}
 		logger.Error(ctx, "Failed to count the child organization units in a project",
 			log.String("projectID", projectID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -616,6 +619,9 @@ func (ous *organizationUnitService) listAllOrganizationUnits(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
 	totalCount, err := ous.ouStore.GetOrganizationUnitListCount(ctx, f)
 	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceeded
+		}
 		logger.Error(ctx, "Failed to get organization unit count", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
