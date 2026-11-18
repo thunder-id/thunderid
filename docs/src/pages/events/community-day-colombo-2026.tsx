@@ -26,7 +26,7 @@ const EVENT: CommunityDayEvent = {
   timeLabel: '4:00 PM to 8:00 PM',
   timeNote: 'Sri Lanka time',
   venue: {
-    name: 'WSO2 office',
+    name: 'Choreo Labs',
     address: '105, Bauddhaloka Mawatha',
     locality: 'Colombo 4',
     country: 'LK',
@@ -129,7 +129,7 @@ const EVENT: CommunityDayEvent = {
     // {name: 'Agentic AI Foundation (AAIF)'},
     // {name: 'Partner 2 logo'},
   ],
-  sponsors: [{name: 'WSO2', logo: 'wso2', logoWidth: 96, url: 'https://wso2.com/'}],
+  sponsors: [{name: 'Choreo Labs', logo: 'choreo-labs', logoWidth: 128, url: 'https://choreolabs.com/'}],
 };
 
 export default function CommunityDayColombo2026(): JSX.Element {
