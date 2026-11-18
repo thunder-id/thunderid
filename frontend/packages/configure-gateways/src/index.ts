@@ -85,7 +85,9 @@ export {
   useAppliedConfiguration,
   useApplyCheck,
   useApplyVersion,
+  usePreview,
   useRevert,
+  useRevertPreview,
   useRunningReferences,
 } from './api/useGatewayVersions';
 export {

@@ -12,7 +12,7 @@ import type {VersionRunner} from './GatewayTag';
 import PipelineVersions from './PipelineVersions';
 import useAppliedVersions from '../api/useAppliedVersions';
 import {useTargetsWithChangedValues} from '../api/useChangedValues';
-import {useApplyCheck} from '../api/useGatewayVersions';
+import {usePreview} from '../api/useGatewayVersions';
 import {usePipeline} from '../api/usePipeline';
 import {useProjectStatuses} from '../api/useProjectStatus';
 import {useVersions} from '../api/useVersions';
@@ -93,7 +93,7 @@ function PromoteJoint({testId}: {testId: string}): JSX.Element {
 }
 
 /**
- * How many changes a deploy check found, which is how far the first gateway is behind. For a
+ * How many changes a deploy's preview found, which is how far the first gateway is behind. For a
  * project, only its own changes and what they cannot run without count.
  */
 function changeCount(changes: Change[] | undefined): number | undefined {
@@ -166,9 +166,9 @@ export default function GatewaysOverview({
     Boolean(first && latest) &&
     !applied.isLoading &&
     (firstRuns !== latest?.version || firstApplied?.complete === false);
-  // How many changes the latest version would bring to the first gateway, as a deploy would check.
-  const check = useApplyCheck(first?.gateway.id ?? '', latest?.version, firstBehind);
-  const firstChanges = changeCount(check.data?.diff.changes);
+  // How many changes the latest version would bring to the first gateway, as a deploy's preview counts them.
+  const preview = usePreview(first?.gateway.id ?? '', latest?.version, firstBehind);
+  const firstChanges = changeCount(preview.data?.diff.changes);
   // A project is behind only by changes of its own: the latest version can differ in another's alone.
   const firstOwes = firstBehind && firstChanges !== 0;
 

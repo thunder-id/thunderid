@@ -21,7 +21,8 @@ func (s *ProjectScopeTestSuite) TestAProjectsStatusCountsEachSection() {
 	status, svcErr := s.f.svc.ProjectStatus(context.Background(), "gw-1", "shop", "", "")
 
 	s.Require().Nil(svcErr)
-	s.Equal(ProjectState{Versions: []ProjectVersion{}, Pending: 1, Required: 3}, status.Project)
+	s.Equal(ProjectState{Versions: []ProjectVersion{}, Pending: 1, Required: 3,
+		ByType: []TypeCount{{"application", 1}}}, status.Project)
 	s.Equal(3, status.Shared.Pending, "what only billing needs was counted as shared, or its unit was not")
 	s.Equal([]TypeCount{{"organization_unit", 1}, {"translation", 1}, {"user", 1}}, status.Shared.ByType)
 	s.Equal(0, status.Needed.Differing)
@@ -196,11 +197,11 @@ func TestALaterDeployFollowsARollback(t *testing.T) {
 	master := &Master{Resources: projectApp("a", "shop", "ou", "f"), Entries: []MasterEntry{
 		{Key: "application/a", State: EntryDeployed, At: rolledAt.Add(time.Hour), Origin: "dev"}}}
 
-	at, _, action := lastWriteOf("shop", master, latest)
+	at, _, action := lastWriteOf("shop", master, ownersOf(parseBundle(master.Resources)), latest)
 
 	assert.Equal(t, rolledAt.Add(time.Hour), *at)
 	assert.Equal(t, actionPromoted, action)
-	at, by, action := lastWriteOf("shop", &Master{}, nil)
+	at, by, action := lastWriteOf("shop", &Master{}, nil, nil)
 	assert.Nil(t, at)
 	assert.Nil(t, by)
 	assert.Empty(t, action)
@@ -245,9 +246,9 @@ func TestAHeldBackChangeTheSourceRunsIsCountedAgainstTheSource(t *testing.T) {
 		{Key: "organization_unit/ou-c", ResourceType: "organization_unit", Change: ChangeAdded, Section: sectionShared},
 	}}
 
-	assert.Equal(t, []string{"organization_unit/ou-b"}, promoteSelection(source, version, diff),
+	assert.Equal(t, []string{"organization_unit/ou-b"}, promoteSelection(source, parseBundle(version.Resources), diff),
 		"a promotion sent what the target holds back, or what the source does not run")
-	status := countSections(diff, toSet(sourceRuns(source, version, diff, true)), "shop", nil)
+	status := countSections(diff, toSet(sourceRuns(source, parseBundle(version.Resources), diff, true)), "shop", nil)
 
 	assert.Equal(t, 1, status.Shared.Pending)
 	assert.Equal(t, 1, status.Shared.HeldBack, "a held-back change the source runs was not counted")

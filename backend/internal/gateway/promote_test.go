@@ -75,8 +75,7 @@ func (s *PromoteTestSuite) TestPromoteSelectsWhatTheSourceHolds() {
 		{Key: "role/r5", State: EntryDeployed, ContentHash: contentHash(role("r5-earlier"))},
 		{Key: "role/r6", State: EntryDeployed, ContentHash: contentHash(role("r6"))},
 	}}
-	version := &Version{Hash: "bbb",
-		Resources: joinBundle([]string{role("r1"), role("r2"), role("r3"), role("r5"), role("r6")})}
+	version := parseBundle(joinBundle([]string{role("r1"), role("r2"), role("r3"), role("r5"), role("r6")}))
 	target := &Diff{Changes: []Change{
 		{Key: "role/r1", Change: ChangeAdded},
 		{Key: "role/r2", Change: ChangeUnchanged},

@@ -53,25 +53,20 @@ describe('useProjectChanges', () => {
     scope.projectId = 'p-shop';
     http = fakeHttp({
       'GET /gateways/pipeline': {stages: [{name: 'Development', gateway: {id: 'gw-dev', name: 'dev'}}]},
-      'GET /configuration-versions': [{version: 'v2hash', number: 2}],
-      'POST /gateways/gw-dev/apply': {
-        gatewayId: 'gw-dev',
-        dryRun: true,
-        diff: {
-          changes: [
-            {key: 'application/a', resourceType: 'application', change: 'added', section: 'project'},
-            {key: 'application/b', resourceType: 'application', change: 'updated', section: 'project'},
-            {key: 'agent/c', resourceType: 'agent', change: 'unchanged', section: 'project'},
-            {key: 'application/d', resourceType: 'application', change: 'added', section: 'other'},
-            {key: 'flow/e', resourceType: 'flow', change: 'added', section: 'needed', required: true},
-          ],
-        },
+      'GET /gateways/gw-dev/project-status': {
+        ...status,
+        project: {versions: [], pending: 2, required: 1, byType: [{resourceType: 'application', count: 2}]},
       },
     });
 
     const {result} = renderHook(() => useProjectChanges());
 
     await waitFor(() => expect(result.current).toEqual({application: 2}));
+    // The count is the project's status there, so the gateway is not asked to check a deploy.
+    expect(http.calls.map((call: Call) => `${call.method} ${call.url.replace(SERVER, '')}`)).toEqual([
+      'GET /gateways/pipeline',
+      'GET /gateways/gw-dev/project-status?project=p-shop',
+    ]);
   });
 });
 

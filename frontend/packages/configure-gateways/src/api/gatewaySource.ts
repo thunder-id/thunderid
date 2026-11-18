@@ -9,7 +9,11 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  ChangedValues,
+  Diff,
   Master,
+  MissingValues,
+  RemovalCount,
   ResourceHistory,
   StoredValue,
   StoredValuePage,
@@ -45,6 +49,23 @@ interface SettingsLayers {
   merged?: GatewaySettings | null;
 }
 
+/** A diff read as a preview, with what a dry run reports beside it. */
+interface PreviewDiff extends Diff {
+  missing?: MissingValues;
+  changed?: ChangedValues;
+  removals?: RemovalCount;
+}
+
+/** Reads a preview into the shape a dry run answers in, so it is read as one. */
+const previewOf = (targetId: string, {missing, changed, removals, ...diff}: PreviewDiff): ApplyResult => ({
+  gatewayId: targetId,
+  dryRun: true,
+  diff,
+  ...(missing ? {missing} : {}),
+  ...(changed ? {changed} : {}),
+  ...(removals ? {removals} : {}),
+});
+
 /** The control plane's own source: its gateways and the configuration versions it captures. */
 export default function useGatewaySource(): DeploySource {
   const request = useRequest();
@@ -77,19 +98,30 @@ export default function useGatewaySource(): DeploySource {
           'GET',
           `${gateway(targetId)}/master/resources/${key.split('/').map(encodeURIComponent).join('/')}`,
         ),
-      applyCheck: (targetId: string, ref: string, project?: string): Promise<ApplyResult> =>
-        request<ApplyResult>('POST', `${gateway(targetId)}/apply`, {
-          version: ref,
-          dryRun: true,
-          ...(project ? {project} : {}),
-        } satisfies ApplyRequest),
+      preview: async (targetId: string, ref: string, project?: string): Promise<ApplyResult> => {
+        const query = new URLSearchParams({version: ref, ...(project ? {project} : {}), preview: 'true'});
+        return previewOf(targetId, await request<PreviewDiff>('GET', `${gateway(targetId)}/diff?${query.toString()}`));
+      },
+      revertPreview: async (targetId: string, project?: string): Promise<ApplyResult> => {
+        const query = new URLSearchParams({...(project ? {project} : {}), revert: 'true'});
+        return previewOf(targetId, await request<PreviewDiff>('GET', `${gateway(targetId)}/diff?${query.toString()}`));
+      },
+      applyCheck: (targetId: string, data: ApplyRequest): Promise<ApplyResult> =>
+        request<ApplyResult>('POST', `${gateway(targetId)}/apply`, {...data, dryRun: true} satisfies ApplyRequest),
       apply: (targetId: string, data: ApplyRequest): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/apply`, data),
-      revert: (targetId: string, dryRun: boolean, confirmRemovals?: boolean, project?: string): Promise<ApplyResult> =>
+      revert: (
+        targetId: string,
+        dryRun: boolean,
+        confirmRemovals?: boolean,
+        project?: string,
+        plan?: string,
+      ): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/revert`, {
           dryRun,
           ...(confirmRemovals ? {confirmRemovals} : {}),
           ...(project ? {project} : {}),
+          ...(plan ? {plan} : {}),
         }),
       projectStatus: (targetId: string, project: string, from?: string): Promise<ProjectStatus> => {
         const query = new URLSearchParams({project, ...(from ? {from} : {})});

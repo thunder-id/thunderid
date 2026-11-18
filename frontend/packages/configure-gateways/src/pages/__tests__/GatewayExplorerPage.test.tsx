@@ -4,7 +4,7 @@
 import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, queryOf, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, isDryRun, queryOf, SERVER, type Call} from '../../__tests__/fakeHttp';
 import GatewayExplorerPage from '../GatewayExplorerPage';
 
 let http = fakeHttp({});
@@ -224,6 +224,7 @@ describe('GatewayExplorerPage', () => {
     expect(await screen.findByTestId('explorer-node-application/app-1')).toBeInTheDocument();
     expect(screen.getByTestId('explorer-node-flow/f-1')).toBeInTheDocument();
     expect(screen.queryByTestId('explorer-node-connection/c-1')).not.toBeInTheDocument();
+    expect(http.calls.filter(isDryRun)).toEqual([]);
   });
 
   it("waits for the project's check before mapping, and offers to read it again when it fails", async () => {

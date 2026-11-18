@@ -9,7 +9,7 @@ import {useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactN
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
 import useGateways from '../api/useGateways';
-import {useAppliedConfiguration, useApplyCheck, useRunningReferences} from '../api/useGatewayVersions';
+import {useAppliedConfiguration, usePreview, useRunningReferences} from '../api/useGatewayVersions';
 import {useMaster, useResourceHistory} from '../api/useMaster';
 import {usePipeline} from '../api/usePipeline';
 import {useSetStoredValue, useStoredValueCount, useStoredValuesNamed} from '../api/useStoredValues';
@@ -82,17 +82,17 @@ export default function GatewayExplorerPage(): JSX.Element {
   }, [gatewayId]);
 
   // In a project, the map shows the project's own resources and the ones they need, as the project's
-  // check of what the gateway runs places them.
+  // preview of what the gateway runs places them.
   const project = useProjectScope();
-  const projectCheck = useApplyCheck(gatewayId, configuration.data?.version, Boolean(project));
+  const projectPreview = usePreview(gatewayId, configuration.data?.version, Boolean(project));
   const projectKeys = useMemo(() => {
     if (!project) return undefined;
     return new Set(
-      (projectCheck.data?.diff.changes ?? [])
+      (projectPreview.data?.diff.changes ?? [])
         .filter((change: Change) => change.section === 'project' || change.section === 'needed')
         .map((change: Change) => change.key),
     );
-  }, [project, projectCheck.data]);
+  }, [project, projectPreview.data]);
   const graph = useMemo(
     () =>
       buildGraph(
@@ -234,7 +234,7 @@ export default function GatewayExplorerPage(): JSX.Element {
 
   let body: ReactNode;
   // In a project the map waits for the project's check, which says what is the project's.
-  if (gateways.isLoading || configuration.isLoading || (Boolean(project) && projectCheck.isLoading)) {
+  if (gateways.isLoading || configuration.isLoading || (Boolean(project) && projectPreview.isLoading)) {
     body = (
       <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1}}>
         <CircularProgress size={28} />
@@ -254,16 +254,16 @@ export default function GatewayExplorerPage(): JSX.Element {
         </Alert>
       </Box>
     );
-  } else if (project && projectCheck.isError && !projectCheck.data) {
+  } else if (project && projectPreview.isError && !projectPreview.data) {
     body = (
       <Box sx={{p: 4}}>
         <QueryErrorNotice
-          error={projectCheck.error}
+          error={projectPreview.error}
           t={tForErrors}
           variant="inline"
-          fallbackKey="deploy:explorer.projectCheckFailed"
+          fallbackKey="deploy:explorer.projectPreviewFailed"
           fallbackDefaultValue="Which resources here belong to this project could not be read."
-          onRetry={() => void projectCheck.refetch()}
+          onRetry={() => void projectPreview.refetch()}
         />
       </Box>
     );

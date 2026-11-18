@@ -7,6 +7,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
 import type {PipelineStage} from '../../models/pipeline';
 import useAdministrators from '../useAdministrators';
+import {useApplyCheck, useApplyVersion, usePreview, useRevertPreview} from '../useGatewayVersions';
 import {useMaster, useMasterHistory, useRefused, useResourceHistory} from '../useMaster';
 import {useAutoApply, usePipeline, useProjects, useSetAutoApply, useSetProjectAutoSync} from '../usePipeline';
 import {useProjectStatuses} from '../useProjectStatus';
@@ -145,5 +146,92 @@ describe('useAdministrators', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.totalResults).toBe(13);
     expect(http.calls[0].url).toBe(`${SERVER}/users?limit=3&offset=0&include=display`);
+  });
+});
+
+describe('preview hooks', () => {
+  const diff = {toVersion: 'v1', changes: [], missing: {variables: ['HOST']}, removals: {count: 0, threshold: 5}};
+
+  it('reads a preview as a dry run answers, and has the gateway check a deploy only when asked', async () => {
+    scope.projectId = 'p-shop';
+    http = fakeHttp({
+      'GET /gateways/gw-dev/diff': diff,
+      'POST /gateways/gw-dev/apply': {gatewayId: 'gw-dev', dryRun: true, diff: {toVersion: 'v1', changes: []}},
+    });
+    const {result} = renderHook(() => ({
+      preview: usePreview('gw-dev', 'v1'),
+      revert: useRevertPreview('gw-dev'),
+      check: useApplyCheck(),
+    }));
+
+    await waitFor(() => expect(result.current.preview.data).toBeDefined());
+    await waitFor(() => expect(result.current.revert.data).toBeDefined());
+    expect(result.current.preview.data).toEqual({
+      gatewayId: 'gw-dev',
+      dryRun: true,
+      diff: {toVersion: 'v1', changes: []},
+      missing: {variables: ['HOST']},
+      removals: {count: 0, threshold: 5},
+    });
+    expect(http.calls.map((call: Call) => `${call.method} ${call.url.replace(SERVER, '')}`)).toEqual([
+      'GET /gateways/gw-dev/diff?version=v1&project=p-shop&preview=true',
+      'GET /gateways/gw-dev/diff?project=p-shop&revert=true',
+    ]);
+
+    await act(async () => {
+      await result.current.check.mutateAsync({
+        gatewayId: 'gw-dev',
+        data: {version: 'v1', selection: ['application/a'], project: 'p-shop'},
+      });
+    });
+    expect(http.calls.filter((call: Call) => call.method === 'POST').map((call: Call) => call.data)).toEqual([
+      {version: 'v1', selection: ['application/a'], project: 'p-shop', dryRun: true},
+    ]);
+  });
+
+  it('reads again only the previews and statuses of the gateway a deploy wrote', async () => {
+    http = fakeHttp({
+      'GET /gateways/gw-dev/diff': diff,
+      'GET /gateways/gw-prod/diff': diff,
+      'POST /gateways/gw-dev/apply': {gatewayId: 'gw-dev', dryRun: false, diff: {toVersion: 'v1', changes: []}},
+    });
+    const {result} = renderHook(() => ({
+      dev: usePreview('gw-dev', 'v1'),
+      prod: usePreview('gw-prod', 'v1'),
+      apply: useApplyVersion(),
+    }));
+    await waitFor(() => expect(result.current.dev.data && result.current.prod.data).toBeTruthy());
+    const reads = (gateway: string): number =>
+      http.calls.filter((call: Call) => call.url.includes(`/gateways/${gateway}/diff`)).length;
+
+    await act(async () => {
+      await result.current.apply.mutateAsync({gatewayId: 'gw-dev', data: {version: 'v1'}});
+    });
+
+    await waitFor(() => expect(reads('gw-dev')).toBe(2));
+    expect(reads('gw-prod')).toBe(1);
+  });
+
+  it('replaces a first read still running when a deploy writes its gateway', async () => {
+    let reads = 0;
+    let answerFirst: (value: unknown) => void = () => undefined;
+    http = fakeHttp({
+      'GET /gateways/gw-dev/diff': () => {
+        reads += 1;
+        if (reads === 1) return new Promise((resolve) => (answerFirst = resolve));
+        return {toVersion: 'v1', changes: [], plan: 'after'};
+      },
+      'POST /gateways/gw-dev/apply': {gatewayId: 'gw-dev', dryRun: false, diff: {toVersion: 'v1', changes: []}},
+    });
+    const {result} = renderHook(() => ({preview: usePreview('gw-dev', 'v1'), apply: useApplyVersion()}));
+    await waitFor(() => expect(reads).toBe(1));
+
+    await act(async () => {
+      await result.current.apply.mutateAsync({gatewayId: 'gw-dev', data: {version: 'v1'}});
+    });
+    answerFirst({toVersion: 'v1', changes: [], plan: 'before'});
+
+    await waitFor(() => expect(result.current.preview.data?.diff.plan).toBe('after'));
+    expect(reads).toBe(2);
   });
 });

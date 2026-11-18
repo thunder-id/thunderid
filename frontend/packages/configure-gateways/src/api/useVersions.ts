@@ -13,16 +13,20 @@ import useDeploySource from './source';
 import DeployQueryKeys from '../constants/query-keys';
 import type {Version} from '../models/deploy';
 
+/** How long the list of versions is taken as current before it is read again. */
+const VERSIONS_STALE_TIME = 30_000;
+
 /**
  * The versions, newest first, without their content: one target's, when the source keeps versions per
  * target. The control plane keeps the newest one current as the configuration changes, so the list is
- * read again when the window comes back.
+ * read again when the window comes back once it is no longer current.
  */
 export function useVersions(targetId?: string): UseQueryResult<Version[]> {
   const source = useDeploySource();
   return useQuery<Version[]>({
     queryKey: [DeployQueryKeys.VERSIONS, targetId],
     queryFn: (): Promise<Version[]> => source.versions(targetId),
+    staleTime: VERSIONS_STALE_TIME,
   });
 }
 

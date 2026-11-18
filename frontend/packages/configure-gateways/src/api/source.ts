@@ -59,10 +59,18 @@ export interface DeploySource {
   /** One resource's entry across a target's masters, newest first. */
   resourceHistory(targetId: string, key: string): Promise<ResourceHistory>;
   /**
-   * What applying a version would change on a target, and what it lacks for it. Nothing is written. For a
-   * project, each change says where it stands with the project.
+   * What applying a version would change on a target, and what it lacks for it, worked out from what is
+   * recorded of the target without asking it to check the deploy: the target is not sent the version.
+   * Nothing is written. For a project, each change says where it stands with the project.
    */
-  applyCheck(targetId: string, version: string, project?: string): Promise<ApplyResult>;
+  preview(targetId: string, version: string, project?: string): Promise<ApplyResult>;
+  /** What putting a target back on what it ran before would change, worked out as `preview` is. */
+  revertPreview(targetId: string, project?: string): Promise<ApplyResult>;
+  /**
+   * What the target itself says the deploy described by `request` would do: it checks it, without
+   * writing it, and answers what it would refuse. Asked for on demand, since the target does the work.
+   */
+  applyCheck(targetId: string, request: ApplyRequest): Promise<ApplyResult>;
   /** Applies a version to a target, or works out what it would do when `dryRun` is set. */
   apply(targetId: string, request: ApplyRequest): Promise<ApplyResult>;
   /**
@@ -70,7 +78,14 @@ export interface DeploySource {
    * removes more resources than the threshold is refused until `confirmRemovals` is set. For a project,
    * only its own resources go back; shared resources and other projects' stay as they are.
    */
-  revert(targetId: string, dryRun: boolean, confirmRemovals?: boolean, project?: string): Promise<ApplyResult>;
+  revert(
+    targetId: string,
+    dryRun: boolean,
+    confirmRemovals?: boolean,
+    project?: string,
+    /** The plan a preview of the rollback reported; the rollback is refused once it no longer holds. */
+    plan?: string,
+  ): Promise<ApplyResult>;
   /**
    * How a project stands on a target: the versions its own resources there came from, and what of its
    * own, of what it needs and of what is shared waits to be brought there from `from`, the target before

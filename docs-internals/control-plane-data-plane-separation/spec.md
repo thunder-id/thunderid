@@ -145,7 +145,7 @@ A secret reference may stand only in a field that holds a credential. A capture 
 
 **Revert.** `POST /gateways/{id}/revert` returns the gateway to the master it held before the version it holds now, one step only (`GTW-1016` for a second). It follows the same rules as an apply. After a revert, auto apply applies the captured version too, so a reverted change reaches the DP (#6246).
 
-**Dry run.** `dryRun` imports as a dry run, records nothing, and reports what would happen.
+**Dry run.** `dryRun` imports as a dry run, records nothing, and reports what would happen. A preview (`GET /gateways/{id}/diff?preview=true`, or `revert=true` for a revert) reports the same diff, missing and changed values and removal count from the CP's own records and the gateway's store, without the gateway's import, so it cannot say what the gateway would refuse. The console shows the preview and asks for a dry run only when the user checks with the gateway.
 
 **Reading state.** `GET /gateways/{id}/diff`, `/applied-version`, `/applied-configuration`, `/master`, `/master/history` and `/master/resources/{type}/{resource}` expose the version, master and per resource history. They return references, never values.
 

@@ -3,7 +3,7 @@
 
 import {render, screen, userEvent, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, isDryRun, SERVER, type Call} from '../../__tests__/fakeHttp';
 import useResourceDeploy from '../useResourceDeploy';
 
 let http = fakeHttp({});
@@ -24,8 +24,8 @@ const versions = [
 const dev = {id: 'gw-dev', name: 'dev', baseUrl: 'https://dev.test', isDefault: true};
 const prod = {id: 'gw-prod', name: 'prod', baseUrl: 'https://prod.test'};
 
-/** The applies asked for, by gateway, with what each asked for. */
-let applies: {url: string; data: unknown}[] = [];
+/** The previews read, by the URL each was read at. */
+let previews: string[] = [];
 
 function DeployOne({target = undefined}: {target?: string}) {
   const deploy = useResourceDeploy();
@@ -40,16 +40,13 @@ function DeployOne({target = undefined}: {target?: string}) {
 }
 
 beforeEach(() => {
-  applies = [];
-  const dryRun = (call: Call) => {
-    applies.push({url: call.url, data: call.data});
+  previews = [];
+  const preview = (call: Call) => {
+    previews.push(call.url);
     return {
-      dryRun: true,
-      diff: {
-        changes: [
-          {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'updated'},
-        ],
-      },
+      changes: [
+        {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'updated'},
+      ],
     };
   };
   http = fakeHttp({
@@ -63,8 +60,8 @@ beforeEach(() => {
     'GET /gateways/gw-dev/applied-version': {gatewayId: 'gw-dev', appliedVersion: 'hash-3'},
     'GET /gateways/gw-prod/applied-version': {gatewayId: 'gw-prod', appliedVersion: 'hash-2'},
     'GET /server-config/gateway': {merged: {autoApply: false}, writable: {}},
-    'POST /gateways/gw-dev/apply': dryRun,
-    'POST /gateways/gw-prod/apply': dryRun,
+    'GET /gateways/gw-dev/diff': preview,
+    'GET /gateways/gw-prod/diff': preview,
   });
 });
 
@@ -80,8 +77,8 @@ describe('useResourceDeploy', () => {
     expect(first).toHaveTextContent('Development');
     expect(second).toHaveTextContent('promote once Development is verified');
     expect(await screen.findByRole('checkbox', {name: /Orders/})).toBeChecked();
-    expect(applies[0].url).toContain('/gateways/gw-dev/apply');
-    expect(applies[0].data).toMatchObject({version: 'hash-3', dryRun: true});
+    expect(previews[0]).toContain('/gateways/gw-dev/diff?version=hash-3&preview=true');
+    expect(http.calls.filter(isDryRun)).toEqual([]);
   });
 
   it('promotes one resource to a later gateway from the version the gateway before it runs', async () => {
@@ -92,7 +89,6 @@ describe('useResourceDeploy', () => {
     const steps = await screen.findByTestId('pipeline-steps');
     expect(within(steps).getAllByRole('listitem')[1]).toHaveAttribute('data-current', 'true');
     expect(await screen.findByText(/from Development to Production/)).toBeInTheDocument();
-    expect(applies[0].url).toContain('/gateways/gw-prod/apply');
-    expect(applies[0].data).toMatchObject({version: 'hash-3'});
+    expect(previews[0]).toContain('/gateways/gw-prod/diff?version=hash-3&preview=true');
   });
 });

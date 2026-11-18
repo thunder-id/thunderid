@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
@@ -21,6 +22,74 @@ type bundleResource struct {
 	ID      string
 	Name    string
 	Content string
+	// scan holds what reading the document finds, read the first time it is asked for and shared by
+	// every copy of the resource, so a bundle kept between requests is read once.
+	scan *resourceScan
+}
+
+// resourceScan is what a resource's document says beyond its top-level identity, each part read the
+// first time it is asked for: where it refers to values, what it may name, and the fields it is told
+// apart by.
+type resourceScan struct {
+	referencesOnce sync.Once
+	// references are the places the document refers to a variable or a secret, in document order.
+	references []ValueReference
+
+	namesOnce sync.Once
+	// candidates are the scalars that may name another resource by id, in document order.
+	candidates []string
+	// typesNamed are the types the document names by handle, each as its kind and handle.
+	typesNamed []string
+
+	fieldsOnce sync.Once
+	// handle and channel are the document's own top-level handle and channel, and owner the project
+	// the resource belongs to, "" for none.
+	handle, channel, owner string
+}
+
+// scanned returns what the resource's document says, read once per parsed resource. A resource built
+// without a scan, as a test may, is read each time.
+func (r bundleResource) scanned() *resourceScan {
+	if r.scan == nil {
+		return &resourceScan{}
+	}
+	return r.scan
+}
+
+// referencesOf returns where the resource's document refers to values.
+func (r bundleResource) referencesOf() []ValueReference {
+	scan := r.scanned()
+	scan.referencesOnce.Do(func() { scan.references = referencesInLines(r, strings.Split(r.Content, "\n")) })
+	return scan.references
+}
+
+// namesOf returns the scalars the resource's document may name another resource by, and the types it
+// names by handle.
+func (r bundleResource) namesOf() (candidates, types []string) {
+	scan := r.scanned()
+	scan.namesOnce.Do(func() {
+		lines := strings.Split(r.Content, "\n")
+		scan.candidates = candidatesIn(lines)
+		scan.typesNamed = typesNamedIn(r, lines)
+	})
+	return scan.candidates, scan.typesNamed
+}
+
+// fieldsOf returns the resource's own handle, channel and project.
+func (r bundleResource) fieldsOf() (handle, channel, owner string) {
+	scan := r.scanned()
+	scan.fieldsOnce.Do(func() {
+		scan.handle = firstMatch(handleField, r.Content)
+		if r.Type == resourceTypeNotificationTemplate {
+			scan.channel = firstMatch(channelField, r.Content)
+		}
+		if r.Type == resourceTypeProject {
+			scan.owner = r.ID
+		} else {
+			scan.owner = firstMatch(projectIDField, r.Content)
+		}
+	})
+	return scan.handle, scan.channel, scan.owner
 }
 
 // key identifies a resource across versions.
@@ -35,12 +104,20 @@ func resourceKey(resourceType, id, name string) string {
 	return resourceType + "/" + id
 }
 
+// topLevelField reads a column-zero key, which is a resource's own field rather than a nested one.
+type topLevelField struct {
+	// opening is how a line holding the key opens.
+	opening string
+	pattern *regexp.Regexp
+}
+
+// topLevelScalar reads a column-zero key's value.
+func topLevelScalar(key string) topLevelField {
+	return topLevelField{opening: key + ":", pattern: regexp.MustCompile(`(?m)^` + key + `:\s*(.+?)\s*$`)}
+}
+
 var (
 	documentSeparator = regexp.MustCompile(`(?m)^---\s*$`)
-	// topLevelScalar reads a column-zero key, which is a resource's own field rather than a nested one.
-	topLevelScalar = func(key string) *regexp.Regexp {
-		return regexp.MustCompile(`(?m)^` + key + `:\s*(.+?)\s*$`)
-	}
 	resourceTypeField = topLevelScalar("resource_type")
 	// displayNameField and handleField read the name a theme, a layout or a user type is shown by.
 	displayNameField = topLevelScalar("displayName")
@@ -103,6 +180,7 @@ func parseBundle(content string) []bundleResource {
 			ID:      firstMatch(idField, document),
 			Name:    nameOf(document),
 			Content: document,
+			scan:    &resourceScan{},
 		})
 	}
 	return resources
@@ -121,12 +199,31 @@ func joinBundle(documents []string) string {
 	return strings.Join(documents, "\n---\n")
 }
 
-func firstMatch(field *regexp.Regexp, document string) string {
-	match := field.FindStringSubmatch(document)
+// firstMatch reads a top-level field's value, unquoted. The field's pattern only matches at the start
+// of a line that opens with its key, so a document without such a line is not searched, and one with it
+// is searched from the first, where the pattern's own search would start finding matches.
+func firstMatch(field topLevelField, document string) string {
+	at := lineStartOf(document, field.opening)
+	if at < 0 {
+		return ""
+	}
+	match := field.pattern.FindStringSubmatch(document[at:])
 	if match == nil {
 		return ""
 	}
 	return strings.Trim(match[1], `"'`)
+}
+
+// lineStartOf finds the first place in a document a line opens with prefix, or -1 when none does.
+func lineStartOf(document, prefix string) int {
+	if strings.HasPrefix(document, prefix) {
+		return 0
+	}
+	at := strings.Index(document, "\n"+prefix)
+	if at < 0 {
+		return -1
+	}
+	return at + 1
 }
 
 // diffBundles reports how to go from what a gateway holds to what is applied to it.
@@ -459,8 +556,13 @@ func summarize(changes []Change) DiffSummary {
 // referencesIn returns the variables and secrets a version refers to, each name once and sorted.
 // The gateway holds their values, so the version is only complete on a gateway that holds them all.
 func referencesIn(content string) (variables, secrets []string) {
+	return referenceNames(referencesOf(content))
+}
+
+// referenceNames returns the variables and secrets references name, each name once and sorted.
+func referenceNames(references []ValueReference) (variables, secrets []string) {
 	seen := map[string]bool{}
-	for _, reference := range referencesOf(content) {
+	for _, reference := range references {
 		if seen[reference.Kind+reference.Name] {
 			continue
 		}
@@ -481,40 +583,59 @@ func referencesIn(content string) (variables, secrets []string) {
 // A reference is a whole scalar, a mapping's value or a list's item, quoted or not, so the same text
 // inside a longer value is not one. A list item's field is the key of the list it is in.
 func referencesOf(content string) []ValueReference {
+	return referencesAmong(parseBundle(content))
+}
+
+// referencesAmong returns each place resources refer to a variable or a secret, in document order.
+func referencesAmong(resources []bundleResource) []ValueReference {
 	var references []ValueReference
-	for _, resource := range parseBundle(content) {
-		lines := strings.Split(resource.Content, "\n")
-		for i, line := range lines {
-			match := valueReference.FindStringSubmatch(line)
-			if match == nil {
-				continue
-			}
-			field := unquoteKey(match[2] + match[3])
-			list := field == ""
-			if list {
-				field = enclosingKey(lines, i, len(match[1]))
-			}
-			kind := ReferenceVariable
-			if match[4] == valueref.PrefixSecret {
-				kind = ReferenceSecret
-			}
-			references = append(references, ValueReference{
-				Name:         match[5],
-				Kind:         kind,
-				ResourceType: resource.Type,
-				ResourceID:   resource.ID,
-				ResourceName: labelOf(resource),
-				Field:        field,
-				List:         list,
-			})
-		}
+	for _, resource := range resources {
+		references = append(references, resource.referencesOf()...)
 	}
 	return references
 }
 
-// referencesTo returns where a version refers to the values missing names, so each can be told
-// apart by what it is for.
-func referencesTo(content string, missing *MissingValues) []ValueReference {
+// referencesInLines returns each place one resource's document, split into its lines, refers to a
+// variable or a secret. A line without either prefix holds no reference, so it is not matched.
+func referencesInLines(resource bundleResource, lines []string) []ValueReference {
+	var references []ValueReference
+	label, named := "", false
+	for i, line := range lines {
+		if !strings.Contains(line, valueref.PrefixVariable) && !strings.Contains(line, valueref.PrefixSecret) {
+			continue
+		}
+		match := valueReference.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		field := unquoteKey(match[2] + match[3])
+		list := field == ""
+		if list {
+			field = enclosingKey(lines, i, len(match[1]))
+		}
+		kind := ReferenceVariable
+		if match[4] == valueref.PrefixSecret {
+			kind = ReferenceSecret
+		}
+		if !named {
+			label, named = labelOf(resource), true
+		}
+		references = append(references, ValueReference{
+			Name:         match[5],
+			Kind:         kind,
+			ResourceType: resource.Type,
+			ResourceID:   resource.ID,
+			ResourceName: label,
+			Field:        field,
+			List:         list,
+		})
+	}
+	return references
+}
+
+// referencesFor returns the references to the values missing names, so each can be told apart by what
+// it is for.
+func referencesFor(references []ValueReference, missing *MissingValues) []ValueReference {
 	wanted := map[string]bool{}
 	for _, name := range missing.Variables {
 		wanted[ReferenceVariable+name] = true
@@ -522,13 +643,13 @@ func referencesTo(content string, missing *MissingValues) []ValueReference {
 	for _, name := range missing.Secrets {
 		wanted[ReferenceSecret+name] = true
 	}
-	var references []ValueReference
-	for _, reference := range referencesOf(content) {
+	var found []ValueReference
+	for _, reference := range references {
 		if wanted[reference.Kind+reference.Name] {
-			references = append(references, reference)
+			found = append(found, reference)
 		}
 	}
-	return references
+	return found
 }
 
 // enclosingKey finds the key of the list an item at the given indent belongs to: the nearest key

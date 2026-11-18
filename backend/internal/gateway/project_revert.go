@@ -17,6 +17,9 @@ type projectRollback struct {
 	// last is the master the project's last deploy wrote, and before the one it was written over; a
 	// deploy that wrote the gateway's first master was written over an empty one.
 	last, before *Master
+	// newest is the number of the newest master the history listed, which the master a rollback is
+	// planned from must be.
+	newest int
 }
 
 // projectRollbackOf finds what a project's rollback on a gateway returns to. It reports false when there
@@ -29,6 +32,10 @@ func (s *versionService) projectRollbackOf(ctx context.Context, gatewayID, proje
 		s.logger.Error(ctx, "Failed to list the gateway's masters", log.Error(err))
 		return projectRollback{}, false, &tidcommon.InternalServerError
 	}
+	newest := 0
+	if len(masters) > 0 {
+		newest = masters[0].Seq
+	}
 	var last *Master
 	for i := range masters {
 		if masters[i].Project == projectID {
@@ -40,7 +47,7 @@ func (s *versionService) projectRollbackOf(ctx context.Context, gatewayID, proje
 		return projectRollback{}, false, nil
 	}
 	if last.Seq <= 1 {
-		return projectRollback{last: last, before: &Master{GatewayID: gatewayID}}, true, nil
+		return projectRollback{last: last, before: &Master{GatewayID: gatewayID}, newest: newest}, true, nil
 	}
 	before, err := s.versions.GetMasterAt(ctx, gatewayID, last.Seq-1)
 	if err != nil {
@@ -50,7 +57,7 @@ func (s *versionService) projectRollbackOf(ctx context.Context, gatewayID, proje
 	if before == nil {
 		return projectRollback{}, false, nil
 	}
-	return projectRollback{last: last, before: before}, true, nil
+	return projectRollback{last: last, before: before, newest: newest}, true, nil
 }
 
 // revertProject rolls a project's own resources on a gateway back to what the gateway held before the
@@ -88,14 +95,21 @@ func (s *versionService) revertProject(ctx context.Context, gw *Gateway,
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	// The rollback is planned from the history it was found in: a master written after the history was
+	// read may be another deploy of the project, which would change what the rollback returns to.
+	if now.Seq != rollback.newest {
+		return nil, &ErrorAppliedChanged
+	}
 	// An earlier master that holds the project's resources as the gateway does now leaves nothing to undo.
-	if projectChanges(req.Project, now, rollback.before) == 0 {
+	if projectChanges(req.Project, now, rollback.before, s.ownersAcross(rollback.before, now)) == 0 {
 		return nil, &ErrorProjectNothingToRevert
 	}
-	content, owned := withProjectFrom(req.Project, now, rollback.before)
+	content, owned := withProjectFrom(req.Project, s.plans.bundle(now.Resources).resources,
+		s.plans.bundle(rollback.before.Resources).resources)
 	target := *running
 	target.Resources = content
-	return s.write(ctx, gw, &target, applyOptions{dryRun: req.DryRun, confirmRemovals: req.ConfirmRemovals,
+	return s.write(ctx, gw, &target, applyOptions{dryRun: req.DryRun || req.preview, preview: req.preview,
+		confirmRemovals: req.ConfirmRemovals, plan: req.Plan,
 		revertTo: rollback.before, whole: running, revertProject: req.Project, plannedOn: &now.Hash,
 		choose: func(diff *Diff) []string {
 			picked := []string{}
@@ -110,28 +124,33 @@ func (s *versionService) revertProject(ctx context.Context, gw *Gateway,
 
 // withProjectFrom is what a gateway holds now with the project's own resources as an earlier master held
 // them, and the keys of the project's own resources in either.
-func withProjectFrom(projectID string, now, earlier *Master) (string, map[string]bool) {
+func withProjectFrom(projectID string, now, earlier []bundleResource) (string, map[string]bool) {
 	owned := map[string]bool{}
 	earlierDocs := map[string]string{}
-	for _, resource := range parseBundle(earlier.Resources) {
+	for _, resource := range earlier {
 		if ownerOf(resource) == projectID {
 			owned[resource.key()] = true
 			earlierDocs[resource.key()] = resource.Content
 		}
 	}
 	documents := []string{}
-	for _, resource := range parseBundle(now.Resources) {
+	for _, resource := range now {
 		key := resource.key()
 		if ownerOf(resource) == projectID {
 			owned[key] = true
 			continue
 		}
 		if owned[key] {
-			continue
+			// A resource the project held then and another project holds now stays as that project has it.
+			if ownerOf(resource) == "" {
+				continue
+			}
+			delete(owned, key)
+			delete(earlierDocs, key)
 		}
 		documents = append(documents, resource.Content)
 	}
-	for _, resource := range parseBundle(earlier.Resources) {
+	for _, resource := range earlier {
 		if earlierDocs[resource.key()] != "" {
 			documents = append(documents, resource.Content)
 			delete(earlierDocs, resource.key())

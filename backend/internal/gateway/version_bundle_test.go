@@ -143,7 +143,7 @@ func TestDiffBundlesShowsOtherResourcesUnmasked(t *testing.T) {
 // An apply sends the documents of the changes chosen and names the removals chosen; only a removed
 // resource with an id can be named to the gateway, and an unchanged resource is never sent.
 func TestChosenSendsOnlyTheChangesChosen(t *testing.T) {
-	target := &Version{Resources: joinBundle([]string{unit("ou-2"), unit("ou-3"), unit("ou-4")})}
+	target := parseBundle(joinBundle([]string{unit("ou-2"), unit("ou-3"), unit("ou-4")}))
 	changes := []Change{
 		{Key: "organization_unit/ou-1", ResourceType: "organization_unit", ID: "ou-1", Change: ChangeDeleted},
 		{Key: "translation/en-US", ResourceType: "translation", Name: "en-US", Change: ChangeDeleted},

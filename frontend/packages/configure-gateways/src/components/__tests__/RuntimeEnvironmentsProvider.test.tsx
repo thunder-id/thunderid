@@ -57,6 +57,8 @@ function source(pipelineFails = false): DeploySource {
     master: unused,
     masterHistory: unused,
     resourceHistory: unused,
+    preview: unused,
+    revertPreview: unused,
     applyCheck: unused,
     apply: unused,
     revert: unused,
