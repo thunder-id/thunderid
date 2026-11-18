@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
@@ -24,16 +25,23 @@ import (
 //
 // It also returns the store as a reference resolver, which is how a reference a resource carries is
 // turned into the value held here. That half is not served over HTTP.
+//
+// bus is required: the service publishes the audit event of every variable and secret it creates,
+// updates or deletes on it.
 func Initialize(mux *http.ServeMux, crypto kmprovider.ConfigCryptoProvider,
-	cacheManager cache.CacheManagerInterface) (ServiceInterface, ReferenceResolverInterface) {
+	cacheManager cache.CacheManagerInterface, bus eventbus.EventBusInterface) (
+	ServiceInterface, ReferenceResolverInterface, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	variables := cache.GetCache[*Variable](cacheManager, "VariableByNameCache")
 	secrets := cache.GetCache[*Secret](cacheManager, "SecretByNameCache")
 
-	service := newService(newCacheBackedStore(newStore(), variables, secrets), crypto)
+	service := newService(newCacheBackedStore(newStore(), variables, secrets), crypto, bus)
 	registerRoutes(mux, newHandler(service))
 	// The same service resolves references; ServiceInterface leaves that out, so nothing served over
 	// HTTP can reach the one method that returns a secret's value.
-	return service, service.(ReferenceResolverInterface)
+	return service, service.(ReferenceResolverInterface), nil
 }
 
 func registerRoutes(mux *http.ServeMux, h *handler) {

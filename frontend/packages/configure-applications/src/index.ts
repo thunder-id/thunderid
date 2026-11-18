@@ -60,6 +60,13 @@ export {default as EnvironmentChoice} from './components/environments/Environmen
 export type {EnvironmentChoiceProps} from './components/environments/EnvironmentChoice';
 export {default as EnvironmentNotDeployedNotice} from './components/environments/EnvironmentNotDeployedNotice';
 export type {EnvironmentNotDeployedNoticeProps} from './components/environments/EnvironmentNotDeployedNotice';
+export {default as EnvironmentBar} from './components/edit-application/integration-guides/EnvironmentBar';
+export type {EnvironmentBarProps} from './components/edit-application/integration-guides/EnvironmentBar';
+export {default as QuickstartGuide} from './components/edit-application/integration-guides/QuickstartGuide';
+export type {
+  QuickstartGuideProps,
+  QuickstartGuideSource,
+} from './components/edit-application/integration-guides/QuickstartGuide';
 export {default as EnvironmentClientIdField} from './components/edit-application/integration-guides/EnvironmentClientIdField';
 export {default as CopyableField} from './components/common/CopyableField';
 export type {CopyableFieldProps} from './components/common/CopyableField';

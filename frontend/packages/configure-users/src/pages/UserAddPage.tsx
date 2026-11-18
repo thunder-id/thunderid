@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
-import {DocumentTitle, FullScreenCreationWizardLayout, PageLoadingAnimation} from '@thunderid/components';
+import {
+  CredentialFieldInput,
+  DocumentTitle,
+  FullScreenCreationWizardLayout,
+  PageLoadingAnimation,
+} from '@thunderid/components';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {CopyableTextAdapter, type FlowComponent, mapEmbeddedFlowTextColor} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
@@ -40,7 +45,6 @@ import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import {z} from 'zod';
-import CredentialFieldInput from '../components/CredentialFieldInput';
 import useFlowTextResolver from '../hooks/useFlowTextResolver';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 

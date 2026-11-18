@@ -136,6 +136,16 @@ func (s *ServiceSSOTestSuite) TestApplyOutboundSSO() {
 				},
 				ExpiresIn: int64(time.Hour.Seconds()),
 			}}, nil},
+		{"a reused session is returned, never with more than the configured lifetime",
+			FlowStep{SSOHandleOut: "reused-handle", SSOFlowID: testFlowID, SSOHandleReused: true,
+				SSOHandleExpiresAt: time.Now().Add(2 * time.Hour)},
+			[]IssuedSessionData{{
+				SessionData: SessionData{
+					FlowIdentifier: session.FlowIdentifier(testFlowID),
+					SessionHandle:  "reused-handle",
+				},
+				ExpiresIn: int64(time.Hour.Seconds()),
+			}}, nil},
 		{"an ended session is listed as cleared",
 			FlowStep{SSOClearFlowID: testFlowID},
 			nil, []string{session.FlowIdentifier(testFlowID)}},
@@ -153,6 +163,28 @@ func (s *ServiceSSOTestSuite) TestApplyOutboundSSO() {
 
 			s.Equal(tc.wantData, step.SessionData)
 			s.Equal(tc.wantCleared, step.ClearedSessions)
+		})
+	}
+}
+
+func (s *ServiceSSOTestSuite) TestHandleExpiresIn() {
+	now := time.Unix(1700000000, 0)
+	cases := []struct {
+		name      string
+		expiresAt time.Time
+		want      int64
+	}{
+		{"the configured lifetime when the session's end is unknown", time.Time{}, 3600},
+		{"the time the session has left", now.Add(10 * time.Minute), 600},
+		{"the whole lifetime for a session started now", now.Add(time.Hour), 3600},
+		{"never more than the configured lifetime", now.Add(2 * time.Hour), 3600},
+		{"rounded up", now.Add(500 * time.Millisecond), 1},
+		{"no time left for a session that has ended", now.Add(-time.Minute), 0},
+	}
+	service := &flowExecService{ssoHandleTTL: time.Hour}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.Equal(tc.want, service.handleExpiresIn(tc.expiresAt, now))
 		})
 	}
 }

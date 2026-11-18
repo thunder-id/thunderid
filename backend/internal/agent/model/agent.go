@@ -193,6 +193,16 @@ const (
 	LifespanPhaseExpired LifespanPhase = "EXPIRED"
 )
 
+// UpdateAgentCredentialsRequest is the body of an administrator's credential update.
+type UpdateAgentCredentialsRequest struct {
+	Credentials json.RawMessage `json:"credentials,omitempty"`
+}
+
+// UpdateOwnedAgentCredentialsRequest is the body of an owner's credential update.
+type UpdateOwnedAgentCredentialsRequest struct {
+	Attributes json.RawMessage `json:"attributes,omitempty"`
+}
+
 // ClientSecretResponse carries a newly generated client secret. It is returned once, when the secret is
 // generated, and no read returns it again.
 type ClientSecretResponse struct {

@@ -5,7 +5,6 @@ package user
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -263,16 +262,4 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 // isSharingPolicyPath reports whether path segments name one sharing policy: {id}/sharing-policies/{policyId}.
 func isSharingPolicyPath(segments []string) bool {
 	return len(segments) == 3 && segments[1] == sharingPoliciesSegment && segments[2] != ""
-}
-
-// SetSystemFlowProvider gives the user service the engine that runs the system flows around its writes.
-// It is bound after the service, once the engine exists, and only on a server that issues tokens. A
-// service that cannot take it is reported rather than left without one.
-func SetSystemFlowProvider(service UserServiceInterface, provider systemFlowProvider) error {
-	us, ok := service.(*userService)
-	if !ok {
-		return fmt.Errorf("user service does not support system flow provider injection")
-	}
-	us.systemFlows = provider
-	return nil
 }

@@ -7,6 +7,7 @@ import {useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import AccountSecuritySection from '../components/accountSecurity/AccountSecuritySection';
 import CorsSection from '../components/cors/CorsSection';
+import CspSection from '../components/csp/CspSection';
 
 export default function SettingsPage(): JSX.Element {
   const {t} = useTranslation();
@@ -35,14 +36,20 @@ export default function SettingsPage(): JSX.Element {
           sx={{textTransform: 'none'}}
         />
         <Tab
-          label={t('settings:tabs.accountSecurity', 'Account security')}
+          label={t('settings:tabs.csp', 'Content security policy')}
           id="settings-tab-1"
           aria-controls="settings-tabpanel-1"
           sx={{textTransform: 'none'}}
         />
+        <Tab
+          label={t('settings:tabs.accountSecurity', 'Account security')}
+          id="settings-tab-2"
+          aria-controls="settings-tabpanel-2"
+          sx={{textTransform: 'none'}}
+        />
       </Tabs>
 
-      {/* Both panels stay mounted so unsaved drafts survive a tab switch. */}
+      {/* Every panel stays mounted so unsaved drafts survive a tab switch. */}
       <Box
         role="tabpanel"
         id="settings-tabpanel-0"
@@ -57,6 +64,15 @@ export default function SettingsPage(): JSX.Element {
         id="settings-tabpanel-1"
         aria-labelledby="settings-tab-1"
         hidden={activeTab !== 1}
+        sx={{py: 3}}
+      >
+        <CspSection />
+      </Box>
+      <Box
+        role="tabpanel"
+        id="settings-tabpanel-2"
+        aria-labelledby="settings-tab-2"
+        hidden={activeTab !== 2}
         sx={{py: 3}}
       >
         <AccountSecuritySection />

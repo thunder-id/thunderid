@@ -9,10 +9,12 @@ import TechnologyBasedApplicationTemplateMetadata from '../config/TechnologyBase
 interface TemplateMetadata {
   icon: JSX.Element;
   displayName: string;
+  /** Where an app built from the template runs during development, when the template knows */
+  devServerUrl?: string;
 }
 
 /**
- * Gets the template metadata (icon and display name) for a given template ID.
+ * Gets the template metadata (icon, display name, and development server URL) for a given template ID.
  * Automatically normalizes template IDs by removing the '-embedded' suffix,
  * so 'react-embedded' will match the 'react' template metadata.
  *
@@ -40,6 +42,7 @@ export default function getTemplateMetadata(templateId: string | undefined): Tem
     return {
       icon: techTemplate.icon,
       displayName: techTemplate.template.displayName ?? normalizedId,
+      devServerUrl: techTemplate.template.devServer?.url,
     };
   }
 
@@ -52,6 +55,7 @@ export default function getTemplateMetadata(templateId: string | undefined): Tem
     return {
       icon: platformTemplate.icon,
       displayName: platformTemplate.template.displayName ?? normalizedId,
+      devServerUrl: platformTemplate.template.devServer?.url,
     };
   }
 

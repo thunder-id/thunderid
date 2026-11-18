@@ -22,6 +22,14 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// maxDeviceSessions bounds how many posted SSO sessions a grant keeps, so a caller cannot inflate the grant
+// and the device secret.
+const maxDeviceSessions = 10
+
+// maxDeviceSessionFieldLength bounds each field of a posted SSO session a grant keeps. Real flow identifiers
+// and session handles are far shorter.
+const maxDeviceSessionFieldLength = 128
+
 // ValidateAuthorizationDetails validates a request's authorization_details, mapping a refusal to an OAuth error.
 func ValidateAuthorizationDetails(ctx context.Context,
 	authzDetails providers.AuthorizationDetailProvider,
@@ -374,4 +382,25 @@ func AuditClientActor(client *providers.OAuthClient) audit.Actor {
 	default:
 		return audit.Actor{Type: audit.ActorTypeApplication, ID: client.ID}
 	}
+}
+
+// KeepDeviceSessions returns the posted SSO sessions a grant keeps for its device secret, none unless the
+// granted scopes include device_sso. An entry with a missing or over-long field is left out rather than failing
+// the sign-in, which does not need it. They are not looked up here: the token exchange that presents them runs
+// the flow on them and checks they are the subject's.
+func KeepDeviceSessions(scopes []string, sessionData []model.SessionData) []model.SessionData {
+	if !slices.Contains(scopes, constants.ScopeDeviceSSO) {
+		return nil
+	}
+	var kept []model.SessionData
+	for _, entry := range sessionData {
+		if len(kept) == maxDeviceSessions {
+			break
+		}
+		fieldLengths := []int{len(entry.FlowIdentifier), len(entry.SessionHandle)}
+		if slices.Min(fieldLengths) > 0 && slices.Max(fieldLengths) <= maxDeviceSessionFieldLength {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }

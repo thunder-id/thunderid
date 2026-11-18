@@ -5,7 +5,7 @@ import {useRoutes} from '@thunderid/contexts';
 import {useMemo} from 'react';
 
 /**
- * Route paths this package needs from the host application, including the flow and onboarding
+ * Route paths this package needs from the host application, including the flow, user, and onboarding
  * destinations the application pages link to.
  *
  * The host supplies these via `@thunderid/contexts`'s `RoutesProvider`. When absent (e.g. this
@@ -25,6 +25,9 @@ export interface ApplicationRoutePaths {
     list: () => string;
     detail: (flowId: string) => string;
   };
+  users: {
+    add: () => string;
+  };
 }
 
 /**
@@ -43,6 +46,9 @@ export const defaultApplicationRoutePaths: ApplicationRoutePaths = {
     list: () => '/flows',
     detail: (flowId) => `/flows/${flowId}`,
   },
+  users: {
+    add: () => '/users/add',
+  },
 };
 
 /**
@@ -52,12 +58,13 @@ export const defaultApplicationRoutePaths: ApplicationRoutePaths = {
  * @public
  */
 export default function useApplicationRoutes(): ApplicationRoutePaths {
-  const {applications, flows} = useRoutes<Partial<ApplicationRoutePaths>>();
+  const {applications, flows, users} = useRoutes<Partial<ApplicationRoutePaths>>();
   return useMemo(
     () => ({
       applications: applications ?? defaultApplicationRoutePaths.applications,
       flows: flows ?? defaultApplicationRoutePaths.flows,
+      users: users?.add ? users : defaultApplicationRoutePaths.users,
     }),
-    [applications, flows],
+    [applications, flows, users],
   );
 }

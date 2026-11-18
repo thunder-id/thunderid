@@ -320,8 +320,8 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccess() {
 		"password": userAttrs["password"].(string),
 	}
 
-	completeFlowStep, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",
-		flowStep.ChallengeToken)
+	completeFlowStep, rawBody, err := common.CompleteFlowWithRawResponse(flowStep.ExecutionID, inputs,
+		"action_001", flowStep.ChallengeToken)
 	if err != nil {
 		ts.T().Fatalf("Failed to complete authentication flow: %v", err)
 	}
@@ -331,6 +331,10 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccess() {
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
 	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
+
+	var rawResponse map[string]json.RawMessage
+	ts.Require().NoError(json.Unmarshal([]byte(rawBody), &rawResponse))
+	ts.Require().NotContains(rawResponse, "data", "A completion without flow data should omit data")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(

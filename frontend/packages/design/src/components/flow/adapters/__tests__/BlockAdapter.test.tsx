@@ -417,6 +417,18 @@ describe('BlockAdapter: BOOLEAN_INPUT inside a form block', () => {
   });
 });
 
+describe('BlockAdapter: DATE_TIME_INPUT inside a form block', () => {
+  const validUntilInput = {id: 'input_004', type: 'DATE_TIME_INPUT', ref: 'validUntil', label: 'Valid Until'};
+  const dateTimeBlock = {id: 'block_004', type: 'BLOCK', components: [usernameInput, validUntilInput, submitAction]};
+
+  it('renders a date-time input as a date-time picker', () => {
+    renderBlock(dateTimeBlock);
+
+    expect(document.getElementById('validUntil')).toBeTruthy();
+    expect(screen.getAllByText('Valid Until').length).toBeGreaterThan(0);
+  });
+});
+
 describe('BlockAdapter: blocked approval', () => {
   const denyAction = {id: 'action_deny', type: 'ACTION', eventType: 'SUBMIT', variant: 'SECONDARY', label: 'Deny'};
   const allowAction = {id: 'action_allow', type: 'ACTION', eventType: 'SUBMIT', variant: 'PRIMARY', label: 'Allow'};

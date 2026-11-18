@@ -41,7 +41,7 @@ type roleStoreInterface interface {
 	GetRoleAssignmentsCountByType(ctx context.Context, id, ouID string, assigneeType string) (int, error)
 	UpdateRole(ctx context.Context, id string, role RoleUpdateDetail) error
 	DeleteRole(ctx context.Context, id string) error
-	DeleteAssignmentsByRoleID(ctx context.Context, id string) error
+	DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error)
 	DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error
 	DeleteAssignmentsByAssignee(ctx context.Context, assigneeType, assigneeID string) (int64, error)
 	HasAssigneeAssignments(ctx context.Context, assigneeType, assigneeID string) (bool, error)
@@ -584,18 +584,20 @@ func (s *roleStore) DeleteRole(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteAssignmentsByRoleID deletes all assignments for a role. Used for cascade delete.
-func (s *roleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
+// DeleteAssignmentsByRoleID deletes all assignments for a role and returns the ones it removed. Used for
+// cascade delete. The rows are those the delete itself removed, so an assignment changed concurrently is
+// reported exactly when it is removed.
+func (s *roleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteAllRoleAssignments, id, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, queryDeleteAllRoleAssignments, id, s.scope(ctx))
 	if err != nil {
-		return fmt.Errorf("failed to delete assignments for role: %w", err)
+		return nil, fmt.Errorf("failed to delete assignments for role: %w", err)
 	}
-	return nil
+	return parseAssignmentResults(results)
 }
 
 // DeleteAssignmentsInOU deletes the assignments made in one organization unit for a role.

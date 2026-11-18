@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	entitytypepkg "github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -2093,6 +2094,21 @@ func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_SchemeWildc
 		GrantTypes:   []string{"authorization_code"},
 	}
 	assert.ErrorIs(suite.T(), validateRedirectURIs(p), ErrOAuthInvalidRedirectURI)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_DisallowedSchemeRejected() {
+	for _, uri := range []string{
+		"javascript:/alert(1)",
+		"JavaScript://example.com/%0aalert(1)",
+		"data:/text/html,hello",
+		"vbscript:/msgbox(1)",
+	} {
+		p := &providers.OAuthProfile{
+			RedirectURIs: []string{uri},
+			GrantTypes:   []string{"authorization_code"},
+		}
+		assert.ErrorIs(suite.T(), validateRedirectURIs(p), ErrOAuthInvalidRedirectURI, uri)
+	}
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_FragmentRejected() {
@@ -4534,4 +4550,97 @@ func (s *AccessingOUTestSuite) TestSharedLookupFailureIsNotAnAnswer() {
 
 	s.False(shared)
 	s.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
+// deletionFlows records the system flows run around a client's deletion and the deletion between them,
+// failing the run of the handle named failing, and the deletion with deleteErr.
+func (suite *InboundClientServiceTestSuite) deletionFlows(failing string, deleteErr error) (
+	InboundClientServiceInterface,
+	*inboundClientStoreInterfaceMock, *[]string, *[]*flowcommon.SystemFlowContext) {
+	order := []string{}
+	runs := []*flowcommon.SystemFlowContext{}
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().IsDeclarative(mock.Anything, "p1").Return(false)
+	store.EXPECT().DeleteInboundClient(mock.Anything, "p1").
+		Run(func(context.Context, string) { order = append(order, "deleted") }).Return(deleteErr).Maybe()
+	flows := newSystemFlowProviderMock(suite.T())
+	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+			*tidcommon.ServiceError) {
+			runs = append(runs, sysCtx)
+			order = append(order, sysCtx.Handle)
+			if sysCtx.Handle == failing {
+				return nil, &tidcommon.InternalServerError
+			}
+			return &flowcommon.SystemFlowResult{RuntimeData: map[string]string{"plan": sysCtx.Handle}}, nil
+		})
+	svc := newServiceForTest(store)
+	suite.Require().NoError(SetSystemFlowProvider(svc, flows))
+	return svc, store, &order, &runs
+}
+
+// Deleting a client revokes what it issued before it goes, and moves the cutoff past the deletion with what
+// the first flow shared.
+func (suite *InboundClientServiceTestSuite) TestDeleteInboundClient_RevokesAroundTheDeletion() {
+	svc, _, order, runs := suite.deletionFlows("", nil)
+
+	suite.Require().NoError(svc.DeleteInboundClient(context.Background(), "p1"))
+
+	inputs := map[string]string{systemFlowInputEntity: "p1"}
+	assert.Equal(suite.T(), []*flowcommon.SystemFlowContext{
+		{Handle: systemFlowInboundClientDeletePre, Inputs: inputs},
+		{Handle: systemFlowRevocationPost, Inputs: inputs,
+			RuntimeData: map[string]string{"plan": systemFlowInboundClientDeletePre}},
+	}, *runs)
+	assert.Equal(suite.T(), []string{systemFlowInboundClientDeletePre, "deleted",
+		systemFlowRevocationPost}, *order)
+}
+
+// A revocation that fails before the deletion deletes nothing.
+func (suite *InboundClientServiceTestSuite) TestDeleteInboundClient_RevocationFailureDeletesNothing() {
+	svc, store, order, _ := suite.deletionFlows(systemFlowInboundClientDeletePre, nil)
+
+	assert.ErrorIs(suite.T(), svc.DeleteInboundClient(context.Background(), "p1"), errRevocationFailed)
+	assert.Equal(suite.T(), []string{systemFlowInboundClientDeletePre}, *order)
+	store.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
+}
+
+// A revocation that fails after the deletion is logged, and the deletion reported as done, since the client
+// is gone and deleting again could not revoke anything more.
+func (suite *InboundClientServiceTestSuite) TestDeleteInboundClient_FailedPostFlowStillDeletes() {
+	svc, _, order, _ := suite.deletionFlows(systemFlowRevocationPost, nil)
+
+	assert.NoError(suite.T(), svc.DeleteInboundClient(context.Background(), "p1"))
+	assert.Equal(suite.T(), []string{systemFlowInboundClientDeletePre, "deleted",
+		systemFlowRevocationPost}, *order)
+}
+
+// A deletion that fails after the pre flow is returned, and the post flow does not run.
+func (suite *InboundClientServiceTestSuite) TestDeleteInboundClient_FailedDeletionRunsOnlyThePreFlow() {
+	storeErr := errors.New("store down")
+	svc, _, order, _ := suite.deletionFlows("", storeErr)
+
+	assert.ErrorIs(suite.T(), svc.DeleteInboundClient(context.Background(), "p1"), storeErr)
+	assert.Equal(suite.T(), []string{systemFlowInboundClientDeletePre, "deleted"}, *order)
+}
+
+// A declarative client is refused before anything is revoked.
+func (suite *InboundClientServiceTestSuite) TestDeleteInboundClient_DeclarativeRunsNoFlow() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().IsDeclarative(mock.Anything, "p1").Return(true)
+	svc := newServiceForTest(store)
+	suite.Require().NoError(SetSystemFlowProvider(svc, newSystemFlowProviderMock(suite.T())))
+
+	assert.ErrorIs(suite.T(), svc.DeleteInboundClient(context.Background(), "p1"), ErrCannotModifyDeclarative)
+}
+
+// The server injects the flow engine once it exists; a service that cannot take it is reported.
+func (suite *InboundClientServiceTestSuite) TestSetSystemFlowProvider() {
+	service := &inboundClientService{}
+	provider := newSystemFlowProviderMock(suite.T())
+
+	suite.NoError(SetSystemFlowProvider(service, provider))
+	suite.Same(provider, service.systemFlows)
+	suite.Error(SetSystemFlowProvider(NewInboundClientServiceInterfaceMock(suite.T()), provider))
+	suite.Error(SetSystemFlowProvider(nil, provider))
 }

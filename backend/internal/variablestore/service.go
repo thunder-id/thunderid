@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -68,43 +70,23 @@ type ReferenceResolverInterface interface {
 type service struct {
 	store  storeInterface
 	crypto kmprovider.ConfigCryptoProvider
+	bus    eventbus.EventBusInterface
 }
 
-// newService builds the service over a store and the key material secrets are encrypted with.
-func newService(store storeInterface, crypto kmprovider.ConfigCryptoProvider) ServiceInterface {
-	return &service{store: store, crypto: crypto}
+// newService builds the service over a store, the key material secrets are encrypted with, and the bus
+// it publishes its audit events on.
+func newService(store storeInterface, crypto kmprovider.ConfigCryptoProvider,
+	bus eventbus.EventBusInterface) ServiceInterface {
+	return &service{store: store, crypto: crypto, bus: bus}
 }
 
+// CreateVariable creates a variable. Its audit event records the write, not the read that builds the response.
 func (s *service) CreateVariable(ctx context.Context, request VariableRequest) (
 	*Variable, *common.ServiceError) {
-	if svcErr := validateName(request.Name); svcErr != nil {
+	svcErr := s.createVariable(ctx, request)
+	s.publishEvent(ctx, variableCreate, request.Name, svcErr)
+	if svcErr != nil {
 		return nil, svcErr
-	}
-	if svcErr := validateValue(request.Value); svcErr != nil {
-		return nil, svcErr
-	}
-	if svcErr := validateDescription(request.Description); svcErr != nil {
-		return nil, svcErr
-	}
-
-	existing, err := s.store.GetVariable(ctx, request.Name)
-	if err != nil {
-		return nil, s.unexpected(ctx, "failed to read variable", err)
-	}
-	if existing != nil {
-		return nil, &ErrorAlreadyExists
-	}
-
-	// The insert stores only when the name is free, so two creates arriving together cannot both be
-	// told they succeeded. The read above gives the common case its error without a write attempt;
-	// this is what makes the answer correct when two requests race.
-	variable := Variable{Name: request.Name, Value: request.Value, Description: request.Description}
-	inserted, err := s.store.InsertVariable(ctx, variable)
-	if err != nil {
-		return nil, s.unexpected(ctx, "failed to create variable", err)
-	}
-	if !inserted {
-		return nil, &ErrorAlreadyExists
 	}
 	return s.readVariable(ctx, request.Name)
 }
@@ -140,24 +122,16 @@ func (s *service) ListVariables(ctx context.Context, q listQuery) (
 
 // UpdateVariable is create-or-replace, which is what makes PUT idempotent: the same request twice
 // leaves the same state. A name that is not yet used is not an error here, it is the create case.
+//
+// Its audit event is named for the update the caller attempted, whichever of the two happened, and
+// records the write, not the read that builds the response.
 func (s *service) UpdateVariable(ctx context.Context, name string, request VariableUpdateRequest) (
 	*Variable, bool, *common.ServiceError) {
-	if svcErr := validateName(name); svcErr != nil {
+	created, svcErr := s.updateVariable(ctx, name, request)
+	s.publishEvent(ctx, variableUpdate, name, svcErr)
+	if svcErr != nil {
 		return nil, false, svcErr
 	}
-	if svcErr := validateValue(request.Value); svcErr != nil {
-		return nil, false, svcErr
-	}
-	if svcErr := validateDescription(request.Description); svcErr != nil {
-		return nil, false, svcErr
-	}
-
-	created, err := s.store.UpsertVariable(ctx, Variable{
-		Name: name, Value: request.Value, Description: request.Description})
-	if err != nil {
-		return nil, false, s.unexpected(ctx, "failed to write variable", err)
-	}
-
 	variable, svcErr := s.readVariable(ctx, name)
 	if svcErr != nil {
 		return nil, false, svcErr
@@ -168,45 +142,23 @@ func (s *service) UpdateVariable(ctx context.Context, name string, request Varia
 // DeleteVariable removes a variable, and succeeds whether or not one was there. A caller cleaning up
 // should not have to ask first, and the end state it wanted holds either way.
 func (s *service) DeleteVariable(ctx context.Context, name string) *common.ServiceError {
-	if svcErr := validateName(name); svcErr != nil {
-		return svcErr
+	deleted, svcErr := s.deleteVariable(ctx, name)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of a name it made up.
+	if svcErr == nil && !deleted {
+		return nil
 	}
-	if err := s.store.DeleteVariable(ctx, name); err != nil {
-		return s.unexpected(ctx, "failed to delete variable", err)
-	}
-	return nil
+	s.publishEvent(ctx, variableDelete, name, svcErr)
+	return svcErr
 }
 
+// CreateSecret stores a secret. Its audit event records the write, not the read that builds the response.
 func (s *service) CreateSecret(ctx context.Context, request SecretRequest) (
 	*Secret, *common.ServiceError) {
-	if svcErr := validateName(request.Name); svcErr != nil {
-		return nil, svcErr
-	}
-	if svcErr := validateSecretValue(request.Value); svcErr != nil {
-		return nil, svcErr
-	}
-	if svcErr := validateDescription(request.Description); svcErr != nil {
-		return nil, svcErr
-	}
-
-	existing, err := s.store.GetSecret(ctx, request.Name)
-	if err != nil {
-		return nil, s.unexpected(ctx, "failed to read secret", err)
-	}
-	if existing != nil {
-		return nil, &ErrorAlreadyExists
-	}
-
-	encrypted, svcErr := s.encrypt(ctx, request.Value)
+	svcErr := s.createSecret(ctx, request)
+	s.publishEvent(ctx, secretCreate, request.Name, svcErr)
 	if svcErr != nil {
 		return nil, svcErr
-	}
-	inserted, err := s.store.InsertSecret(ctx, request.Name, encrypted, request.Description)
-	if err != nil {
-		return nil, s.unexpected(ctx, "failed to create secret", err)
-	}
-	if !inserted {
-		return nil, &ErrorAlreadyExists
 	}
 	return s.readSecret(ctx, request.Name)
 }
@@ -242,28 +194,16 @@ func (s *service) ListSecrets(ctx context.Context, q listQuery) (
 
 // UpdateSecret is store-or-rotate. There is no read-modify-write because the current value is never
 // read: a rotation supplies the new value in full.
+//
+// Its audit event is named for the update the caller attempted, whichever of the two happened, and
+// records the write, not the read that builds the response.
 func (s *service) UpdateSecret(ctx context.Context, name string, request SecretUpdateRequest) (
 	*Secret, bool, *common.ServiceError) {
-	if svcErr := validateName(name); svcErr != nil {
-		return nil, false, svcErr
-	}
-	if svcErr := validateSecretValue(request.Value); svcErr != nil {
-		return nil, false, svcErr
-	}
-	if svcErr := validateDescription(request.Description); svcErr != nil {
-		return nil, false, svcErr
-	}
-
-	encrypted, svcErr := s.encrypt(ctx, request.Value)
+	created, svcErr := s.updateSecret(ctx, name, request)
+	s.publishEvent(ctx, secretUpdate, name, svcErr)
 	if svcErr != nil {
 		return nil, false, svcErr
 	}
-
-	created, err := s.store.UpsertSecret(ctx, name, encrypted, request.Description)
-	if err != nil {
-		return nil, false, s.unexpected(ctx, "failed to write secret", err)
-	}
-
 	secret, svcErr := s.readSecret(ctx, name)
 	if svcErr != nil {
 		return nil, false, svcErr
@@ -273,13 +213,14 @@ func (s *service) UpdateSecret(ctx context.Context, name string, request SecretU
 
 // DeleteSecret removes a secret, and succeeds whether or not one was there.
 func (s *service) DeleteSecret(ctx context.Context, name string) *common.ServiceError {
-	if svcErr := validateName(name); svcErr != nil {
-		return svcErr
+	deleted, svcErr := s.deleteSecret(ctx, name)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of a name it made up.
+	if svcErr == nil && !deleted {
+		return nil
 	}
-	if err := s.store.DeleteSecret(ctx, name); err != nil {
-		return s.unexpected(ctx, "failed to delete secret", err)
-	}
-	return nil
+	s.publishEvent(ctx, secretDelete, name, svcErr)
+	return svcErr
 }
 
 func (s *service) ResolveVariable(ctx context.Context, name string) (string, bool, *common.ServiceError) {
@@ -306,6 +247,156 @@ func (s *service) ResolveSecret(ctx context.Context, name string) (string, bool,
 		return "", false, s.unexpected(ctx, "failed to decrypt secret", err)
 	}
 	return string(value), true, nil
+}
+
+// createVariable validates and inserts a variable.
+func (s *service) createVariable(ctx context.Context, request VariableRequest) *common.ServiceError {
+	if svcErr := validateName(request.Name); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := validateValue(request.Value); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := validateDescription(request.Description); svcErr != nil {
+		return svcErr
+	}
+
+	existing, err := s.store.GetVariable(ctx, request.Name)
+	if err != nil {
+		return s.unexpected(ctx, "failed to read variable", err)
+	}
+	if existing != nil {
+		return &ErrorAlreadyExists
+	}
+
+	// The insert stores only when the name is free, so two creates arriving together cannot both be
+	// told they succeeded. The read above gives the common case its error without a write attempt;
+	// this is what makes the answer correct when two requests race.
+	variable := Variable{Name: request.Name, Value: request.Value, Description: request.Description}
+	inserted, err := s.store.InsertVariable(ctx, variable)
+	if err != nil {
+		return s.unexpected(ctx, "failed to create variable", err)
+	}
+	if !inserted {
+		return &ErrorAlreadyExists
+	}
+	return nil
+}
+
+// updateVariable validates and writes a variable, reporting whether the name was unused.
+func (s *service) updateVariable(ctx context.Context, name string, request VariableUpdateRequest) (
+	bool, *common.ServiceError) {
+	if svcErr := validateName(name); svcErr != nil {
+		return false, svcErr
+	}
+	if svcErr := validateValue(request.Value); svcErr != nil {
+		return false, svcErr
+	}
+	if svcErr := validateDescription(request.Description); svcErr != nil {
+		return false, svcErr
+	}
+
+	created, err := s.store.UpsertVariable(ctx, Variable{
+		Name: name, Value: request.Value, Description: request.Description})
+	if err != nil {
+		return false, s.unexpected(ctx, "failed to write variable", err)
+	}
+	return created, nil
+}
+
+// deleteVariable removes a variable, reporting whether there was one.
+func (s *service) deleteVariable(ctx context.Context, name string) (bool, *common.ServiceError) {
+	if svcErr := validateName(name); svcErr != nil {
+		return false, svcErr
+	}
+	deleted, err := s.store.DeleteVariable(ctx, name)
+	if err != nil {
+		return false, s.unexpected(ctx, "failed to delete variable", err)
+	}
+	return deleted, nil
+}
+
+// createSecret validates, seals and inserts a secret.
+func (s *service) createSecret(ctx context.Context, request SecretRequest) *common.ServiceError {
+	if svcErr := validateName(request.Name); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := validateSecretValue(request.Value); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := validateDescription(request.Description); svcErr != nil {
+		return svcErr
+	}
+
+	existing, err := s.store.GetSecret(ctx, request.Name)
+	if err != nil {
+		return s.unexpected(ctx, "failed to read secret", err)
+	}
+	if existing != nil {
+		return &ErrorAlreadyExists
+	}
+
+	encrypted, svcErr := s.encrypt(ctx, request.Value)
+	if svcErr != nil {
+		return svcErr
+	}
+	inserted, err := s.store.InsertSecret(ctx, request.Name, encrypted, request.Description)
+	if err != nil {
+		return s.unexpected(ctx, "failed to create secret", err)
+	}
+	if !inserted {
+		return &ErrorAlreadyExists
+	}
+	return nil
+}
+
+// updateSecret validates, seals and writes a secret, reporting whether the name was unused.
+func (s *service) updateSecret(ctx context.Context, name string, request SecretUpdateRequest) (
+	bool, *common.ServiceError) {
+	if svcErr := validateName(name); svcErr != nil {
+		return false, svcErr
+	}
+	if svcErr := validateSecretValue(request.Value); svcErr != nil {
+		return false, svcErr
+	}
+	if svcErr := validateDescription(request.Description); svcErr != nil {
+		return false, svcErr
+	}
+
+	encrypted, svcErr := s.encrypt(ctx, request.Value)
+	if svcErr != nil {
+		return false, svcErr
+	}
+
+	created, err := s.store.UpsertSecret(ctx, name, encrypted, request.Description)
+	if err != nil {
+		return false, s.unexpected(ctx, "failed to write secret", err)
+	}
+	return created, nil
+}
+
+// deleteSecret removes a secret, reporting whether there was one.
+func (s *service) deleteSecret(ctx context.Context, name string) (bool, *common.ServiceError) {
+	if svcErr := validateName(name); svcErr != nil {
+		return false, svcErr
+	}
+	deleted, err := s.store.DeleteSecret(ctx, name)
+	if err != nil {
+		return false, s.unexpected(ctx, "failed to delete secret", err)
+	}
+	return deleted, nil
+}
+
+// publishEvent publishes the audit event of an attempt on the variable or secret named name. The name is
+// its only ID, and the payload keeps the first 128 characters of an ID, so two names sharing them share a
+// target ID in the log. Its value and description are never recorded.
+func (s *service) publishEvent(ctx context.Context, change auditedChange, name string,
+	svcErr *common.ServiceError) {
+	// A failed attempt keeps the name the caller sent, even one that matches nothing or is not a valid
+	// name, as forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: change.targetType, ID: name}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, change.event).With(audit.ChangePayload(ctx, target, change.action, svcErr)))
 }
 
 // encrypt seals a secret value for storage. Nothing outside this file writes to the SECRET table's

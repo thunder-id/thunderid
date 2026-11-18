@@ -30,8 +30,8 @@ type applicationAction struct {
 	notFound tidcommon.ServiceError
 }
 
-// applicationActionsByMode maps the node's mode to the action it prepares. A client secret rotation has
-// its own validator, for applications and agents alike: see entitySecretRotationValidator.
+// applicationActionsByMode maps the node's mode to the action it prepares. A client secret rotation is
+// planned in the entity's system flow, for applications and agents alike: see preRevocationExecutor.
 var applicationActionsByMode = map[string]applicationAction{
 	ExecutorModeRevokeBeforeRemoval: {
 		validate: func(p applicationAdminProvider) applicationValidator { return p.ValidateDeleteApplication },

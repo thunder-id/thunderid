@@ -451,12 +451,15 @@ type FlowStep struct {
 }
 
 // FlowSessionData is one SSO session an app-native caller holds, keyed by the identifier of its flow.
+// ExpiresIn is the time the session has left, posted with the callback when set. A flow response's own
+// expiresIn decodes into FlowIssuedSessionData.ExpiresIn instead.
 type FlowSessionData struct {
 	FlowIdentifier string `json:"flowIdentifier"`
 	SessionHandle  string `json:"sessionHandle"`
+	ExpiresIn      int64  `json:"expiresIn,omitempty"`
 }
 
-// FlowIssuedSessionData is the SSO session a step started, with how long its handle stays usable.
+// FlowIssuedSessionData is the SSO session a step started or reused, with how long its handle stays usable.
 type FlowIssuedSessionData struct {
 	FlowSessionData
 	ExpiresIn int64 `json:"expiresIn"`
@@ -739,7 +742,4 @@ type CapabilitiesResponse struct {
 		OUID string `json:"ouId"`
 	} `json:"scope"`
 	Resources map[string]map[string]bool `json:"resources"`
-	Root      struct {
-		Manage bool `json:"manage"`
-	} `json:"root"`
 }

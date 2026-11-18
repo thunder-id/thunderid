@@ -69,6 +69,7 @@ interface MockSignUpRenderProps {
   flowExpiryRedirect?: null;
   isLoading: boolean;
   components: unknown[];
+  additionalData?: Record<string, unknown>;
 }
 
 // Factory function to create fresh mock props for each test
@@ -144,6 +145,22 @@ describe('SignUpBox', () => {
     render(<SignUpBox />);
 
     expect(capturedAfterFlowExpiredUrl).toBe('https://acme.example.com');
+  });
+
+  it('fills a copyable field from the additional data the flow returns', () => {
+    // A registration flow that ends on a credentials card, such as the personal assistant one, names the value
+    // of each copyable field by `source` and returns the values as additional data.
+    mockSignUpRenderProps = createMockSignUpRenderProps({
+      components: [
+        {id: 'agent_id', type: 'COPYABLE_TEXT', label: 'Agent ID', source: 'agentId'},
+        {id: 'client_id', type: 'COPYABLE_TEXT', label: 'Client ID', source: 'clientId'},
+      ],
+      additionalData: {agentId: 'agent-123', clientId: 'client-456'},
+    });
+    render(<SignUpBox />);
+
+    expect(screen.getByText('agent-123')).toBeInTheDocument();
+    expect(screen.getByText('client-456')).toBeInTheDocument();
   });
 
   it('renders without crashing', () => {

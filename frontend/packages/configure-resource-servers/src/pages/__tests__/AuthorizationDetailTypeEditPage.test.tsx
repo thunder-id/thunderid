@@ -142,7 +142,6 @@ async function typeDescription(user: User, text: string): Promise<void> {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

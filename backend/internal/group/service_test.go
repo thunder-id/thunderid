@@ -1266,6 +1266,22 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 			expectErr: &ErrorGroupOUChangeNotAllowed,
 		},
 		{
+			name:    "move rejected for group with more members than the composite store can count",
+			groupID: "grp-001",
+			request: UpdateGroupRequest{Name: "old", OUID: "ou-new"},
+			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
+				args.store.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
+					Once()
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-new").Return(true, nil).Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").
+					Return(0, errResultLimitExceededInCompositeMode).
+					Once()
+			},
+			expectErr: &ErrorGroupOUChangeNotAllowed,
+		},
+		{
 			name:    "move rejected for group inside another group",
 			groupID: "grp-001",
 			request: UpdateGroupRequest{Name: "old", OUID: "ou-new"},

@@ -37,6 +37,7 @@ func (s *ConfigTestSuite) TestFromServerRuntime() {
 	enabled := true
 	s.initRuntime(&config.Config{
 		Server: engineconfig.ServerConfig{
+			ProductName:    "Acme IAM",
 			SecurityConfig: engineconfig.SecurityConfig{DirectAuthSecret: "test-secret"},
 		},
 		DirectAPI: config.DirectAPIConfig{Enabled: &enabled},
@@ -46,6 +47,7 @@ func (s *ConfigTestSuite) TestFromServerRuntime() {
 
 	s.Equal("test-secret", result.DirectAuthSecret)
 	s.True(result.DirectAPIEnabled)
+	s.Equal("Acme IAM", result.ProductName)
 }
 
 func (s *ConfigTestSuite) TestFromServerRuntime_DirectAPIDisabled() {

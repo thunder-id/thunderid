@@ -48,33 +48,22 @@ func (_m *ClientSecretHolderInterfaceMock) EXPECT() *ClientSecretHolderInterface
 }
 
 // ValidateClientSecretRegeneration provides a mock function for the type ClientSecretHolderInterfaceMock
-func (_mock *ClientSecretHolderInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, entityID string) (*ClientSecretProfile, *common.ServiceError) {
+func (_mock *ClientSecretHolderInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, entityID string) *common.ServiceError {
 	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateClientSecretRegeneration")
 	}
 
-	var r0 *ClientSecretProfile
-	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*ClientSecretProfile, *common.ServiceError)); ok {
-		return returnFunc(ctx, entityID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *ClientSecretProfile); ok {
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
 		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*ClientSecretProfile)
+			r0 = ret.Get(0).(*common.ServiceError)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, entityID)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common.ServiceError)
-		}
-	}
-	return r0, r1
+	return r0
 }
 
 // ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateClientSecretRegeneration'
@@ -107,12 +96,12 @@ func (_c *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call)
 	return _c
 }
 
-func (_c *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call) Return(clientSecretProfile *ClientSecretProfile, serviceError *common.ServiceError) *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call {
-	_c.Call.Return(clientSecretProfile, serviceError)
+func (_c *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call) Return(serviceError *common.ServiceError) *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*ClientSecretProfile, *common.ServiceError)) *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call {
+func (_c *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *ClientSecretHolderInterfaceMock_ValidateClientSecretRegeneration_Call {
 	_c.Call.Return(run)
 	return _c
 }

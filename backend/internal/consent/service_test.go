@@ -36,6 +36,7 @@ func (s *ConsentServiceTestSuite) SetupTest() {
 		consentStore:          s.mockStore,
 		transactioner:         transaction.NewNoOpTransactioner(),
 		inboundClientProvider: s.mockInboundClients,
+		bus:                   newDiscardingBus(s.T()),
 		logger:                log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentService")),
 	}
 }

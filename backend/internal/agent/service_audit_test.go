@@ -123,6 +123,8 @@ func (s *AgentServiceAuditTestSuite) reset() {
 	s.types = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.types.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
 		Maybe().Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
+	s.types.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+		Maybe().Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil))
 	s.service = &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         s.authz,
@@ -574,6 +576,23 @@ func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_PublishesOneEven
 			s.NotContains(fmt.Sprintf("%+v", events[0].payload), "password", "no credential type is recorded")
 		})
 	}
+}
+
+// The credentials are already replaced when the revocation after the write fails, so the attempt is recorded
+// as succeeded while the caller still gets the failure.
+func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_RecordsReplacedCredentialsWhenThePostFlowFails() {
+	credentials := json.RawMessage(`{"password":"rotated"}`)
+	published := s.record()
+	s.existing()
+	s.access(true)
+	s.entities.On("UpdateCredentials", mock.Anything, testAgentID, credentials).
+		Return(fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete)).Once()
+
+	svcErr := s.service.UpdateAgentCredentials(adminContext(), testAgentID, credentials)
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	s.requireOnlyEvent(published(), audit.EventAgentCredentialUpdate, audit.ActionUpdate, testAgentID,
+		audit.OutcomeSucceeded)
 }
 
 // A bus that cannot take the event never fails the change it describes.

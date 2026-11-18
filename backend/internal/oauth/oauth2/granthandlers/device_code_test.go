@@ -6,6 +6,7 @@ package granthandlers
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -51,7 +52,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) SetupTest() {
 	suite.attributeCache = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.resourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.handler = newDeviceCodeGrantHandler(
-		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil)
+		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, time.Hour)
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID: testGrantClientID,
 		ScopeClaims: map[string][]string{
@@ -166,6 +167,50 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedIssuesToke
 	suite.Nil(errResp)
 	suite.Equal("access-token", response.AccessToken.Token)
 	suite.Equal("id-token", response.IDToken.Token)
+	suite.Empty(response.DeviceSecret.Token, "a request that kept no session returns no device secret")
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedReturnsTheDeviceSecret() {
+	sessions := []model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now()
+	record.SubjectID = testGrantSubjectID
+	record.SessionData = sessions
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil)
+	suite.tokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
+		mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
+			return c.OAuthApp == suite.oauthApp && c.SubjectID == testGrantSubjectID &&
+				slices.Equal(c.SessionData, sessions) && c.ValidityPeriod == 3600
+		})).Return(&model.TokenDTO{Token: "device-secret"}, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+
+	suite.Nil(errResp)
+	suite.Equal("device-secret", response.DeviceSecret.Token)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_NoDeviceSecretWhenTheRequestIsNotConsumed() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now()
+	record.SubjectID = testGrantSubjectID
+	record.SessionData = []model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(false, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+
+	suite.Nil(response)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.tokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
 }
 
 func (suite *DeviceCodeGrantHandlerTestSuite) TestValidateGrantRejectsInvalidRequests() {
@@ -504,7 +549,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsAfterRevoc
 	record.Resources = []string{testGrantAudience}
 	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
-		suite.attributeCache, suite.resourceService, enforcement)
+		suite.attributeCache, suite.resourceService, enforcement, time.Hour)
 	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
 	suite.resourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, testGrantAudience).
 		Return(&providers.ResourceServer{ID: "resource-1", Identifier: testGrantAudience,

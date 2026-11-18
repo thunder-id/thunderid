@@ -192,7 +192,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize the variable store. It takes the config crypto provider directly, since that is
 	// what seals a secret before it reaches the database.
-	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
+	_, references, err := variablestore.Initialize(mux, configCryptoSvc, cacheManager, auditBus)
+	fatalOnError(ctx, logger, err, "Failed to initialize variable store")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
 		mux, mcpServer, cacheManager, ouAuthzService, false, auditBus)
@@ -373,7 +374,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// notification-sender services.
 	connectionExporter, ouDependencyProvider, httpConnectionWriter, err := connection.Initialize(
 		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
-		nil, sharingService, ouAuthzService)
+		nil, sharingService, ouAuthzService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
@@ -478,7 +479,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			RoleAssignmentService:  roleAssignmentService,
 			PermissionResolver:     permissionResolver,
 			EntityProvider:         entityProvider,
-			EntityService:          entityService,
 			UserMgtProvider:        userMgtProvider,
 			AttributeCacheSvc:      attributeCacheService,
 			TemplateRenderer:       notifTemplateRenderer,
@@ -489,7 +489,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			OpenID4VPVerifierSvc:   openid4vpSvc,
 			SessionService:         sessionService,
 			ResourceService:        resourceServerProvider,
-			UserService:            userService,
 			CriteriaRevoker:        revocationSvc,
 			ResourceMgtService:     resourceService,
 			HTTPConnectionProvider: httpConnectionService,
@@ -542,7 +541,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Inject the consent service into the consent enforcer. It is wired here rather than at enforcer
 	// construction because it depends on the inbound client service, which is only available after the
 	// flow services (which themselves depend on the enforcer) are initialized.
-	consentEnforcer.SetConsentService(initConsentService(ctx, logger, inboundClientService))
+	consentEnforcer.SetConsentService(initConsentService(ctx, logger, inboundClientService, auditBus))
 
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
@@ -673,13 +672,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowMgtService, flowMgtService, permissionResolver, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
-	err = application.SetSystemFlowProvider(applicationService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
-	entityService.SetSystemFlowProvider(flowExecService)
+	err = entity.SetSystemFlowProvider(entityService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the entity service")
+	err = inboundclient.SetSystemFlowProvider(inboundClientService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the inbound client service")
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, true)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, true)
-	err = user.SetSystemFlowProvider(userService, flowExecService)
-	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the user service")
 	err = role.SetSystemFlowProvider(roleService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the role service")
 	err = group.SetSystemFlowProvider(groupService, flowExecService)
@@ -820,8 +818,9 @@ func readSessionConfig(ctx context.Context, svc serverconfig.ServerConfigService
 // initConsentService initializes the consent service backed by the inbound client service, which
 // satisfies consent.InboundClientProvider directly.
 func initConsentService(ctx context.Context, logger *log.Logger,
-	inboundClientService inboundclient.InboundClientServiceInterface) consent.ConsentServiceInterface {
-	consentService, err := consent.Initialize(inboundClientService)
+	inboundClientService inboundclient.InboundClientServiceInterface,
+	auditBus eventbus.EventBusInterface) consent.ConsentServiceInterface {
+	consentService, err := consent.Initialize(inboundClientService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize consent service")
 	return consentService
 }

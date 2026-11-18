@@ -783,7 +783,7 @@ func (s *AgentToolsTestSuite) TestRotateAgentCredentials_Secret() {
 	out = rotateAgentCredentialsMCPResponse{}
 	s.structured(s.call("rotate_agent_credentials", map[string]any{"agentId": toolAgentID}), &out)
 	s.Equal("fresher", out.ClientSecret)
-	s.Contains(out.Notice, "revoking the tokens it issued failed")
+	s.Contains(out.Notice, "revoking the tokens issued while it was replaced failed")
 
 	// Where nothing is revoked, as on a control plane, the notice does not claim that anything was.
 	s.agents.On("RegenerateAgentSecret", mock.Anything, toolAgentID).

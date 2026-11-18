@@ -19,5 +19,6 @@ export default function mapConnectionToTrustedIssuer(connection: ConnectionRespo
     idJagEnabled: connection.idJagEnabled ?? false,
     tokenExchangeEnabled: connection.tokenExchangeEnabled ?? false,
     trustedTokenAudience: connection.trustedTokenAudience ?? undefined,
+    attributeConfiguration: connection.attributeConfiguration,
   };
 }

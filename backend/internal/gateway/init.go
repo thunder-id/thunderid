@@ -46,8 +46,8 @@ import (
 // The same operations are registered on mcpServer, when given, as tools that answer as the REST endpoints do, so
 // an MCP client can capture, deploy, promote and roll back as the console does.
 //
-// bus is required: the version service publishes the audit event of every apply and revert it is asked
-// for on it.
+// bus is required: the gateway service publishes registration events on it, and the version service
+// publishes capture, apply and revert events.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.ExportServiceInterface,
 	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
 	changes *ChangeCapture, settings serverconfig.ServerConfigService,
@@ -73,7 +73,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 
 	// One pipeline, so the one the API shows is the one auto apply and value capture deploy to.
 	deployPipeline := newPipeline()
-	service := newService(gatewayStore, deployPipeline)
+	service := newService(gatewayStore, deployPipeline, bus)
 	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
 		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline, bus)
 	versions.autoApply = newAutoApplySource(settings)

@@ -198,6 +198,13 @@ export interface DocumentationConfig {
   releasesUrl?: string;
 
   /**
+   * URL of the ecosystem releases feed, which lists the released SDKs and sample apps with their
+   * downloadable archives. Used to offer a sample app to download.
+   * @example "https://thunderid.dev/data/ecosystem-releases.json"
+   */
+  ecosystemReleasesUrl?: string;
+
+  /**
    * Flat map of feature/section id to documentation link. A value starting with `http` is
    * used as-is; any other value is treated as a path and resolved against `baseUrl`. A key is
    * plain for a top-level section ("users", "applications") and dot-notated if a sub-page ever

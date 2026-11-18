@@ -215,9 +215,9 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Establishes() {
 	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
 	suite.Require().NoError(err)
 
-	suite.True(res.Created)
 	suite.NotEmpty(res.Handle)
 	suite.Require().NotNil(created)
+	suite.Equal(created.AbsoluteExpiresAt, res.AbsoluteExpiresAt, "the result says when the new session ends")
 	suite.Equal("user-1", created.SubjectID)
 	suite.Equal("flow-1", created.FlowID)
 	suite.Equal(3, created.FlowVersion)
@@ -235,6 +235,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	existing.Properties = SessionProperties{
 		UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0", CreationIP: "192.0.2.1", LastActiveIP: "192.0.2.1",
 	}
+	existing.AbsoluteExpiresAt = time.Now().Add(2 * time.Hour).UTC()
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(existing, nil)
 	runTx(m)
 	var savedCtx SessionContext
@@ -258,8 +259,10 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	res, err := svc.SaveCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)
 
-	suite.False(res.Created, "attaching to an existing session must not mint a new one")
+	m.store.AssertNotCalled(suite.T(), "Create", mock.Anything, mock.Anything)
 	suite.Equal("handle-abc", res.Handle)
+	suite.Equal(existing.AbsoluteExpiresAt, res.AbsoluteExpiresAt,
+		"a joined session keeps the end it was created with")
 	suite.Equal("sess-1", savedCtx.SessionID)
 	suite.Equal("step_up", savedCtx.CheckpointID)
 	suite.False(touchedAt.IsZero(), "the re-authentication must refresh the session's auth time")
@@ -406,7 +409,8 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_NewSessionDoesNotTouch() {
 
 	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
 	suite.Require().NoError(err)
-	suite.True(res.Created, "no existing session means this call minted one")
+	suite.Require().NotNil(created, "no existing session means this call minted one")
+	suite.Equal(created.HandleID, res.Handle)
 	m.store.AssertNotCalled(suite.T(), "TouchAuthenticatedAt",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

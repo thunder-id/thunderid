@@ -6,6 +6,8 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,10 +16,13 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
@@ -660,25 +665,62 @@ func (s *ParseToApplicationDTOTestSuite) TestSharingParserReportsMalformedYAML()
 	s.Contains(err.Error(), "failed to parse application YAML")
 }
 
+// ApplicationExportInternalTestSuite tests what the application exporter writes for an application.
+type ApplicationExportInternalTestSuite struct {
+	suite.Suite
+	appService  *ApplicationServiceInterfaceMock
+	sharingMock *sharingmock.SharingServiceInterfaceMock
+	entityMock  *entitymock.EntityServiceInterfaceMock
+}
+
+func TestApplicationExportInternalTestSuite(t *testing.T) {
+	suite.Run(t, new(ApplicationExportInternalTestSuite))
+}
+
+func (s *ApplicationExportInternalTestSuite) SetupTest() {
+	s.appService = NewApplicationServiceInterfaceMock(s.T())
+	s.sharingMock = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.entityMock = entitymock.NewEntityServiceInterfaceMock(s.T())
+}
+
+func (s *ApplicationExportInternalTestSuite) SetupSubTest() {
+	s.SetupTest()
+}
+
+// exporter returns an exporter that reads from the suite's mocks.
+func (s *ApplicationExportInternalTestSuite) exporter() *applicationExporter {
+	return NewApplicationExporterForTest(s.appService, s.entityMock, s.sharingMock)
+}
+
+// expectApplication answers a read of the application, and of its sharing with the given policies.
+func (s *ApplicationExportInternalTestSuite) expectApplication(app *providers.Application,
+	policies []sharing.ReplayablePolicy) {
+	s.appService.EXPECT().GetApplication(mock.Anything, app.ID).Return(app, nil)
+	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, ApplicationSharingType, app.ID).Return(policies, nil)
+}
+
+// expectNoFlowSecretHeld answers that the application holds no Flow Secret.
+func (s *ApplicationExportInternalTestSuite) expectNoFlowSecretHeld(appID string) {
+	s.entityMock.EXPECT().GetCredentialsByType(mock.Anything, appID, fieldFlowSecret).
+		Return([]entity.StoredCredential{}, nil)
+}
+
 // An export writes the application as a read returns it, and leaves the sharing out when the
 // application holds no policy, so the document does not declare an empty list.
-func TestExportWritesTheApplicationWithoutSharingWhenItHoldsNone(t *testing.T) {
+func (s *ApplicationExportInternalTestSuite) TestExportWritesTheApplicationWithoutSharingWhenItHoldsNone() {
 	app := &providers.Application{ID: "app1", Name: "Test App"}
-	mockAppService := NewApplicationServiceInterfaceMock(t)
-	mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(app, nil)
-	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
-	sharingMock.EXPECT().ExportPolicies(mock.Anything, ApplicationSharingType, "app1").Return(nil, nil)
+	s.expectApplication(app, nil)
+	s.expectNoFlowSecretHeld("app1")
 
-	resource, _, err := NewApplicationExporterForTest(mockAppService, sharingMock).
-		GetResourceByID(context.Background(), "app1")
+	resource, _, err := s.exporter().GetResourceByID(context.Background(), "app1")
 
-	require.Nil(t, err)
-	assert.Equal(t, &applicationDeclarativeResource{Application: *app}, resource)
+	s.Require().Nil(err)
+	s.Equal(&applicationDeclarativeResource{Application: *app}, resource)
 }
 
 // An export carries the sharing alongside the application, so a re-import records the same
 // policies rather than producing an application no organization unit can act for.
-func TestExportCarriesTheSharingPolicies(t *testing.T) {
+func (s *ApplicationExportInternalTestSuite) TestExportCarriesTheSharingPolicies() {
 	app := &providers.Application{ID: "app1", Name: "Test App"}
 	replayable := []sharing.ReplayablePolicy{{
 		InitiatingOUID: "acme-root",
@@ -688,24 +730,21 @@ func TestExportCarriesTheSharingPolicies(t *testing.T) {
 			ChildUnits:     &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll},
 		},
 	}}
-	mockAppService := NewApplicationServiceInterfaceMock(t)
-	mockAppService.EXPECT().GetApplication(mock.Anything, "app1").Return(app, nil)
-	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
-	sharingMock.EXPECT().ExportPolicies(mock.Anything, ApplicationSharingType, "app1").Return(replayable, nil)
+	s.expectApplication(app, replayable)
+	s.expectNoFlowSecretHeld("app1")
 
-	resource, _, err := NewApplicationExporterForTest(mockAppService, sharingMock).
-		GetResourceByID(context.Background(), "app1")
+	resource, _, err := s.exporter().GetResourceByID(context.Background(), "app1")
 
-	require.Nil(t, err)
+	s.Require().Nil(err)
 	exported, ok := resource.(*applicationDeclarativeResource)
-	require.True(t, ok)
-	assert.Equal(t, []sharing.PolicyRequest{replayable[0].Request}, exported.SharingPolicies)
+	s.Require().True(ok)
+	s.Equal([]sharing.PolicyRequest{replayable[0].Request}, exported.SharingPolicies)
 }
 
 // The export pipeline hands the exporter back what GetResourceByID returned, so validation and the
 // per-resource rules read the application out of the document rather than refusing its type.
-func TestExporterReadsTheApplicationOutOfTheDocument(t *testing.T) {
-	exporter := NewApplicationExporterForTest(NewApplicationServiceInterfaceMock(t), nil)
+func (s *ApplicationExportInternalTestSuite) TestExporterReadsTheApplicationOutOfTheDocument() {
+	exporter := s.exporter()
 	document := &applicationDeclarativeResource{Application: providers.Application{
 		ID: "app1", Name: "Public App",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
@@ -714,11 +753,128 @@ func TestExporterReadsTheApplicationOutOfTheDocument(t *testing.T) {
 	}}
 
 	name, validationErr := exporter.ValidateResource(context.Background(), document, "app1", log.GetLogger())
-	require.Nil(t, validationErr)
-	assert.Equal(t, "Public App", name)
+	s.Require().Nil(validationErr)
+	s.Equal("Public App", name)
 
 	var ruler declarativeresource.PerResourceRuler = exporter
 	rules := ruler.GetResourceRulesForResource(document)
-	require.NotNil(t, rules)
-	assert.Contains(t, rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
+	s.Require().NotNil(rules)
+	s.Contains(rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
+}
+
+// An export refers to an application's Flow Secret only when the application holds one, so an import
+// is given the value the control plane holds rather than generating one of its own, and is never asked
+// for a value nothing holds.
+func (s *ApplicationExportInternalTestSuite) TestExportRefersToAFlowSecretOnlyWhenTheApplicationHoldsOne() {
+	embedded := providers.Application{ID: "app1", Name: "Embedded App", Type: string(model.ApplicationTypeCustom)}
+	browser := providers.Application{
+		ID: "app1", Name: "Browser App", Type: string(model.ApplicationTypeBrowser),
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type:        providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{ClientID: "client-id-1", PublicClient: true},
+		}},
+	}
+	cases := []struct {
+		name          string
+		app           providers.Application
+		lookedUp      bool
+		held          []entity.StoredCredential
+		lookupErr     error
+		wantReference bool
+	}{
+		{name: "an application that holds one", app: embedded, lookedUp: true,
+			held: []entity.StoredCredential{{Value: "hashed"}}, wantReference: true},
+		{name: "an application that may hold one but holds none", app: embedded, lookedUp: true,
+			held: []entity.StoredCredential{}},
+		{name: "an application with no entity", app: embedded, lookedUp: true, lookupErr: entity.ErrEntityNotFound},
+		{name: "an application that cannot hold one is not asked", app: browser},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.expectApplication(&tc.app, nil)
+			if tc.lookedUp {
+				s.entityMock.EXPECT().GetCredentialsByType(mock.Anything, tc.app.ID, fieldFlowSecret).
+					Return(tc.held, tc.lookupErr)
+			}
+			exporter := s.exporter()
+
+			resource, _, err := exporter.GetResourceByID(context.Background(), tc.app.ID)
+			s.Require().Nil(err)
+			exported, ok := resource.(*applicationDeclarativeResource)
+			s.Require().True(ok)
+
+			s.Empty(exported.FlowSecret, "a read holds no Flow Secret, so none is exported in the clear")
+			s.Equal(tc.wantReference,
+				slices.Contains(exporter.GetResourceRulesForResource(exported).SecretVariables, "FlowSecret"))
+		})
+	}
+}
+
+// A client with no client secret, such as one using private_key_jwt with token exchange, may still hold
+// a Flow Secret, so its export refers to the Flow Secret alone.
+func (s *ApplicationExportInternalTestSuite) TestExportOfAClientWithoutAClientSecretRefersOnlyToItsFlowSecret() {
+	app := &providers.Application{
+		ID: "app1", Name: "Token Exchange App", Type: string(model.ApplicationTypeCustom),
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				ClientID:                "client-id-1",
+				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
+				GrantTypes:              []providers.GrantType{providers.GrantTypeTokenExchange},
+			},
+		}},
+	}
+	s.expectApplication(app, nil)
+	s.entityMock.EXPECT().GetCredentialsByType(mock.Anything, "app1", fieldFlowSecret).
+		Return([]entity.StoredCredential{{Value: "hashed"}}, nil)
+	exporter := s.exporter()
+
+	resource, _, err := exporter.GetResourceByID(context.Background(), "app1")
+	s.Require().Nil(err)
+
+	s.Equal([]string{"FlowSecret"}, exporter.GetResourceRulesForResource(resource).SecretVariables)
+}
+
+// A failure to read the Flow Secret fails the export rather than dropping the reference, which would
+// leave the importing deployment to generate a value of its own.
+func (s *ApplicationExportInternalTestSuite) TestExportFailsWhenTheFlowSecretCannotBeRead() {
+	app := &providers.Application{ID: "app1", Name: "Embedded App", Type: string(model.ApplicationTypeCustom)}
+	s.expectApplication(app, nil)
+	s.entityMock.EXPECT().GetCredentialsByType(mock.Anything, "app1", fieldFlowSecret).
+		Return(nil, errors.New("store unavailable"))
+
+	_, _, err := s.exporter().GetResourceByID(context.Background(), "app1")
+
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// A capture carries the Flow Secret a write set, and its rules name it as a secret, so the value is
+// kept under the name the export refers to it by. A capture of a write that set none names none.
+func (s *ApplicationExportInternalTestSuite) TestACapturedFlowSecretIsASecretVariable() {
+	cases := []struct {
+		name          string
+		flowSecret    string
+		wantReference bool
+	}{
+		{name: "a write that set one", flowSecret: "the-flow-secret", wantReference: true},
+		{name: "a write that set none"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			captured := &applicationDeclarativeResource{
+				Application: providers.Application{ID: "app1", Name: "Embedded App"},
+				FlowSecret:  tc.flowSecret,
+			}
+
+			rules := s.exporter().GetResourceRulesForResource(captured)
+
+			s.Equal(tc.wantReference, slices.Contains(rules.SecretVariables, "FlowSecret"))
+		})
+	}
+}
+
+// The Flow Secret is a field a secret reference may stand in, so an import resolves it.
+func (s *ApplicationExportInternalTestSuite) TestSecretFieldsNameTheFlowSecret() {
+	s.Contains(s.exporter().SecretFields(), "flowSecret")
 }

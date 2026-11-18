@@ -53,10 +53,11 @@ type deviceAuthorizationResponse struct {
 }
 
 type deviceTokenResult struct {
-	statusCode  int
-	accessToken string
-	idToken     string
-	errorCode   string
+	statusCode   int
+	accessToken  string
+	idToken      string
+	deviceSecret string
+	errorCode    string
 }
 
 type DeviceGrantTestSuite struct {
@@ -75,6 +76,10 @@ type DeviceGrantTestSuite struct {
 	denyAuthFlowID    string
 	denyFlowID        string
 	denyAppID         string
+	// The device secret tests share one application: deleting it revokes what its client was issued.
+	deviceSecretAuthFlowID string
+	deviceSecretFlowID     string
+	deviceSecretAppID      string
 }
 
 func TestDeviceGrantTestSuite(t *testing.T) {
@@ -210,11 +215,31 @@ func (ts *DeviceGrantTestSuite) SetupSuite() {
 		deviceGrantDenySecret, ts.denyAuthFlowID, ts.denyFlowID, []string{deviceGrantType},
 	))
 	ts.Require().NoError(err)
+
+	ts.deviceSecretAuthFlowID, err = testutils.CreateFlow(deviceGrantSSOAuthenticationFlow(ts.ouID))
+	ts.Require().NoError(err)
+	ts.deviceSecretFlowID, err = testutils.CreateFlow(deviceGrantApprovalFlow(ts.ouID, ts.deviceSecretAuthFlowID,
+		"Device Grant Device Secret Flow", "device_grant_device_secret_flow", false))
+	ts.Require().NoError(err)
+	ts.deviceSecretAppID, err = testutils.CreateApplication(deviceGrantApplication(
+		ts.ouID, "Device Grant Device Secret Application", deviceSecretClientID, deviceSecretClientSecret,
+		ts.deviceSecretAuthFlowID, ts.deviceSecretFlowID, []string{deviceGrantType, tokenExchangeGrantType},
+	))
+	ts.Require().NoError(err)
 }
 
 func (ts *DeviceGrantTestSuite) TearDownSuite() {
 	if ts.agentID != "" {
 		_ = testutils.DeleteAgent(ts.agentID)
+	}
+	if ts.deviceSecretAppID != "" {
+		_ = testutils.DeleteApplication(ts.deviceSecretAppID)
+	}
+	if ts.deviceSecretFlowID != "" {
+		_ = testutils.DeleteFlow(ts.deviceSecretFlowID)
+	}
+	if ts.deviceSecretAuthFlowID != "" {
+		_ = testutils.DeleteFlow(ts.deviceSecretAuthFlowID)
 	}
 	if ts.denyAppID != "" {
 		_ = testutils.DeleteApplication(ts.denyAppID)
@@ -628,11 +653,21 @@ func (ts *DeviceGrantTestSuite) startDeviceGrantFlowResult(
 }
 
 func (ts *DeviceGrantTestSuite) postCallback(authID, assertion string) (int, string) {
-	payload, err := json.Marshal(map[string]string{
+	return ts.postCallbackWithSessions(authID, assertion, nil)
+}
+
+// postCallbackWithSessions posts the flow result to the callback with the SSO sessions the flow returned.
+func (ts *DeviceGrantTestSuite) postCallbackWithSessions(authID, assertion string,
+	sessionData []testutils.FlowSessionData) (int, string) {
+	request := map[string]interface{}{
 		"authId":    authID,
 		"assertion": assertion,
 		"type":      deviceGrantType,
-	})
+	}
+	if len(sessionData) > 0 {
+		request["sessionData"] = sessionData
+	}
+	payload, err := json.Marshal(request)
 	ts.Require().NoError(err)
 	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+deviceCallbackEndpoint,
 		bytes.NewReader(payload))
@@ -672,6 +707,7 @@ func (ts *DeviceGrantTestSuite) pollTokenAs(deviceCode, clientID, clientSecret s
 	result := deviceTokenResult{statusCode: resp.StatusCode}
 	result.accessToken, _ = body["access_token"].(string)
 	result.idToken, _ = body["id_token"].(string)
+	result.deviceSecret, _ = body["device_secret"].(string)
 	result.errorCode, _ = body["error"].(string)
 	return result
 }

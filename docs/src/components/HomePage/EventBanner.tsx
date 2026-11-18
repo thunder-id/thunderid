@@ -11,14 +11,11 @@ import useIsDarkMode from '../../hooks/useIsDarkMode';
 import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
 
 interface EventItem {
-  city: string;
+  city?: string;
   endDate: string;
   id: string;
-  link: string;
-  location: string;
-  name: string;
   startDate: string;
-  tags: string[];
+  title: string;
 }
 
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -115,7 +112,7 @@ export default function EventBanner(): JSX.Element | null {
           }}
         />
         <Box component="span" sx={{display: {xs: 'none', md: 'inline'}, color: 'text.secondary', whiteSpace: 'nowrap', letterSpacing: '0.01em', textTransform: 'uppercase'}}>
-          {nextEvent.name} · {nextEvent.city} · {formatBannerDate(nextEvent.startDate, nextEvent.endDate)}
+          {nextEvent.title.replaceAll('{{ProductName}}', productName)} · {nextEvent.city} · {formatBannerDate(nextEvent.startDate, nextEvent.endDate)}
         </Box>
         <Box
           component="span"

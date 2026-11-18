@@ -175,10 +175,10 @@ export default function AdoptersSection(): JSX.Element {
     },
     {
       categories: ['Institutional contributor', 'Developer products'],
-      name: 'WSO2',
-      description: `WSO2 is the founding contributor to ${productName} and uses it as the identity provider for WSO2 Cloud and as the Key Manager within WSO2 API Platform.`,
-      href: 'https://wso2.com',
-      logo: <MaskLogo name="wso2" width={110} height={28} label="WSO2" sx={{color: 'text.primary'}} />,
+      name: 'Choreo Labs',
+      description: `Choreo Labs is the founding contributor to ${productName} and uses it as the identity provider for Choreo Cloud and as the Key Manager within Choreo API Platform.`,
+      href: 'https://choreolabs.com/',
+      logo: <MaskLogo name="choreo-labs" width={151} height={28} label="Choreo Labs" sx={{color: 'text.primary'}} />,
     },
   ];
 

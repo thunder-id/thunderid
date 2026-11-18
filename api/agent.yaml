@@ -65,7 +65,6 @@ paths:
                       isLocal: true
                     attributes:
                       name: "Nightly Sync Worker"
-                      model: "claude-3-5-sonnet"
                       modelProvider: "anthropic"
                     isOwnedByOU: true
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
@@ -80,7 +79,6 @@ paths:
                       isLocal: true
                     attributes:
                       name: "Calendar Agent"
-                      model: "claude-3-5-sonnet"
                       modelProvider: "anthropic"
                     isOwnedByOU: true
                 links:
@@ -168,7 +166,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Nightly Sync Worker"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
               entity-and-inbound:
                 summary: Entity + inbound auth profile (no OAuth)
@@ -183,7 +180,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -209,7 +205,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Data Pipeline Worker"
-                    function: "task-automation"
                     modelProvider: "custom"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   inboundAuthConfig:
@@ -235,7 +230,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -305,7 +299,6 @@ paths:
                   isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -839,7 +832,6 @@ paths:
                   isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
                 isReadOnly: false
                 isOwnedByOU: true
@@ -935,6 +927,19 @@ paths:
 
         A personal agent keeps the owner it was registered for. Leave `owner` out, or send the current owner;
         a different owner is rejected with `AGT-1064`.
+
+        An update that sends a client secret other than the stored one replaces it, as a regeneration does.
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        through the agent's client ID up to the change are revoked, including tokens issued to users
+        through it: before the update is written, and again once it is. Sending the stored secret again
+        revokes nothing. With token revocation off, or on a control plane, nothing is revoked. If the
+        revocation before the write fails, the agent is not changed. If the one after the write fails, the
+        update is stored but the request returns an error, and a token issued while it was being written
+        may stay valid until it expires; regenerating the secret revokes it.
+
+        An attribute the agent type marks as a credential is rejected with `AGT-1068`: credentials are set when
+        the agent is created, and changed with `POST /agents/{id}/update-credentials`, or by the owner of a personal
+        agent with `POST /users/me/agents/{id}/update-credentials`.
       parameters:
         - in: path
           name: id
@@ -969,7 +974,6 @@ paths:
                     isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    model: "claude-3-5-sonnet"
                     modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -1041,7 +1045,6 @@ paths:
                   isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -1493,6 +1496,10 @@ paths:
         memberships and role assignments are automatically removed by cascade. The delete is
         fail-closed and retriable: if dependency cleanup fails, the agent is left intact and the
         operation can be retried.
+
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        to the agent and those issued through its client ID, including tokens issued to users through
+        it, are revoked, and its sessions end.
       parameters:
         - in: path
           name: id
@@ -1549,16 +1556,20 @@ paths:
         secret, and returns it. The response is the only time the new secret can be read: it is stored
         hashed and no read returns it.
 
-        The old secret stops working at once. The tokens issued to the agent up to the change are
-        revoked: before the new secret is written, and again once it is, so a token issued while it was
-        being written is revoked too. If the revocation before the write fails, the secret is not
-        changed. If the one after the write fails, the new secret is stored and still returned, with
+        The old secret stops working at once. When token revocation is on
+        (`oauth.token_revocation.enabled`, the default), the tokens issued through the agent's client ID
+        up to the change are revoked, including tokens issued to users through it, as for an update that
+        replaces the secret: before the new secret is written, and again once it is, so a token issued
+        while it was being written is revoked too. With token revocation off, or on a control plane,
+        which issues no tokens, nothing is revoked. If the revocation before the write fails, the secret
+        is not changed. If the one after the write fails, the new secret is stored and still returned, with
         `revocationIncomplete: true`: a token issued while it was being written may stay valid until it
         expires, and regenerating again revokes it. The attempt is recorded as failed in the audit log.
 
         An agent that authenticates without a client secret (a public client, `none` or
         `private_key_jwt`), a personal agent, one declared in a file, and one a control plane deployed
-        are refused. The caller needs the same permissions as for updating the agent.
+        are refused. The caller needs the same permissions as for updating the agent, and every
+        permission the agent holds, since the new secret lets the caller act as the agent.
       parameters:
         - in: path
           name: id
@@ -1611,9 +1622,120 @@ paths:
                       defaultValue: "A personal agent's client secret cannot be regenerated"
         "403":
           description: >
-            Forbidden. The caller may not update the agent, the agent is declared in a file
-            (`AGT-1027`), or it was deployed by a control plane, which only a later deploy from the
-            control plane changes (`AGT-1063`).
+            Forbidden. The caller may not update the agent, lacks a permission the agent holds
+            (`SAZ-4030`), the agent is declared in a file (`AGT-1027`), or it was deployed by a control
+            plane, which only a later deploy from the control plane changes (`AGT-1063`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                managed-agent:
+                  summary: The agent was deployed by a control plane
+                  value:
+                    code: "AGT-1063"
+                    message:
+                      key: "error.agentservice.managed_agent"
+                      defaultValue: "Cannot modify an agent deployed by the control plane"
+                    description:
+                      key: "error.agentservice.managed_agent_description"
+                      defaultValue: "The agent was deployed by the control plane and can only be changed there"
+                grant-not-permitted:
+                  summary: The caller lacks a permission the agent holds
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Internal server error
+
+  /agents/{id}/update-credentials:
+    post:
+      tags:
+        - Agents
+      summary: Update an agent's credentials
+      description: |
+        Sets new values for credentials the agent type's schema declares, such as a password. Only the
+        credentials present in the request body are updated, and the others keep their value. The values are
+        stored hashed and no read returns them.
+
+        Replacing a credential the agent already holds revokes the tokens issued with the agent as their subject
+        and ends its sessions, as a user's credential update does, up to the change and again once it is written.
+        Setting one the agent does not hold yet revokes nothing. Sending the value the agent already holds
+        still revokes, so a reset ends a session that was taken without the credential. If the revocation before
+        the write fails, the credential is not changed. If the one after the write fails, the credential is
+        stored but the request returns an error, and a token issued while it was being written may stay valid
+        until it expires; setting the credential again revokes it. The client secret is not a credential
+        attribute, and this request cannot change it.
+
+        A personal agent's credentials are its owner's to set with `POST /users/me/agents/{id}/update-credentials`,
+        so a request for one is refused (`AGT-1069`). An agent declared in a file, and one a control plane
+        deployed, are refused too. The caller needs the same permissions as for updating the agent, and must
+        hold every permission the agent holds.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentCredentialsRequest'
+            example:
+              credentials:
+                password: "n3wP@ssword!"
+      responses:
+        "204":
+          description: Credentials updated
+        "400":
+          description: >
+            Bad request. The body has no credentials (`AGT-1001`), names one the agent type does not declare or
+            gives it an empty value (`AGT-1016`), gives one a value its schema refuses (`AGT-1015`), or is for a
+            personal agent (`AGT-1069`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1069"
+                message:
+                  key: "error.agentservice.personal_agent_credentials_not_updatable"
+                  defaultValue: "Credentials cannot be updated"
+                description:
+                  key: "error.agentservice.personal_agent_credentials_not_updatable_description"
+                  defaultValue: "A personal agent's credentials can only be set by its owner"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: >
+            Forbidden. The caller may not update the agent or does not hold every permission it holds, the agent is
+            declared in a file (`AGT-1027`), or it was deployed by a control plane, which only a later deploy from
+            the control plane changes (`AGT-1063`).
           content:
             application/json:
               schema:
@@ -1640,8 +1762,6 @@ paths:
                 description:
                   key: "error.agentservice.agent_not_found_description"
                   defaultValue: "The agent with the specified id does not exist"
-        "401":
-          $ref: '#/components/responses/Unauthorized'
         "500":
           description: Internal server error
 
@@ -1885,13 +2005,6 @@ paths:
                   type: "string"
                   required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                model:
-                  type: "string"
-                  required: false
-                function:
-                  type: "string"
-                  required: false
-                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
       responses:
         "201":
           description: Agent type created
@@ -1917,13 +2030,6 @@ paths:
                     type: "string"
                     required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                  model:
-                    type: "string"
-                    required: false
-                  function:
-                    type: "string"
-                    required: false
-                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
         "400":
           description: Bad request
           content:
@@ -2026,13 +2132,6 @@ paths:
                     type: "string"
                     required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                  model:
-                    type: "string"
-                    required: false
-                  function:
-                    type: "string"
-                    required: false
-                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
         "404":
           description: Agent type not found
           content:
@@ -2097,13 +2196,6 @@ paths:
                   type: "string"
                   required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                model:
-                  type: "string"
-                  required: false
-                function:
-                  type: "string"
-                  required: false
-                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
       responses:
         "200":
           description: Agent type updated
@@ -2416,7 +2508,6 @@ components:
             are extracted and stored as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         isReadOnly:
           type: boolean
@@ -2559,7 +2650,6 @@ components:
             as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         authFlowId:
           type: string
@@ -2672,7 +2762,6 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         authFlowId:
           type: string
@@ -2768,7 +2857,6 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         status:
           allOf:
@@ -2888,7 +2976,6 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            model: "claude-3-5-sonnet"
             modelProvider: "anthropic"
         authFlowId:
           type: string
@@ -2958,6 +3045,16 @@ components:
             `false` when the agent is read in an organization unit it is shared into, where `ouId` names
             that organization unit.
           example: true
+
+    UpdateAgentCredentialsRequest:
+      type: object
+      required: [credentials]
+      properties:
+        credentials:
+          type: object
+          description: "Credential key-value pairs to update. Keys must match credential attributes defined in the agent type schema."
+          additionalProperties:
+            type: string
 
     ClientSecretResponse:
       type: object
@@ -3464,6 +3561,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   unique:
                     type: boolean
                     default: false
@@ -3496,6 +3595,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -3512,6 +3613,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -3519,7 +3622,7 @@ components:
                     type: object
                     description: "Nested properties of the object"
                     additionalProperties:
-                      $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
+                      $ref: "#/components/schemas/AgentTypeNestedProperty"
                 additionalProperties: false
               - type: object
                 description: "Array property definition"
@@ -3533,6 +3636,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -3572,7 +3677,7 @@ components:
                           properties:
                             type: object
                             additionalProperties:
-                              $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
+                              $ref: "#/components/schemas/AgentTypeNestedProperty"
                         additionalProperties: false
                 additionalProperties: false
           example:
@@ -3585,13 +3690,152 @@ components:
               type: "string"
               required: false
               enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-            model:
-              type: "string"
-              required: false
-            function:
-              type: "string"
-              required: false
-              enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
+
+    AgentTypeNestedProperty:
+      description: "A property nested in an object or an array of objects. Same as a top-level agent type property, without display settings."
+      oneOf:
+        - type: object
+          description: "Leaf property - string, email, mobile, or number"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["string", "email", "mobile", "number"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            unique:
+              type: boolean
+              default: false
+              description: "Whether this property must be unique across all agents"
+            credential:
+              type: boolean
+              default: false
+              description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+            enum:
+              type: array
+              items:
+                type: string
+              description: "List of allowed values for this property. Not supported for email or mobile types."
+            regex:
+              type: string
+              description: "Regular expression pattern for validating the property value"
+          additionalProperties: false
+        - type: object
+          description: "Leaf property - boolean"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["boolean"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+          additionalProperties: false
+        - type: object
+          description: "Object property definition"
+          required: [type, properties]
+          properties:
+            type:
+              type: string
+              enum: ["object"]
+              description: "Data type (object)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+            properties:
+              type: object
+              description: "Nested properties of the object"
+              additionalProperties:
+                $ref: "#/components/schemas/AgentTypeNestedProperty"
+          additionalProperties: false
+        - type: object
+          description: "Array property definition"
+          required: [type, items]
+          properties:
+            type:
+              type: string
+              enum: ["array"]
+              description: "Data type (array)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+            items:
+              oneOf:
+                - type: object
+                  description: "Array of strings, emails, mobiles, or numbers"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["string", "email", "mobile", "number"]
+                    enum:
+                      type: array
+                      items:
+                        type: string
+                      description: "List of allowed values. Not supported for email or mobile types."
+                    regex:
+                      type: string
+                      description: "Custom validation pattern. Contact types use their default when omitted or empty."
+                  additionalProperties: false
+                - type: object
+                  description: "Array of booleans"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["boolean"]
+                  additionalProperties: false
+                - type: object
+                  description: "Array of objects"
+                  required: [type, properties]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["object"]
+                    properties:
+                      type: object
+                      additionalProperties:
+                        $ref: "#/components/schemas/AgentTypeNestedProperty"
+                  additionalProperties: false
+          additionalProperties: false
+
+    AgentTypeAttributeDisplay:
+      type: object
+      description: "How a top-level attribute is presented when attributes are listed or collected. Nested properties don't accept it."
+      properties:
+        order:
+          type: integer
+          minimum: 0
+          description: "Position of the attribute when agent attributes are listed or collected, lowest first, and by attribute name for the same order. Attributes without one follow the ordered ones."
+        onCreate:
+          type: object
+          description: "Settings for when an agent is created."
+          properties:
+            hidden:
+              type: boolean
+              default: false
+              description: "Whether an optional attribute is left out when an agent is created. A flow asks for optional attributes only when its Provisioning step enables includeOptional, or includeOptionalCredentials for optional credentials, and asks for an attribute the step declares in its own inputs even when it's hidden. Required attributes are always asked for."
+          additionalProperties: false
+      additionalProperties: false
 
     AgentTypeListResponse:
       type: object

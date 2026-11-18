@@ -23,6 +23,7 @@ interface StackAdapterProps {
   renderField?: RenderFlowField;
   isSubmitDisabled?: boolean;
   rendersInputsWithoutSubmit?: boolean;
+  isAutoFocusDisabled?: boolean;
 }
 
 export default function StackAdapter({
@@ -39,6 +40,7 @@ export default function StackAdapter({
   renderField = undefined,
   isSubmitDisabled = undefined,
   rendersInputsWithoutSubmit = undefined,
+  isAutoFocusDisabled = undefined,
 }: StackAdapterProps): JSX.Element {
   const nestedComponents = (component.components ?? []) as FlowComponent[];
 
@@ -61,6 +63,7 @@ export default function StackAdapter({
           renderField={renderField}
           isSubmitDisabled={isSubmitDisabled}
           rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+          isAutoFocusDisabled={isAutoFocusDisabled}
           maxImageSize={STACK_IMAGE_MAX_SIZE}
         />
       ))}

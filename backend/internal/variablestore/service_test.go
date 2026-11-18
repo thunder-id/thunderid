@@ -49,7 +49,7 @@ func TestServiceSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	s.store = newStoreInterfaceMock(s.T())
-	s.service = newService(s.store, reversingCrypto{})
+	s.service = newService(s.store, reversingCrypto{}, newDiscardingBus(s.T()))
 }
 
 func (s *ServiceTestSuite) TestCreateVariableStoresAndReadsBack() {
@@ -158,7 +158,7 @@ func (s *ServiceTestSuite) TestUpdateVariableCreatesWhenTheNameIsUnused() {
 // Deleting is idempotent: a caller cleaning up should not have to ask first.
 func (s *ServiceTestSuite) TestDeleteVariableSucceedsWhenThereWasNone() {
 	ctx := context.Background()
-	s.store.On("DeleteVariable", ctx, "ABSENT").Return(nil).Once()
+	s.store.On("DeleteVariable", ctx, "ABSENT").Return(false, nil).Once()
 
 	s.Nil(s.service.DeleteVariable(ctx, "ABSENT"))
 }
@@ -220,7 +220,7 @@ func (s *ServiceTestSuite) TestCreateSecretRefusesAnEmptyValue() {
 
 func (s *ServiceTestSuite) TestSecretIsNotStoredWhenSealingFails() {
 	ctx := context.Background()
-	s.service = newService(s.store, reversingCrypto{err: errors.New("key unavailable")})
+	s.service = newService(s.store, reversingCrypto{err: errors.New("key unavailable")}, newDiscardingBus(s.T()))
 	s.store.On("GetSecret", ctx, "DB_PASSWORD").Return(nil, nil).Once()
 
 	_, svcErr := s.service.CreateSecret(ctx, SecretRequest{Name: "DB_PASSWORD", Value: "hunter2"})
@@ -312,21 +312,21 @@ func TestValidateValueBounds(t *testing.T) {
 
 func (s *ServiceTestSuite) TestDeleteSecretRemovesAStoredOne() {
 	ctx := context.Background()
-	s.store.On("DeleteSecret", ctx, "DB_PASSWORD").Return(nil).Once()
+	s.store.On("DeleteSecret", ctx, "DB_PASSWORD").Return(true, nil).Once()
 
 	s.Nil(s.service.DeleteSecret(ctx, "DB_PASSWORD"))
 }
 
 func (s *ServiceTestSuite) TestDeleteSecretSucceedsWhenThereWasNone() {
 	ctx := context.Background()
-	s.store.On("DeleteSecret", ctx, "ABSENT").Return(nil).Once()
+	s.store.On("DeleteSecret", ctx, "ABSENT").Return(false, nil).Once()
 
 	s.Nil(s.service.DeleteSecret(ctx, "ABSENT"))
 }
 
 func (s *ServiceTestSuite) TestDeleteVariableRemovesAStoredOne() {
 	ctx := context.Background()
-	s.store.On("DeleteVariable", ctx, "API_URL").Return(nil).Once()
+	s.store.On("DeleteVariable", ctx, "API_URL").Return(true, nil).Once()
 
 	s.Nil(s.service.DeleteVariable(ctx, "API_URL"))
 }
@@ -435,7 +435,8 @@ func (s *ServiceTestSuite) TestResolveReportsFailuresWithoutDetail() {
 	_, _, svcErr = resolver.ResolveSecret(ctx, "DB_PASSWORD")
 	s.Equal(ErrorInternalServerError.Code, svcErr.Code)
 
-	undecryptable := newService(s.store, reversingCrypto{err: errors.New("no key")}).(ReferenceResolverInterface)
+	undecryptable := newService(s.store, reversingCrypto{err: errors.New("no key")},
+		newDiscardingBus(s.T())).(ReferenceResolverInterface)
 	s.store.On("GetSecretValue", ctx, "DB_PASSWORD").Return("terces", true, nil).Once()
 	_, _, svcErr = undecryptable.ResolveSecret(ctx, "DB_PASSWORD")
 	s.Equal(ErrorInternalServerError.Code, svcErr.Code)

@@ -52,6 +52,20 @@ const (
 	EventOUTypeUpdate = "ou_type.update"
 	// EventOUTypeDelete names an attempt to delete an organization unit type.
 	EventOUTypeDelete = "ou_type.delete"
+	// EventVariableCreate names an attempt to create a variable.
+	EventVariableCreate = "variable.create"
+	// EventVariableUpdate names an attempt to store a variable under a name, replacing the one held
+	// there or creating it when the name is unused.
+	EventVariableUpdate = "variable.update"
+	// EventVariableDelete names an attempt to delete a variable.
+	EventVariableDelete = "variable.delete"
+	// EventSecretCreate names an attempt to create a secret.
+	EventSecretCreate = "secret.create"
+	// EventSecretUpdate names an attempt to store a secret under a name, rotating the one held there or
+	// creating it when the name is unused.
+	EventSecretUpdate = "secret.update"
+	// EventSecretDelete names an attempt to delete a secret.
+	EventSecretDelete = "secret.delete"
 	// EventApplicationCreate names an attempt to create an application.
 	EventApplicationCreate = "application.create"
 	// EventApplicationUpdate names an attempt to change an application.
@@ -72,8 +86,23 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventFlowSharingPolicyCreate names an attempt to create a sharing policy of a flow.
+	EventFlowSharingPolicyCreate = "flow.sharing_policy.create"
+	// EventFlowSharingPolicyUpdate names an attempt to change a sharing policy of a flow.
+	EventFlowSharingPolicyUpdate = "flow.sharing_policy.update"
+	// EventFlowSharingPolicyDelete names an attempt to delete a sharing policy of a flow.
+	EventFlowSharingPolicyDelete = "flow.sharing_policy.delete"
+	// EventFlowVariablesUpdate names an attempt to set the values an organization unit holds for the
+	// variables of a flow.
+	EventFlowVariablesUpdate = "flow.variables.update"
 	// EventClientAuthenticate names a refused attempt by an OAuth client to authenticate.
 	EventClientAuthenticate = "client.authenticate"
+	// EventGatewayCreate names an attempt to register a gateway.
+	EventGatewayCreate = "gateway.create"
+	// EventGatewayUpdate names an attempt to change the registration of a gateway.
+	EventGatewayUpdate = "gateway.update"
+	// EventGatewayDelete names an attempt to remove the registration of a gateway.
+	EventGatewayDelete = "gateway.delete"
 	// EventGatewayApply names an attempt to apply a configuration version to a gateway.
 	EventGatewayApply = "gateway.apply"
 	// EventGatewayRevert names an attempt to return a gateway to the configuration it held before.
@@ -84,6 +113,16 @@ const (
 	EventConnectionUpdate = "connection.update"
 	// EventConnectionDelete names an attempt to delete a connection.
 	EventConnectionDelete = "connection.delete"
+	// EventConsentCreate names an attempt to record a user's consent decisions as a new consent.
+	EventConsentCreate = "consent.create"
+	// EventConsentUpdate names an attempt to replace the decisions a consent holds.
+	EventConsentUpdate = "consent.update"
+	// EventConnectionSharingPolicyCreate names an attempt to create a sharing policy of a connection.
+	EventConnectionSharingPolicyCreate = "connection.sharing_policy.create"
+	// EventConnectionSharingPolicyUpdate names an attempt to change a sharing policy of a connection.
+	EventConnectionSharingPolicyUpdate = "connection.sharing_policy.update"
+	// EventConnectionSharingPolicyDelete names an attempt to delete a sharing policy of a connection.
+	EventConnectionSharingPolicyDelete = "connection.sharing_policy.delete"
 	// EventResourceServerCreate names an attempt to create a resource server.
 	EventResourceServerCreate = "resource_server.create"
 	// EventResourceServerUpdate names an attempt to change a resource server.
@@ -112,6 +151,8 @@ const (
 	EventConfigurationDelete = "configuration.delete"
 	// EventConfigurationExport names an attempt to export configuration, which can carry secrets.
 	EventConfigurationExport = "configuration.export"
+	// EventConfigurationVersionCreate names an attempt to capture the configuration as a version.
+	EventConfigurationVersionCreate = "configuration_version.create"
 	// EventNotificationSenderCreate names an attempt to create a notification sender.
 	EventNotificationSenderCreate = "notification_sender.create"
 	// EventNotificationSenderUpdate names an attempt to change a notification sender.
@@ -134,6 +175,12 @@ const (
 	EventRoleAssignmentAdd = "role.assignment.add"
 	// EventRoleAssignmentRemove names an attempt to take a role off principals.
 	EventRoleAssignmentRemove = "role.assignment.remove"
+	// EventRoleSharingPolicyCreate names an attempt to create a sharing policy of a role.
+	EventRoleSharingPolicyCreate = "role.sharing_policy.create"
+	// EventRoleSharingPolicyUpdate names an attempt to change a sharing policy of a role.
+	EventRoleSharingPolicyUpdate = "role.sharing_policy.update"
+	// EventRoleSharingPolicyDelete names an attempt to delete a sharing policy of a role.
+	EventRoleSharingPolicyDelete = "role.sharing_policy.delete"
 	// EventGroupCreate names an attempt to create a group.
 	EventGroupCreate = "group.create"
 	// EventGroupUpdate names an attempt to change a group.
@@ -183,6 +230,12 @@ const (
 	TargetTypeUserSharingPolicy = "user_sharing_policy"
 	// TargetTypeUserType is the target type of an event about a user type.
 	TargetTypeUserType = "user_type"
+	// TargetTypeVariable is the target type of an event about a variable, identified by its name. It
+	// never carries the value.
+	TargetTypeVariable = "variable"
+	// TargetTypeSecret is the target type of an event about a secret, identified by its name. It never
+	// carries the value.
+	TargetTypeSecret = "secret"
 	// TargetTypeApplication is the target type of an event about an application.
 	TargetTypeApplication = "application"
 	// TargetTypeApplicationSharingPolicy is the target type of an event about a sharing policy of an
@@ -190,9 +243,17 @@ const (
 	TargetTypeApplicationSharingPolicy = "application_sharing_policy"
 	// TargetTypeFlow is the target type of an event about a flow.
 	TargetTypeFlow = "flow"
+	// TargetTypeFlowSharingPolicy is the target type of an event about a sharing policy of a flow.
+	TargetTypeFlowSharingPolicy = "flow_sharing_policy"
 	// TargetTypeConnection is the target type of an event about a connection of any kind: an identity
 	// provider, an AuthZEN PDP or an HTTP endpoint.
 	TargetTypeConnection = "connection"
+	// TargetTypeConsent is the target type of an event about a consent. It never carries the purposes or
+	// elements the consent holds.
+	TargetTypeConsent = "consent"
+	// TargetTypeConnectionSharingPolicy is the target type of an event about a sharing policy of a
+	// connection.
+	TargetTypeConnectionSharingPolicy = "connection_sharing_policy"
 	// TargetTypeResourceServer is the target type of an event about a resource server.
 	TargetTypeResourceServer = "resource_server"
 	// TargetTypeResource is the target type of an event about a resource of a resource server.
@@ -203,6 +264,9 @@ const (
 	// TargetTypeConfiguration is the target type of an event about the configuration as a whole, which
 	// has no ID.
 	TargetTypeConfiguration = "configuration"
+	// TargetTypeConfigurationVersion is the target type of an event about a captured version of the
+	// configuration, identified by its hash.
+	TargetTypeConfigurationVersion = "configuration_version"
 	// TargetTypeAgent is the target type of an event about an agent.
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
@@ -215,6 +279,8 @@ const (
 	TargetTypeNotificationTemplate = "notification_template"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
+	// TargetTypeRoleSharingPolicy is the target type of an event about a sharing policy of a role.
+	TargetTypeRoleSharingPolicy = "role_sharing_policy"
 	// TargetTypeGroup is the target type of an event about a group.
 	TargetTypeGroup = "group"
 	// TargetTypeServerConfig is the target type of an event about a section of the server configuration,
@@ -281,6 +347,14 @@ var auditedEvents = map[string][]string{
 	EventOUTypeUpdate: nil,
 	EventOUTypeDelete: nil,
 
+	EventVariableCreate: nil,
+	EventVariableUpdate: nil,
+	EventVariableDelete: nil,
+
+	EventSecretCreate: nil,
+	EventSecretUpdate: nil,
+	EventSecretDelete: nil,
+
 	EventApplicationCreate: nil,
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
@@ -291,11 +365,25 @@ var auditedEvents = map[string][]string{
 	EventFlowRestore:        nil,
 	EventClientAuthenticate: nil,
 
+	EventGatewayCreate:           nil,
+	EventGatewayUpdate:           nil,
+	EventGatewayDelete:           nil,
+	EventFlowSharingPolicyCreate: nil,
+	EventFlowSharingPolicyUpdate: nil,
+	EventFlowSharingPolicyDelete: nil,
+	EventFlowVariablesUpdate:     nil,
+
 	EventGatewayApply:     nil,
 	EventGatewayRevert:    nil,
 	EventConnectionCreate: nil,
 	EventConnectionUpdate: nil,
 	EventConnectionDelete: nil,
+
+	EventConsentCreate:                 nil,
+	EventConsentUpdate:                 nil,
+	EventConnectionSharingPolicyCreate: nil,
+	EventConnectionSharingPolicyUpdate: nil,
+	EventConnectionSharingPolicyDelete: nil,
 
 	EventResourceServerCreate:         nil,
 	EventResourceServerUpdate:         nil,
@@ -310,6 +398,8 @@ var auditedEvents = map[string][]string{
 	EventConfigurationImport: {DetailDryRun},
 	EventConfigurationDelete: nil,
 	EventConfigurationExport: nil,
+
+	EventConfigurationVersionCreate: nil,
 
 	EventNotificationSenderCreate: nil,
 	EventNotificationSenderUpdate: nil,
@@ -328,6 +418,10 @@ var auditedEvents = map[string][]string{
 	EventRoleDelete:           nil,
 	EventRoleAssignmentAdd:    nil,
 	EventRoleAssignmentRemove: nil,
+
+	EventRoleSharingPolicyCreate: nil,
+	EventRoleSharingPolicyUpdate: nil,
+	EventRoleSharingPolicyDelete: nil,
 
 	EventGroupCreate:       nil,
 	EventGroupUpdate:       nil,

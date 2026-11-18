@@ -9,10 +9,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/thunder-id/thunderid/internal/revocation"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
@@ -80,8 +78,8 @@ func (suite *AgentServiceTestSuite) TestOwnerDeletion_WithoutARevokerPersonalAge
 	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
 }
 
-// The owner's deletion revokes every token issued to their personal agents' clients, outright, then deletes those
-// agents. Declarative and ordinary agents are left alone.
+// The owner's deletion deletes their personal agents, whose client and entity deletions revoke what each was
+// issued. Declarative and ordinary agents are left alone.
 func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_DeletesTheOwnersPersonalAgents() {
 	svc, mockEntity, revoker := suite.ownerDeletionService()
 	clearMockCalls(mockEntity, "DeleteEntity")
@@ -91,18 +89,12 @@ func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_DeletesTheOwne
 
 	suite.Require().NoError(err)
 	suite.Equal(1, deleted)
-	suite.Require().Len(revoker.batches, 1)
-	suite.Equal([]revocation.CriteriaRevocation{{
-		Criterion: revocation.Criterion{Type: revocation.CriterionTypeApplicationKey, Value: "cid-personal"},
-		Mode:      revocation.ModeAll,
-		Reason:    revocation.ReasonUserDeleted,
-	}}, revoker.batches[0])
+	suite.Empty(revoker.batches, "the agent's own deletion revokes what it was issued")
 	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, "agent-declarative")
 	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, "agent-ordinary")
 }
 
-// Any failure aborts the owner's deletion: listing the agents, revoking their tokens or deleting one. A failed
-// revocation deletes nothing.
+// Any failure aborts the owner's deletion: listing the agents or deleting one.
 func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_FailuresAbort() {
 	suite.Run("listing", func() {
 		svc, mockEntity, _, _, _ := suite.setupService()
@@ -112,14 +104,6 @@ func (suite *AgentServiceTestSuite) TestCascadeDeleteDependencies_FailuresAbort(
 
 		_, err := svc.CascadeDeleteDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-2")
 		suite.Error(err)
-	})
-	suite.Run("revocation", func() {
-		svc, mockEntity, revoker := suite.ownerDeletionService()
-		revoker.err = &tidcommon.InternalServerError
-
-		_, err := svc.CascadeDeleteDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-2")
-		suite.Error(err)
-		mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
 	})
 	suite.Run("deletion", func() {
 		svc, mockEntity, _ := suite.ownerDeletionService()

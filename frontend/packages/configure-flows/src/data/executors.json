@@ -1037,30 +1037,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Pre Delete Executor",
-      "label": "Validate and Plan Full Revocation",
-      "description": "Validate the user being deleted, then plan revocation of every grant they hold",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": false
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "PreDeleteExecutor",
-          "mode": "revoke_all"
-        },
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Criteria Revocation Executor",
       "label": "Revoke Tokens",
       "description": "Persist every token criterion from the trusted revocation plan",

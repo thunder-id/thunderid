@@ -51,7 +51,6 @@ const card = (title: string): HTMLElement => screen.getByText(title).closest<HTM
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
