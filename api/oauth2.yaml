@@ -229,12 +229,13 @@ paths:
         The caller also posts, in `sessionData`, the SSO sessions the flow's responses returned, from
         every response of the flow and not only the last one. When the authorization request asked for
         the `device_sso` scope, the code keeps the posted sessions, up to ten, and the code exchange
-        returns them in `device_secret`. They are kept as posted; a token exchange that presents them
-        checks they are the user's. An entry with a missing field, or a field longer than 128
-        characters, is ignored and does not fail the sign-in. When every kept session carries its
-        `expiresIn`, the device secret ends when the last of them does, never later than the session
-        absolute timeout, and none is returned when every session has ended. The request body is
-        limited to 1 MiB.
+        returns them in `device_secret`. For the Device Code type, the device authorization request
+        keeps them the same way and the device's token response returns them. They are kept as posted;
+        a token exchange that presents them checks they are the user's. An entry with a missing field,
+        or a field longer than 128 characters, is ignored and does not fail the sign-in. When every
+        kept session carries its `expiresIn`, the device secret ends when the last of them does, never
+        later than the session absolute timeout, and none is returned when every session has ended. The
+        request body is limited to 1 MiB.
       tags:
         - Authorization
       requestBody:
@@ -354,7 +355,7 @@ paths:
 
         Token exchange additionally supports requesting an Identity Assertion Authorization Grant (ID-JAG) by setting `requested_token_type` to `urn:ietf:params:oauth:token-type:id-jag`, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:id_token` and a single required `audience` value matching one of the client's configured `allowedAudiences`. The `resource` parameter is optional and, when present, is embedded in the issued ID-JAG for the resource authorization server to process. The ID-JAG also carries the subject ID token's claims that the client's `token.idToken.userAttributes` lists, except `roles`, `groups`, and the claims the ID-JAG defines itself. Requires the client to be confidential and to have ID-JAG issuance enabled (`token.idJag.enabled`) on its OAuth configuration. The response has `issued_token_type=urn:ietf:params:oauth:token-type:id-jag` and `token_type=N_A`, since the issued value is a JWT authorization grant rather than an access token.
 
-        Token exchange also signs a user in to another application with an SSO session they already hold (back-channel SSO). The `subject_token` is the `device_secret` a code exchange returned, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`; its `sso-session+jwt` type header selects this path. The calling client's authentication flow runs silently on the session it carries for that client's login flow, as `prompt=none` does at the authorization endpoint, so it only succeeds for a client whose login flow is one of the sessions'. The response carries the tokens the authorization code grant would give: an access token, an ID token when `openid` is in `scope`, and a refresh token when the client allows the `refresh_token` grant; all belong to the same session. `scope` and a single `resource` select what is requested, `actor_token` is not accepted, and `requested_token_type` may only be an access token. Public clients may use it. A flow that cannot complete without the user, or a session that has ended or belongs to another flow, is answered with `interaction_required`; a session of another user than the device secret's `sub` with `invalid_grant`. For a shared application, a flow that decides no organization unit before it reuses the session follows the one the user last signed in to with that session, when the user can sign in to the application there; otherwise the flow needs the user, and the exchange is answered with `interaction_required`. A sign-in the organization unit boundary refuses, because the flow decided no organization unit or the user is not in the one it decided, is also answered with `invalid_grant`, with the description `The subject cannot sign in to this application`. The same exchange on `/ou/{ouId}/oauth2/token` signs the user in to that organization unit.
+        Token exchange also signs a user in to another application with an SSO session they already hold (back-channel SSO). The `subject_token` is the `device_secret` a code exchange or a device code token response returned, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`; its `sso-session+jwt` type header selects this path. The calling client's authentication flow runs silently on the session it carries for that client's login flow, as `prompt=none` does at the authorization endpoint, so it only succeeds for a client whose login flow is one of the sessions'. The response carries the tokens the authorization code grant would give: an access token, an ID token when `openid` is in `scope`, and a refresh token when the client allows the `refresh_token` grant; all belong to the same session. `scope` and a single `resource` select what is requested, `actor_token` is not accepted, and `requested_token_type` may only be an access token. Public clients may use it. A flow that cannot complete without the user, or a session that has ended or belongs to another flow, is answered with `interaction_required`; a session of another user than the device secret's `sub` with `invalid_grant`. For a shared application, a flow that decides no organization unit before it reuses the session follows the one the user last signed in to with that session, when the user can sign in to the application there; otherwise the flow needs the user, and the exchange is answered with `interaction_required`. A sign-in the organization unit boundary refuses, because the flow decided no organization unit or the user is not in the one it decided, is also answered with `invalid_grant`, with the description `The subject cannot sign in to this application`. The same exchange on `/ou/{ouId}/oauth2/token` signs the user in to that organization unit.
 
         The `urn:ietf:params:oauth:grant-type:jwt-bearer` grant presents an ID-JAG assertion (obtained from a trusted external IdP) via the required `assertion` parameter, and exchanges it for a ThunderID access token. Optional `scope` and `resource` parameters further narrow the granted scopes and audience; `resource` must be a subset of the assertion's own `resource` claim when the assertion carries one. No refresh token is issued for this grant.
       tags:
@@ -1233,7 +1234,7 @@ components:
             - urn:ietf:params:oauth:grant-type:device_code
         sessionData:
           type: array
-          description: The SSO sessions the flow's responses returned, as the flow execution API's `sessionData` has them. The code keeps them, up to ten, for the `device_sso` scope. An entry with a missing field, or a field longer than 128 characters, is ignored.
+          description: The SSO sessions the flow's responses returned, as the flow execution API's `sessionData` has them. The code, or the device authorization request, keeps them, up to ten, for the `device_sso` scope. An entry with a missing field, or a field longer than 128 characters, is ignored.
           items:
             type: object
             properties:
@@ -1370,8 +1371,8 @@ components:
         subject_token_type:
           type: string
           description: >-
-            The type URI of the subject token. A device secret (`device_secret` from a code exchange)
-            is sent as `urn:ietf:params:oauth:token-type:jwt`.
+            The type URI of the subject token. A device secret (`device_secret` from a code exchange or a
+            device code token response) is sent as `urn:ietf:params:oauth:token-type:jwt`.
         actor_token:
           type: string
           description: The actor token for token exchange (RFC 8693).
@@ -1462,19 +1463,20 @@ components:
         device_secret:
           type: string
           description: >-
-            The SSO sessions the callback posted for the authorization code (authorization code grant
-            only). Returned only when the authorization request asked for the `device_sso` scope and the
-            callback posted sessions, and not when every posted session's `expiresIn` said it has ended,
-            even though the granted scope still lists `device_sso`. A sign-in returns its session to post
-            whether it started the session or reused it. A JWT signed by the server and typed
-            `sso-session+jwt`. Its `aud` is this server, since it is presented back here as a token
-            exchange `subject_token`; its `sub` is the resource ID of the user who signed in, not the
-            application's token subject, so it is the same for every application; its `exp` the session
-            absolute timeout from now, unless every session carried `expiresIn`, in which case when the
-            last of them ends; and its `session_data` claim lists the sessions as `flow_identifier` and
-            `session_handle` pairs, as
-            the flow execution API's `sessionData` does. The handles resume the sessions, so keep it as
-            secret as a credential.
+            The SSO sessions the callback posted for the authorization code or the device authorization
+            request (authorization code and Device Code grants only). Returned only when the authorization
+            request, or the device authorization request, asked for the `device_sso` scope and at least
+            one posted session was kept. A sign-in returns its session to post whether it started the
+            session or reused it. For an authorization code, it is not returned when every posted
+            session's `expiresIn` said it has ended, even though the granted scope still lists
+            `device_sso`. A JWT signed by the server and typed `sso-session+jwt`. Its `aud` is this
+            server, since it is presented back here as a token exchange `subject_token`; its `sub` is the
+            resource ID of the user who signed in, not the application's token subject, so it is the same
+            for every application; its `exp` the session absolute timeout from now, unless the sessions
+            were posted for an authorization code and every one carried `expiresIn`, in which case when
+            the last of them ends; and its `session_data` claim lists the sessions as `flow_identifier`
+            and `session_handle` pairs, as the flow execution API's `sessionData` does. The handles resume
+            the sessions, so keep it as secret as a credential.
 
     PARRequest:
       type: object

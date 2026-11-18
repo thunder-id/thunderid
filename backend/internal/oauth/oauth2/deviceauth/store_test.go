@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
@@ -338,4 +339,21 @@ func (s *DeviceAuthStoreTestSuite) TestUpdateStateDoesNotOverwriteConcurrentTran
 	stored, err := initialStore.GetByRequestID(context.Background(), request.RequestID)
 	s.Require().NoError(err)
 	s.Require().Equal(DeviceStateRedeeming, stored.State)
+}
+
+func (s *DeviceAuthStoreTestSuite) TestMarkConsumedDropsTheKeptSessions() {
+	store := newTestDeviceAuthStore(inmemory.Initialize("test-deployment"))
+	s.Require().NoError(store.Add(context.Background(), &DeviceAuthRequest{RequestID: "request-1",
+		ApplicationID: "application-1", DeviceCodeHash: hashDeviceCode("device-code"), UserCode: "BCDF-GHJK",
+		State: DeviceStateApproved, ExpiryTime: time.Now().Add(2 * time.Minute),
+		SessionData: []oauth2model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}}))
+
+	consumed, err := store.MarkConsumed(context.Background(), "request-1")
+
+	s.Require().NoError(err)
+	s.Require().True(consumed)
+	stored, err := store.GetByRequestID(context.Background(), "request-1")
+	s.Require().NoError(err)
+	s.Equal(DeviceStateConsumed, stored.State)
+	s.Empty(stored.SessionData, "a consumed request no longer keeps the session handles")
 }

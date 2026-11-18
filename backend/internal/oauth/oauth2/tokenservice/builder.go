@@ -738,10 +738,9 @@ func (tb *tokenBuilder) BuildLogoutToken(
 	}, nil
 }
 
-// BuildDeviceSecret builds the token that carries the SSO sessions of a sign-in to the client on a code
-// exchange: each session's flow identifier and handle, for the subject who signed in. It is signed with
-// the client's ID token signing algorithm and addressed to this server, which accepts it back as a token
-// exchange subject token.
+// BuildDeviceSecret builds the device secret that carries a subject's SSO sessions: each session's flow
+// identifier and handle. It is signed with the client's ID token signing algorithm and addressed to this
+// server, which accepts it back as a token exchange subject token.
 func (tb *tokenBuilder) BuildDeviceSecret(
 	ctx context.Context,
 	tokenCtx *DeviceSecretBuildContext,
