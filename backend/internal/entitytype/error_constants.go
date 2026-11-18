@@ -409,6 +409,10 @@ var (
 	// errAgentTypeExistsInOU is returned when a write would leave an organization unit with more than one
 	// agent type.
 	errAgentTypeExistsInOU = errors.New("organization unit already has an agent type")
+
+	// errEmptySchema is returned when a user or agent type declares no attributes. Organization unit
+	// types may declare none.
+	errEmptySchema = errors.New("schema cannot be empty - must contain at least one property definition")
 )
 
 // errEntityTypeNotFoundNoop is returned by deleteEntityType when the entity type to delete does not

@@ -12,7 +12,6 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
-	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -417,7 +416,7 @@ func validateEntityType(schemaDTO *EntityType) error {
 		return fmt.Errorf("schema definition is required for entity type '%s'", schemaDTO.Handle)
 	}
 
-	compiledSchema, compileErr := model.CompileSchema(schemaDTO.Schema)
+	compiledSchema, compileErr := compileEntityTypeSchema(schemaDTO.Category, schemaDTO.Schema)
 	if compileErr != nil {
 		return fmt.Errorf("invalid schema for entity type '%s': %w", schemaDTO.Handle, compileErr)
 	}

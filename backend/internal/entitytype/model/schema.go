@@ -68,6 +68,11 @@ type Schema struct {
 	hints      map[string]attributeHints
 }
 
+// IsEmpty reports whether the schema declares no properties.
+func (cs *Schema) IsEmpty() bool {
+	return len(cs.properties) == 0
+}
+
 // getPropertyByPath returns the property at the given dot-notation path
 // (e.g. "address.city") by walking through nested object types. For a simple
 // (non-dotted) name, it returns the top-level property directly.
@@ -342,10 +347,6 @@ func (cs *Schema) Validate(
 		return false, fmt.Errorf("failed to unmarshal user attributes: %w", err)
 	}
 
-	if len(cs.properties) == 0 {
-		return true, nil
-	}
-
 	for propName, prop := range cs.properties {
 		if _, exists := userAttrs[propName]; !exists && prop.isRequired() &&
 			(!skipCredentialRequired || !prop.isCredential()) {
@@ -440,15 +441,15 @@ func convertToFloat64(value interface{}) (float64, bool) {
 	}
 }
 
-// CompileSchema compiles an entity type JSON Schema from the provided raw JSON.
+// CompileSchema compiles an entity type JSON Schema from the provided raw JSON. A schema without properties
+// compiles; the entity type package decides which categories may have one.
 func CompileSchema(schema json.RawMessage) (*Schema, error) {
 	var schemaMap map[string]json.RawMessage
 	if err := json.Unmarshal(schema, &schemaMap); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
-
-	if len(schemaMap) == 0 {
-		return nil, fmt.Errorf("schema cannot be empty - must contain at least one property definition")
+	if schemaMap == nil {
+		return nil, fmt.Errorf("schema must be a JSON object")
 	}
 
 	compiled := &Schema{

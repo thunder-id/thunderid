@@ -1324,7 +1324,7 @@ func validateEntityTypeDefinition(
 		return invalidEntityTypeRequestErr(category, "schema definition must not be empty")
 	}
 
-	compiledSchema, err := model.CompileSchema(schema.Schema)
+	compiledSchema, err := compileEntityTypeSchema(category, schema.Schema)
 	if err != nil {
 		logger.Debug(ctx, "Entity type validation failed: schema compilation error",
 			log.Error(err))
@@ -1420,4 +1420,17 @@ func resolvePrimaryContact(
 	default:
 		return name, nil
 	}
+}
+
+// compileEntityTypeSchema compiles the schema of an entity type of the given category. Organization unit types
+// may declare no attributes; user and agent types must declare at least one.
+func compileEntityTypeSchema(category TypeCategory, schema json.RawMessage) (*model.Schema, error) {
+	compiled, err := model.CompileSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+	if compiled.IsEmpty() && category != TypeCategoryOU {
+		return nil, errEmptySchema
+	}
+	return compiled, nil
 }

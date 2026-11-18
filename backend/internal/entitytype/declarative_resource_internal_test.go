@@ -258,6 +258,31 @@ func TestValidateEntityType(t *testing.T) {
 			wantErr: true,
 			errMsg:  "schema definition is required",
 		},
+		{
+			name: "user type without attributes rejected",
+			schema: &EntityType{
+				ID:          "schema-1",
+				Handle:      "valid-schema",
+				DisplayName: "Valid Schema",
+				OUID:        "ou-1",
+				Category:    TypeCategoryUser,
+				Schema:      json.RawMessage(`{}`),
+			},
+			wantErr: true,
+			errMsg:  "schema cannot be empty",
+		},
+		{
+			name: "organization unit type without attributes allowed",
+			schema: &EntityType{
+				ID:          "schema-1",
+				Handle:      "valid-schema",
+				DisplayName: "Valid Schema",
+				OUID:        "ou-1",
+				Category:    TypeCategoryOU,
+				Schema:      json.RawMessage(`{}`),
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range testCases {

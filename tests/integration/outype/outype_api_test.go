@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	ouTypeBasePath   = "/organization-unit-types"
-	userTypeBasePath = "/user-types"
+	ouTypeBasePath    = "/organization-unit-types"
+	userTypeBasePath  = "/user-types"
+	agentTypeBasePath = "/agent-types"
 
 	invalidRequestFormatCode = "OUT-1001"
 	ouTypeNotFoundCode       = "OUT-1002"
@@ -25,7 +26,11 @@ const (
 	invalidOUTypeCode        = "OUT-1004"
 	credentialNotAllowedCode = "OUT-1009"
 	userTypeNotFoundCode     = "USRS-1002"
+	invalidEntityTypeCode    = "USRS-1004"
 	ouCannotBeDeletedCode    = "OU-1006"
+
+	// defaultOUTypeID is the ID of the default organization unit type in the bootstrap resources.
+	defaultOUTypeID = "01900000-0000-7000-8000-000000000012"
 )
 
 // partnerSchema is an organization unit type schema without credentials.
@@ -203,12 +208,60 @@ func (s *OUTypeAPITestSuite) TestCreateRejectsCredentialAttribute() {
 	}
 }
 
-func (s *OUTypeAPITestSuite) TestCreateRejectsEmptySchema() {
+func (s *OUTypeAPITestSuite) TestCreateAcceptsTypeWithoutAttributes() {
 	request := s.partnerRequest("ou-type-empty")
 	request.Schema = json.RawMessage(`{}`)
 
+	created := s.create(request)
+
+	s.JSONEq(`{}`, string(created.Schema))
+}
+
+func (s *OUTypeAPITestSuite) TestUpdateToTypeWithoutAttributes() {
+	created := s.create(s.partnerRequest("ou-type-update-empty"))
+
+	resp := s.do(http.MethodPut, ouTypeBasePath+"/"+created.ID, OUTypeRequest{
+		DisplayName: "Partner", OUID: s.ouID, Schema: json.RawMessage(`{}`),
+	})
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+	var updated OUType
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&updated))
+	s.JSONEq(`{}`, string(updated.Schema))
+}
+
+func (s *OUTypeAPITestSuite) TestUserAndAgentTypesRejectEmptySchema() {
+	for _, basePath := range []string{userTypeBasePath, agentTypeBasePath} {
+		s.Run(basePath, func() {
+			request := OUTypeRequest{Handle: "empty-schema", DisplayName: "Empty", OUID: s.ouID,
+				Schema: json.RawMessage(`{}`)}
+
+			s.requireError(s.do(http.MethodPost, basePath, request), http.StatusBadRequest, invalidEntityTypeCode)
+		})
+	}
+}
+
+func (s *OUTypeAPITestSuite) TestCreateRejectsNullSchema() {
+	request := s.partnerRequest("ou-type-null")
+	request.Schema = json.RawMessage(`null`)
+
 	s.requireError(s.do(http.MethodPost, ouTypeBasePath, request),
 		http.StatusBadRequest, invalidOUTypeCode)
+}
+
+func (s *OUTypeAPITestSuite) TestDefaultTypeIsBootstrapped() {
+	resp := s.do(http.MethodGet, ouTypeBasePath+"/"+defaultOUTypeID, nil)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var defaultType OUType
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&defaultType))
+	s.Equal("default", defaultType.Handle)
+	s.Equal("Default", defaultType.DisplayName)
+	defaultOUID, err := testutils.DefaultOUID()
+	s.Require().NoError(err)
+	s.Equal(defaultOUID, defaultType.OUID)
+	s.JSONEq(`{}`, string(defaultType.Schema))
 }
 
 func (s *OUTypeAPITestSuite) TestCreateRejectsMissingRequiredField() {

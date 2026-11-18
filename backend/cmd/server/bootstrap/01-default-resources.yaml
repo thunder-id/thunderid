@@ -118,6 +118,13 @@ schema:
     required: false
     credential: true
 ---
+resource_type: ou_type
+id: 01900000-0000-7000-8000-000000000012
+handle: default
+displayName: Default
+ouHandle: default
+schema: {}
+---
 resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020
 name: System
