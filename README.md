@@ -85,6 +85,14 @@ Please refer to the [Contributing Guide](https://thunderid.dev/community/overvie
 For code contributions, refer to the [Contributing Code](https://thunderid.dev/community/contributing/contributing-code/prerequisites) section for details on the prerequisites and instructions for running ThunderID in development mode.
 
 
+## Community
+
+* **Chat:** join the [LF Decentralized Trust Discord](https://discord.lfdecentralizedtrust.org/). Use `#thunderid-user` for help with using ThunderID and `#thunderid-dev` for contributing to it.
+* **Ideas and design:** start a thread on [GitHub Discussions](https://github.com/thunder-id/thunderid/discussions). Design decisions are recorded there, so bring anything that comes out of a Discord conversation back to a discussion.
+* **Bugs and feature requests:** open an [issue](https://github.com/thunder-id/thunderid/issues/new/choose).
+* **Security vulnerabilities:** do not report them in public channels. Follow the [security policy](SECURITY.md).
+
+
 ## Governance
 
 ThunderID is a project of [LF Decentralized Trust](https://www.lfdecentralizedtrust.org/) and follows the [LF Decentralized Trust Code of Conduct](https://lf-decentralized-trust.github.io/governance/governing-documents/code-of-conduct/).

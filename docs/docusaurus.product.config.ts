@@ -23,6 +23,11 @@ export interface DocusaurusProductConfig {
         };
       };
     };
+    community: {
+      discord: {
+        inviteUrl: string;
+      };
+    };
   };
   postman: {
     collection: {
@@ -69,6 +74,11 @@ const DocusaurusProductConfig = {
         owner: {
           name: 'thunderid',
         },
+      },
+    },
+    community: {
+      discord: {
+        inviteUrl: 'https://discord.lfdecentralizedtrust.org/',
       },
     },
   },

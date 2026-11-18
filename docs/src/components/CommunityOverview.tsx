@@ -4,7 +4,7 @@
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Box, Card, CardContent, Chip, Typography} from '@wso2/oxygen-ui';
-import {AlertCircle, ArrowRight, Code2, MessageSquare} from '@wso2/oxygen-ui-icons-react';
+import {AlertCircle, ArrowRight, Code2, MessagesSquare} from '@wso2/oxygen-ui-icons-react';
 import React, {type ReactNode} from 'react';
 import ContributorCloud from './ContributorCloud';
 import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
@@ -101,6 +101,7 @@ export default function CommunityOverview(): React.ReactElement {
   const config = siteConfig.customFields?.product as DocusaurusProductConfig;
   const productName = config?.project?.name ?? 'ThunderID';
   const repoUrl = config?.project?.source?.github?.url ?? 'https://github.com/thunder-id/thunderid';
+  const discord = config.project.community.discord;
 
   const cards: InvolvementCard[] = [
     {
@@ -111,11 +112,12 @@ export default function CommunityOverview(): React.ReactElement {
       title: 'Report a Bug',
     },
     {
-      description: 'Have an idea for a new feature? Share it with the community.',
-      href: '../contributing/propose-a-feature',
-      icon: <MessageSquare size={20} />,
-      label: 'Propose a Feature',
-      title: 'Propose a Feature',
+      description:
+        'Join the LF Decentralized Trust server, then ask questions in #thunderid-user or talk with contributors in #thunderid-dev.',
+      href: discord.inviteUrl,
+      icon: <MessagesSquare size={20} />,
+      label: 'Join Discord',
+      title: 'Join LFDT Discord',
     },
     {
       description: 'Ready to write code? Follow the contributor guide to submit a pull request.',
