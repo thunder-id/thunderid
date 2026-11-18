@@ -724,6 +724,11 @@ components:
           type: string
         defaultValue:
           type: string
+        params:
+          type: object
+          additionalProperties:
+            type: string
+          description: Values filled into the message's placeholders, by name. Present only when the message has any.
 
     Error:
       type: object

@@ -533,3 +533,8 @@ components:
         defaultValue:
           type: string
           description: Default message in English (fallback).
+        params:
+          type: object
+          additionalProperties:
+            type: string
+          description: Values filled into the message's placeholders, by name. Present only when the message has any.

@@ -204,8 +204,10 @@ sent, the control plane asks the gateway's store for each name.
   names the values of every change the version offers, one the gateway holds back included, so a
   caller can ask for the values its selection needs. An apply checks only the resources it sends:
   one the gateway already holds as it is, or one left out of the selection, needs no value yet.
-- An apply is refused with `409` (`GTW-1017`) until the gateway holds them all. Nothing is sent and
-  nothing is recorded.
+- An apply is refused with `409` (`GTW-1017`) until the gateway holds them all. The error names
+  each one it lacks in `description.params.missing`, such as
+  `variable APP_CLIENT_ID; secret APP_SECRET`. That is text to show; to work with the names, read
+  them from a dry run's `missing`. Nothing is sent and nothing is recorded.
 
 Set the missing values through the control plane, as described in
 [Manage a Gateway's Values](#manage-a-gateways-values), then apply again.

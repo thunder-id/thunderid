@@ -888,6 +888,11 @@ components:
           type: string
           description: Default message in English (fallback).
           example: Missing language code
+        params:
+          type: object
+          additionalProperties:
+            type: string
+          description: Values filled into the message's placeholders, by name. Present only when the message has any.
 
     Error:
       type: object

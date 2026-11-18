@@ -492,7 +492,9 @@ paths:
         A version refers to variables and secrets by name rather than carrying their values, and the
         gateway holds the values. Before anything is sent, the gateway's store is asked for every
         name the version refers to. A dry run lists any it lacks in `missing`; an apply is refused
-        with `409` until the gateway holds them all.
+        with `409` until the gateway holds them all. The refusal names them in
+        `description.params.missing`, such as `variable APP_CLIENT_ID; secret APP_SECRET`. That is
+        text to show; a caller that needs the names reads them from a dry run's `missing`.
       requestBody:
         required: false
         content:
@@ -584,6 +586,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                missingValues:
+                  $ref: '#/components/examples/MissingValues'
+                versionRemoved:
+                  $ref: '#/components/examples/VersionRemoved'
+                appliedChanged:
+                  $ref: '#/components/examples/AppliedChanged'
         "502":
           description: The gateway could not be reached, or refused the request.
         "503":
@@ -646,12 +655,21 @@ paths:
             The gateway does not hold every value the version refers to (`GTW-1017`); the revert
             would remove more resources than `gateway.removal_confirmation_threshold` and was not
             confirmed (`GTW-1030`); a resource to remove is still named by one the gateway keeps
-            (`GTW-1033`); or another apply or revert to the gateway was still running after this one
-            had waited as long as an import may take (`GTW-1029`).
+            (`GTW-1033`); another apply or revert to the gateway was still running after this one
+            had waited as long as an import may take (`GTW-1029`); a capture removed the version
+            before the revert could record it (`GTW-1018`); or another apply finished first
+            (`GTW-1019`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                missingValues:
+                  $ref: '#/components/examples/MissingValues'
+                versionRemoved:
+                  $ref: '#/components/examples/VersionRemoved'
+                appliedChanged:
+                  $ref: '#/components/examples/AppliedChanged'
         "502":
           description: The gateway could not be reached, or refused the request.
         "503":
@@ -992,36 +1010,39 @@ components:
                 message:
                   key: "error.gatewayservice.limit_reached"
                   defaultValue: "This deployment already administers as many gateways as it is configured to allow"
+  examples:
     MissingValues:
-      description: |
-        The gateway does not hold every variable and secret the version refers to, a capture removed
-        the version before the apply could record it, or another apply to the gateway finished first.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-          examples:
-            missingValues:
-              summary: The gateway lacks a value the version refers to
-              value:
-                code: "GTW-1017"
-                message:
-                  key: "error.gatewayservice.missing_values"
-                  defaultValue: "The gateway does not hold every value this version refers to"
-            versionRemoved:
-              summary: The version was removed while it was applied
-              value:
-                code: "GTW-1018"
-                message:
-                  key: "error.gatewayservice.version_removed"
-                  defaultValue: "The version was removed while it was applied"
-            appliedChanged:
-              summary: Another apply to the gateway finished first
-              value:
-                code: "GTW-1019"
-                message:
-                  key: "error.gatewayservice.applied_changed"
-                  defaultValue: "Another apply to this gateway finished first"
+      summary: The gateway lacks a value the version refers to
+      value:
+        code: "GTW-1017"
+        message:
+          key: "error.gatewayservice.missing_values"
+          defaultValue: "The gateway does not hold every value this version refers to"
+        description:
+          key: "error.gatewayservice.missing_values.description"
+          defaultValue: "The gateway lacks variable APP_CLIENT_ID; secret APP_SECRET. Set what is missing on the gateway, then apply again."
+          params:
+            missing: "variable APP_CLIENT_ID; secret APP_SECRET"
+    VersionRemoved:
+      summary: The version was removed or replaced while it was applied
+      value:
+        code: "GTW-1018"
+        message:
+          key: "error.gatewayservice.version_removed"
+          defaultValue: "The version was removed or replaced while it was applied"
+        description:
+          key: "error.gatewayservice.version_removed.description"
+          defaultValue: "Only the newest versions are kept, and a capture removed this one or replaced it as the current version. Apply a version that is still kept."
+    AppliedChanged:
+      summary: Another apply to the gateway finished first
+      value:
+        code: "GTW-1019"
+        message:
+          key: "error.gatewayservice.applied_changed"
+          defaultValue: "Another apply to this gateway finished first"
+        description:
+          key: "error.gatewayservice.applied_changed.description"
+          defaultValue: "Check which version the gateway holds now, then apply again."
 
   schemas:
     RegisterRequest:
@@ -1901,6 +1922,11 @@ components:
           type: string
         defaultValue:
           type: string
+        params:
+          type: object
+          additionalProperties:
+            type: string
+          description: Values filled into the message's placeholders, by name. Present only when the message has any.
 
   securitySchemes:
     OAuth2:

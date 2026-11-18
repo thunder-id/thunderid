@@ -1288,7 +1288,7 @@ func (s *versionService) missingValues(ctx context.Context, gw *Gateway, held *H
 		if !dryRun {
 			s.logger.Info(ctx, "Refused an apply while the gateway lacks values", log.String("gatewayID", gw.ID),
 				log.Int("variables", len(missing.Variables)), log.Int("secrets", len(missing.Secrets)))
-			return nil, &ErrorMissingValues
+			return nil, ErrorMissingValues.WithParams(map[string]string{"missing": missing.names()})
 		}
 	}
 	return missing, nil

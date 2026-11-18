@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -329,4 +330,16 @@ type MissingValues struct {
 // empty reports whether nothing is missing.
 func (m MissingValues) empty() bool {
 	return len(m.Variables) == 0 && len(m.Secrets) == 0
+}
+
+// names lists the missing values by kind and name, as a refusal names them.
+func (m MissingValues) names() string {
+	names := make([]string, 0, len(m.Variables)+len(m.Secrets))
+	for _, name := range m.Variables {
+		names = append(names, ReferenceVariable+" "+name)
+	}
+	for _, name := range m.Secrets {
+		names = append(names, ReferenceSecret+" "+name)
+	}
+	return strings.Join(names, "; ")
 }

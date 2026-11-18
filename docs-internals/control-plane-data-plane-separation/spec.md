@@ -1,7 +1,7 @@
 # Control Plane and Data Plane Separation Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.3
 - **Related documents:** [#4281](https://github.com/thunder-id/thunderid/issues/4281) (separate ThunderID into a Control Plane and a Data Plane), [#5602](https://github.com/thunder-id/thunderid/issues/5602) (capture configuration versions and apply them to a gateway), [#5582](https://github.com/thunder-id/thunderid/issues/5582) (default gateway), [#5738](https://github.com/thunder-id/thunderid/issues/5738) (Control Plane and Data Plane out of the box for on-prem), [#6246](https://github.com/thunder-id/thunderid/issues/6246) (a revert on the Control Plane must reach the Data Plane), [#6392](https://github.com/thunder-id/thunderid/issues/6392) (pack naming), [Discussion #5862](https://github.com/thunder-id/thunderid/discussions/5862#discussioncomment-19390966) (projects). User guides: [configuration versions](../../docs/content/guides/declarative-configurations/configuration-versions.mdx), [import resources](../../docs/content/guides/declarative-configurations/import-resources.mdx), [value references](../../docs/content/guides/declarative-configurations/value-references.mdx), [centralized configuration](../../docs/content/use-cases/managed-deployments/centralized-configuration.mdx). API: [gateway](../../api/gateway.yaml), [configuration-version](../../api/configuration-version.yaml), [import](../../api/import.yaml), [variable-store](../../api/variable-store.yaml), [project](../../api/project.yaml). Threat model: not yet written (see Open questions).
 
 ## Summary
@@ -137,7 +137,7 @@ A secret reference may stand only in a field that holds a credential. A capture 
 
 **Selection.** `selection` names the changes to send this time. `leaveOut` holds changes back for this gateway on later applies as well, kept per gateway. A key the diff does not report is refused (`GTW-1025`). `withDependencies` (on by default) widens a selection to the resources it names by id that the gateway lacks or refused, followed transitively, with no per type declaration. A removal is refused (`GTW-1033`) while a document the gateway keeps still names the resource, and a removal an update frees is sent in a second import after the update is accepted.
 
-**Missing values.** Before sending, the CP asks the gateway's store for every `var:` and `sec:` name the sent resources need. A dry run lists the missing ones with the resource and field each is for. An apply is refused (`GTW-1017`) until the gateway holds them all, and changed values (set again since the last apply) cause the resources that use them to be sent again.
+**Missing values.** Before sending, the CP asks the gateway's store for every `var:` and `sec:` name the sent resources need. A dry run lists the missing ones with the resource and field each is for. An apply is refused (`GTW-1017`, naming the missing values) until the gateway holds them all, and changed values (set again since the last apply) cause the resources that use them to be sent again.
 
 **Removal confirmation.** An apply or revert that would remove more than `gateway.removal_confirmation_threshold` resources (default 5) is refused (`GTW-1030`) until sent again with `confirmRemovals`.
 
@@ -309,7 +309,7 @@ Each acceptance criterion names the test that covers it. Gaps are in Open questi
 - **AC6.5:** Given a selection, when applied with `withDependencies` off, then only the named changes are sent. With it on (the default), the resources the selection names by id that the gateway lacks or refused are sent too. Verified by `TestASelectionDeploysOnlyTheChangesNamed`.
 - **AC6.6:** Given a resource the gateway refuses, when applied, then it stays on offer. Verified by `TestARefusedResourceStaysOnOffer`.
 - **AC6.7:** Given a dry run, when applied, then nothing changes. Verified by `TestADryRunChangesNothing`.
-- **AC6.8:** Given a gateway missing a value, when applied, then the missing values are named with what each is for and nothing is sent. Verified by `gateway_references_test.go` `TestAMissingValueIsReportedWithWhatItIsFor`.
+- **AC6.8:** Given a gateway missing a value, when applied, then the refusal names the missing values and nothing is sent, and a dry run names them with what each is for. Verified by `gateway_references_test.go` `TestAMissingValueIsReportedWithWhatItIsFor`.
 - **AC6.9:** Given a value set since the last apply, when applied, then it is reported. Verified by `gateway_apply_safety_test.go` `TestAnApplyReportsAValueSetSinceTheLastApply`.
 - **AC6.10:** Given an apply that removes many resources, when it is not confirmed, then it is refused. Verified by `TestAnApplyRemovingManyResourcesIsRefusedUntilConfirmed`.
 - **AC6.11:** Given an apply to a unit, when it names a parent the gateway lacks, then the parent comes with it, and a removal that a move frees goes after the move. Verified by `gateway_dependencies_test.go` `TestDeployingAUnitBringsItsParent` and `TestRemovingAUnitAMoveFreesGoesAfterTheMove`.
@@ -376,3 +376,4 @@ These are known gaps in what is built, or decisions not yet made. None is a requ
 |---|---|---|
 | 0.1 | 2026-11-13 | Initial specification. |
 | 0.2 | 2026-11-16 | An application's Flow Secret is exported as a secret reference and captured to the first gateway, so a gateway accepts the Flow Secret the CP issued. A DP on v2.0.0-m1 or earlier refuses such an application, so DPs are upgraded first. A deployed application's Flow Secret is not regenerated on the DP. |
+| 0.3 | 2026-11-18 | An apply refused for values the gateway lacks (`GTW-1017`) names them, as implemented in #6938. |

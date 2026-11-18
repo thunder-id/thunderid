@@ -1477,6 +1477,8 @@ func TestApplyIsRefusedWhileTheGatewayLacksAValue(t *testing.T) {
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	require.NotNil(t, svcErr)
 	assert.Equal(t, ErrorMissingValues.Code, svcErr.Code)
+	assert.Equal(t, map[string]string{"missing": "secret APP_SECRET"}, svcErr.ErrorDescription.Params,
+		"the refusal did not name the value the gateway lacks")
 	assert.Empty(t, f.client.sent, "an apply missing a value reached the gateway")
 
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{DryRun: true})

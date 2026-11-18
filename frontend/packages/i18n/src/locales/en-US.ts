@@ -7297,6 +7297,7 @@ const translations = {
     'errors.GTW-1016': 'This gateway holds no earlier version to revert to.',
     'errors.GTW-1017':
       'This gateway is missing variables or secrets the version needs. Set them on the gateway, then try again.',
+    'errors.GTW-1017.details': 'This gateway lacks {{missing}}. Set what is missing on the gateway, then try again.',
     'errors.GTW-1018': 'The version was removed or replaced while it was deployed. Deploy a newer version.',
     'errors.GTW-1019': 'Another deploy to this gateway finished first. Check what it runs now, then try again.',
     'errors.GTW-1029': 'Another deploy to this gateway is running. Try again once it finishes.',

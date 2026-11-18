@@ -512,6 +512,19 @@ describe('ApplyPanel explaining a refusal', () => {
         'they need as well, or deploy with what these need.',
     ],
     [
+      'the values a refusal names as missing',
+      {
+        code: 'GTW-1017',
+        description: {
+          key: 'error.gatewayservice.missing_values.description',
+          defaultValue: 'raw server words',
+          params: {missing: 'variable APP_CLIENT_ID; secret APP_SECRET'},
+        },
+      },
+      'This gateway lacks variable APP_CLIENT_ID; secret APP_SECRET. Set what is missing on the gateway, then try ' +
+        'again.',
+    ],
+    [
       'a known refusal without details as the catalog has it',
       {code: 'GTW-1029'},
       'Another deploy to this gateway is running. Try again once it finishes.',
