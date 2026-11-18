@@ -688,7 +688,7 @@ paths:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
                 invalid-owner:
-                  summary: Owner has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
+                  summary: Owner is not an object, has a field of the wrong type, has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
                   value:
                     code: "AGT-1049"
                     message:
@@ -696,7 +696,7 @@ paths:
                       defaultValue: "Invalid owner"
                     description:
                       key: "error.agentservice.invalid_owner_description"
-                      defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
+                      defaultValue: "The owner must be an object whose id is at most 256 characters and matches its idType, with a uuid for a local owner"
                 owner-suspended:
                   summary: The personal agent's owner is suspended
                   value:
@@ -1395,7 +1395,7 @@ paths:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
                 invalid-owner:
-                  summary: Owner has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
+                  summary: Owner is not an object, has a field of the wrong type, has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
                   value:
                     code: "AGT-1049"
                     message:
@@ -1403,7 +1403,7 @@ paths:
                       defaultValue: "Invalid owner"
                     description:
                       key: "error.agentservice.invalid_owner_description"
-                      defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
+                      defaultValue: "The owner must be an object whose id is at most 256 characters and matches its idType, with a uuid for a local owner"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:

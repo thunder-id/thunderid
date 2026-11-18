@@ -9,7 +9,9 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -885,7 +887,7 @@ func (l AgentOwnerLocality) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON reads a boolean, or text, which is how a reference arrives. A null leaves the
-// locality unstated.
+// locality unstated. Any other value is a type error that names this type.
 func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return nil
@@ -897,6 +899,10 @@ func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
 	}
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) {
+			return &json.UnmarshalTypeError{Value: typeErr.Value, Type: reflect.TypeFor[AgentOwnerLocality]()}
+		}
 		return err
 	}
 	*l = AgentOwnerLocality(text)
