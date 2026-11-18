@@ -36,8 +36,8 @@ import (
 // credential issuer) asserted as one RuntimeData entry, replacing any earlier one whole so the claims of
 // two sign-ins never mix. Claims never reach RuntimeData under their own names, so none can stand in
 // for flow control state. Token metadata is dropped, and so is the sub claim when it is set as
-// the subject.
-func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string,
+// the subject. connection is nil for a credential issuer.
+func setExternalIdentity(execResp *providers.ExecutorResponse, connection *providers.IDPDTO, sub string,
 	claims map[string]interface{}) error {
 	claims = maps.Clone(claims)
 	for _, key := range tokenMetadataClaims {
@@ -46,7 +46,16 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 	if sub != "" {
 		delete(claims, userAttributeSub)
 	}
-	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
+	identity := core.ExternalIdentity{Sub: sub, Claims: claims}
+	if connection != nil {
+		var modes *providers.SyncConfiguration
+		if connection.AttributeConfiguration != nil {
+			modes = connection.AttributeConfiguration.Sync
+		}
+		identity.IdpID = connection.ID
+		identity.AttributesSync = modes.AttributesMode()
+	}
+	encoded, err := json.Marshal(identity)
 	if err != nil {
 		return fmt.Errorf("failed to encode the external identity: %w", err)
 	}
@@ -54,7 +63,7 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 		execResp.RuntimeData = make(map[string]string)
 	}
 	execResp.RuntimeData[common.RuntimeKeyExternalIdentity] = string(encoded)
-	if idpID != "" && sub != "" {
+	if identity.IdpID != "" && sub != "" {
 		execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyFederatedLoginCompleted: dataValueTrue}
 	}
 	return nil
@@ -309,14 +318,20 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 }
 
 // authenticateEntityByID signs in an entity whose ID the flow already trusts, such as one it just
-// provisioned or the federated link's holder the user picked, onto base. On success it sets the
-// AuthUser and copies the authenticated claims into runtime data. It returns the authentication
-// provider's error as is, and ErrEntityAuthFailed when the AuthUser comes back unauthenticated.
+// provisioned or the account holding the federated link that the user picked, onto base. The
+// authentication provider runs any deferred sync of a federated sign-in to the entity when it holds the
+// sign-in's link, and created marks an entity the flow just created. On success it sets the AuthUser,
+// writes what the sync keeps to the session into runtime data, and copies the authenticated claims into
+// runtime data. It returns the authentication provider's error as is, and ErrEntityAuthFailed when the
+// AuthUser comes back unauthenticated.
 func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
-	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
+	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse,
+	created bool) *tidcommon.ServiceError {
 	credential := map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: entityID}
+	metadata := core.BuildProviderMetadata(ctx)
+	metadata.Created = created
 	authUser, authenticatedClaims, svcErr := authnProvider.AuthenticateUser(ctx.Context, nil, credential,
-		nil, nil, base)
+		nil, metadata, base)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -324,48 +339,85 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 		return &ErrEntityAuthFailed
 	}
 	execResp.AuthUser = authUser
+	if values := takeSessionValues(authenticatedClaims); values != nil {
+		if err := writeSessionValues(execResp, values); err != nil {
+			return &tidcommon.InternalServerError
+		}
+	}
 	for key, value := range authenticatedClaims {
 		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
 	}
 	return nil
 }
 
-// resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
-// rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
-// without the direct targets when they can't be resolved, rather than failing the federated login over
-// what is best-effort enrichment of its runtime state.
-func resolveAndSetMappedAuthorizationTargets(
-	ctx context.Context, execResp *providers.ExecutorResponse,
-	idpService providers.IDPProvider, idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{},
-	logger *log.Logger,
-) {
-	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
-	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
-	if svcErr != nil {
-		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
-			log.String(log.LoggerKeyIDPID, idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
-	} else {
-		targets = append(targets, directTargets...)
+// takeSessionValues removes the values a sign-in keeps to the session from the provider's authenticated
+// claims and returns them, or nil when the claims carry none.
+func takeSessionValues(claims map[string]interface{}) *authnprovidercm.SessionValues {
+	raw, ok := claims[authnprovidercm.ClaimSessionValues]
+	if !ok {
+		return nil
 	}
-	setMappedAuthorizationTargets(execResp, targets)
+	delete(claims, authnprovidercm.ClaimSessionValues)
+	values, _ := raw.(*authnprovidercm.SessionValues)
+	if values == nil {
+		values = &authnprovidercm.SessionValues{}
+	}
+	return values
 }
 
-// setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)
-// by kind and stores them as runtime data for later executors. Always writes all three keys, even when
-// empty.
-func setMappedAuthorizationTargets(execResp *providers.ExecutorResponse, targets []providers.AuthorizationTarget) {
+// writeSessionValues writes what a sign-in keeps to the session into runtime data, in the format the
+// rest of the flow reads. A nil values clears what an earlier sign-in in the flow kept.
+func writeSessionValues(execResp *providers.ExecutorResponse, values *authnprovidercm.SessionValues) error {
 	if execResp.RuntimeData == nil {
 		execResp.RuntimeData = make(map[string]string)
 	}
-	roleIDs, groupIDs, permissions := idp.SplitAuthorizationTargets(targets)
-	execResp.RuntimeData[common.RuntimeKeyMappedRoleIDs] = systemutils.StringifyStringArray(roleIDs, " ")
-	execResp.RuntimeData[common.RuntimeKeyMappedGroupIDs] = systemutils.StringifyStringArray(groupIDs, " ")
-	encoded, err := json.Marshal(permissions)
-	if err != nil {
-		encoded = []byte("[]")
+	runtimeData := execResp.RuntimeData
+	if values == nil {
+		values = &authnprovidercm.SessionValues{}
 	}
-	execResp.RuntimeData[common.RuntimeKeyMappedPermissions] = string(encoded)
+	attributes := ""
+	if len(values.Attributes) > 0 {
+		encoded, err := json.Marshal(values.Attributes)
+		if err != nil {
+			return fmt.Errorf("failed to encode the session attributes: %w", err)
+		}
+		attributes = string(encoded)
+	}
+	permissions, err := json.Marshal(values.Permissions)
+	if err != nil {
+		return fmt.Errorf("failed to encode the mapped permissions: %w", err)
+	}
+	if values.Permissions == nil {
+		permissions = []byte("[]")
+	}
+	runtimeData[common.RuntimeKeySessionAttributes] = attributes
+	runtimeData[common.RuntimeKeySessionGroupIDs] = systemutils.StringifyStringArray(
+		values.GroupIDsWithAncestors, " ")
+	runtimeData[common.RuntimeKeySessionDirectGroupIDs] = systemutils.StringifyStringArray(values.GroupIDs, " ")
+	runtimeData[common.RuntimeKeySessionRoleIDs] = systemutils.StringifyStringArray(values.RoleIDs, " ")
+	runtimeData[common.RuntimeKeyMappedPermissions] = string(permissions)
+	return nil
+}
+
+// getSessionGroupAndRoleIDs returns the mapped groups, with their ancestors, and the mapped roles a
+// federated sign-in granted for the session only.
+func getSessionGroupAndRoleIDs(runtimeData map[string]string) (groupIDs, roleIDs []string) {
+	return systemutils.ParseStringArray(runtimeData[common.RuntimeKeySessionGroupIDs], " "),
+		systemutils.ParseStringArray(runtimeData[common.RuntimeKeySessionRoleIDs], " ")
+}
+
+// getSessionAttributes returns the attributes a federated sign-in kept to the session, or nil when
+// there are none or they can't be read.
+func getSessionAttributes(runtimeData map[string]string) map[string]interface{} {
+	encoded := runtimeData[common.RuntimeKeySessionAttributes]
+	if encoded == "" {
+		return nil
+	}
+	var attributes map[string]interface{}
+	if err := json.Unmarshal([]byte(encoded), &attributes); err != nil {
+		return nil
+	}
+	return attributes
 }
 
 // isRegistrationFlow reports whether executors should apply their registration behavior. A linking
@@ -482,8 +534,8 @@ func refusalResponse(execResp *providers.ExecutorResponse, svcErr *tidcommon.Ser
 	return execResp, nil
 }
 
-// statedHold returns the flow error for a hold the authentication provider manager states, or nil
-// when svcErr states none.
+// statedHold returns the flow error for a hold, or a failed federated sync, the authentication
+// provider manager states, or nil when svcErr states neither.
 func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
 	if svcErr == nil {
 		return nil
@@ -493,6 +545,8 @@ func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
 		return &ErrAccountLocked
 	case authnprovidermgr.ErrorAccountSuspended.Code:
 		return &ErrAccountSuspended
+	case authnprovidermgr.ErrorFederatedSyncFailed.Code:
+		return &ErrFederatedUserSyncFailed
 	default:
 		return nil
 	}

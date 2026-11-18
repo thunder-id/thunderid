@@ -202,6 +202,15 @@ var (
 			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
 	}
 
+	// queryGetDirectEntityRoleIDs retrieves the roles assigned directly to an entity in an organization
+	// unit, leaving out the assignments a sharing policy mandates.
+	queryGetDirectEntityRoleIDs = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-49",
+		Query: `SELECT ROLE_ID FROM "ROLE_ASSIGNMENT" ` +
+			`WHERE ASSIGNEE_TYPE = 'entity' AND ASSIGNEE_ID = $1 AND ASSIGNMENT_OU_ID = $2 ` +
+			`AND SHARING_POLICY_ID = '' AND DEPLOYMENT_ID = $3`,
+	}
+
 	// queryGetRoleListCountByProjectAndOUID retrieves the total count of the roles of a project that an
 	// organization unit owns.
 	queryGetRoleListCountByProjectAndOUID = dbmodel.DBQuery{

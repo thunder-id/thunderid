@@ -194,7 +194,7 @@ func (e *openid4vpVerifier) authenticate(
 		return nil
 	}
 
-	if err := setExternalIdentity(execResp, "", "", authenticatedClaims); err != nil {
+	if err := setExternalIdentity(execResp, nil, "", authenticatedClaims); err != nil {
 		return err
 	}
 

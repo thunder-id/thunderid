@@ -1827,3 +1827,84 @@ func (s *ManagerTestSuite) TestAuthenticateUser_HoldMapping() {
 		})
 	}
 }
+
+// The provider's pending identity is kept on its state and passed back on its next authentication, without
+// changing the caller's metadata.
+func (s *ManagerTestSuite) TestAuthenticateUser_PassesThePendingTokenBack() {
+	pending := map[string]interface{}{"idpId": "idp-a", "sub": "sub-1"}
+	ref := &providers.EntityReference{EntityID: "user-1"}
+	attrs := &providers.AttributesResponse{}
+	federated := map[string]interface{}{"federated": "code"}
+	s.mockProvider.On("Authenticate", mock.Anything, mock.Anything, federated, mock.Anything).
+		Return(&providers.AuthnResult{EntityReference: ref, Attributes: attrs, PendingIdentity: pending},
+			(*tidcommon.ServiceError)(nil)).Once()
+
+	authUser, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, federated, nil, nil,
+		providers.AuthUser{})
+	s.Require().Nil(svcErr)
+	state, _ := authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
+
+	meta := &providers.AuthnMetadata{FlowType: providers.FlowTypeRegistration}
+	byID := map[string]interface{}{"provisionedEntityID": "user-1"}
+	s.mockProvider.On("Authenticate", mock.Anything, mock.Anything, byID,
+		&providers.AuthnMetadata{FlowType: providers.FlowTypeRegistration, PendingIdentity: pending}).
+		Return(&providers.AuthnResult{EntityReference: ref, Attributes: attrs},
+			(*tidcommon.ServiceError)(nil)).Once()
+
+	authUser, _, svcErr = s.mgr.AuthenticateUser(context.Background(), nil, byID, nil, meta, authUser)
+	s.Require().Nil(svcErr)
+	state, _ = authUser.StateFor(defaultProviderName)
+	s.Nil(state.PendingIdentity, "a provider that used the token up returns none")
+	s.Nil(meta.PendingIdentity)
+}
+
+// Resolving the entity reference leaves the pending identity on the state.
+func (s *ManagerTestSuite) TestGetEntityReference_KeepsThePendingToken() {
+	pending := map[string]interface{}{"idpId": "idp-a", "sub": "sub-1"}
+	token := map[string]interface{}{"federatedIdpId": "idp-a", "sub": "sub-1"}
+	authUser := authUserWithStates(map[string]providers.AuthState{
+		defaultProviderName: {EntityReferenceToken: token, AttributeToken: token, PendingIdentity: pending},
+	})
+	s.mockProvider.On("GetEntityReference", mock.Anything, token).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil))
+
+	authUser, _, svcErr := s.mgr.GetEntityReference(context.Background(), authUser)
+
+	s.Require().Nil(svcErr)
+	state, _ := authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
+}
+
+// Enrolling a credential keeps the pending identity the provider holds.
+func (s *ManagerTestSuite) TestEnroll_KeepsThePendingToken() {
+	pending := map[string]interface{}{"idpId": "idp-a", "sub": "sub-1"}
+	ref := &providers.EntityReference{EntityID: "user-1"}
+	attrs := &providers.AttributesResponse{}
+	authUser := authUserWithStates(map[string]providers.AuthState{
+		defaultProviderName: {EntityReference: ref, Attributes: attrs, PendingIdentity: pending},
+	})
+	credentials := map[string]interface{}{"passkey": "credential"}
+	s.mockProvider.On("Enroll", mock.Anything, mock.Anything, credentials, mock.Anything).
+		Return(&providers.AuthnResult{EntityReference: ref, Attributes: attrs}, (*tidcommon.ServiceError)(nil))
+
+	authUser, _, svcErr := s.mgr.Enroll(context.Background(), nil, credentials, nil, nil, authUser)
+
+	s.Require().Nil(svcErr)
+	state, _ := authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
+}
+
+// A failed federated sync is stated as such.
+func (s *ManagerTestSuite) TestAuthenticateUser_FederatedSyncFailed() {
+	s.mockProvider.On("Authenticate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return((*providers.AuthnResult)(nil), &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType, Code: authnprovidercm.ErrorCodeFederatedSyncFailed,
+		})
+
+	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil,
+		map[string]interface{}{"federated": "code"}, nil, nil, providers.AuthUser{})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFederatedSyncFailed.Code, svcErr.Code)
+}

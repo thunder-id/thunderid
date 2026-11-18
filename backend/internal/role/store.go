@@ -89,6 +89,9 @@ type roleStoreInterface interface {
 	// while their assignments live in the DB. A non-empty assignmentOUID counts only the
 	// assignments made there.
 	GetEntityRoleIDs(ctx context.Context, entityID string, groupIDs []string, assignmentOUID string) ([]string, error)
+	// GetDirectEntityRoleIDs returns the roles assigned directly to the entity in the organization unit
+	// that can be removed: stored, and not mandated by a sharing policy.
+	GetDirectEntityRoleIDs(ctx context.Context, entityID, assignmentOUID string) ([]string, error)
 	IsRoleDeclarative(ctx context.Context, roleID string) (bool, error)
 }
 
@@ -1210,6 +1213,32 @@ func (s *roleStore) GetEntityRoleIDs(
 		}
 	}
 
+	return roleIDs, nil
+}
+
+// GetDirectEntityRoleIDs retrieves the roles assigned directly to an entity in an organization unit,
+// leaving out the assignments a sharing policy mandates.
+func (s *roleStore) GetDirectEntityRoleIDs(
+	ctx context.Context, entityID, assignmentOUID string,
+) ([]string, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetDirectEntityRoleIDs, entityID, assignmentOUID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get direct entity role IDs: %w", err)
+	}
+
+	roleIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		id, ok := row["role_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse role_id as string")
+		}
+		roleIDs = append(roleIDs, id)
+	}
 	return roleIDs, nil
 }
 

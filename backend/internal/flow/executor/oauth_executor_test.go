@@ -4,18 +4,18 @@
 package executor
 
 import (
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -50,13 +50,72 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 		suite.mockAuthnProvider, providers.IDPTypeOAuth)
 }
 
-// expectIdentityProviderResolved stubs the AuthorizationRuleMapping resolution ProcessAuthFlowResponse
-// performs on every successful federated login. Returns an IDPDTO with no AttributeConfiguration, so
-// it resolves no mapped targets and leaves runtime data untouched.
+// expectIdentityProviderResolved stubs the connection lookup ProcessAuthFlowResponse performs on every
+// successful federated login for its consistency check.
 func expectIdentityProviderResolved(m *idpmock.IDPServiceInterfaceMock) {
 	m.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{ID: "idp-123"}, nil).Maybe()
-	m.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
+}
+
+// What the provider's sync keeps to the session is written to runtime data, and never reaches the claim
+// record. The flow type travels to the provider in the metadata.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_WritesSessionValues() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeAuthentication,
+		UserInputs:     map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{"idpId": "idp-123"},
+	}
+	execResp := &providers.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    map[string]string{common.RuntimeKeySessionRoleIDs: "stale-role"},
+	}
+	claims := providers.AuthenticatedClaims{
+		"sub": "sub-1",
+		authnprovidercm.ClaimSessionValues: &authnprovidercm.SessionValues{
+			Attributes: map[string]interface{}{"email": "session@example.com"},
+			GroupIDs:   []string{"group-a"}, GroupIDsWithAncestors: []string{"group-a", "group-parent"},
+			Permissions: []providers.AuthorizationTarget{
+				{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"}},
+		},
+	}
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(m *providers.AuthnMetadata) bool {
+			return m != nil && m.FlowType == providers.FlowTypeAuthentication
+		}), mock.Anything).
+		Return(providers.AuthUser{}, claims, (*tidcommon.ServiceError)(nil))
+	expectIdentityProviderResolved(suite.mockIDPService)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, execResp.Status)
+	suite.JSONEq(`{"email":"session@example.com"}`, execResp.RuntimeData[common.RuntimeKeySessionAttributes])
+	suite.Equal("group-a group-parent", execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
+	suite.Equal("group-a", execResp.RuntimeData[common.RuntimeKeySessionDirectGroupIDs])
+	suite.Equal("", execResp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+	suite.JSONEq(`[{"type":"permission","resourceServerId":"rs-1","permission":"read"}]`,
+		execResp.RuntimeData[common.RuntimeKeyMappedPermissions])
+	suite.NotContains(execResp.RuntimeData[common.RuntimeKeyExternalIdentity], authnprovidercm.ClaimSessionValues)
+}
+
+// A failed sync at sign-in fails the step with the sync error.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_SyncFailed() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeAuthentication,
+		UserInputs:     map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{"idpId": "idp-123"},
+	}
+	execResp := &providers.ExecutorResponse{AdditionalData: map[string]string{}, RuntimeData: map[string]string{}}
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), &authnprovidermgr.ErrorFederatedSyncFailed)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, execResp.Status)
+	suite.Equal(ErrFederatedUserSyncFailed.Code, execResp.Error.Code)
 }
 
 // assertIDPRetrievalFailsClosed runs processResponse on a callback whose subject differs from the

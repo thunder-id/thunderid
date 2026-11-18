@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -196,6 +197,19 @@ func (e *accountLinkingExecutor) settleVerification(ctx *providers.NodeContext,
 		execResp.Status == providers.ExecFailure {
 		return err
 	}
+	// Signing in the account now that it holds the link runs the deferred sync of the federated sign-in. The sync is a
+	// separate write after the link, so a sync that fails keeps the verified link for the next sign-in.
+	restorePendingIdentities(&execResp.AuthUser, saved.AuthUser)
+	if svcErr := authenticateEntityByID(ctx, e.authnProvider, authenticatedID, execResp.AuthUser,
+		execResp, false); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to sign in the linked account: %s", svcErr.Code)
+		}
+		logger.Debug(ctx.Context, "Signing in the linked account was rejected", log.String("errorCode", svcErr.Code))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = cmp.Or(statedHold(svcErr), &ErrFederatedUserSyncFailed)
+		return nil
+	}
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
 	execResp.RuntimeData[common.RuntimeKeyLinkingCandidateUserIDs] = ""
 	// The user proved they own the account, so registration completes as that account instead of
@@ -205,6 +219,21 @@ func (e *accountLinkingExecutor) settleVerification(ctx *providers.NodeContext,
 	}
 	execResp.Status = providers.ExecComplete
 	return nil
+}
+
+// restorePendingIdentities gives each provider in authUser back the pending identity the checkpointed
+// sign-in left with it. A federated verification replaces it with its own sign-in's, which would
+// make the deferred sync write the verification instead of the sign-in being linked.
+func restorePendingIdentities(authUser *providers.AuthUser, saved providers.AuthUser) {
+	for _, name := range saved.ProviderNames() {
+		savedState, _ := saved.StateFor(name)
+		state, ok := authUser.StateFor(name)
+		if !ok || savedState.PendingIdentity == nil {
+			continue
+		}
+		state.PendingIdentity = savedState.PendingIdentity
+		authUser.SetStateFor(name, state)
+	}
 }
 
 // retryVerification rolls AuthUser and UserInputs back to the checkpoint and re-prompts after a

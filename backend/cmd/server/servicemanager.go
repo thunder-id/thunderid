@@ -415,7 +415,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	defaultProvider := defaultprovider.Initialize(entityService, passkeyService,
 		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths, governanceService,
-		attributeVerificationService)
+		attributeVerificationService, defaultprovider.FederatedSyncDependencies{
+			EntityTypeService:     entityTypeService,
+			IDPService:            idpService,
+			GroupService:          groupService,
+			RoleAssignmentService: roleAssignmentService,
+		})
 
 	customProviders := map[string]providers.CustomAuthnProvider{}
 	restCfg := runtime.Config.AuthnProvider.Rest

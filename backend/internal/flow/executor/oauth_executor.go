@@ -255,6 +255,11 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return errors.New("federated authentication failed")
 	}
 	execResp.AuthUser = authUser
+	// What the sign-in keeps to the session never reaches the claim record. A sign-in the provider didn't
+	// sync yet keeps nothing, which clears what an earlier sign-in in the flow kept.
+	if err := writeSessionValues(execResp, takeSessionValues(federatedAttributes)); err != nil {
+		return err
+	}
 
 	// The consistency check compares the identity on the connection's account-linking attributes, so
 	// it cannot be skipped when the connection fails to load.
@@ -273,11 +278,9 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	// with its own connection, so only this pairing tells linking and provisioning which connection
 	// asserted the subject.
 	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
-	if err := setExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
+	if err := setExternalIdentity(execResp, idpDTO, sub, federatedAttributes); err != nil {
 		return err
 	}
-
-	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpDTO, federatedAttributes, logger)
 
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 

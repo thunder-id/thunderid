@@ -921,7 +921,7 @@ func ApplyMappedAuthorization(
 	}
 
 	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
-	groupIDs, err := expandMappedGroupAncestors(ctx, actorProvider, groupIDs)
+	groupIDs, err := ExpandMappedGroupAncestors(ctx, actorProvider, groupIDs)
 	if err != nil {
 		logger.Error(ctx, "Failed to resolve ancestors of a mapped group", log.Error(err))
 		return nil, &model.ErrorResponse{
@@ -959,9 +959,9 @@ func ApplyMappedAuthorization(
 	return append(granted, FilterAuthorizedScopes(pending, authzResp.Evaluations)...), nil
 }
 
-// expandMappedGroupAncestors adds each mapped group's ancestor groups. Fails closed, like
+// ExpandMappedGroupAncestors adds each mapped group's ancestor groups. Fails closed, like
 // resolveMappedAuthorization above.
-func expandMappedGroupAncestors(
+func ExpandMappedGroupAncestors(
 	ctx context.Context, actorProvider providers.ActorProvider, groupIDs []string,
 ) ([]string, error) {
 	if actorProvider == nil || len(groupIDs) == 0 {

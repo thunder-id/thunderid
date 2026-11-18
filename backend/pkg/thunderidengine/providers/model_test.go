@@ -611,3 +611,15 @@ func (suite *ModelTestSuite) TestAgentOwner_Local() {
 	suite.Equal(AgentOwnerLocal, AgentOwnerLocalityOf(true))
 	suite.Equal(AgentOwnerExternal, AgentOwnerLocalityOf(false))
 }
+
+func (s *AuthorizationRuleMappingModelTestSuite) TestSyncConfigurationModes() {
+	var unset *SyncConfiguration
+	s.Equal(SyncModeOverrideReceived, unset.AttributesMode())
+	s.Equal(SyncModeNoSync, unset.GroupsAndRolesMode())
+	s.Equal(SyncModeOverrideReceived, (&SyncConfiguration{}).AttributesMode())
+	s.Equal(SyncModeNoSync, (&SyncConfiguration{}).GroupsAndRolesMode())
+
+	sync := &SyncConfiguration{Attributes: SyncModeSessionOnly, GroupsAndRoles: SyncModeOverrideAll}
+	s.Equal(SyncModeSessionOnly, sync.AttributesMode())
+	s.Equal(SyncModeOverrideAll, sync.GroupsAndRolesMode())
+}

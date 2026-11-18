@@ -114,7 +114,8 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 		return authUser, nil, svcErr
 	}
 
-	authResult, svcErr := selectedProvider.Authenticate(ctx, identifiers, credentials, metadata)
+	authResult, svcErr := selectedProvider.Authenticate(ctx, identifiers, credentials,
+		withPendingIdentity(metadata, authUser, selectedProviderName))
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			m.logger.Error(ctx, "provider returned server error during authentication",
@@ -144,6 +145,10 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 		case authnprovidercm.ErrorCodeAccountSuspended:
 			m.logger.Debug(ctx, "authentication refused a suspended account")
 			return authUser, nil, &ErrorAccountSuspended
+		case authnprovidercm.ErrorCodeFederatedSyncFailed:
+			m.logger.Debug(ctx, "federated sign-in could not be synced to the account holding its link",
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, &ErrorFederatedSyncFailed
 		}
 		m.logger.Debug(ctx, "authentication failed with client error from provider",
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
@@ -238,12 +243,7 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 // provisioned), and the check applies once GetEntityReference resolves it.
 func (m *authnProviderManager) checkSubjectAllowed(
 	ctx context.Context, entityRef *providers.EntityReference) *tidcommon.ServiceError {
-	if entityRef == nil {
-		return nil
-	}
-	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(ctx)
-	if !ok || (constraints.PermitsSubjectID(entityRef.EntityID) && constraints.PermitsSubject(
-		providers.EntityCategory(entityRef.EntityCategory), entityRef.EntityType)) {
+	if authnprovidercm.SubjectAllowed(ctx, entityRef) {
 		return nil
 	}
 	m.logger.Debug(ctx, "resolved subject is not allowed for the application",
@@ -402,6 +402,10 @@ func (m *authnProviderManager) enroll(ctx context.Context, identifiers, credenti
 		}
 	}
 	*stored = authResult
+	// Enrolling a credential runs no deferred sync, so the provider's pending identity stays.
+	if previous, ok := authUser.StateFor(selectedProviderName); ok && authResult.PendingIdentity == nil {
+		authResult.PendingIdentity = previous.PendingIdentity
+	}
 	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
 		return authUser, nil, svcErr
 	}
@@ -662,7 +666,7 @@ func (m *authnProviderManager) updateAuthUser(ctx context.Context, authResult *p
 		return authUser, &tidcommon.InternalServerError
 	}
 
-	state := providers.AuthState{}
+	state := providers.AuthState{PendingIdentity: authResult.PendingIdentity}
 	if authResult.EntityReferenceToken != nil {
 		state.EntityReferenceToken = authResult.EntityReferenceToken
 	} else {
@@ -675,6 +679,22 @@ func (m *authnProviderManager) updateAuthUser(ctx context.Context, authResult *p
 	}
 	authUser.SetStateFor(selectedProviderName, state)
 	return authUser, nil
+}
+
+// withPendingIdentity returns metadata carrying the pending identity the provider left in authUser,
+// so the provider can use it up or return it again. metadata itself is left unchanged.
+func withPendingIdentity(metadata *providers.AuthnMetadata, authUser providers.AuthUser,
+	providerName string) *providers.AuthnMetadata {
+	state, ok := authUser.StateFor(providerName)
+	if !ok || state.PendingIdentity == nil {
+		return metadata
+	}
+	withIdentity := providers.AuthnMetadata{}
+	if metadata != nil {
+		withIdentity = *metadata
+	}
+	withIdentity.PendingIdentity = state.PendingIdentity
+	return &withIdentity
 }
 
 // selectProvider resolves the supplied credential keys to a single provider. The request is valid as long

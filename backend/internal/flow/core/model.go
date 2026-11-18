@@ -12,12 +12,14 @@ import (
 )
 
 // ExternalIdentity is what an external party (a federated identity provider or a credential issuer)
-// asserted, as stored under common.RuntimeKeyExternalIdentity. IdpID and Sub are set only for a
-// federated connection.
+// asserted, as stored under common.RuntimeKeyExternalIdentity. IdpID, Sub and AttributesSync are set
+// only for a federated connection.
 type ExternalIdentity struct {
 	IdpID  string                 `json:"idpId,omitempty"`
 	Sub    string                 `json:"sub,omitempty"`
 	Claims map[string]interface{} `json:"claims,omitempty"`
+	// AttributesSync is the connection's attributes sync mode at the sign-in.
+	AttributesSync providers.SyncMode `json:"attributesSync,omitempty"`
 }
 
 // Claim returns one claim as a string, and whether it is present. It is safe on a nil identity.

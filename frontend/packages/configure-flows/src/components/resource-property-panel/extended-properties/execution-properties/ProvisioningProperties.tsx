@@ -13,9 +13,10 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
+import {useStore, type ReactFlowState} from '@xyflow/react';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
+import {FEDERATED_EXECUTORS, PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger, parseCommaSeparated} from './utils';
@@ -24,6 +25,26 @@ import {BOOLEAN_VARIABLES, NUMBER_VARIABLES, TEXT_VARIABLES} from './variableBin
 import useGetAllGroups from '../../../../api/useGetAllGroups';
 import useGetAllRoles from '../../../../api/useGetAllRoles';
 import type {StepData} from '../../../../models/steps';
+import type {ExecutionStackData} from '../../../../utils/compactGraphTransforms';
+
+const isFederatedStep = (data: unknown): boolean =>
+  FEDERATED_EXECUTORS.has((data as StepData)?.action?.executor?.name ?? '');
+
+/**
+ * Whether the flow has a federated executor. In compact view a chain of executors is folded into a stack node that
+ * carries the original nodes as members, so those are checked too.
+ *
+ * @param state - The React Flow store state.
+ * @returns True when a node, or a member of a stack node, is a federated executor.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function selectHasFederatedExecutor(state: ReactFlowState): boolean {
+  return state.nodes.some(
+    (node) =>
+      isFederatedStep(node.data) ||
+      ((node.data as Partial<ExecutionStackData>)?.members ?? []).some((member) => isFederatedStep(member.data)),
+  );
+}
 
 /**
  * Turns groups or roles into picker options. Names are unique only within an organization unit, so a name that more than
@@ -67,6 +88,8 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
     const stepData = resource?.data as StepData | undefined;
     return stepData?.properties ?? {};
   }, [resource]);
+
+  const hasFederatedExecutor = useStore(selectHasFederatedExecutor);
 
   const handleStringPropertyChange = useCallback(
     (propertyName: string, value: string): void => {
@@ -303,43 +326,14 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         )}
       </VariableBinding>
 
-      <VariableBinding
-        inline
-        resource={resource}
-        onChange={onChange}
-        propertyKey="seedGroupsFromMapping"
-        accepts={BOOLEAN_VARIABLES}
-        label={t('flows:core.executions.provisioning.seedGroupsFromMapping.label')}
-      >
-        {({commit, label, value: stored}) => (
-          <>
-            <FormControlLabel
-              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
-              label={label}
-            />
-            <FormHelperText>{t('flows:core.executions.provisioning.seedGroupsFromMapping.hint')}</FormHelperText>
-          </>
-        )}
-      </VariableBinding>
-
-      <VariableBinding
-        inline
-        resource={resource}
-        onChange={onChange}
-        propertyKey="seedRolesFromMapping"
-        accepts={BOOLEAN_VARIABLES}
-        label={t('flows:core.executions.provisioning.seedRolesFromMapping.label')}
-      >
-        {({commit, label, value: stored}) => (
-          <>
-            <FormControlLabel
-              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
-              label={label}
-            />
-            <FormHelperText>{t('flows:core.executions.provisioning.seedRolesFromMapping.hint')}</FormHelperText>
-          </>
-        )}
-      </VariableBinding>
+      {hasFederatedExecutor && (!!properties['assignGroup'] || !!properties['assignRole']) && (
+        <Alert severity="warning">
+          {t(
+            'flows:core.executions.provisioning.federatedOverrideWarning',
+            "With Override all sync, a later federated sign-in removes groups assigned here that the connection's authorization mapping doesn't resolve when it has a group target, and roles when it has a role target.",
+          )}
+        </Alert>
+      )}
     </Stack>
   );
 }

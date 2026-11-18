@@ -1906,6 +1906,47 @@ func (s *ServiceTestSuite) TestValidateEntityType_UniquenessIgnoresTheSignInBoun
 	s.store.AssertNotCalled(s.T(), "SearchEntities", mock.Anything, mock.Anything)
 }
 
+// A server error while validating is not a rejection of the attributes, so it does not report a
+// schema failure or a conflict.
+func (s *ServiceTestSuite) TestValidateEntityType_ServerErrorIsNotARejection() {
+	attrs := json.RawMessage(`{"username":"alice"}`)
+	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType}
+	clientErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}
+	cases := []struct {
+		name          string
+		schemaErr     *tidcommon.ServiceError
+		uniquenessErr *tidcommon.ServiceError
+		want          error
+	}{
+		{name: "schema server error", schemaErr: serverErr},
+		{name: "schema client error", schemaErr: clientErr, want: ErrSchemaValidationFailed},
+		{name: "uniqueness server error", uniquenessErr: serverErr},
+		{name: "uniqueness client error", uniquenessErr: clientErr, want: ErrAttributeConflict},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			ets.On("ValidateEntity", mock.Anything, entitytype.TypeCategoryUser, "employee", attrs, false).
+				Return(tc.schemaErr == nil, tc.schemaErr).Once()
+			if tc.schemaErr == nil {
+				ets.On("ValidateEntityUniqueness", mock.Anything, entitytype.TypeCategoryUser, "employee", attrs,
+					mock.Anything).Return(false, tc.uniquenessErr).Once()
+			}
+
+			err := svc.validateEntityType(s.ctx, providers.EntityCategoryUser, "employee", attrs, "", false)
+
+			s.Require().Error(err)
+			if tc.want != nil {
+				s.ErrorIs(err, tc.want)
+				return
+			}
+			s.NotErrorIs(err, ErrSchemaValidationFailed)
+			s.NotErrorIs(err, ErrAttributeConflict)
+		})
+	}
+}
+
 // entityIDs returns the IDs of entities in order.
 func entityIDs(entities []providers.Entity) []string {
 	ids := make([]string, 0, len(entities))
