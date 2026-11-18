@@ -922,7 +922,7 @@ var defaultMessages = map[string]string{
 	"error.flowmetaservice.application_not_found_description": "The specified application does not exist",
 	"error.flowmetaservice.internal_server_error": "Internal server error",
 	"error.flowmetaservice.invalid_request": "Invalid request",
-	"error.flowmetaservice.invalid_type_description": "The 'type' parameter must be either 'APP' or 'OU'",
+	"error.flowmetaservice.invalid_type_description": "The 'type' parameter must be one of 'APP', 'REF' or 'OU'",
 	"error.flowmetaservice.missing_id_description": "The 'id' query parameter is required",
 	"error.flowmetaservice.missing_id_parameter": "Missing required parameter",
 	"error.flowmetaservice.missing_required_parameter": "Missing required parameter",

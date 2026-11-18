@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -70,7 +71,7 @@ type flowNextCallMCPItem struct {
 type flowTools struct {
 	service      FlowExecServiceInterface
 	flows        providers.FlowProvider
-	serverConfig serverConfigProvider
+	serverConfig flowconfig.ServerConfigReader
 }
 
 // stepsGuide says how a client drives an onboarding flow, for both onboarding tools.
@@ -176,7 +177,7 @@ func (t *flowTools) onboard(purpose onboardingFlow) func(context.Context, *mcp.C
 
 // onboardingFlowID returns the ID of the flow the server configuration names for the given purpose.
 func (t *flowTools) onboardingFlowID(ctx context.Context, purpose onboardingFlow) (string, error) {
-	cfg := readFlowSectionConfig(ctx, t.serverConfig)
+	cfg := flowconfig.ReadFlowSectionConfig(ctx, t.serverConfig)
 	key, handle, flowType := "agentOnboardingFlow", cfg.AgentOnboardingFlow.DefaultHandle,
 		providers.FlowTypeAdministration
 	if purpose == flowUserOnboarding {

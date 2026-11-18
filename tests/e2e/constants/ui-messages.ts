@@ -12,6 +12,10 @@
  * await expect(dialogTitle).toHaveText(UIMessages.accountStatus.user.suspendTitle);
  */
 export const UIMessages = {
+  /** The gate sign-in page. */
+  signIn: {
+    returnToApplicationUnavailable: "Please return to the application and try again.",
+  },
   /** The lifecycle Actions menu, its dialogs, banners and toasts on the details pages. */
   accountStatus: {
     actions: {

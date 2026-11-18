@@ -72,6 +72,11 @@ export class ConsoleSigninPage extends BasePage {
     return url.includes(ConsoleRoutes.signin) || url.includes("/auth") || url.includes("/login");
   }
 
+  /** Navigate to the sign-in page at the given URL, as a bookmark or a shared link opens it. */
+  async gotoUrl(url: string) {
+    await this.page.goto(url, {timeout: Timeouts.PAGE_LOAD});
+  }
+
   /** Wait for login form to be visible */
   async waitForLoginForm() {
     await this.usernameInput.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });

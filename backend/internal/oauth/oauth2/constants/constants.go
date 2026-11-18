@@ -107,6 +107,7 @@ const (
 	SessionDataKeyConsent string = "sessionDataKeyConsent"
 	ShowInsecureWarning   string = "showInsecureWarning"
 	AppID                 string = "applicationId"
+	Ref                   string = "ref"
 	ExecutionID           string = "executionId"
 )
 

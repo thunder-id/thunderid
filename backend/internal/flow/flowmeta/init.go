@@ -6,6 +6,7 @@ package flowmeta
 import (
 	"net/http"
 
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -17,10 +18,11 @@ func Initialize(
 	ouService providers.OrganizationUnitProvider,
 	designResolve providers.DesignProvider,
 	i18nService providers.I18nProvider,
+	serverConfig flowconfig.ServerConfigReader,
 ) FlowMetaServiceInterface {
 	// Create service instance
 	flowMetaService := newFlowMetaService(
-		actorProvider, ouService, designResolve, i18nService)
+		actorProvider, ouService, designResolve, i18nService, serverConfig)
 
 	// Create handler and register routes
 	handler := newFlowMetaHandler(flowMetaService)

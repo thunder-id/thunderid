@@ -147,7 +147,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 
 	// Initialize flow metadata service
 	_ = flowmeta.Initialize(mux, engineCtx.actorProvider, engineCtx.ouProvider,
-		engineCtx.designResolveProvider, engineCtx.i18nProvider)
+		engineCtx.designResolveProvider, engineCtx.i18nProvider, nil)
 
 	// Initialize flow core services.
 	flowConfig := flowconfig.Config{

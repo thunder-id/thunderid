@@ -97,6 +97,24 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_ValidConfig() {
 	s.NoError(err)
 }
 
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURL() {
+	for _, value := range []string{"https://app.example.com", "https://app.example.com:8443/home"} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.NoError(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURLNotAbsolute() {
+	for _, value := range []string{
+		"/signin", "app.example.com", "https://", "https://:443", "javascript://example.com/%0aalert(1)",
+		"data://example.com/text", "https://user:secret@app.example.com",
+		"https://app.example.com:65536",
+	} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.Error(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
 func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorCalled() {
 	called := false
 	s.handler.SetHandleValidator(func(_ context.Context, handle string, _ providers.FlowType) bool {
@@ -179,6 +197,17 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_ReadOnlyFallsBackWhenWritableZero
 	result := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
 	s.Equal("ro-handle", result.AuthFlow.DefaultHandle)
 	s.Equal(int64(1800), result.AuthFlow.ExpirySeconds)
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_DefaultReturnURL() {
+	ro := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://ro.example.com"}
+
+	result := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal("https://ro.example.com", result.DefaultReturnURL)
+
+	wr := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://wr.example.com"}
+	result = s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+	s.Equal("https://wr.example.com", result.DefaultReturnURL)
 }
 
 func (s *FlowConfigHandlerTestSuite) TestMerge_NilInputsReturnZero() {

@@ -32,13 +32,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// serverConfigProvider is the narrow subset of serverconfig.ServerConfigService consumed by flowexec
-// for reading the "flow" section (per-type default handles and expiries). Defined locally so flowexec
-// does not import the serverconfig package.
-type serverConfigProvider interface {
-	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
-}
-
 // flowVisibilityProvider tells whether an organization unit owns a flow or was shared it.
 type flowVisibilityProvider interface {
 	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
@@ -57,7 +50,7 @@ type flowExecService struct {
 	cryptoSvc           providers.RuntimeCryptoProvider
 	attestationVerifier providers.AttestationProvider
 	jwtService          jwt.JWTServiceInterface
-	serverConfigSvc     serverConfigProvider
+	serverConfigSvc     flowconfig.ServerConfigReader
 	governance          providers.IdentityGovernanceProvider
 	flowVisibility      flowVisibilityProvider
 	permissionProvider  providers.PermissionProvider
@@ -77,7 +70,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	attestationVerifier providers.AttestationProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	jwtService jwt.JWTServiceInterface,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	governance providers.IdentityGovernanceProvider,
 	flowVisibility flowVisibilityProvider,
 	permissionProvider providers.PermissionProvider,
@@ -1607,32 +1600,7 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 // Returns a zero FlowSectionConfig when the serverconfig service is not wired or the section is
 // absent, letting callers fall back to built-in defaults.
 func (s *flowExecService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
-	return readFlowSectionConfig(ctx, s.serverConfigSvc)
-}
-
-// readFlowSectionConfig reads the "flow" section from serverConfigSvc, as getFlowSectionConfig does.
-func readFlowSectionConfig(ctx context.Context, serverConfigSvc serverConfigProvider) flowconfig.FlowSectionConfig {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
-
-	if serverConfigSvc == nil {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	merged, svcErr := serverConfigSvc.GetMergedConfig(ctx, "flow")
-	if svcErr != nil {
-		logger.Error(ctx, "Failed to retrieve merged flow section from serverconfig",
-			log.String("error", svcErr.Error.DefaultValue))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	cfg, ok := merged.(flowconfig.FlowSectionConfig)
-	if !ok {
-		logger.Error(ctx, "Unexpected type for merged flow server config; using built-in defaults",
-			log.String("type", fmt.Sprintf("%T", merged)))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	return cfg
+	return flowconfig.ReadFlowSectionConfig(ctx, s.serverConfigSvc)
 }
 
 // getFlowExpirySeconds returns the context TTL for the given flow type.

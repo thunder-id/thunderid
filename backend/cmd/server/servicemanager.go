@@ -605,7 +605,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		"Failed to inject the actor provider into the flow executors")
 
 	// Initialize flow metadata service
-	_ = flowmeta.Initialize(mux, actorProvider, ouProvider, designResolveService, i18nService)
+	_ = flowmeta.Initialize(mux, actorProvider, ouProvider, designResolveService, i18nService, serverConfigService)
 
 	// Capabilities are answered by the authorization service the management APIs use.
 	capability.Initialize(mux, ouAuthzService)
