@@ -261,6 +261,12 @@ const (
 	// the Deny button or by letting the prompt time out. This applies even when every prompted
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
+	// oneTimeConsentValidityPeriod is the validity period, in seconds, a decision is recorded with when the user
+	// chooses not to remember it. The consent is kept for audit and expires at once.
+	oneTimeConsentValidityPeriod = 1
+	// propertyKeyConsentPromptValidityPeriod, when set to boolean true on a consent node, lets the user choose
+	// how long their consent lasts, up to the validity period set on the application or agent.
+	propertyKeyConsentPromptValidityPeriod = "promptValidityPeriod"
 	// propertyKeyGenerateOUHandle, when set to boolean true on an OU creation node, makes the executor
 	// generate the organization unit handle from the name when the handle is not provided.
 	propertyKeyGenerateOUHandle = "generateOuHandle"

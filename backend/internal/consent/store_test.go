@@ -89,7 +89,7 @@ func sampleAuthRow(consentID, id string) map[string]interface{} {
 
 func (s *ConsentStoreTestSuite) TestCreateConsent_Success() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", anyArgs(QueryCreateConsent, 8)...).Return(int64(1), nil).Once()
+	s.mockDBClient.On("ExecuteContext", anyArgs(QueryCreateConsent, 9)...).Return(int64(1), nil).Once()
 	s.mockDBClient.On("ExecuteContext", anyArgs(queryWithID("CNQ-CONSENT_MGT-05"), 7)...).
 		Return(int64(1), nil).Once()
 
@@ -107,7 +107,7 @@ func (s *ConsentStoreTestSuite) TestCreateConsent_Success() {
 
 func (s *ConsentStoreTestSuite) TestCreateConsent_NoAuthorizations_SkipsInsert() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", anyArgs(QueryCreateConsent, 8)...).Return(int64(1), nil).Once()
+	s.mockDBClient.On("ExecuteContext", anyArgs(QueryCreateConsent, 9)...).Return(int64(1), nil).Once()
 
 	consent := &Consent{ID: "c1", GroupID: "app1", Status: ConsentStatusActive}
 
@@ -115,7 +115,66 @@ func (s *ConsentStoreTestSuite) TestCreateConsent_NoAuthorizations_SkipsInsert()
 	s.mockDBClient.AssertNotCalled(s.T(), "ExecuteContext", anyArgs(queryWithID("CNQ-CONSENT_MGT-05"), 7)...)
 }
 
+func (s *ConsentStoreTestSuite) TestCreateConsent_StoresProperties() {
+	tests := []struct {
+		name       string
+		properties ConsentProperties
+		stored     interface{}
+	}{
+		{"one time is written as JSON", ConsentProperties{OneTime: true}, `{"oneTime":true}`},
+		{"no properties are written as NULL", ConsentProperties{}, nil},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+			args := anyArgs(QueryCreateConsent, 9)
+			args[7] = tc.stored
+			s.mockDBClient.On("ExecuteContext", args...).Return(int64(1), nil).Once()
+
+			consent := &Consent{ID: "c1", GroupID: "app1", Status: ConsentStatusActive, Properties: tc.properties}
+
+			s.NoError(s.store.CreateConsent(context.Background(), consent))
+		})
+	}
+}
+
 // GetConsent
+
+func (s *ConsentStoreTestSuite) TestGetConsent_ReadsProperties() {
+	tests := []struct {
+		name     string
+		row      map[string]interface{}
+		expected ConsentProperties
+	}{
+		{"JSON text", map[string]interface{}{"properties": `{"oneTime":true}`}, ConsentProperties{OneTime: true}},
+		{"JSON bytes", map[string]interface{}{"properties": []byte(`{"oneTime":true}`)},
+			ConsentProperties{OneTime: true}},
+		{"NULL, from a consent recorded before the column existed", map[string]interface{}{"properties": nil},
+			ConsentProperties{}},
+		{"column absent from the row", map[string]interface{}{}, ConsentProperties{}},
+		{"value that cannot be read", map[string]interface{}{"properties": `{not json`}, ConsentProperties{}},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			row := sampleConsentRow("c1")
+			for key, value := range tc.row {
+				row[key] = value
+			}
+			s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+			s.mockDBClient.On("QueryContext", anyArgs(QueryGetConsentByID, 2)...).
+				Return([]map[string]interface{}{row}, nil).Once()
+			s.mockDBClient.On("QueryContext", anyArgs(queryWithID("CNQ-CONSENT_MGT-06"), 2)...).
+				Return([]map[string]interface{}{}, nil).Once()
+
+			consent, err := s.store.GetConsent(context.Background(), "c1")
+
+			s.NoError(err)
+			s.Equal(tc.expected, consent.Properties)
+		})
+	}
+}
 
 func (s *ConsentStoreTestSuite) TestGetConsent_Found() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
@@ -152,7 +211,7 @@ func (s *ConsentStoreTestSuite) TestGetConsent_NotFound() {
 
 func (s *ConsentStoreTestSuite) TestUpdateConsent_Success() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", anyArgs(QueryUpdateConsent, 6)...).Return(int64(1), nil).Once()
+	s.mockDBClient.On("ExecuteContext", anyArgs(QueryUpdateConsent, 7)...).Return(int64(1), nil).Once()
 	s.mockDBClient.On("ExecuteContext", anyArgs(QueryDeleteConsentAuthorizations, 2)...).
 		Return(int64(1), nil).Once()
 	s.mockDBClient.On("ExecuteContext", anyArgs(queryWithID("CNQ-CONSENT_MGT-05"), 7)...).
@@ -170,9 +229,35 @@ func (s *ConsentStoreTestSuite) TestUpdateConsent_Success() {
 	s.NoError(s.store.UpdateConsent(context.Background(), consent))
 }
 
+func (s *ConsentStoreTestSuite) TestUpdateConsent_StoresProperties() {
+	tests := []struct {
+		name       string
+		properties ConsentProperties
+		stored     interface{}
+	}{
+		{"one time is written as JSON", ConsentProperties{OneTime: true}, `{"oneTime":true}`},
+		{"a later decision that is remembered clears it to NULL", ConsentProperties{}, nil},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+			args := anyArgs(QueryUpdateConsent, 7)
+			args[6] = tc.stored
+			s.mockDBClient.On("ExecuteContext", args...).Return(int64(1), nil).Once()
+			s.mockDBClient.On("ExecuteContext", anyArgs(QueryDeleteConsentAuthorizations, 2)...).
+				Return(int64(1), nil).Once()
+
+			consent := &Consent{ID: "c1", GroupID: "app1", Status: ConsentStatusActive, Properties: tc.properties}
+
+			s.NoError(s.store.UpdateConsent(context.Background(), consent))
+		})
+	}
+}
+
 func (s *ConsentStoreTestSuite) TestUpdateConsent_NotFound() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", anyArgs(QueryUpdateConsent, 6)...).Return(int64(0), nil).Once()
+	s.mockDBClient.On("ExecuteContext", anyArgs(QueryUpdateConsent, 7)...).Return(int64(0), nil).Once()
 
 	consent := &Consent{ID: "c1", GroupID: "app1", Status: ConsentStatusActive}
 
@@ -237,6 +322,14 @@ func (s *ConsentStoreTestSuite) TestBuildSearchConsentsQuery() {
 		_, args := buildSearchConsentsQuery(ConsentFilter{}, testDeploymentID)
 		s.Equal([]interface{}{testDeploymentID}, args)
 	})
+
+	s.Run("selects the properties", func() {
+		q, _ := buildSearchConsentsQuery(ConsentFilter{GroupID: "app1"}, testDeploymentID)
+		s.Contains(q.Query, "C.PROPERTIES")
+
+		q, _ = buildSearchConsentsQuery(ConsentFilter{GroupID: "app1", UserID: "user1"}, testDeploymentID)
+		s.Contains(q.Query, "C.PROPERTIES")
+	})
 }
 
 func (s *ConsentStoreTestSuite) TestBuildInsertConsentAuthorizationsQuery() {
@@ -300,6 +393,43 @@ func (s *ConsentStoreTestSuite) TestUnmarshalPurposes() {
 	s.Run("unexpected type", func() {
 		_, err := unmarshalPurposes(42)
 		s.Error(err)
+	})
+}
+
+func (s *ConsentStoreTestSuite) TestMarshalProperties() {
+	s.Run("empty properties are NULL", func() {
+		got, err := marshalProperties(ConsentProperties{})
+		s.NoError(err)
+		s.Nil(got)
+	})
+	s.Run("one time is JSON", func() {
+		got, err := marshalProperties(ConsentProperties{OneTime: true})
+		s.NoError(err)
+		s.Equal(`{"oneTime":true}`, got)
+	})
+}
+
+func (s *ConsentStoreTestSuite) TestUnmarshalProperties() {
+	s.Run("nil", func() {
+		s.Equal(ConsentProperties{}, unmarshalProperties(nil))
+	})
+	s.Run("blank", func() {
+		s.Equal(ConsentProperties{}, unmarshalProperties("   "))
+	})
+	s.Run("text", func() {
+		s.Equal(ConsentProperties{OneTime: true}, unmarshalProperties(`{"oneTime":true}`))
+	})
+	s.Run("bytes", func() {
+		s.Equal(ConsentProperties{OneTime: true}, unmarshalProperties([]byte(`{"oneTime":true}`)))
+	})
+	s.Run("keys this version does not know are ignored", func() {
+		s.Equal(ConsentProperties{OneTime: true}, unmarshalProperties(`{"oneTime":true,"other":"x"}`))
+	})
+	s.Run("invalid json is empty", func() {
+		s.Equal(ConsentProperties{}, unmarshalProperties(`{not json`))
+	})
+	s.Run("unexpected type is empty", func() {
+		s.Equal(ConsentProperties{}, unmarshalProperties(42))
 	})
 }
 
