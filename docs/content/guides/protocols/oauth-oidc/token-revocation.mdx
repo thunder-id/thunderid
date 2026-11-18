@@ -69,7 +69,7 @@ Revoking one token of a grant usually should not leave its siblings working. Fiv
 | Authorization code with SSO | Minted when the session is established and stored against the session participant, which is what makes sign-out revocation possible |
 | Authorization code without SSO | Minted when the authorization code is created, so the grant is still revocable |
 | Refresh | Copied to the new tokens, so a family survives rotation |
-| Token exchange | Controlled by `oauth.token_exchange.token_family`. `none` (the default) issues an independent token; `inherit` copies the subject token's family |
+| Token exchange | Copied from a subject token issued by this server, with or without an `actor_token`. Revoking the grant the subject token came from also revokes the exchanged token. A subject token with no `tfid`, or one issued by another server, gives an exchanged token with none |
 | Client credentials, CIBA | No `tfid`. There is no user grant to group, so family-scoped revocation does not apply |
 
 ### What Revokes a Family
@@ -242,7 +242,6 @@ Revocation behavior on the authorization server, part of [OAuth Configuration](.
 | `oauth.revocation.token_family.on_explicit_revoke` | `true` | Revoking a token also revokes its token family |
 | `oauth.revocation.token_family.on_refresh_replay` | `true` | A replayed refresh token revokes its token family. Requires `oauth.refresh_token.renew_on_grant` |
 | `oauth.revocation.token_family.on_code_replay` | `true` | A replayed authorization code revokes the token family issued from it |
-| `oauth.token_exchange.token_family` | `none` | `none` issues an independent token; `inherit` keeps the subject token's family |
 | `oauth.refresh_token.renew_on_grant` | `false` | Issues a new refresh token on each grant. Required for rotation and replay detection |
 | `oauth.refresh_token.revoke_previous_on_renew` | `true` | Revokes the consumed refresh token after rotation, making refresh tokens single-use |
 

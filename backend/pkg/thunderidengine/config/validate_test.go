@@ -473,20 +473,6 @@ func (suite *ValidateTestSuite) TestAuthClassConfig_Validate() {
 	})
 }
 
-// ----- TokenExchangeConfig -----
-
-func (suite *ValidateTestSuite) TestTokenExchangeConfig_Validate() {
-	for _, family := range []string{"", "none", "inherit"} {
-		suite.T().Run("accepts "+family, func(t *testing.T) {
-			assert.NoError(t, (&TokenExchangeConfig{TokenFamily: family}).Validate())
-		})
-	}
-
-	suite.T().Run("unsupported value fails", func(t *testing.T) {
-		assert.ErrorContains(t, (&TokenExchangeConfig{TokenFamily: "foo"}).Validate(), "token_family")
-	})
-}
-
 // ----- cors.Validate -----
 
 func (suite *ValidateTestSuite) TestCORSConfig_Validate() {
