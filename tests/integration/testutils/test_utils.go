@@ -455,6 +455,7 @@ func CopyDeclarativeResources(zipFilePattern string) error {
 		"layouts",
 		"notification_templates",
 		"organization_units",
+		"ou_types",
 		"presentation_definitions",
 		"resource_servers",
 		"roles",

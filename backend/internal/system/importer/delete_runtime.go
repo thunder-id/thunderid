@@ -190,6 +190,10 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		if s.entityTypeService != nil {
 			return s.entityTypeDeleter(resourceType)
 		}
+	case resourceTypeOUType:
+		if s.ouTypeService != nil {
+			return s.ouTypeService.DeleteOUType
+		}
 	case resourceTypeRole:
 		if s.roleService != nil {
 			return s.roleService.DeleteRole

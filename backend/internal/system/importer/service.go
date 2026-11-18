@@ -34,6 +34,7 @@ import (
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/outype"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -177,6 +178,16 @@ type entityTypeAdapter interface {
 		*entitytype.EntityType,
 		*tidcommon.ServiceError)
 	DeleteEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string) *tidcommon.ServiceError
+}
+
+// ouTypeAdapter imports organization unit types through the organization unit type service, so an imported
+// type gets the same checks, errors and audit events as one created through the API.
+type ouTypeAdapter interface {
+	CreateOUType(ctx context.Context, request outype.CreateOUTypeRequest) (*outype.OUType, *tidcommon.ServiceError)
+	GetOUType(ctx context.Context, id string, includeDisplay bool) (*outype.OUType, *tidcommon.ServiceError)
+	UpdateOUType(ctx context.Context, id string, request outype.UpdateOUTypeRequest) (
+		*outype.OUType, *tidcommon.ServiceError)
+	DeleteOUType(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type roleAdapter interface {
@@ -356,6 +367,7 @@ type importService struct {
 	ouService                      ouAdapter
 	projectService                 ProjectAdapter
 	entityTypeService              entityTypeAdapter
+	ouTypeService                  ouTypeAdapter
 	roleService                    roleAdapter
 	roleAssignmentService          roleAssignmentAdapter
 	sharingService                 sharingPolicyAdapter
@@ -750,6 +762,8 @@ func (s *importService) importDocument(
 		return s.importEntityType(ctx, doc, options, dryRun)
 	case resourceTypeAgentType:
 		return s.importEntityType(ctx, doc, options, dryRun)
+	case resourceTypeOUType:
+		return s.importOUType(ctx, doc, options, dryRun)
 	case resourceTypeRole:
 		return s.importRole(ctx, doc, options, dryRun)
 	case resourceTypeGroup:
@@ -1416,6 +1430,7 @@ var resourceDependencyOrder = []string{
 	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
+	resourceTypeOUType,
 	resourceTypeConnection,
 	resourceTypeResourceServer,
 	// After the organization unit that holds a template, which is not deleted while it does, and before the flows

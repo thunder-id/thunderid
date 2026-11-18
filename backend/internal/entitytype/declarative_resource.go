@@ -26,6 +26,8 @@ const (
 	paramTypEntityType     = "EntityType"
 	resourceTypeAgentType  = "agent_type"
 	paramTypeAgentType     = "AgentType"
+	resourceTypeOUType     = "ou_type"
+	paramTypeOUType        = "OUType"
 )
 
 // entityTypeExporter implements declarative_resource.ResourceExporter for entity types.
@@ -46,18 +48,26 @@ func NewEntityTypeExporterForTest(service EntityTypeServiceInterface, category T
 
 // GetResourceType returns the resource type for entity types.
 func (e *entityTypeExporter) GetResourceType() string {
-	if e.category == TypeCategoryAgent {
+	switch e.category {
+	case TypeCategoryAgent:
 		return resourceTypeAgentType
+	case TypeCategoryOU:
+		return resourceTypeOUType
+	default:
+		return resourceTypeEntityType
 	}
-	return resourceTypeEntityType
 }
 
 // GetParameterizerType returns the parameterizer type for entity types.
 func (e *entityTypeExporter) GetParameterizerType() string {
-	if e.category == TypeCategoryAgent {
+	switch e.category {
+	case TypeCategoryAgent:
 		return paramTypeAgentType
+	case TypeCategoryOU:
+		return paramTypeOUType
+	default:
+		return paramTypEntityType
 	}
-	return paramTypEntityType
 }
 
 // GetAllResourceIDs retrieves all entity type IDs for the exporter's category.
@@ -202,6 +212,14 @@ func loadDeclarativeResources(
 		return fmt.Errorf("failed to load entity type resources: %w", err)
 	}
 
+	ouTypeConfig := resourceConfig
+	ouTypeConfig.ResourceType = "OUType"
+	ouTypeConfig.DirectoryName = "ou_types"
+	ouTypeConfig.Parser = parseToOUTypeDTOWrapper
+	if err := declarativeresource.NewResourceLoader(ouTypeConfig, fileBasedStore).LoadResources(); err != nil {
+		return fmt.Errorf("failed to load organization unit type resources: %w", err)
+	}
+
 	if err := validateUniqueDeclarativeHandles(fileBasedStore, dbStore); err != nil {
 		return err
 	}
@@ -292,7 +310,26 @@ func parseToEntityTypeDTOWrapper(data []byte) (interface{}, error) {
 	return parseToEntityTypeDTO(data)
 }
 
+// parseToOUTypeDTOWrapper parses an organization unit type file. Every type in the organization unit types
+// directory is an organization unit type, so a file that names another category is refused.
+func parseToOUTypeDTOWrapper(data []byte) (interface{}, error) {
+	entityType, err := parseEntityTypeFile(data, TypeCategoryOU)
+	if err != nil {
+		return nil, err
+	}
+	if entityType.Category != TypeCategoryOU {
+		return nil, fmt.Errorf("organization unit type %q declares category %q", entityType.Handle,
+			string(entityType.Category))
+	}
+	return entityType, nil
+}
+
 func parseToEntityTypeDTO(data []byte) (*EntityType, error) {
+	return parseEntityTypeFile(data, TypeCategoryUser)
+}
+
+// parseEntityTypeFile parses an entity type file, which takes defaultCategory when it names no category.
+func parseEntityTypeFile(data []byte, defaultCategory TypeCategory) (*EntityType, error) {
 	var schemaRequest EntityTypeRequestWithID
 	err := yaml.Unmarshal(data, &schemaRequest)
 	if err != nil {
@@ -318,7 +355,7 @@ func parseToEntityTypeDTO(data []byte) (*EntityType, error) {
 
 	category := schemaRequest.Category
 	if category == "" {
-		category = TypeCategoryUser
+		category = defaultCategory
 	}
 	if !category.IsValid() {
 		return nil, fmt.Errorf("invalid entity type category %q", string(category))
@@ -383,6 +420,12 @@ func validateEntityType(schemaDTO *EntityType) error {
 	compiledSchema, compileErr := model.CompileSchema(schemaDTO.Schema)
 	if compileErr != nil {
 		return fmt.Errorf("invalid schema for entity type '%s': %w", schemaDTO.Handle, compileErr)
+	}
+	// A declared file never reaches the organization unit type service, which refuses credential
+	// attributes on every other path, so the file is refused here.
+	if schemaDTO.Category == TypeCategoryOU && compiledSchema.HasCredentialAttribute() {
+		return fmt.Errorf("organization unit type '%s' declares a credential attribute, which organization "+
+			"unit types cannot declare", schemaDTO.Handle)
 	}
 
 	systemAttrs, svcErr := validateSystemAttributes(

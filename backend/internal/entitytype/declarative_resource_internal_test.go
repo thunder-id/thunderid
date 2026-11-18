@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
@@ -860,4 +861,84 @@ func TestValidateEntityType_DefaultsPrimaryContacts(t *testing.T) {
 
 	assert.NoError(t, validateEntityType(entityType))
 	assert.Equal(t, &SystemAttributes{PrimaryEmail: "work", PrimaryMobile: "phone"}, entityType.SystemAttributes)
+}
+
+func TestOUTypeExporterResourceType(t *testing.T) {
+	exporter := newEntityTypeExporter(nil, TypeCategoryOU)
+
+	assert.Equal(t, "ou_type", exporter.GetResourceType())
+	assert.Equal(t, "OUType", exporter.GetParameterizerType())
+}
+
+func TestParseToOUTypeDTOWrapper(t *testing.T) {
+	const body = "id: ou-type-1\nhandle: partner\ndisplayName: Partner\nouId: ou-1\n" +
+		"schema:\n  region:\n    type: string\n"
+
+	for _, tc := range []struct {
+		name     string
+		category string
+		wantErr  bool
+	}{
+		{"no category", "", false},
+		{"organization unit category", "category: ou\n", false},
+		{"another category", "category: user\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, err := parseToOUTypeDTOWrapper([]byte(tc.category + body))
+
+			if tc.wantErr {
+				assert.ErrorContains(t, err, `declares category "user"`)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, TypeCategoryOU, parsed.(*EntityType).Category)
+		})
+	}
+}
+
+func TestValidateEntityType_RefusesACredentialAttributeInAnOUType(t *testing.T) {
+	ouType := &EntityType{
+		ID: "ou-type-1", Category: TypeCategoryOU, Handle: "partner", DisplayName: "Partner", OUID: "ou-1",
+		Schema: json.RawMessage(`{"address":{"type":"object","properties":{"apiKey":{"type":"string",` +
+			`"credential":true}}}}`),
+	}
+
+	assert.ErrorContains(t, validateEntityType(ouType), "declares a credential attribute")
+
+	userType := *ouType
+	userType.Category = TypeCategoryUser
+	assert.NoError(t, validateEntityType(&userType))
+}
+
+func TestLoadDeclarativeResources_LoadsOUTypesFromTheirDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	typesDir := tmpDir + "/config/resources/ou_types"
+	require.NoError(t, os.MkdirAll(typesDir, 0750))
+	content := "id: \"decl-ou-type-1\"\n" +
+		"handle: \"partner\"\n" +
+		"displayName: \"Partner\"\n" +
+		"ouId: \"550e8400-e29b-41d4-a716-446655440000\"\n" +
+		"schema:\n  region:\n    type: string\n"
+	require.NoError(t, os.WriteFile(typesDir+"/partner.yaml", []byte(content), 0600))
+	defer func() {
+		_ = entity.GetInstance().Delete(entity.NewCompositeKey("decl-ou-type-1", entity.KeyTypeEntityType))
+	}()
+
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime(tmpDir, &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+	}))
+	defer config.ResetServerRuntime()
+
+	fileStore, _ := newEntityTypeFileBasedStore()
+	mockSvc := NewEntityTypeServiceInterfaceMock(t)
+	mockSvc.On("ResolveEntityTypeHandles", mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	require.NoError(t, loadDeclarativeResources(fileStore, mockSvc))
+
+	loaded, err := fileStore.(*entityTypeFileBasedStore).GetEntityTypeByID(context.Background(), TypeCategoryOU,
+		"decl-ou-type-1")
+	require.NoError(t, err)
+	assert.Equal(t, TypeCategoryOU, loaded.Category)
+	assert.Equal(t, "partner", loaded.Handle)
 }

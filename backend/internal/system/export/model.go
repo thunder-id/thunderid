@@ -12,6 +12,7 @@ type ExportRequest struct {
 	Connections              []string `json:"connections,omitempty"`
 	UserTypes                []string `json:"userTypes,omitempty"`
 	AgentTypes               []string `json:"agentTypes,omitempty"`
+	OUTypes                  []string `json:"ouTypes,omitempty"`
 	OrganizationUnits        []string `json:"organizationUnits,omitempty"`
 	Projects                 []string `json:"projects,omitempty"`
 	Users                    []string `json:"users,omitempty"`

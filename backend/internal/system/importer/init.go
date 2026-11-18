@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/outype"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
@@ -45,6 +46,7 @@ func Initialize(
 	flowService flowmgt.FlowMgtServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	ouTypeService outype.OUTypeServiceInterface,
 	roleService role.RoleServiceInterface,
 	roleAssignmentService role.RoleAssignmentServiceInterface,
 	groupService group.GroupServiceInterface,
@@ -97,6 +99,7 @@ func Initialize(
 	// Set here rather than passed to newImportService, which every test constructs without one.
 	service.(*importService).references = references
 	service.(*importService).sharingService = sharingService
+	service.(*importService).ouTypeService = ouTypeService
 	service.(*importService).authorizationDetailTypeService = authorizationDetailService
 	service.(*importService).httpConnectionService = httpConnectionService
 	service.(*importService).projectService = projectService
