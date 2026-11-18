@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {SloganItemConfig} from '@thunderid/contexts';
 import {cn} from '@thunderid/utils';
 import {ColorSchemeImage, Stack, Typography} from '@wso2/oxygen-ui';
 import {Bot, ShieldCheck, Wallet, Zap} from '@wso2/oxygen-ui-icons-react';
@@ -37,6 +38,27 @@ const items: {
 ];
 
 export default function SignInSlogan(): JSX.Element {
+  const slogan = window.__THUNDERID_RUNTIME_CONFIG__?.brand?.slogan;
+  let configuredItems: SloganItemConfig[] = [];
+  if (typeof slogan === 'string') {
+    configuredItems = slogan.trim() !== '' ? [{title: slogan}] : [];
+  } else if (Array.isArray(slogan)) {
+    configuredItems = slogan;
+  } else if (typeof slogan === 'object' && slogan !== null) {
+    configuredItems = [slogan];
+  }
+
+  const displayItems: {icon?: JSX.Element; title: string; description?: string}[] =
+    configuredItems.length > 0
+      ? configuredItems.map((item) => ({
+          icon: item.icon ? (
+            <img src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/${item.icon}`} alt="" width={24} height={24} />
+          ) : undefined,
+          title: item.title,
+          description: item.description,
+        }))
+      : items;
+
   const logoSrc = {
     light: `${import.meta.env.BASE_URL}/assets/images/logo.svg`,
     dark: `${import.meta.env.BASE_URL}/assets/images/logo-inverted.svg`,
@@ -53,16 +75,18 @@ export default function SignInSlogan(): JSX.Element {
     >
       <ColorSchemeImage src={logoSrc} alt={{light: 'Logo (Light)', dark: 'Logo (Dark)'}} height={50} width="auto" />
       <Stack sx={{flexDirection: 'column', alignSelf: 'center', gap: 4}}>
-        {items.map((item) => (
+        {displayItems.map((item) => (
           <Stack key={item.title} direction="row" sx={{gap: 2}}>
             {item.icon}
             <div>
               <Typography gutterBottom sx={{fontWeight: 'medium'}}>
                 {item.title}
               </Typography>
-              <Typography variant="body2" sx={{color: 'text.secondary'}}>
-                {item.description}
-              </Typography>
+              {item.description && (
+                <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                  {item.description}
+                </Typography>
+              )}
             </div>
           </Stack>
         ))}

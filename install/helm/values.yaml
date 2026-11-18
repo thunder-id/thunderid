@@ -230,11 +230,27 @@ configuration:
   # productName: Display name shown in the browser tab and UI.
   # favicon: Path or URL to the favicon icons. Use an object with `light` and `dark`
   #          keys for color-scheme-aware icons (both keys are required).
+  # slogan: Content shown beside the Gate sign-in card when no application design applies
+  #         (for example a direct visit to the Gate page). Empty keeps the built-in ThunderID
+  #         items. A string is a single title, a map is a single item and a list is several
+  #         items. An item has `title`, an optional `description` and an optional `icon`, a
+  #         path under the Gate base path such as `assets/images/icon.svg`. The icon files
+  #         themselves must be present in the Gate assets of the image.
   brand:
     productName: "ThunderID"
     favicon:
       light: "assets/images/favicon.ico"
       dark: "assets/images/favicon-inverted.ico"
+    slogan: []
+    # slogan: "Sign in to Acme"
+    # slogan:
+    #   title: "Title"
+    #   description: "Description."
+    #   icon: "assets/images/icon.svg"
+    # slogan:
+    #   - title: "Title"
+    #     description: "Description."
+    #     icon: "assets/images/icon.svg"
 
   # Console client configuration
   consoleClient:
