@@ -79,6 +79,9 @@ jobs:
       run_performance_test: ${{ steps.get_version.outputs.run_performance_test }}
       commit_version: ${{ steps.get_version.outputs.commit_version }}
       cli_suite: ${{ steps.cli_suite.outputs.present }}
+      server_pack: ${{ steps.layout.outputs.server_pack }}
+      quickstart_pack: ${{ steps.layout.outputs.quickstart_pack }}
+      latest: ${{ steps.latest.outputs.latest }}
     steps:
       - name: 📥 Checkout Release Branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -196,6 +199,31 @@ jobs:
             echo "❌ Please pass a new 'version' input or update version.txt before running the release"
             exit 1
           fi
+
+      # Only a stable release newer than every released version moves `latest`. A pre-release, or
+      # a patch on an older release line, leaves it on the newest release.
+      - name: 🏷️ Decide Whether This Release Is the Latest
+        id: latest
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          PRERELEASE: ${{ steps.get_version.outputs.prerelease }}
+        run: |
+          STABLE_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          if [ "$PRERELEASE" = "true" ] || ! [[ $VERSION =~ $STABLE_PATTERN ]]; then
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ $VERSION is a pre-release, so latest stays where it is"
+            exit 0
+          fi
+          HIGHEST="$( (git tag -l 'v*' | grep -E "$STABLE_PATTERN"; echo "$VERSION") | sort -V | tail -1)"
+          if [ "$HIGHEST" = "$VERSION" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+            echo "✅ $VERSION is the newest release, so latest moves to it"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ $HIGHEST is newer than $VERSION, so latest stays on $HIGHEST"
+            echo "ℹ️ \`$HIGHEST\` is newer than \`$VERSION\`, so \`latest\` stays on \`$HIGHEST\`." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "✅ Version '$VERSION' does not exist yet - proceeding with release"
 
       - name: 🔒 Verify Composite Action Compatibility
@@ -255,6 +283,23 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "ℹ️ tests/e2e-cli is absent on '${RELEASE_BRANCH}', so the CLI release gate runs main's"
             echo "ℹ️ \`tests/e2e-cli\` is absent on \`${RELEASE_BRANCH}\`, so the CLI release gate ran main's CLI and suite." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Branches that predate the Control Plane and Data Plane split ship a single server pack
+      # named after the product, with no gateway or quickstart pack.
+      - name: 🔎 Detect the Distribution Layout
+        id: layout
+        run: |
+          if grep -q '^PRODUCT_FOLDER=\${BINARY_NAME}-gateway-' build.sh; then
+            echo "server_pack=${PRODUCT_NAME_LOWER}-gateway" >> "$GITHUB_OUTPUT"
+            echo "quickstart_pack=true" >> "$GITHUB_OUTPUT"
+            echo "✅ '${RELEASE_BRANCH}' ships the Data Plane and quickstart packs"
+          else
+            echo "server_pack=${PRODUCT_NAME_LOWER}" >> "$GITHUB_OUTPUT"
+            echo "quickstart_pack=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ '${RELEASE_BRANCH}' predates the Data Plane split, so it ships a single server pack"
+            echo "ℹ️ \`${RELEASE_BRANCH}\` predates the Data Plane split, so it ships a single server pack." \
               >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -348,14 +393,21 @@ jobs:
         uses: ./.github/actions/build-multiplatform
 
       - name: 🔍 Verify the Distribution Set
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
+          QUICKSTART_PACK: ${{ needs.resolve.outputs.quickstart_pack }}
         run: |
           # The archives are named from version.txt, which the release job renames to the
           # release version once the artifact has been tested.
           SEMVER=$(tr -d '[:space:]' < version.txt)
           SEMVER="${SEMVER#v}"
+          names=("$SERVER_PACK")
+          if [ "$QUICKSTART_PACK" = "true" ]; then
+            names+=("$PRODUCT_NAME_LOWER")
+          fi
           missing=0
           for target in linux-x64 linux-arm64 macos-x64 macos-arm64 win-x64; do
-            for name in "${PRODUCT_NAME_LOWER}-gateway" "${PRODUCT_NAME_LOWER}"; do
+            for name in "${names[@]}"; do
               archive="target/dist/${name}-${SEMVER}-${target}.zip"
               if [ ! -f "$archive" ]; then
                 echo "::error::Expected distribution $archive was not produced"
@@ -367,7 +419,7 @@ jobs:
             ls -l target/dist/
             exit 1
           fi
-          echo "✅ All Data Plane and quickstart distributions carry version $SEMVER"
+          echo "✅ All ${names[*]} distributions carry version $SEMVER"
           ls -l target/dist/
 
           {
@@ -432,10 +484,12 @@ jobs:
           path: target/dist/
 
       - name: 🔍 Verify the Distribution Under Test
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
         run: |
-          archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-gateway-[0-9]*-linux-x64.zip 2>/dev/null | head -1)"
+          archive="$(ls target/dist/${SERVER_PACK}-[0-9]*-linux-x64.zip 2>/dev/null | head -1)"
           if [ -z "$archive" ]; then
-            echo "::error::no ${PRODUCT_NAME_LOWER}-gateway-[0-9]*-linux-x64.zip in the release artifact"
+            echo "::error::no ${SERVER_PACK}-[0-9]*-linux-x64.zip in the release artifact"
             ls -l target/dist/
             exit 1
           fi
@@ -448,7 +502,7 @@ jobs:
 
   test-windows:
     name: 🪟 Validate Windows Distribution
-    needs: build
+    needs: [resolve, build]
     runs-on: windows-latest
     steps:
       - name: 📥 Download the Release Distribution
@@ -458,11 +512,13 @@ jobs:
           path: .
 
       - name: 📂 Extract Windows Build
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
         run: |
           Write-Host "📂 Extracting build..."
 
           # Find the zip file
-          $zipFile = Get-ChildItem -Filter "$env:PRODUCT_NAME_LOWER-gateway-*-win-*.zip" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-gateway-\d" } | Select-Object -First 1
+          $zipFile = Get-ChildItem -Filter "$env:SERVER_PACK-*-win-*.zip" | Where-Object { $_.Name -match "^$($env:SERVER_PACK)-\d" } | Select-Object -First 1
 
           if (-not $zipFile) {
             Write-Host "❌ No distribution zip found"
@@ -475,7 +531,7 @@ jobs:
           Expand-Archive -Path $zipFile.FullName -DestinationPath "." -Force
 
           # Find the extracted directory
-          $extractedDir = Get-ChildItem -Directory -Filter "$env:PRODUCT_NAME_LOWER-gateway-*-win-*" | Where-Object { $_.Name -match "^$($env:PRODUCT_NAME_LOWER)-gateway-\d" } | Select-Object -First 1
+          $extractedDir = Get-ChildItem -Directory -Filter "$env:SERVER_PACK-*-win-*" | Where-Object { $_.Name -match "^$($env:SERVER_PACK)-\d" } | Select-Object -First 1
 
           if (-not $extractedDir) {
             Write-Host "❌ No extracted directory found"
@@ -755,14 +811,16 @@ jobs:
           path: target/dist/
 
       - name: 📦 Stage the Docker Build Context
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
         run: |
           # Only the two Linux archives, so the context stays small and the root
           # .dockerignore (which excludes target) does not apply.
           rm -rf target/docker && mkdir -p target/docker
           for arch in x64 arm64; do
-            archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-gateway-[0-9]*-linux-${arch}.zip 2>/dev/null | head -1)"
+            archive="$(ls target/dist/${SERVER_PACK}-[0-9]*-linux-${arch}.zip 2>/dev/null | head -1)"
             if [ -z "$archive" ]; then
-              echo "::error::no ${PRODUCT_NAME_LOWER}-gateway-[0-9]*-linux-${arch}.zip in the release artifact"
+              echo "::error::no ${SERVER_PACK}-[0-9]*-linux-${arch}.zip in the release artifact"
               ls -l target/dist/
               exit 1
             fi
@@ -780,10 +838,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐳 Build and Push Multi-Arch Docker Image
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
         run: |
-          # Build image under the repository owner with the product name
+          # Build image under the repository owner with the server pack name
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-gateway"
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${SERVER_PACK}"
 
           # Get version without 'v' prefix for Docker tags
           DOCKER_VERSION="${{ needs.resolve.outputs.version }}"
@@ -807,6 +867,7 @@ jobs:
           echo "📦 Image available at: ${IMAGE_NAME}:${DOCKER_VERSION}"
 
       - name: 📦 Stage the Quickstart Docker Build Context
+        if: ${{ needs.resolve.outputs.quickstart_pack == 'true' }}
         run: |
           rm -rf target/docker-quickstart && mkdir -p target/docker-quickstart
           for arch in x64 arm64; do
@@ -821,6 +882,7 @@ jobs:
           cp .github/docker/quickstart-entrypoint.sh target/docker-quickstart/
 
       - name: 🐳 Build and Push Multi-Arch Quickstart Docker Image
+        if: ${{ needs.resolve.outputs.quickstart_pack == 'true' }}
         run: |
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
@@ -1153,6 +1215,8 @@ jobs:
 
       - name: 📝 Extract README Content for Release
         id: readme_extract
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
         run: |
           # Get the release version without v prefix for replacement
           RELEASE_VERSION="${{ needs.resolve.outputs.version }}"
@@ -1187,11 +1251,11 @@ jobs:
           PRODUCT_TABLE=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s" \
             "   | OS | Architecture | Download Link |" \
             "   |-------|-------------|-------------|" \
-            "   | macOS | ARM64 (Apple Silicon) | [${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-macos-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-macos-arm64.zip) |" \
-            "   | macOS | x64 (Intel) | [${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-macos-x64.zip) |" \
-            "   | Linux | x64 | [${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-linux-x64.zip) |" \
-            "   | Linux | ARM64 | [${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-linux-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-linux-arm64.zip) |" \
-            "   | Windows | x64 | [${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-win-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}-win-x64.zip) |")
+            "   | macOS | ARM64 (Apple Silicon) | [${SERVER_PACK}-${RELEASE_VERSION}-macos-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${SERVER_PACK}-${RELEASE_VERSION}-macos-arm64.zip) |" \
+            "   | macOS | x64 (Intel) | [${SERVER_PACK}-${RELEASE_VERSION}-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${SERVER_PACK}-${RELEASE_VERSION}-macos-x64.zip) |" \
+            "   | Linux | x64 | [${SERVER_PACK}-${RELEASE_VERSION}-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${SERVER_PACK}-${RELEASE_VERSION}-linux-x64.zip) |" \
+            "   | Linux | ARM64 | [${SERVER_PACK}-${RELEASE_VERSION}-linux-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${SERVER_PACK}-${RELEASE_VERSION}-linux-arm64.zip) |" \
+            "   | Windows | x64 | [${SERVER_PACK}-${RELEASE_VERSION}-win-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/${SERVER_PACK}-${RELEASE_VERSION}-win-x64.zip) |")
 
           # Replace the download instruction with the table using awk for proper handling
           QUICKSTART=$(echo "$QUICKSTART" | awk -v table="$PRODUCT_TABLE" '
@@ -1203,7 +1267,7 @@ jobs:
           ')
 
           # Remove the example paragraph that follows (it's now redundant with the table)
-          QUICKSTART=$(echo "$QUICKSTART" | sed '/For example, if you are using a MacOS machine with a Apple Silicon (ARM64) processor, you would download `'"${PRODUCT_NAME_LOWER}-gateway-${RELEASE_VERSION}"'-macos-arm64\.zip`\./d')
+          QUICKSTART=$(echo "$QUICKSTART" | sed '/For example, if you are using a MacOS machine with a Apple Silicon (ARM64) processor, you would download `'"${SERVER_PACK}-${RELEASE_VERSION}"'-macos-arm64\.zip`\./d')
 
           # Build single download links for each sample (arch-agnostic)
           VANILLA_SAMPLE_LINK="[sample-app-vanilla-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-vanilla-${RELEASE_VERSION}.zip)"
@@ -1277,6 +1341,7 @@ jobs:
           name: ${{ env.PRODUCT_NAME }} ${{ needs.resolve.outputs.version }}
           draft: false
           prerelease: ${{ needs.resolve.outputs.prerelease }}
+          make_latest: ${{ needs.resolve.outputs.latest }}
           files: target/dist/*.zip
           body: ${{ env.RELEASE_BODY }}
           generate_release_notes: false
@@ -1289,11 +1354,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐳 Point latest at the Released Version
+        if: ${{ needs.resolve.outputs.latest == 'true' }}
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
+          QUICKSTART_PACK: ${{ needs.resolve.outputs.quickstart_pack }}
         run: |
           # Re-points the tag from the manifest docker-images already pushed. No rebuild
           # and no layer upload, so this cannot produce a different image.
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-gateway"
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${SERVER_PACK}"
           DOCKER_VERSION='${{ needs.resolve.outputs.semver }}'
 
           docker buildx imagetools create \
@@ -1301,6 +1370,10 @@ jobs:
             "${IMAGE_NAME}:${DOCKER_VERSION}"
 
           echo "✅ ${IMAGE_NAME}:latest now points at ${DOCKER_VERSION}"
+
+          if [ "$QUICKSTART_PACK" != "true" ]; then
+            exit 0
+          fi
 
           QUICKSTART_IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
           docker buildx imagetools create \
@@ -1310,21 +1383,31 @@ jobs:
           echo "✅ ${QUICKSTART_IMAGE_NAME}:latest now points at ${DOCKER_VERSION}"
 
       - name: 📦 Publish Docker Compose (Quick Start) to GHCR
+        env:
+          LATEST: ${{ needs.resolve.outputs.latest }}
         run: |
-          # Runs after `latest` has moved, because the compose file resolves latest.
+          # The versioned artifact pins the images to this release, since `latest` may not point at it.
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           COMPOSE_IMAGE="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-quick-start"
           DOCKER_VERSION='${{ needs.resolve.outputs.semver }}'
 
-          docker compose -f install/quick-start/docker-compose.yml publish \
+          # The compose file names the upstream registry, so point it at the images this run pushed.
+          sed -E "s#^([[:space:]]*image: )ghcr\.io/thunder-id/#\1ghcr.io/${OWNER_NAME}/#" \
+            install/quick-start/docker-compose.yml > install/quick-start/docker-compose.owner.yml
+          sed -E "s#^([[:space:]]*image: .+):latest\$#\1:${DOCKER_VERSION}#" \
+            install/quick-start/docker-compose.owner.yml > install/quick-start/docker-compose.release.yml
+          docker compose -f install/quick-start/docker-compose.release.yml publish \
             --resolve-image-digests -y "${COMPOSE_IMAGE}:${DOCKER_VERSION}"
+          echo "📦 Available at: ${COMPOSE_IMAGE}:${DOCKER_VERSION}"
 
-          docker compose -f install/quick-start/docker-compose.yml publish \
-            --resolve-image-digests -y "${COMPOSE_IMAGE}:latest"
+          # Runs after `latest` has moved, because the compose file resolves latest.
+          if [ "$LATEST" = "true" ]; then
+            docker compose -f install/quick-start/docker-compose.owner.yml publish \
+              --resolve-image-digests -y "${COMPOSE_IMAGE}:latest"
+            echo "📦 Available at: ${COMPOSE_IMAGE}:latest"
+          fi
 
           echo "✅ Docker Compose published successfully!"
-          echo "📦 Available at: ${COMPOSE_IMAGE}:${DOCKER_VERSION}"
-          echo "📦 Available at: ${COMPOSE_IMAGE}:latest"
 
       - name: 🔔 Set Release Info
         id: release_info
@@ -1353,13 +1436,15 @@ jobs:
     steps:
       - name: ⚡ Trigger Performance Test Workflows
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SERVER_PACK: ${{ needs.resolve.outputs.server_pack }}
         with:
           github-token: ${{ secrets.THUNDER_GITHUB_BOT_TOKEN }}
           script: |
             // Construct the pack URL using the release version
             const releaseTag = '${{ needs.release.outputs.release_tag }}';
-            const productNameLower = process.env.PRODUCT_NAME_LOWER;
-            const serverDistributionUrl = `https://github.com/${{ github.repository }}/releases/download/${releaseTag}/${productNameLower}-gateway-${releaseTag.replace('v', '')}-linux-x64.zip`;
+            const serverPack = process.env.SERVER_PACK;
+            const serverDistributionUrl = `https://github.com/${{ github.repository }}/releases/download/${releaseTag}/${serverPack}-${releaseTag.replace('v', '')}-linux-x64.zip`;
             const pushBenchmarkToGitHub = ${{ github.repository == 'thunder-id/thunderid' }};
 
             try {
