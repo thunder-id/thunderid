@@ -117,6 +117,33 @@ func (suite *OTelSubscriberTestSuite) TestInitialize_WithDefaultCategories() {
 	_ = sub.Close()
 }
 
+func (suite *OTelSubscriberTestSuite) TestInitialize_DerivesServiceNameFromProductName() {
+	runtimeCfg := &config.GetServerRuntime().Config
+	runtimeCfg.Server.ProductName = "Acme Identity"
+	cfg := &runtimeCfg.Observability.Output.OpenTelemetry
+	cfg.Enabled = true
+	cfg.ExporterType = exporterTypeStdout
+	cfg.ServiceName = ""
+
+	sub := NewOTelSubscriber()
+	err := sub.Initialize()
+	assert.NoError(suite.T(), err)
+
+	_, span := sub.tracerProvider.Tracer("test").Start(context.Background(), "test")
+	defer span.End()
+	serviceName, _ := span.(sdktrace.ReadOnlySpan).Resource().Set().Value(attribute.Key("service.name"))
+	assert.Equal(suite.T(), "acme-identity-iam", serviceName.AsString())
+
+	_ = sub.Close()
+}
+
+func (suite *OTelSubscriberTestSuite) TestDefaultServiceName() {
+	assert.Equal(suite.T(), "thunderid-iam", defaultServiceName("ThunderID"))
+	assert.Equal(suite.T(), "acme-identity-iam", defaultServiceName("Acme Identity"))
+	assert.Equal(suite.T(), "東京-iam", defaultServiceName("東京"))
+	assert.Equal(suite.T(), "iam", defaultServiceName("!!!"))
+}
+
 func (suite *OTelSubscriberTestSuite) TestGetID() {
 	sub := suite.setupTestSubscriber()
 	defer func() { _ = sub.Close() }()

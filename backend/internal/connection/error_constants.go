@@ -262,3 +262,13 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the connection service needs an event bus")
+
+// errSharingPolicyNotFoundNoop is returned by removeSharingPolicy when the connection holds no policy under
+// the requested id. deleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}

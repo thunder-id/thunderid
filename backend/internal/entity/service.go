@@ -22,6 +22,7 @@ import (
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -148,17 +149,15 @@ type EntityServiceInterface interface {
 	// RegisterClientSecretHolder names the service that decides whether the client secret of an entity of
 	// the category may be regenerated.
 	RegisterClientSecretHolder(category providers.EntityCategory, holder ClientSecretHolderInterface)
-	// SetSystemFlowProvider gives the service the engine that runs the system flows around a client
-	// secret regeneration. Without one, as on a control plane, no system flow runs.
-	SetSystemFlowProvider(provider SystemFlowProviderInterface)
-	// ValidateClientSecretRegeneration reports whether the caller may regenerate the entity's client
-	// secret, and returns the profile the revocation around it is bounded by, without changing state.
-	ValidateClientSecretRegeneration(ctx context.Context, category providers.EntityCategory, entityID string) (
-		*ClientSecretProfile, *tidcommon.ServiceError)
 	// RegenerateClientSecret replaces the entity's client secret with a generated one, revoking what the
 	// old one issued, and returns it.
 	RegenerateClientSecret(ctx context.Context, category providers.EntityCategory, entityID string) (
 		*ClientSecretRegeneration, *tidcommon.ServiceError)
+	// RotateClientSecret runs write, which replaces the entity's client secret, between the flows that revoke
+	// what the entity's OAuth client issued before it. A failure of the flow after the write is returned as
+	// revocationErr, since the secret is stored by then.
+	RotateClientSecret(ctx context.Context, entityID string, write func() *tidcommon.ServiceError) (
+		svcErr, revocationErr *tidcommon.ServiceError)
 
 	// Runtime state, used by the governance service.
 	GetGovernedEntity(ctx context.Context, entityID string,
@@ -210,7 +209,7 @@ type entityService struct {
 	// secretHolders decide, by entity category, whether a client secret may be regenerated.
 	secretHolders map[providers.EntityCategory]ClientSecretHolderInterface
 	// systemFlows is nil where system flows are off.
-	systemFlows SystemFlowProviderInterface
+	systemFlows systemFlowProvider
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -370,7 +369,12 @@ func (s *entityService) GetCredentialsByType(
 	if err != nil {
 		return nil, err
 	}
+	return credentialsOfType(result, credType)
+}
 
+// credentialsOfType returns the stored credentials of credType in a read entity. A system credential of the
+// type replaces a schema one.
+func credentialsOfType(result *entityWithCredentials, credType string) ([]StoredCredential, error) {
 	var creds []StoredCredential
 	if len(result.SchemaCredentials) > 0 {
 		var schemaMap map[string][]StoredCredential
@@ -404,6 +408,11 @@ func (s *entityService) GetHeldCredentialTypes(ctx context.Context, entityID str
 	if result == nil || result.Entity == nil {
 		return nil, ErrEntityNotFound
 	}
+	return s.heldCredentialTypes(ctx, result)
+}
+
+// heldCredentialTypes returns the credentials the type of a read entity declares that it holds a value for.
+func (s *entityService) heldCredentialTypes(ctx context.Context, result *entityWithCredentials) ([]string, error) {
 	declared, err := s.declaredCredentialTypes(ctx, result.Entity.Category, result.Entity.Type)
 	if err != nil || len(declared) == 0 {
 		return nil, err
@@ -558,24 +567,35 @@ func (s *entityService) UpdateEntity(
 	return &entities[0], nil
 }
 
-// DeleteEntity deletes an entity.
-// Uses a transaction to ensure the entity row and its indexed identifiers are deleted atomically.
+// DeleteEntity deletes an entity, revoking what was issued to it as a subject and ending its sessions.
+// Uses a transaction to ensure the entity row and its indexed identifiers are deleted atomically. A failure
+// to revoke after the deletion is logged and the deletion reported as done, since the entity is gone and
+// deleting again could not revoke anything more.
 func (s *entityService) DeleteEntity(ctx context.Context, entityID string) error {
 	s.logger.Debug(ctx, "Deleting entity", log.MaskedString("id", entityID))
-	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		return s.store.DeleteEntity(txCtx, entityID)
-	})
-	if err != nil {
-		return err
-	}
+	err := s.revokeAround(ctx, entityID, systemFlowEntityDeletePre, systemFlowRevocationPost, func() error {
+		err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+			return s.store.DeleteEntity(txCtx, entityID)
+		})
+		if err != nil {
+			return err
+		}
 
-	// Deleted after the entity commit, so a failed entity delete never loses its holds. A row left
-	// behind is reset by a later create at the same id.
-	if err := s.runtimeStore.DeleteRuntimeData(ctx, entityID); err != nil {
-		s.logger.Warn(ctx, "Failed to delete entity runtime data", log.MaskedString("id", entityID),
-			log.Error(err))
+		// Deleted after the entity commit, so a failed entity delete never loses its holds. A row left
+		// behind is reset by a later create at the same id.
+		if err := s.runtimeStore.DeleteRuntimeData(ctx, entityID); err != nil {
+			s.logger.Warn(ctx, "Failed to delete entity runtime data", log.MaskedString("id", entityID),
+				log.Error(err))
+		}
+		return nil
+	})
+	if errors.Is(err, ErrRevocationIncomplete) {
+		s.logger.Error(ctx, "The entity was deleted, but revoking what was issued to it while it was deleted "+
+			"failed; a token issued in that window can stay valid until it expires",
+			log.MaskedString("id", entityID), log.Error(err))
+		return nil
 	}
-	return nil
+	return err
 }
 
 // UpdateAttributes updates only the schema attributes of an entity.
@@ -1325,7 +1345,12 @@ func (s *entityService) verifyOneCredential(ctx context.Context, credType, credV
 
 // UpdateCredentials updates schema-defined credentials (e.g., password) by hashing new
 // plaintext values and merging with existing stored credentials. Payload keys are
-// restricted to fields declared as credentials in the entity's schema.
+// restricted to fields declared as credentials in the entity's schema. An update that replaces a
+// credential the entity holds revokes what was issued to it as a subject and ends its sessions, even with
+// the value it holds, so a reset ends a session that was taken without the credential; one that sets a
+// credential for the first time replaces nothing, so it revokes nothing. A managed import re-sends the
+// credentials a control plane deployed on every apply, so there a value the entity already holds is not
+// written, and an apply that changes nothing revokes nothing.
 func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	plaintextUpdates json.RawMessage) error {
 	if len(plaintextUpdates) == 0 {
@@ -1334,7 +1359,88 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	if err := s.ValidateCredentials(ctx, entityID, plaintextUpdates); err != nil {
 		return err
 	}
+	changes, replaces, err := s.credentialChanges(ctx, entityID, plaintextUpdates,
+		managedresource.IsManagedImport(ctx))
+	if err != nil || changes == nil {
+		return err
+	}
+	if !replaces {
+		return s.writeCredentials(ctx, entityID, changes)
+	}
+	return s.revokeAround(ctx, entityID, systemFlowCredentialUpdatePre, systemFlowCredentialUpdatePost,
+		func() error { return s.writeCredentials(ctx, entityID, changes) })
+}
 
+// credentialChanges reports whether the update replaces a credential the entity holds. With dropHeldValues
+// it first drops each value the entity already holds, and returns nil changes when nothing is left. A value
+// that cannot be compared with the stored one counts as a change.
+func (s *entityService) credentialChanges(ctx context.Context, entityID string, plaintextUpdates json.RawMessage,
+	dropHeldValues bool) (json.RawMessage, bool, error) {
+	var updates map[string]json.RawMessage
+	if err := json.Unmarshal(plaintextUpdates, &updates); err != nil {
+		return nil, false, fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
+	}
+	// One read serves both the credentials held and the values they are compared with.
+	stored, err := s.store.GetEntityWithCredentials(ctx, entityID)
+	if err != nil {
+		return nil, false, err
+	}
+	if stored == nil || stored.Entity == nil {
+		return nil, false, ErrEntityNotFound
+	}
+	held, err := s.heldCredentialTypes(ctx, stored)
+	if err != nil {
+		return nil, false, err
+	}
+	replaces := false
+	for _, credType := range held {
+		value, ok := updates[credType]
+		if !ok {
+			continue
+		}
+		if !dropHeldValues {
+			replaces = true
+			continue
+		}
+		unchanged, err := s.holdsCredentialValue(ctx, stored, credType, value)
+		if err != nil {
+			return nil, false, err
+		}
+		if unchanged {
+			delete(updates, credType)
+			continue
+		}
+		replaces = true
+	}
+	if len(updates) == 0 {
+		return nil, false, nil
+	}
+	changes, err := json.Marshal(updates)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to marshal credential updates: %w", err)
+	}
+	return changes, replaces, nil
+}
+
+// holdsCredentialValue reports whether value, a plaintext credential of credType, matches one the entity
+// holds.
+func (s *entityService) holdsCredentialValue(ctx context.Context, result *entityWithCredentials, credType string,
+	value json.RawMessage) (bool, error) {
+	var plaintext string
+	if err := json.Unmarshal(value, &plaintext); err != nil || plaintext == "" {
+		return false, nil
+	}
+	stored, err := credentialsOfType(result, credType)
+	if err != nil {
+		return false, err
+	}
+	matched, _ := s.verifyOneCredential(ctx, credType, plaintext, stored)
+	return matched, nil
+}
+
+// writeCredentials hashes the validated plaintext credentials and merges them into the stored ones.
+func (s *entityService) writeCredentials(ctx context.Context, entityID string,
+	plaintextUpdates json.RawMessage) error {
 	// Hash new plaintext values.
 	hashedUpdates, err := s.hashPlaintextCredentials(plaintextUpdates)
 	if err != nil {

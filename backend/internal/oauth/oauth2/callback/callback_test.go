@@ -126,12 +126,12 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_Defaul
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_AuthCode_PassesSessionData() {
 	suite.mockAuthZ.EXPECT().
 		HandleAuthorizationCallback(mock.Anything, "auth-1", "the-assertion", []oauth2model.SessionData{
-			{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-1"},
+			{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-1", ExpiresIn: new(int64(600))},
 		}).
 		Return("https://client.example.com/cb?code=xyz", nil)
 
 	w := suite.postCallback(`{"authId":"auth-1","assertion":"the-assertion",` +
-		`"sessionData":[{"flowIdentifier":"f51bdb0f22d906bb","sessionHandle":"handle-1"}]}`)
+		`"sessionData":[{"flowIdentifier":"f51bdb0f22d906bb","sessionHandle":"handle-1","expiresIn":600}]}`)
 
 	suite.Equal(http.StatusOK, w.Code)
 }
@@ -278,13 +278,15 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_NilCIBASer
 
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_DeviceGrant_Success() {
 	deviceService := deviceauthmock.NewDeviceAuthServiceInterfaceMock(suite.T())
-	deviceService.EXPECT().HandleCallback(mock.Anything, "device-request-1", "device-assertion").Return(nil)
+	posted := []oauth2model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}
+	deviceService.EXPECT().HandleCallback(mock.Anything, "device-request-1", "device-assertion", posted).Return(nil)
 	suite.dispatcher = newCallbackDispatcher(
 		testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA, deviceService)
 
 	w := suite.postCallback(
 		`{"authId":"device-request-1","assertion":"device-assertion",` +
-			`"type":"urn:ietf:params:oauth:grant-type:device_code"}`)
+			`"type":"urn:ietf:params:oauth:grant-type:device_code",` +
+			`"sessionData":[{"flowIdentifier":"77e0937879f72858","sessionHandle":"handle-1"}]}`)
 
 	suite.Equal(http.StatusOK, w.Code)
 	var body map[string]string

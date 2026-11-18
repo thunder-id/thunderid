@@ -91,7 +91,7 @@ export default function FooterSection(): JSX.Element {
 
           <Box
             component="a"
-            href="https://wso2.com/identity-platform/"
+            href="https://choreolabs.com/identity-and-access-management/"
             target="_blank"
             rel="noopener noreferrer"
             sx={{
@@ -129,7 +129,7 @@ export default function FooterSection(): JSX.Element {
             >
               ❤️
             </Box>{' '}
-            by <MaskLogo name="wso2" width={81} height={20} label="WSO2" />
+            by <MaskLogo name="choreo-labs" width={120} height={22} label="Choreo Labs" />
           </Box>
         </Reveal>
       </Container>

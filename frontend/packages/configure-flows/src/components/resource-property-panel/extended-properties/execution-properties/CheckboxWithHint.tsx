@@ -21,6 +21,10 @@ export interface CheckboxWithHintProps {
    */
   hint?: string;
   /**
+   * Whether the checkbox is disabled.
+   */
+  disabled?: boolean;
+  /**
    * Change handler receiving the new checked state.
    */
   onChange: (checked: boolean) => void;
@@ -34,11 +38,19 @@ export interface CheckboxWithHintProps {
  * @param props - Props injected to the component.
  * @returns The CheckboxWithHint component.
  */
-function CheckboxWithHint({checked, label, hint = undefined, onChange}: CheckboxWithHintProps): ReactElement {
+function CheckboxWithHint({
+  checked,
+  label,
+  hint = undefined,
+  disabled = false,
+  onChange,
+}: CheckboxWithHintProps): ReactElement {
   return (
     <Box>
       <FormControlLabel
-        control={<Checkbox checked={checked} onChange={(e) => onChange(e.target.checked)} size="small" />}
+        control={
+          <Checkbox checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} size="small" />
+        }
         label={<Typography variant="subtitle2">{label}</Typography>}
         sx={{mr: 0}}
       />

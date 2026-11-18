@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.8
 
 ## Summary
 
@@ -161,19 +161,19 @@ Agent reads and lists can request `include=display`. The returned `display` valu
 
 #### Schema attributes and their correction path
 
-Provisioning checks the resolved schema for outstanding required attributes and, when `includeOptional` is enabled, optional attributes. Missing string attributes with an enumeration are requested as `SELECT` inputs with those values as options. A prompt receiving those inputs can display the schema's choices. A prompt reached before provisioning supplies inputs must declare its own options; a static list in a template does not automatically follow later schema edits.
+Provisioning checks the resolved schema for outstanding required attributes and, when `includeOptional` is enabled, optional attributes. An optional attribute whose schema sets `display.onCreate.hidden: true` is not requested unless the node declares it in its inputs. Requested inputs whose attribute sets a `display.order` come first, lowest first and by attribute name for the same order, ahead of the required, optional and credential grouping. Missing string attributes with an enumeration are requested as `SELECT` inputs with those values as options. A prompt receiving those inputs can display the schema's choices. A prompt reached before provisioning supplies inputs must declare its own options; a static list in a template does not automatically follow later schema edits.
 
-The Agent Details prompt submits through `AttributeUniquenessValidator`. A conflict returns to the same prompt with the attribute identified, so the administrator can correct it without losing the other values. Provisioning requests any remaining inputs on its incomplete connection. The service validates the complete request again at creation, including conflicts that arise after the precheck.
+In the default flow and the own-identity template, Provisioning runs before the Agent Details prompt and sends the run to it when the schema needs values it does not have. The prompt is dynamic: it shows only those missing attributes, and submits through `AttributeUniquenessValidator`. A conflict returns to the same prompt asking again for just the conflicting attribute, built from its schema attribute (display name, type and choices). In the OBO and Choose Mode templates, the Agent Details prompt is static and comes before provisioning, and provisioning requests any remaining inputs on its incomplete connection. The service validates the complete request again at creation, including conflicts that arise after the precheck.
 
 | Connection | Purpose |
 |---|---|
 | Details prompt to uniqueness validator | Check submitted values of unique schema attributes, including the default name. |
 | Uniqueness validator incomplete to details prompt | Correct the conflicting attribute. |
 | Uniqueness validator success | Continue to provisioning, or to delegation settings in an OBO or Choose Mode template. |
-| Provisioning incomplete to an input prompt | Collect outstanding schema or delegated-agent settings. |
-| Provisioning failure to details prompt | Show the service error and allow correction of agent details. |
+| Provisioning incomplete to an input prompt | Collect outstanding schema attributes on the details prompt (default flow, own identity), or outstanding schema or delegated-agent settings on an input prompt (OBO, Choose Mode). |
+| Provisioning failure to details prompt | OBO and Choose Mode templates only. Show the service error and allow correction of agent details. |
 
-The supplied flows return provisioning failures to Agent Details. This supports name and attribute correction, but that screen cannot correct every possible service error, such as a rejected login-flow selection. Custom flows need an appropriate correction route for the information they collect.
+The OBO and Choose Mode templates return provisioning failures to Agent Details. This supports name and attribute correction, but that screen cannot correct every possible service error, such as a rejected login-flow selection. In the default flow and the own-identity template, a provisioning failure ends the run with the error, because the dynamic prompt only shows inputs an executor forwards and a failed creation forwards none. Custom flows need an appropriate correction route for the information they collect.
 
 #### Other collected information
 
@@ -199,7 +199,7 @@ The **Delegated Agent Details** widget collects these settings for an OBO flow. 
 
 ### Uniqueness and existing entities
 
-The uniqueness step checks submitted values for attributes marked unique in the resolved schema. If a value is already in use, the flow returns to Agent Details and identifies the attribute to correct. The service checks the complete request again when creating the agent, because a value can become unavailable after the earlier check.
+The uniqueness step checks submitted values for attributes marked unique in the resolved schema. If a value is already in use, the flow returns to Agent Details and asks again for the attribute to correct. The service checks the complete request again when creating the agent, because a value can become unavailable after the earlier check.
 
 Provisioning also checks for an existing identity before creating another one. It retains the existing behavior for duplicate identities and organization-unit boundaries. Onboarding does not introduce a separate copy of those rules for agents.
 
@@ -257,10 +257,10 @@ flowchart TD
 
     OWNER -->|Input required| OWNER_PROMPT[Select owner]
     OWNER_PROMPT -.-> OWNER
-    OWNER -->|Resolved or omitted| DETAILS[Enter agent details including name]
+    OWNER -->|Resolved or omitted| PROVISION[Provisioning Executor]
 
+    PROVISION -->|Input required| DETAILS[Enter missing agent details including name]
     DETAILS --> UNIQUE[Attribute Uniqueness Validator]
-    PROVISION[Provisioning Executor] -->|Input required| DETAILS
     UNIQUE -->|Conflict| DETAILS
     UNIQUE -->|Valid| PROVISION
 
@@ -280,7 +280,7 @@ flowchart TD
     ENTITY --> INBOUND
     INBOUND --> RESULT{Creation result}
 
-    RESULT -.->|Failure| DETAILS
+    RESULT -.->|Failure| FAILED([Run ends with the error])
     RESULT -->|Success| CREDENTIALS[Show agent ID and client credentials]
     CREDENTIALS --> END([Complete])
 
@@ -292,13 +292,13 @@ The flow keeps orchestration in the executor layer and creation ownership in the
 2. Resolve the agent schema type from the agent types the administrator can read, up to the first 100.
 3. Resolve the target OU.
 4. Resolve the owner.
-5. Collect the agent details, including the name defined by the schema.
-6. Run agent provisioning, requesting outstanding schema attributes through the details prompt and checking submitted unique attributes before retrying creation.
+5. Run agent provisioning, requesting outstanding schema attributes, including the name defined by the schema, through the details prompt.
+6. Check submitted unique attributes, then retry creation.
 7. Display the created agent's identifiers and client secret, then finish the flow.
 
-The bootstrap flow sets `includeOptional: true` and `delegated: false` on Provisioning. Agent Type Resolver establishes the category and type before that node runs. The flow goes from owner resolution to Agent Details, then through the uniqueness validator to provisioning. Both provisioning's incomplete and failure connections return to Agent Details; uniqueness conflicts return there as well.
+The bootstrap flow sets `includeOptional: true` and `delegated: false` on Provisioning. Agent Type Resolver establishes the category and type before that node runs. The flow goes from owner resolution straight to provisioning. Provisioning's incomplete connection leads to a dynamic Agent Details prompt, which goes through the uniqueness validator and back to provisioning; uniqueness conflicts return to the prompt. Provisioning has no failure connection, so a creation failure ends the run with the error.
 
-The builder supplies three complete onboarding templates. All include permission checking, agent type and OU resolution, owner selection, agent details, uniqueness validation, provisioning, and credential display.
+The builder supplies three complete onboarding templates. The own-identity template matches the bootstrap flow above. The OBO and Choose Mode templates keep a static Agent Details prompt with the name and model provider, because each has separate details and delegation prompts and a dynamic details prompt would need one combined screen or the delegation screen first. All include permission checking, agent type and OU resolution, owner selection, agent details, uniqueness validation, provisioning, and credential display.
 
 | Template | Delegation behavior |
 |---|---|
@@ -378,7 +378,7 @@ The templates include Agent Type Resolver before provisioning. An author can use
 | `agent_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject agent provisioning. |
 | Provisioning `delegated` | `false` | Flow node | Fallback for agent delegation intent; runtime data and submitted values take precedence. |
 | Agent resolver `allowedAgentTypes` | Unset in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction, and `*` is rejected on save. |
-| Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection. |
+| Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection, except those whose schema sets `display.onCreate.hidden: true`. |
 
 The Console must read the `merged` configuration layer. A missing handle, a handle that does not resolve to an administration flow, and a configuration request failure are distinct conditions. Missing configuration will identify the setting to configure; a missing flow will identify the configured handle. A request failure must not be reported as an empty setting.
 
@@ -458,10 +458,12 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 - **AC6.3:** Given the default agent type and a valid name, when optional schema attributes are omitted, then their omission alone does not prevent creation.
 - **AC6.4:** Given a submitted details prompt, when the uniqueness validator detects a conflict, then its incomplete path returns to the details prompt with the conflicting attribute identified.
 - **AC6.5:** Given a conflict arising after the precheck, when creation runs, then management-service validation rejects it.
-- **AC6.6:** Given a name or schema attribute rejected at creation, when the service error returns, then the supplied flow returns to Agent Details with the error and collected values available for correction.
+- **AC6.6:** Given a name or schema attribute rejected at creation, when the service error returns, then the default flow and the own-identity template end the run with the error, and the OBO and Choose Mode templates return to Agent Details with the error and collected values available for correction.
 - **AC6.7:** Given outstanding schema information, when provisioning cannot proceed, then it forwards the missing inputs through its incomplete connection.
 - **AC6.8:** Given an agent read with `include=display`, when its display attribute has a value, then the response exposes the derived label; otherwise it falls back to the agent ID.
 - **AC6.9:** Given an agent type resolved earlier in the flow, when the uniqueness step runs, then it checks the submitted unique attributes defined by that type.
+- **AC6.10:** Given an optional schema attribute with `display.onCreate.hidden: true` that the provisioning node doesn't declare, when provisioning requests missing inputs, then that attribute is not requested. In native administration, the Console's **Add agent** form doesn't show it. The dynamic Agent Details prompt of the default flow and the own-identity template follows this. Fields that a prompt lists itself, such as those on the Agent Details step of the OBO and Choose Mode templates, are unaffected.
+- **AC6.11:** Given schema attributes that set `display.order`, when provisioning requests missing inputs, then those inputs come first, lowest first and by attribute name for the same order. In native administration, the Console's **Add agent** form lists the attributes in the same order. Fields that a prompt lists itself keep the order the flow gives them.
 
 ### R7. Create the requested inbound authentication configuration
 
@@ -529,6 +531,7 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 - **AC11.7:** Given more candidates than one page, when an administrator continues through a resource picker, then additional pages load through the shared SDK loader without changing the selected value.
 
 - **AC11.8:** Given a flow document with neither `ouId` nor `ouHandle`, when it is imported, loaded from a declarative or bootstrap file, or created through `POST /flows`, then it is refused, and given a flow that already has an owner, when an update names a different organization unit, then the update is refused.
+- **AC11.9:** Given a flow author adds a Date Time Input field, when the flow is saved, previewed, or deployed, then the field remains an input and uses the shared date-time picker at runtime.
 
 ## Change log
 
@@ -540,3 +543,6 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 | 0.3 | 2026-10-29 | Describe the complete administration onboarding design: management-provider creation, runtime category resolution, schema-based agent names, delegation and grant policy, reusable SDK and Console selectors, and the three onboarding templates. |
 | 0.4 | 2026-11-05 | The shipped flow no longer restricts `AgentTypeResolver` to the `default` agent type, since a deployment can hold one agent type per organization unit, and the agent service rejects an agent outside its agent type's organization unit tree (#6020). |
 | 0.5 | 2026-11-08 | A flow whose `AgentTypeResolver` lists `*` in `allowedAgentTypes` is rejected when it is saved (`FLM-1023`): the node reads entries as handles, and an empty list already allows every agent type. |
+| 0.6 | 2026-11-10 | Add Date Time Input to supported flow inputs, including save/load, backend validation, preview, and deployed rendering. |
+| 0.7 | 2026-11-16 | The default flow and the own-identity template ask for agent details on a dynamic prompt after provisioning, with no provisioning failure connection. The default agent schema no longer has `model` and `function`. The OBO and Choose Mode templates are unchanged. |
+| 0.8 | 2026-11-16 | Agent type attributes can set `display.order` and `display.onCreate.hidden`: provisioning orders requested inputs by display order and skips optional attributes hidden on create (AC6.10, AC6.11), as implemented in #6697. |

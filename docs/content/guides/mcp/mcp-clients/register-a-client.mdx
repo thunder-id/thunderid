@@ -119,9 +119,9 @@ Clearing **authorization_code** also removes **refresh_token** and turns off **P
 
 To update a client's configuration, open it from the **Applications** list, change the setting on its tab, and click **Save** in the bar that appears. Changes take effect immediately for new authentication requests. Active sessions and issued access tokens stay valid until they expire. Refresh tokens stop working once you remove **refresh_token** from **Grant types**, and the token endpoint rejects them with `unauthorized_client`. Clearing **authorization_code** also removes **refresh_token**.
 
-To rotate the client secret, click **Regenerate client secret** on the **Credentials** tab, then **Regenerate** to confirm. This immediately invalidates the previous secret. It also revokes the access and refresh tokens issued before the rotation, so users must sign in again.
+To rotate the client secret, click **Regenerate client secret** on the **Credentials** tab, then **Regenerate** to confirm. This immediately invalidates the previous secret. When token revocation is on (`oauth.token_revocation.enabled`, the default), it also revokes the access and refresh tokens issued before the rotation, so users must sign in again.
 
-To delete a client, open it from the **Applications** list and click **Delete application** under **Danger zone** on the **Advanced** tab. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate. <ProductName /> also revokes every token issued through the Client ID and removes the client from active sessions. Deleting through the `DELETE /applications/{id}` API removes the record only, so its tokens stay valid until they expire.
+To delete a client, open it from the **Applications** list and click **Delete application** under **Danger zone** on the **Advanced** tab. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate. <ProductName /> also removes the client from active sessions, and when token revocation is on, it revokes every token issued through the Client ID. Deleting through the `DELETE /applications/{id}` API does the same. See [Token Revocation](../../../protocols/oauth-oidc/token-revocation#client-deletion-and-secret-regeneration).
 
 ## Next Steps
 

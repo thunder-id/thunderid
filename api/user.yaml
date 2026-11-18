@@ -2318,9 +2318,10 @@ paths:
         names: the description, the schema attributes (including the name), the grant types and the redirect
         URIs. `attributes`, `grantTypes` and
         `redirectUris` are required; a `description` left out is cleared. Any other field is refused, so no flow
-        setting, owner or OAuth client credential can be changed here. A credential attribute the agent's type
-        declares is set like any other attribute: it is stored hashed and never returned. Read the agent first and
-        send these fields back with the changes.
+        setting, owner or OAuth client credential can be changed here. An attribute the agent's type
+        marks as a credential is refused (`AGT-1068`); the owner sets one with
+        `POST /users/me/agents/{id}/update-credentials`. Read the agent first and send these fields back with the
+        changes.
 
         Grant types must be a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
         `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
@@ -2452,6 +2453,9 @@ paths:
         Deletes a personal agent the signed-in user owns, in the organization unit the access token names. An
         agent that does not exist, is not a personal agent, belongs to someone else, or is outside that
         organization unit is not found. The token must be the user's own: a delegated token is refused.
+
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        to the agent and those issued through its client ID are revoked, and its sessions end.
       security:
         - OAuth2: []
       parameters:
@@ -2666,6 +2670,85 @@ paths:
           description: |
             A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
             owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Not one of the caller's personal agents (`AGT-1004`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/agents/{id}/update-credentials:
+    post:
+      tags:
+        - Self
+      summary: Update the credentials of one of the caller's personal agents
+      description: |
+        Sets new values for credentials the agent type's schema declares, such as a password, on a personal agent
+        the signed-in user owns, as `POST /users/me/update-credentials` does for the user's own. Only the
+        credentials present in the request body are updated, and the others keep their value. The values are
+        stored hashed and no read returns them. Replacing a credential the agent already holds revokes the tokens
+        issued with the agent as their subject and ends its sessions, as a user's credential update does, up to the
+        change and again once it is written; setting one the agent does not hold yet revokes nothing. Sending the
+        value the agent already holds still revokes. If the revocation before the write fails, the credential is
+        not changed. If the one after the write fails, the credential is stored but the request returns an error,
+        and setting it again revokes what is left. The client secret is not a credential attribute, and this
+        request cannot change it.
+
+        The caller must own the agent, hold every permission the agent holds, and be in the organization unit the
+        access token names; an agent that is not the caller's personal agent is not found. The token must be the
+        user's own: a delegated token is refused. An agent declared in a file, and one a control plane deployed,
+        are refused. An administrator cannot set a personal agent's credentials, and an update of the agent
+        through `PUT /agents/{id}` or `PUT /users/me/agents/{id}` that names a credential is refused (`AGT-1068`).
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSelfUserRequest'
+            example:
+              attributes:
+                password: "n3wP@ssword!"
+      responses:
+        "204":
+          description: Credentials updated
+        "400":
+          description: >
+            Bad request. The body has no credentials (`AGT-1001`), names one the agent type does not
+            declare or gives it an empty value (`AGT-1016`), or gives one a value its schema refuses (`AGT-1015`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`), such as an agent's own token for its owner; the caller does not hold
+            every permission the agent holds; or the agent is declared in a file (`AGT-1027`) or deployed by a
+            control plane (`AGT-1063`).
           content:
             application/json:
               schema:
@@ -4737,6 +4820,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   unique:
                     type: boolean
                     default: false
@@ -4766,6 +4851,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                 additionalProperties: false
               - type: object
                 description: "Object property definition"
@@ -4779,11 +4866,13 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   properties:
                     type: object
                     description: "Nested properties of the object"
                     additionalProperties:
-                      $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+                      $ref: "#/components/schemas/UserTypeNestedProperty"
                 additionalProperties: false
               - type: object
                 description: "Array property definition"
@@ -4797,6 +4886,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   items:
                     oneOf:
                       - type: object
@@ -4833,7 +4924,7 @@ components:
                           properties:
                             type: object
                             additionalProperties:
-                              $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+                              $ref: "#/components/schemas/UserTypeNestedProperty"
                         additionalProperties: false
                 additionalProperties: false
           example:
@@ -4874,6 +4965,140 @@ components:
               items:
                 type: "string"
                 enum: ["vip", "premium", "standard"]
+
+    UserTypeNestedProperty:
+      description: "A property nested in an object or an array of objects. Same as a top-level user type property, without display settings."
+      oneOf:
+        - type: object
+          description: "Leaf property - string, email, mobile, or number"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["string", "email", "mobile", "number"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            unique:
+              type: boolean
+              default: false
+              description: "Whether this property must be unique across all users"
+            credential:
+              type: boolean
+              default: false
+              description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
+            enum:
+              type: array
+              items:
+                type: string
+              description: "List of allowed values for this property. Not supported for email or mobile types."
+            regex:
+              type: string
+              description: "Regular expression pattern for validating the property value"
+          additionalProperties: false
+        - type: object
+          description: "Leaf property - boolean"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["boolean"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+          additionalProperties: false
+        - type: object
+          description: "Object property definition"
+          required: [type, properties]
+          properties:
+            type:
+              type: string
+              enum: ["object"]
+              description: "Data type (object)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            properties:
+              type: object
+              description: "Nested properties of the object"
+              additionalProperties:
+                $ref: "#/components/schemas/UserTypeNestedProperty"
+          additionalProperties: false
+        - type: object
+          description: "Array property definition"
+          required: [type, items]
+          properties:
+            type:
+              type: string
+              enum: ["array"]
+              description: "Data type (array)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            items:
+              oneOf:
+                - type: object
+                  description: "Array of strings, emails, mobiles, or numbers"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["string", "email", "mobile", "number"]
+                    enum:
+                      type: array
+                      items:
+                        type: string
+                      description: "List of allowed values. Not supported for email or mobile types."
+                    regex:
+                      type: string
+                      description: "Custom validation pattern. Contact types use their default when omitted or empty."
+                  additionalProperties: false
+                - type: object
+                  description: "Array of booleans"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["boolean"]
+                  additionalProperties: false
+                - type: object
+                  description: "Array of objects"
+                  required: [type, properties]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["object"]
+                    properties:
+                      type: object
+                      additionalProperties:
+                        $ref: "#/components/schemas/UserTypeNestedProperty"
+                  additionalProperties: false
+          additionalProperties: false
+
+    UserTypeAttributeDisplay:
+      type: object
+      description: "How a top-level attribute is presented when attributes are listed or collected. Nested properties don't accept it."
+      properties:
+        order:
+          type: integer
+          minimum: 0
+          description: "Position of the attribute when user attributes are listed or collected, lowest first, and by attribute name for the same order. Attributes without one follow the ordered ones."
+        onCreate:
+          type: object
+          description: "Settings for when a user account is created."
+          properties:
+            hidden:
+              type: boolean
+              default: false
+              description: "Whether an optional attribute is left out when a user account is created. A flow asks for optional attributes only when its Provisioning step enables includeOptional, or includeOptionalCredentials for optional credentials, and asks for an attribute the step declares in its own inputs even when it's hidden. Required attributes are always asked for."
+          additionalProperties: false
+      additionalProperties: false
 
     UserTypeListResponse:
       type: object

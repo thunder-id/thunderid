@@ -43,6 +43,7 @@ export const ElementTypes = {
   PhoneInput: 'PHONE_INPUT',
   NumberInput: 'NUMBER_INPUT',
   DateInput: 'DATE_INPUT',
+  DateTimeInput: 'DATE_TIME_INPUT',
   OtpInput: 'OTP_INPUT',
   Checkbox: 'CHECKBOX',
   Dropdown: 'DROPDOWN',

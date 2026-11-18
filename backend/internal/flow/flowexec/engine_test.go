@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -2273,6 +2274,64 @@ func (s *EngineTestSuite) TestProcessNodeResponse_CompleteStatus() {
 	s.Nil(err)
 	s.True(continueExec)
 	s.Equal(mockNextNode, next)
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponse_LiftsSessionHandleOntoStep() {
+	type emission struct{ handle, expiresAt string }
+	cases := []struct {
+		name          string
+		presented     string
+		emitted       []emission
+		wantReused    bool
+		wantExpiresAt time.Time
+	}{
+		{"a minted handle", "", []emission{{"handle-1", ""}}, false, time.Time{}},
+		{"a handle other than the presented one", "handle-0", []emission{{"handle-1", ""}}, false, time.Time{}},
+		{"the presented handle", "handle-1", []emission{{"handle-1", ""}}, true, time.Time{}},
+		{"a session minted earlier in the step and then joined", "",
+			[]emission{{"handle-1", ""}, {"handle-1", ""}}, false, time.Time{}},
+		{"the session's end", "", []emission{{"handle-1", "1700028800"}}, false, time.Unix(1700028800, 0)},
+		{"an unreadable end", "", []emission{{"handle-1", "tomorrow"}}, false, time.Time{}},
+		{"a later handle without an end", "",
+			[]emission{{"handle-1", "1700028800"}, {"handle-1", ""}}, false, time.Time{}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			t := s.T()
+			mockGraph := coremock.NewGraphInterfaceMock(t)
+			mockGraph.On("GetID").Return("sign-in-flow")
+			mockNextNode := coremock.NewNodeInterfaceMock(t)
+			mockNextNode.On("GetID").Return("next-node")
+			mockGraph.On("GetNode", "next-node").Return(mockNextNode, true)
+			fe := &flowEngine{logger: log.GetLogger()}
+			ctx := &EngineContext{
+				Context:     context.Background(),
+				Graph:       mockGraph,
+				CurrentNode: coremock.NewNodeInterfaceMock(t),
+				SSOHandleIn: tc.presented,
+			}
+			flowStep := &FlowStep{}
+
+			for _, e := range tc.emitted {
+				engineData := map[string]string{common.RuntimeKeySSOSessionHandle: e.handle}
+				if e.expiresAt != "" {
+					engineData[common.RuntimeKeySSOSessionExpiresAt] = e.expiresAt
+				}
+				_, continueExec, err := fe.processNodeResponse(ctx, &common.NodeResponse{
+					Status:     common.NodeStatusComplete,
+					NextNodeID: "next-node",
+					EngineData: engineData,
+				}, flowStep, log.GetLogger())
+				s.Require().Nil(err)
+				s.Require().True(continueExec)
+			}
+
+			s.Equal("handle-1", flowStep.SSOHandleOut)
+			s.Equal("sign-in-flow", flowStep.SSOFlowID)
+			s.Equal(tc.wantReused, flowStep.SSOHandleReused)
+			s.True(tc.wantExpiresAt.Equal(flowStep.SSOHandleExpiresAt), "got %v", flowStep.SSOHandleExpiresAt)
+		})
+	}
 }
 
 func (s *EngineTestSuite) TestProcessNodeResponse_IncompleteViewStatus() {
@@ -5761,12 +5820,16 @@ func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInDropsItsUserAndSe
 			next, cont, svcErr := fe.processNodeResponse(ctx, &common.NodeResponse{
 				Status:     common.NodeStatusComplete,
 				NextNodeID: "auth_assert",
-				EngineData: map[string]string{common.RuntimeKeySSOSessionHandle: "minted-handle"},
+				EngineData: map[string]string{
+					common.RuntimeKeySSOSessionHandle:    "minted-handle",
+					common.RuntimeKeySSOSessionExpiresAt: "1700028800",
+				},
 			}, step, log.GetLogger())
 			s.Require().Nil(svcErr)
 			s.Require().True(cont)
 			s.Require().Equal(assertNode, next)
 			s.Require().Equal("minted-handle", step.SSOHandleOut)
+			s.Require().False(step.SSOHandleExpiresAt.IsZero())
 
 			next, cont, svcErr = fe.processNodeResponse(ctx,
 				&common.NodeResponse{Status: common.NodeStatusFailure, Error: refusal}, step, log.GetLogger())
@@ -5779,6 +5842,7 @@ func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInDropsItsUserAndSe
 			s.Empty(step.Assertion)
 			s.Empty(step.SSOHandleOut)
 			s.Empty(step.SSOFlowID)
+			s.True(step.SSOHandleExpiresAt.IsZero())
 			s.False(ctx.AuthUser.IsAuthenticated())
 			s.Empty(ctx.Assertion)
 		})

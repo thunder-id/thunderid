@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -397,6 +397,44 @@ describe('GatewayExplorerPage', () => {
       ['/gateways/gw-dev/variables/APP_ORDERS_REDIRECT_URIS', {value: '["https://b.test/cb"]', description: undefined}],
     ]);
     expect(await screen.findByText('Saved 1 value to Dev.')).toBeInTheDocument();
+  });
+
+  it("locks the values to an admin who may not update both of the gateway's stores", async () => {
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource, action) => !(resource === 'gatewaysecret' && action === 'update'),
+          isLoading: false,
+        }}
+      >
+        <GatewayExplorerPage />
+      </CapabilitiesProvider>,
+    );
+    await userEvent.click(await screen.findByTestId('explorer-node-application/app-1'));
+
+    const panel = screen.getByTestId('explorer-panel');
+    expect(within(panel).getByLabelText('APP_ORDERS_CLIENT_ID')).toBeDisabled();
+    expect(within(panel).queryByRole('button', {name: 'Save changes'})).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('explorer-node-connection/c-1'));
+    expect(
+      within(screen.getByTestId('explorer-panel')).getByLabelText('CONNECTION_GOOGLE_CLIENT_SECRET'),
+    ).toBeDisabled();
+  });
+
+  it("doesn't read the gateway's secrets for an admin who may not view them", async () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'gatewaysecret', isLoading: false}}>
+        <GatewayExplorerPage />
+      </CapabilitiesProvider>,
+    );
+    await screen.findByTestId('explorer-node-application/app-1');
+
+    const reads = http.calls
+      .filter((call: Call) => call.method === 'GET')
+      .map((call: Call) => call.url.replace(SERVER, '').split('?')[0]);
+    expect(reads).toContain('/gateways/gw-dev/variables');
+    expect(reads).not.toContain('/gateways/gw-dev/secrets');
   });
 
   it('keeps what saved when a later value fails, and sends only what failed again', async () => {

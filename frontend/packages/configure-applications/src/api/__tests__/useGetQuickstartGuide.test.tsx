@@ -30,8 +30,31 @@ describe('useGetQuickstartGuide', () => {
       expect(result.current.isSuccess).toBe(true);
     });
     expect(mockFetch).toHaveBeenCalledWith('https://example.com/docs/react.md');
-    expect(result.current.data).toEqual([
-      {title: 'Install the SDK', blocks: [{type: 'paragraph', text: 'Install it.'}]},
+    expect(result.current.data).toEqual({
+      steps: [{title: 'Install the SDK', blocks: [{type: 'paragraph', text: 'Install it.'}]}],
+      sample: null,
+    });
+  });
+
+  it('returns the steps for the choices given, of a page written for several', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () =>
+        Promise.resolve(
+          '## Register an Agent\n\nAdd it.\n\n## Run the Agent\n\n<!-- variant mode=own -->\n\nRun it alone.\n\n<!-- /variant -->\n\n<!-- variant mode=obo -->\n\nRun it for a user.\n\n<!-- /variant -->',
+        ),
+    });
+
+    const {result} = renderHook(() =>
+      useGetQuickstartGuide('https://example.com/docs/langchain/', undefined, {mode: 'obo'}),
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(result.current.data?.steps).toEqual([
+      {title: 'Run the Agent', blocks: [{type: 'paragraph', text: 'Run it for a user.'}]},
     ]);
   });
 

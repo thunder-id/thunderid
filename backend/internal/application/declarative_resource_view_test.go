@@ -37,7 +37,7 @@ func TestViewResourceShowsAnExportedApplicationAsItsRead(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	view, err := newApplicationExporter(nil, nil).ViewResource(context.Background(),
+	view, err := newApplicationExporter(nil, nil, nil).ViewResource(context.Background(),
 		viewDocument(t, "resource_type: application\n"+string(exported)))
 
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestViewResourceShowsAnExportedApplicationAsItsRead(t *testing.T) {
 
 // A document that is not an application is refused.
 func TestViewResourceRefusesAnUnreadableDocument(t *testing.T) {
-	exporter := newApplicationExporter(nil, nil)
+	exporter := newApplicationExporter(nil, nil, nil)
 
 	_, err := exporter.ViewResource(context.Background(), viewDocument(t, "name: [not, a, name]"))
 	assert.Error(t, err)

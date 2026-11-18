@@ -7,15 +7,18 @@
   "quickstarts": [
     {
       "label": "iOS",
-      "docsUrl": "{{applications.templates.ios.docs}}"
+      "docsUrl": "{{applications.templates.ios.docs}}",
+      "promptUrl": "{{applications.templates.ios.llmPrompt.redirectBased}}"
     },
     {
       "label": "Android",
-      "docsUrl": "{{applications.templates.android.docs}}"
+      "docsUrl": "{{applications.templates.android.docs}}",
+      "promptUrl": "{{applications.templates.android.llmPrompt.redirectBased}}"
     },
     {
       "label": "Flutter",
-      "docsUrl": "{{applications.templates.flutter.docs}}"
+      "docsUrl": "{{applications.templates.flutter.docs}}",
+      "promptUrl": "{{applications.templates.flutter.llmPrompt.redirectBased}}"
     }
   ],
   "creationFlow": {

@@ -5,8 +5,19 @@
   "description": "Web application running in browser",
   "quickstarts": [
     {
+      "label": "React",
+      "docsUrl": "{{applications.templates.react.docs}}",
+      "promptUrl": "{{applications.templates.react.llmPrompt.redirectBased}}"
+    },
+    {
+      "label": "Vue",
+      "docsUrl": "{{applications.templates.vue.docs}}",
+      "promptUrl": "{{applications.templates.vue.llmPrompt.redirectBased}}"
+    },
+    {
       "label": "JavaScript",
-      "docsUrl": "{{applications.templates.browser.docs}}"
+      "docsUrl": "{{applications.templates.browser.docs}}",
+      "promptUrl": "{{applications.templates.browser.llmPrompt.redirectBased}}"
     }
   ],
   "playgrounds": [

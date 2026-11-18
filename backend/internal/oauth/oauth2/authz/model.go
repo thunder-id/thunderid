@@ -64,7 +64,8 @@ type AuthorizationCode struct {
 	// sid claim. Empty when the flow established no session; unlike TokenFamilyID it is never minted here.
 	SessionID string
 	// SessionData is the SSO sessions the caller posted with the callback, kept when the client requested
-	// the device_sso scope. The code exchange returns them in the device secret.
+	// the device_sso scope. The code exchange returns them in the device secret. Each one's ExpiresIn is as
+	// posted, so it counts from TimeCreated: the code is minted in the request that posted them.
 	SessionData []oauth2model.SessionData
 	// AuthorizationDetails holds the RFC 9396 authorization details the user approved.
 	AuthorizationDetails []providers.AuthorizationDetail `json:",omitempty"`

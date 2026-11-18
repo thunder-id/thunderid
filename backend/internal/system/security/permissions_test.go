@@ -438,6 +438,49 @@ func TestInitControlPlanePermissions_RebuildsActionMap(t *testing.T) {
 	assert.Equal(t, "system:ou:create", ResolveActionPermission(ActionCreateOU))
 }
 
+func TestResolveAPIPermission(t *testing.T) {
+	InitControlPlanePermissions("")
+	p := GetSystemPermissions()
+
+	permission, ok := ResolveAPIPermission("POST /export")
+	assert.True(t, ok)
+	assert.Equal(t, p.Root, permission)
+
+	permission, ok = ResolveAPIPermission("GET /applications")
+	assert.True(t, ok)
+	assert.Equal(t, p.AppView, permission)
+
+	permission, ok = ResolveAPIPermission("GET /applications/app-1")
+	assert.True(t, ok)
+	assert.Equal(t, p.AppView, permission)
+
+	// The rule listed first answers, as it does for a request.
+	permission, ok = ResolveAPIPermission("GET /gateways/*/variables/**")
+	assert.True(t, ok)
+	assert.Equal(t, p.Root, permission)
+
+	permission, ok = ResolveAPIPermission("GET /no-such-api")
+	assert.False(t, ok)
+	assert.Equal(t, p.Root, permission)
+}
+
+// TestResolveAPIPermissionMatchesRequests checks that each listed pattern resolves to the permission a
+// request to a concrete path under it requires.
+func TestResolveAPIPermissionMatchesRequests(t *testing.T) {
+	for _, init := range []func(string){InitControlPlanePermissions, InitDataPlanePermissions} {
+		init("")
+		svc, err := newSecurityService(nil, nil, nil, apiPermissionEntries)
+		assert.NoError(t, err)
+		for _, entry := range apiPermissionEntries {
+			resolved, ok := ResolveAPIPermission(entry.pattern)
+			assert.True(t, ok, entry.pattern)
+			method, path, _ := strings.Cut(strings.ReplaceAll(entry.pattern, "*", "id-1"), " ")
+			assert.Equal(t, svc.getRequiredPermissionForAPI(method, path), resolved, entry.pattern)
+		}
+	}
+	InitControlPlanePermissions("")
+}
+
 func TestHasSystemPermission_WithCustomHandle(t *testing.T) {
 	InitControlPlanePermissions("mgmt")
 	defer InitControlPlanePermissions("")
@@ -827,6 +870,14 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "POST agent client secret regeneration updates the agent",
 			method: http.MethodPost, path: "/agents/agent-1/client-secret/regenerate", wantPerm: p.AgentUpdate,
+		},
+		{
+			name:   "POST owner credential update of a personal agent needs only the owner's own token",
+			method: http.MethodPost, path: "/users/me/agents/agent-1/update-credentials", wantPerm: "",
+		},
+		{
+			name:   "POST agent credential update updates the agent",
+			method: http.MethodPost, path: "/agents/agent-1/update-credentials", wantPerm: p.AgentUpdate,
 		},
 		{
 			name:   "POST CIMD preview needs app create",
@@ -1316,8 +1367,9 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
 		"POST /users/me/update-credentials": true, "DELETE /users/me/agents/*": true,
 		"POST /users/me/agents/suspend": true, "POST /users/me/agents/*/suspend": true,
-		"POST /users/me/agents/*/unsuspend": true,
-		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"POST /users/me/agents/*/unsuspend":          true,
+		"POST /users/me/agents/*/update-credentials": true,
+		"GET /register/passkey/**":                   true, "POST /register/passkey/**": true,
 		"* /mcp/**":       true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
@@ -1331,6 +1383,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /secrets": true, "POST /secrets": true, "GET /secrets/**": true,
 		"PUT /secrets/**": true, "DELETE /secrets/**": true,
 		"POST /import": true, "POST /import/delete": true, "POST /import/managed": true,
+		"POST /export":     true,
 		"GET /users/*/ous": true,
 		// The administration flow permission is the root permission on the control plane.
 		"POST /flow/execute": true,

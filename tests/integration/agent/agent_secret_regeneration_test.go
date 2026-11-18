@@ -4,6 +4,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -199,4 +200,84 @@ func (ts *AgentOAuthFlowsTestSuite) TestRegenerateAgentSecret_AnswersThePrefligh
 	defer resp.Body.Close()
 
 	ts.Equal(http.StatusNoContent, resp.StatusCode)
+}
+
+// resetAgentPassword sets the agent's password as the admin.
+func (ts *AgentOAuthFlowsTestSuite) resetAgentPassword(agentID, password string) (int, string) {
+	ts.T().Helper()
+	body, err := json.Marshal(map[string]interface{}{"credentials": map[string]string{"password": password}})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost,
+		testutils.TestServerURL+"/agents/"+agentID+"/update-credentials", bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	return resp.StatusCode, string(responseBody)
+}
+
+// Replacing a held password revokes that agent's tokens and no one else's. A first password revokes nothing.
+func (ts *AgentOAuthFlowsTestSuite) TestResetAgentPassword_RevokesTheAgentsTokens() {
+	const (
+		clientID       = "pwd_reset_agent_client"
+		secret         = "pwd_reset_agent_secret" // #nosec G101 -- test fixture
+		otherID        = "pwd_reset_other_client"
+		otherSecret    = "pwd_reset_other_secret" // #nosec G101 -- test fixture
+		observerID     = "pwd_reset_observer_client"
+		observerSecret = "pwd_reset_observer_secret" // #nosec G101 -- test fixture
+	)
+	agentID, err := createAgent(Agent{
+		OUID:       ts.ouID,
+		Type:       "default",
+		Attributes: agentAttrs("pwd-reset-agent", nil),
+		AuthFlowID: ts.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{
+			Type: "oauth2",
+			Config: &OAuthAgentConfig{
+				ClientID:                clientID,
+				ClientSecret:            secret,
+				GrantTypes:              []string{"client_credentials"},
+				TokenEndpointAuthMethod: "client_secret_basic",
+			},
+		}},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+	otherAgentID := ts.ccAgent("pwd-reset-other-agent", otherID, otherSecret, "client_secret_basic")
+	defer func() { _ = deleteAgent(otherAgentID) }()
+	observerAppID, err := testutils.CreateApplication(testutils.Application{
+		Name:         "pwd_reset_observer",
+		Description:  "introspects the agents' tokens",
+		OUID:         ts.ouID,
+		AuthFlowID:   ts.authFlowID,
+		ClientID:     observerID,
+		ClientSecret: observerSecret,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(observerAppID) }()
+
+	status, token := ts.agentTokenStatus(clientID, secret)
+	ts.Require().Equal(http.StatusOK, status)
+	status, otherToken := ts.agentTokenStatus(otherID, otherSecret)
+	ts.Require().Equal(http.StatusOK, status)
+
+	// A first password revokes nothing.
+	status, body := ts.resetAgentPassword(agentID, "First@Pass1234")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	active, err := testutils.IntrospectToken(token, observerID, observerSecret)
+	ts.Require().NoError(err)
+	ts.True(active, "setting a first password revoked a token")
+
+	status, body = ts.resetAgentPassword(agentID, "Second@Pass5678")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+
+	active, err = testutils.IntrospectToken(token, observerID, observerSecret)
+	ts.Require().NoError(err)
+	ts.False(active, "replacing the password left the agent's token active")
+	active, err = testutils.IntrospectToken(otherToken, observerID, observerSecret)
+	ts.Require().NoError(err)
+	ts.True(active, "another agent's token was revoked")
 }

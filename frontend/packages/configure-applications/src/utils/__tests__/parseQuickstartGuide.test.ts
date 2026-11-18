@@ -88,7 +88,7 @@ development server.
 
 describe('parseQuickstartGuide', () => {
   it('returns the steps after the application is created, up to the closing links', () => {
-    expect(parseQuickstartGuide(guide)?.map((step) => step.title)).toEqual([
+    expect(parseQuickstartGuide(guide)?.steps.map((step) => step.title)).toEqual([
       'Install the SDK',
       'Add the Provider',
       'Run Your App',
@@ -96,7 +96,7 @@ describe('parseQuickstartGuide', () => {
   });
 
   it('merges labeled code samples into one code group', () => {
-    expect(parseQuickstartGuide(guide)?.[0].blocks).toEqual([
+    expect(parseQuickstartGuide(guide)?.steps[0].blocks).toEqual([
       {type: 'paragraph', text: 'Install the SDK in your project:'},
       {
         type: 'codeGroup',
@@ -109,7 +109,7 @@ describe('parseQuickstartGuide', () => {
   });
 
   it('parses alerts, titled code, headings, tables, and lists', () => {
-    expect(parseQuickstartGuide(guide)?.[1].blocks).toEqual([
+    expect(parseQuickstartGuide(guide)?.steps[1].blocks).toEqual([
       {
         type: 'alert',
         kind: 'warning',
@@ -147,7 +147,7 @@ describe('parseQuickstartGuide', () => {
   });
 
   it('joins wrapped paragraph lines and drops a component the export left as raw JSX', () => {
-    expect(parseQuickstartGuide(guide)?.[2].blocks).toEqual([
+    expect(parseQuickstartGuide(guide)?.steps[2].blocks).toEqual([
       {type: 'paragraph', text: 'Start the development server.'},
     ]);
   });
@@ -157,7 +157,7 @@ describe('parseQuickstartGuide', () => {
       ['## Create an Application', '', 'Create it.', '', '## Notes', '', '> A plain quote.', '', '> [!TIP]'].join('\n'),
     );
 
-    expect(steps?.[0].blocks).toEqual([
+    expect(steps?.steps[0].blocks).toEqual([
       {type: 'alert', kind: 'note', title: undefined, blocks: [{type: 'paragraph', text: 'A plain quote.'}]},
       {type: 'alert', kind: 'tip', title: undefined, blocks: []},
     ]);
@@ -166,7 +166,7 @@ describe('parseQuickstartGuide', () => {
   it('keeps a table row with no divider under it as text', () => {
     const steps = parseQuickstartGuide('## Create an Application\n\nCreate it.\n\n## Notes\n\n| not a table |');
 
-    expect(steps?.[0].blocks).toEqual([{type: 'paragraph', text: '| not a table |'}]);
+    expect(steps?.steps[0].blocks).toEqual([{type: 'paragraph', text: '| not a table |'}]);
   });
 
   it('returns null for a page without the application creation section', () => {
@@ -176,6 +176,212 @@ describe('parseQuickstartGuide', () => {
 
   it('returns null when nothing follows the application creation section', () => {
     expect(parseQuickstartGuide("## Create an Application\n\nCreate it.\n\n## What's Next\n\n- Done")).toBeNull();
+  });
+
+  it('takes the steps from a named section, by its third-level headings, when one is given', () => {
+    const page = [
+      '## Create the Server',
+      '',
+      'Build it.',
+      '',
+      '## Connect an MCP Client',
+      '',
+      'Two ways to connect.',
+      '',
+      '**MCP Inspector**',
+      '',
+      '### Register an MCP Client',
+      '',
+      'Add the application.',
+      '',
+      '```bash',
+      '### not a heading',
+      'npx inspector',
+      '```',
+      '',
+      '**Claude Code**',
+      '',
+      '### Connect Claude Code',
+      '',
+      'Run `/mcp`.',
+      '',
+      "## What's Next",
+      '',
+      '- Done',
+    ].join('\n');
+
+    const content = parseQuickstartGuide(page, 'connect-an-mcp-client');
+
+    expect(content?.steps.map((step) => step.title)).toEqual(['Register an MCP Client', 'Connect Claude Code']);
+    expect(content?.steps[0].blocks).toEqual([
+      {type: 'paragraph', text: 'Add the application.'},
+      {type: 'code', language: 'bash', title: undefined, code: '### not a heading\nnpx inspector'},
+    ]);
+    expect(content?.sample).toBeNull();
+    expect(parseQuickstartGuide(page, 'no-such-section')).toBeNull();
+  });
+
+  it('has no sample when the page has no sample section', () => {
+    expect(parseQuickstartGuide(guide)?.sample).toBeNull();
+  });
+
+  it('keeps the sample section apart from the steps, identified by its source in the samples repository', () => {
+    const content = parseQuickstartGuide(
+      [
+        '## Create an Application',
+        '',
+        'Create it.',
+        '',
+        '## Install',
+        '',
+        'Install it.',
+        '',
+        '## Run the Sample App',
+        '',
+        'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/react) runs instead.',
+        '',
+        '```dotenv title=".env"',
+        'CLIENT_ID=<your-client-id>',
+        '```',
+        '',
+        "## What's Next",
+        '',
+        '- Done',
+      ].join('\n'),
+    );
+
+    expect(content?.steps.map((step) => step.title)).toEqual(['Install']);
+    expect(content?.sample?.id).toBe('quickstarts/react');
+    expect(content?.sample?.blocks).toEqual([
+      {
+        type: 'paragraph',
+        text: 'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/react) runs instead.',
+      },
+      {type: 'code', language: 'dotenv', title: '.env', code: 'CLIENT_ID=<your-client-id>'},
+    ]);
+  });
+
+  it('has no sample when the sample section does not link its source', () => {
+    const content = parseQuickstartGuide(
+      [
+        '## Create an Application',
+        '',
+        'Create it.',
+        '',
+        '## Install',
+        '',
+        'Install it.',
+        '',
+        '## Run the Sample App',
+        '',
+        'Download it.',
+      ].join('\n'),
+    );
+
+    expect(content?.steps.map((step) => step.title)).toEqual(['Install']);
+    expect(content?.sample).toBeNull();
+  });
+});
+
+describe('parseQuickstartGuide for a page written for several choices', () => {
+  const agentGuide = `# LangChain Quickstart
+
+## Register an Agent
+
+Add the agent in the Console.
+
+## Create the Project
+
+<!-- variant lang=python -->
+
+\`\`\`bash
+pip install langchain
+\`\`\`
+
+<!-- /variant -->
+
+<!-- variant lang=typescript -->
+
+\`\`\`bash
+npm install langchain
+\`\`\`
+
+<!-- /variant -->
+
+## Build the Agent
+
+<!-- variant mode=own -->
+
+The tool gets an agent token.
+
+<!-- variant lang=python -->
+
+\`\`\`python title="agent_own.py"
+# <!-- variant mode=obo -->
+token = get_agent_token()
+\`\`\`
+
+<!-- /variant -->
+
+<!-- variant lang=typescript -->
+
+\`\`\`ts title="agent_own.ts"
+const token = await getAgentToken();
+\`\`\`
+
+<!-- /variant -->
+
+<!-- /variant -->
+
+<!-- variant mode=obo -->
+
+The tool signs the user in.
+
+<!-- /variant -->
+
+## What's Next
+
+- More guides
+`;
+
+  it('starts after the agent is registered', () => {
+    const steps = parseQuickstartGuide(agentGuide)?.steps;
+
+    expect(steps?.map((step) => step.title)).toEqual(['Create the Project', 'Build the Agent']);
+  });
+
+  it('keeps the content of the choices named and drops the rest, also where choices nest', () => {
+    const steps = parseQuickstartGuide(agentGuide, undefined, {mode: 'own', lang: 'python'})?.steps;
+
+    expect(steps?.[0].blocks).toEqual([
+      {type: 'code', language: 'bash', title: undefined, code: 'pip install langchain'},
+    ]);
+    expect(steps?.[1].blocks).toEqual([
+      {type: 'paragraph', text: 'The tool gets an agent token.'},
+      {
+        type: 'code',
+        language: 'python',
+        title: 'agent_own.py',
+        code: '# <!-- variant mode=obo -->\ntoken = get_agent_token()',
+      },
+    ]);
+  });
+
+  it('keeps every choice of a kind that is not named, without its markers', () => {
+    const steps = parseQuickstartGuide(agentGuide, undefined, {mode: 'obo'})?.steps;
+
+    expect(steps?.[0].blocks).toEqual([
+      {type: 'code', language: 'bash', title: undefined, code: 'pip install langchain'},
+      {type: 'code', language: 'bash', title: undefined, code: 'npm install langchain'},
+    ]);
+    expect(steps?.[1].blocks).toEqual([{type: 'paragraph', text: 'The tool signs the user in.'}]);
+  });
+
+  it('returns null when choices are named and the page marks none', () => {
+    const unmarked = '## Register an Agent\n\nAdd it.\n\n## Build the Agent\n\nBuild it.';
+
+    expect(parseQuickstartGuide(unmarked, undefined, {mode: 'own'})).toBeNull();
+    expect(parseQuickstartGuide(unmarked)?.steps).toHaveLength(1);
   });
 });
 

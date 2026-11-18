@@ -3,7 +3,11 @@
 
 package consent
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+)
 
 // PurposeElement represents an element reference within a consent purpose.
 type PurposeElement struct {
@@ -174,3 +178,15 @@ type ConsentAuthorizationRequest struct {
 	Type   ConsentAuthorizationType
 	Status ConsentAuthorizationStatus
 }
+
+// auditedChange is an audit event with the action it records, held together so a change cannot be
+// published under an event that names another.
+type auditedChange struct {
+	event  string
+	action audit.Action
+}
+
+var (
+	consentCreate = auditedChange{audit.EventConsentCreate, audit.ActionCreate}
+	consentUpdate = auditedChange{audit.EventConsentUpdate, audit.ActionUpdate}
+)

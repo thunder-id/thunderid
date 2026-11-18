@@ -57,7 +57,7 @@ Use the built-in onboarding flow, or a flow created from the **Agent Onboarding 
 
 1. In **Agents**, click **Add agent**.
 2. Select the organization unit when prompted. The owner defaults to your signed-in user; keep it or choose another user.
-3. In **Agent Details**, set the **Name** schema attribute to `Course Agent`. Select `gemini` as the model provider and enter `gemini-flash-lite-latest` as the model. If asked, leave **Act on behalf of a signed-in user** unchecked.
+3. In **Agent Details**, set the **Name** schema attribute to `Course Agent`. Select `gemini` as the model provider. If asked, leave **Act on behalf of a signed-in user** unchecked.
 4. Complete the flow. Copy the client ID and client secret for `.env`; the secret is shown only once.
 
 </Mode>
@@ -68,7 +68,7 @@ Use a flow created from the **Agent Onboarding Flow (On Behalf of a User)** or *
 The student signs in through the agent's login flow. For a quick tryout, use the **Default Authentication Flow**, which signs the student in without a consent screen. To ask for consent, use a flow that includes **User Consent** instead. See how to [build a sign-in flow](../../../guides/flows/build-a-flow) and [add consent to a flow](../../../guides/consent#configuring-consent-in-flows).
 
 1. In **Agents**, click **Add agent**. Select the organization unit and owner when prompted.
-2. In **Agent Details**, set the **Name** schema attribute to `Course Enrollment Agent`. Select `gemini` as the model provider and enter `gemini-flash-lite-latest` as the model.
+2. In **Agent Details**, set the **Name** schema attribute to `Course Enrollment Agent`. Select `gemini` as the model provider.
 3. If the flow asks for a mode, select **Act on behalf of a signed-in user**. Set **Authorized redirect URIs** to `http://localhost:6274/callback`. Select the **Default Authentication Flow** as the **Login flow** and the student's **User type**.
 4. Complete the flow. Copy the client ID and client secret for `.env`; the secret is shown only once.
 

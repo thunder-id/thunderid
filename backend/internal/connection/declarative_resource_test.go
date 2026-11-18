@@ -342,6 +342,41 @@ tokenExchangeEnabled: true
 	s.Equal("true", values[idp.PropTokenExchangeEnabled])
 }
 
+func (s *DeclarativeResourceTestSuite) TestTrustedIssuerIDJagEnabledRoundTripsThroughExport() {
+	dto := providers.IDPDTO{
+		ID: "trusted-1", Name: "IDJAG", Type: providers.IDPTypeOIDC, OUID: "ou-1",
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), idp.PropIssuer, "https://issuer.example.com", false),
+			mustProperty(s.T(), idp.PropJwksEndpoint, "https://issuer.example.com/oauth2/jwks", false),
+			mustProperty(s.T(), idp.PropTokenExchangeEnabled, "false", false),
+			mustProperty(s.T(), idp.PropIDJagEnabled, "true", false),
+		},
+	}
+	model, err := connectionModelFromIDPDTO(dto)
+	s.Require().NoError(err)
+	s.Require().NotNil(model.IDJagEnabled)
+	s.True(*model.IDJagEnabled)
+
+	doc, err := yaml.Marshal(model)
+	s.Require().NoError(err)
+	s.Contains(string(doc), "idJagEnabled: true")
+
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal(doc, &node))
+	resource, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	idpDTO, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
+	s.Require().NoError(idp.ValidateIDP(idpDTO))
+
+	values, err := propertyValues(idpDTO.Properties)
+	s.Require().NoError(err)
+	s.Equal("true", values[idp.PropIDJagEnabled])
+	s.Equal("false", values[idp.PropTokenExchangeEnabled])
+	s.Equal("https://issuer.example.com", values[idp.PropIssuer])
+	s.Equal("https://issuer.example.com/oauth2/jwks", values[idp.PropJwksEndpoint])
+}
+
 func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeSMSVendor() {
 	doc := `
 id: prod-sms

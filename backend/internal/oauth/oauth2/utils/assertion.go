@@ -20,6 +20,7 @@ import (
 // each path then reads its own additional claims from the same payload.
 type FlowAssertionClaims struct {
 	UserID           string
+	SubjectID        string
 	AttributeCacheID string
 	CompletedACR     string
 	AuthTime         time.Time
@@ -51,9 +52,10 @@ func DecodeFlowErrorAssertionClaims(assertion string) (FlowErrorAssertionClaims,
 }
 
 // DecodeFlowAssertionClaims decodes the common flow assertion claims from a JWT string.
-// It extracts sub (user ID), aci (attribute cache ID), completed_auth_class (completed ACR),
-// and iat (authentication time). The raw JWT payload is also returned so callers can extract
-// grant-type-specific claims (e.g. auth_req_id for CIBA, authorized_permissions for auth code).
+// It extracts sub (user ID), sub_id (entity ID), aci (attribute cache ID), completed_auth_class
+// (completed ACR), and iat (authentication time). The raw JWT payload is also returned so callers
+// can extract grant-type-specific claims (e.g. auth_req_id for CIBA, authorized_permissions for
+// auth code).
 func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[string]interface{}, error) {
 	claims := FlowAssertionClaims{}
 
@@ -87,6 +89,7 @@ func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[strin
 		}
 		claims.UserID = strValue
 	}
+	claims.SubjectID, _ = jwtPayload[oauth2const.ClaimSubjectID].(string)
 
 	if aciValue, ok := jwtPayload["aci"]; ok {
 		strValue, ok := aciValue.(string)

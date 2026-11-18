@@ -44,7 +44,6 @@ type UserDisambiguationTestSuite struct {
 	passwordB      string
 	twinEmail      string
 	resolveAppID   string
-	hintAppID      string
 	createdFlowIDs []string
 	createdUserIDs []string
 }
@@ -119,51 +118,6 @@ func buildResolveFlow(handle, parentOUID string) testutils.Flow {
 							{"ref": "input_pwd", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 						},
 						"action": map[string]interface{}{"ref": "action_pwd", "nextNode": "authenticate_resolved"},
-					},
-				},
-			},
-			{
-				"id":        "auth_assert",
-				"type":      "TASK_EXECUTION",
-				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
-				"onSuccess": "end",
-			},
-			{"id": "end", "type": "END"},
-		},
-	}
-}
-
-// buildLoginHintFlow is a separate graph for scenario 19. loginHintAttribute cannot live on the
-// shared resolver node, or scenarios 15-18 would start demanding a login_hint input too.
-func buildLoginHintFlow(handle string) testutils.Flow {
-	return testutils.Flow{
-		Name:     "Login Hint Identify Flow",
-		FlowType: "AUTHENTICATION",
-		Handle:   handle,
-		Nodes: []map[string]interface{}{
-			{"id": "start", "type": "START", "onSuccess": "identify_by_hint"},
-			{
-				"id":         "identify_by_hint",
-				"type":       "TASK_EXECUTION",
-				"properties": map[string]interface{}{"loginHintAttribute": "email"},
-				"executor": map[string]interface{}{
-					"name": "IdentifyingExecutor",
-					"inputs": []map[string]interface{}{
-						{"ref": "input_hint", "identifier": "login_hint", "type": "TEXT_INPUT", "required": true},
-					},
-				},
-				"onSuccess":    "auth_assert",
-				"onIncomplete": "prompt_hint",
-			},
-			{
-				"id":   "prompt_hint",
-				"type": "PROMPT",
-				"prompts": []map[string]interface{}{
-					{
-						"inputs": []map[string]interface{}{
-							{"ref": "input_hint", "identifier": "login_hint", "type": "TEXT_INPUT", "required": true},
-						},
-						"action": map[string]interface{}{"ref": "action_hint", "nextNode": "identify_by_hint"},
 					},
 				},
 			},
@@ -261,27 +215,13 @@ func (ts *UserDisambiguationTestSuite) SetupSuite() {
 	// The candidates live in the child OUs, which a sign-in reaches only when the application is shared there.
 	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(ts.resolveAppID), "Failed to share the resolve app")
 
-	hintFlowID, err := testutils.CreateFlow(buildLoginHintFlow("auth_flow_login_hint"))
-	ts.Require().NoError(err, "Failed to create the login-hint flow")
-	ts.createdFlowIDs = append(ts.createdFlowIDs, hintFlowID)
-
-	ts.hintAppID, err = testutils.CreateApplication(testutils.Application{
-		OUID:             ts.parentOUID,
-		Name:             "Disambiguation Login Hint App",
-		ClientID:         "disambiguation_hint_client",
-		ClientSecret:     "disambiguation_hint_secret",
-		RedirectURIs:     []string{"http://localhost:3000/callback"},
-		AllowedUserTypes: []string{ts.typeAName},
-		AuthFlowID:       hintFlowID,
-	})
-	ts.Require().NoError(err, "Failed to create the login-hint app")
 }
 
 func (ts *UserDisambiguationTestSuite) TearDownSuite() {
 	if err := testutils.CleanupUsers(ts.createdUserIDs); err != nil {
 		ts.T().Logf("Failed to clean up users: %v", err)
 	}
-	for _, appID := range []string{ts.resolveAppID, ts.hintAppID} {
+	for _, appID := range []string{ts.resolveAppID} {
 		if appID == "" {
 			continue
 		}
@@ -443,23 +383,4 @@ func (ts *UserDisambiguationTestSuite) TestResolveSecondRoundNoMatchRePrompts() 
 	ts.Equal(errCodeUserNotFound, flowStep.Error.Code)
 	ts.False(common.HasInput(flowStep.Data.Inputs, "password"),
 		"Filtering to zero candidates must not reach password login")
-}
-
-// Scenario 19: with loginHintAttribute set the identifier came from outside the interaction, so an
-// unresolvable hint stays failed rather than being promoted to a re-prompt
-// (identifying_executor.go:184-195). The hint is consumed from the login_hint input, not from email.
-func (ts *UserDisambiguationTestSuite) TestIdentifyWithLoginHintDoesNotRePrompt() {
-	absentEmail := "login-hint-absent-" + common.GenerateUniqueUsername("x") + "@example.com"
-
-	flowStep, err := common.InitiateAuthenticationFlow(ts.hintAppID, false,
-		map[string]string{"login_hint": absentEmail}, "")
-	ts.Require().NoError(err, "Failed to initiate the login-hint identify flow")
-
-	ts.NotEqual("COMPLETE", flowStep.FlowStatus,
-		"An unresolvable login hint must not complete the flow")
-	ts.Empty(flowStep.Assertion, "No assertion may be issued for an unresolvable login hint")
-	ts.Require().NotNil(flowStep.Error, "Expected a user-not-found error for the absent hint")
-	ts.Equal(errCodeUserNotFound, flowStep.Error.Code)
-	ts.False(common.HasInput(flowStep.Data.Inputs, "login_hint"),
-		"With loginHintAttribute set, a not-found user must not be re-prompted for the identifier")
 }

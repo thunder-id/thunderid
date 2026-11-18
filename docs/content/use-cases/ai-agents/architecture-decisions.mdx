@@ -90,7 +90,7 @@ See [Nothing Limits What the Agent May Do](../solve-access).
 
 Agents become part of the production path, so plan how you will change, watch, and contain them.
 
-The decision that surprises teams is **token lifetime**. An agent can revoke tokens issued to it, but an administrator cannot revoke an agent's outstanding tokens on its behalf. Containment therefore means deleting the agent so it obtains no new tokens, then waiting for the issued ones to expire. That is the reason short lifetimes are the recommended posture for agents: the lifetime you choose is the longest a compromised agent keeps working. Shorter costs more traffic to the token endpoint, and buys a smaller window.
+The decision that surprises teams is **token lifetime**. With token revocation on (`oauth.token_revocation.enabled`, the default), suspending or deleting an agent, or replacing its secret, revokes its outstanding tokens at <ProductName /> (see [Token Revocation](../../../guides/protocols/oauth-oidc/token-revocation)), but a resource server that validates a token locally, without introspection or the revocation list, accepts it until it expires. That is the reason short lifetimes are the recommended posture for agents: the lifetime you choose is the longest a compromised agent keeps working at such a resource server. Shorter costs more traffic to the token endpoint, and buys a smaller window.
 
 Alongside it:
 

@@ -1,12 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+const DISALLOWED_PROTOCOLS = ['javascript:', 'data:', 'vbscript:'];
+
 /**
  * Checks that a redirect URI is well formed, tolerating host wildcards. Wildcards in the host are
  * replaced with a placeholder so `new URL()` can parse it; path wildcards (e.g. `/callback/*`) parse
  * natively. The backend enforces the actual wildcard rules (allowed patterns, server config).
  *
- * Empty or whitespace-only input is rejected. Used by both the redirect and post-logout redirect
+ * Empty or whitespace-only input is rejected, as are schemes that run or embed content in the
+ * browser (`javascript:`, `data:`, `vbscript:`), which can never be a legitimate redirect target. Used by both the redirect and post-logout redirect
  * URI fields and the page-level save validation, so a valid wildcard URI never disables Save.
  *
  * @param uri - The redirect URI to check
@@ -28,9 +31,7 @@ export default function isValidRedirectUriFormat(uri: string): boolean {
         uriForValidation = uri.slice(0, schemeEnd + 3) + sanitizedHost + (pathStart !== -1 ? uri.slice(pathStart) : '');
       }
     }
-    // eslint-disable-next-line no-new
-    new URL(uriForValidation);
-    return true;
+    return !DISALLOWED_PROTOCOLS.includes(new URL(uriForValidation).protocol);
   } catch {
     return false;
   }

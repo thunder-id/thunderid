@@ -167,8 +167,8 @@ Watch three things. `sub` is the agent. `aud` is the booking API rather than the
 id, because the request carries a `resource` (RFC 8707). And `scope` is `booking:read
 booking:recommend` and nothing more, because that is exactly what the Concierge's own `Recommender`
 role grants. It can recommend a flight; it cannot book one. The remaining highlighted rows are its
-identity claims (`name`, `owner`, `ou*`) and capability attributes (`model`, `modelProvider`,
-`function`), opted in through `token.accessToken.clientConfig.attributes`.
+identity claims (`name`, `owner`, `ou*`) and its `modelProvider` attribute, opted in through
+`token.accessToken.clientConfig.attributes`.
 
 ### Acts for a customer
 

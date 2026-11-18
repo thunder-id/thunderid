@@ -78,3 +78,20 @@ describe('PipelineVersions', () => {
     );
   });
 });
+
+describe('PipelineVersions after a deploy that left changes out', () => {
+  it('offers the version the first gateway runs in part again, to bring the rest', () => {
+    render(
+      <PipelineVersions
+        versions={versions}
+        runners={{}}
+        firstRuns="hash-7"
+        firstHoldsAll={false}
+        firstName="Dev"
+        onDeploy={vi.fn()}
+      />,
+    );
+
+    expect(within(screen.getByTestId('pipeline-version-hash-7')).getByRole('button', {name: 'Deploy'})).toBeEnabled();
+  });
+});

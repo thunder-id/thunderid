@@ -23,7 +23,7 @@ type Config struct {
 	Enabled        bool    `json:"enabled"`
 	ExporterType   string  `json:"exporter_type"`   // "otlp", "stdout"
 	OTLPEndpoint   string  `json:"otlp_endpoint"`   // e.g., "localhost:4317"
-	ServiceName    string  `json:"service_name"`    // e.g., "thunderid-iam"
+	ServiceName    string  `json:"service_name"`    // e.g., "acme-iam"
 	ServiceVersion string  `json:"service_version"` // e.g., "1.0.0"
 	Environment    string  `json:"environment"`     // e.g., "production", "development"
 	SampleRate     float64 `json:"sample_rate"`     // 0.0 to 1.0 (1.0 = sample all traces)
@@ -39,9 +39,6 @@ func newTracerProvider(ctx context.Context, cfg Config) (*sdktrace.TracerProvide
 	}
 
 	// Set defaults
-	if cfg.ServiceName == "" {
-		cfg.ServiceName = "thunderid-iam"
-	}
 	if cfg.ServiceVersion == "" {
 		cfg.ServiceVersion = "1.0.0"
 	}

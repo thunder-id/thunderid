@@ -4,6 +4,7 @@
 import {
   AccessStatusBanner,
   AccountStatusAction,
+  type CredentialResetField,
   DocumentTitle,
   PageLoadingAnimation,
   QueryErrorNotice,
@@ -44,11 +45,12 @@ import useGetUserType from '../api/useGetUserType';
 import useGetUserTypes from '../api/useGetUserTypes';
 import useUpdateUser from '../api/useUpdateUser';
 import AttributesSummarySection from '../components/edit-user/AttributesSummarySection';
-import CredentialsTabPanel, {type CredentialFieldInfo} from '../components/edit-user/CredentialsTabPanel';
+import CredentialsTabPanel from '../components/edit-user/CredentialsTabPanel';
 import EditUserAttributes from '../components/edit-user/EditUserAttributes';
 import EditOrganizationAccessSettings from '../components/edit-user/organization-access/EditOrganizationAccessSettings';
 import OwnedAgentsSection from '../components/edit-user/OwnedAgentsSection';
 import QuickCopySection from '../components/edit-user/QuickCopySection';
+import UserRolesSection from '../components/edit-user/UserRolesSection';
 import UserDeleteDialog from '../components/UserDeleteDialog';
 import UserConstants from '../constants/user-constants';
 import UserQueryKeys from '../constants/user-query-keys';
@@ -136,7 +138,7 @@ export default function UserEditPage() {
     refetch: refetchUserType,
   } = useGetUserType(schemaId);
 
-  const credentialFields: CredentialFieldInfo[] = useMemo(() => {
+  const credentialFields: CredentialResetField[] = useMemo(() => {
     if (!userTypeDetails?.schema) return [];
     return Object.entries(userTypeDetails.schema)
       .filter(([, fieldDef]) => (fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential)
@@ -458,6 +460,12 @@ export default function UserEditPage() {
       render: () => <CredentialsTabPanel userId={userId!} credentialFields={credentialFields} />,
     });
   }
+
+  tabs.push({
+    key: 'roles',
+    label: t('users:manageUser.tabs.roles', 'Roles'),
+    render: () => <UserRolesSection userId={user.id} />,
+  });
 
   tabs.push({
     key: 'agents',

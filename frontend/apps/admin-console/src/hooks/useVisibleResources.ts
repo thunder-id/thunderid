@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useCapabilities} from '@thunderid/hooks';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {MANAGED_RESOURCES, type ManagedResource} from '../configs/RouteConfig';
 
 /**
@@ -40,7 +40,7 @@ export interface VisibleResources {
  * Decides which pages the signed-in admin sees, from the server's capabilities endpoint.
  */
 export default function useVisibleResources(): VisibleResources {
-  const {can, isLoading} = useCapabilities();
+  const {can, isLoading} = useCapabilitiesContext();
 
   return {
     canRunLifecycle: can(LIFECYCLE_RESOURCE),

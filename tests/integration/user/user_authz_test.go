@@ -332,7 +332,7 @@ func (ts *UserAuthzTestSuite) TestCapabilitiesReportTheManagerPermissions() {
 	ts.Equal(map[string]bool{"view": true, "create": false, "update": false, "delete": false},
 		body.Resources["usertype"])
 	ts.False(body.Resources["app"]["view"])
-	ts.False(body.Root.Manage)
+	ts.False(body.Resources["export"]["create"])
 }
 
 // ---------------------------------------------------------------------------

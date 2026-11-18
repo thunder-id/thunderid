@@ -248,6 +248,7 @@ export default function IframeContent({
                         onInputChange={noopInputChange}
                         onSubmit={onSubmit ?? noopSubmit}
                         additionalData={additionalData}
+                        isAutoFocusDisabled
                       />
                     );
 

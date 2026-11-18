@@ -554,6 +554,8 @@ type fakeEntityTypeService struct {
 	byID             map[string]*entitytype.EntityType
 	byHandle         map[string]*entitytype.EntityType
 	getErr           *tidcommon.ServiceError
+	// handleErr, when set, is what GetEntityTypeByHandle fails with.
+	handleErr *tidcommon.ServiceError
 }
 
 func (f *fakeEntityTypeService) CreateEntityType(
@@ -605,6 +607,9 @@ func (f *fakeEntityTypeService) GetEntityType(
 func (f *fakeEntityTypeService) GetEntityTypeByHandle(
 	_ context.Context, _ entitytype.TypeCategory, handle string,
 ) (*entitytype.EntityType, *tidcommon.ServiceError) {
+	if f.handleErr != nil {
+		return nil, f.handleErr
+	}
 	if existing, ok := f.byHandle[handle]; ok {
 		return existing, nil
 	}
@@ -3639,11 +3644,16 @@ type fakeAgentService struct {
 	// deleted records each agent deleted, and deleteErr refuses every delete.
 	deleted   []string
 	deleteErr *tidcommon.ServiceError
+	// createErr, when set, is what CreateAgent refuses with.
+	createErr *tidcommon.ServiceError
 }
 
 func (f *fakeAgentService) CreateAgent(
 	_ context.Context, req *providers.Agent,
 ) (*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError) {
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
 	id := testAgentAttributeName(req.Attributes) + "-id"
 	f.created = append(f.created, req)
 	if f.existing == nil {
@@ -3726,6 +3736,53 @@ func TestImportAgent_Create(t *testing.T) {
 	assert.Equal(t, testAgentLogo, agentSvc.created[0].LogoURL)
 }
 
+// An update whose credential has no value keeps the stored one, as for a user. A credential with a value is set.
+func TestImportAgent_UpdateKeepsACredentialCarryingNoValue(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{"agent-1": {ID: "agent-1"}}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil,
+		discardingBus{})
+	agentWith := func(id, password string) string {
+		return "resource_type: agent\nid: " + id + "\ntype: default\nouId: root\nattributes:\n  name: " + id +
+			"\ncredentials:\n  password: \"" + password + "\"\n"
+	}
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: agentWith("agent-1", "")})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Empty(t, agentSvc.credentials, "an empty credential was written over the stored one")
+
+	resp, svcErr = svc.ImportResources(context.Background(), &ImportRequest{Content: agentWith("agent-1", "n3w")})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.JSONEq(t, `{"password":"n3w"}`, string(agentSvc.credentials["agent-1"]))
+}
+
+// A personal agent's credentials are its owner's to set, so an import that carries one is refused before the
+// profile is written.
+func TestImportAgent_UpdateRefusesAPersonalAgentsCredentialsBeforeWriting(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
+		"agent-1": {ID: "agent-1", Kind: providers.AgentKindPersonalAssistant}}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil,
+		discardingBus{})
+	content := "resource_type: agent\nid: agent-1\ntype: default\nouId: root\nattributes:\n  name: agent-1\n" +
+		"credentials:\n  password: \"n3w\"\n"
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, agent.ErrorPersonalAgentCredentialsNotUpdatable.Code, resp.Results[0].Code)
+	assert.Empty(t, agentSvc.updated, "the profile was written before the credential was refused")
+	assert.Empty(t, agentSvc.credentials)
+}
+
 // TestImportAgent_StateIgnored verifies that a state in an agent document does not fail the import
 // and is reported as ignored.
 func TestImportAgent_StateIgnored(t *testing.T) {
@@ -3773,8 +3830,11 @@ func TestImportAgent_CreateCarriesTheCredentialsItsTypeDeclares(t *testing.T) {
 
 func TestImportAgent_CreateCarriesKind(t *testing.T) {
 	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
+		"default": {Handle: "default", Schema: json.RawMessage(`{"name":{"type":"string"}}`)},
+	}}
 	svc := newImportService(
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, typeSvc, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil,
 		discardingBus{})
 
 	content := agentYAML + "owner:\n  id: user-1\nkind: " + string(providers.AgentKindPersonalAssistant) + "\n"
@@ -7680,6 +7740,215 @@ func TestImportAgent_CreateSetsTheCredentials(t *testing.T) {
 	assert.NotContains(t, string(agentSvc.created[0].Attributes), "s3cret",
 		"a credential is never written as an attribute")
 	assert.JSONEq(t, `{"password":"s3cret"}`, string(agentSvc.credentials["Test Agent-id"]))
+}
+
+// A personal agent's credentials are its owner's to set, so an import that creates one with a credential is refused
+// before the agent is created.
+func TestImportAgent_CreateRefusesAPersonalAgentsCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	content := agentWithPasswordYAML + "owner:\n  id: user-1\nkind: " +
+		string(providers.AgentKindPersonalAssistant) + "\n"
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, agent.ErrorPersonalAgentCredentialsNotUpdatable.Code, resp.Results[0].Code)
+	assert.Empty(t, agentSvc.created, "the agent was created before its credentials were refused")
+	assert.Empty(t, agentSvc.credentials)
+}
+
+// A personal agent's password can also arrive as an attribute its type declares as a credential. That is refused
+// before the agent is created too.
+func TestImportAgent_CreateRefusesAPersonalAgentsCredentialAttribute(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
+		"default": {Handle: "default", Schema: json.RawMessage(
+			`{"name":{"type":"string"},"password":{"type":"string","credential":true}}`)},
+	}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, typeSvc, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil,
+		discardingBus{})
+	content := "resource_type: agent\nid: agent-1\ntype: default\nouId: root\n" +
+		"attributes:\n  name: Test Agent\n  password: s3cret\nowner:\n  id: user-1\nkind: " +
+		string(providers.AgentKindPersonalAssistant) + "\n"
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, agent.ErrorPersonalAgentCredentialsNotUpdatable.Code, resp.Results[0].Code)
+	assert.Empty(t, agentSvc.created, "the agent was created with its password")
+}
+
+// When reading the agent type fails, the importer cannot tell whether a personal agent's attributes hold a
+// credential, so it refuses the document instead of creating the agent.
+func TestImportAgent_CreateRefusesAPersonalAgentWhenItsTypeCannotBeRead(t *testing.T) {
+	cases := map[string]*fakeEntityTypeService{
+		"schema unusable": {byHandle: map[string]*entitytype.EntityType{
+			"default": {Handle: "default", Schema: json.RawMessage(`[`)}}},
+		"lookup fails":    {handleErr: &tidcommon.InternalServerError},
+		"no type service": nil,
+	}
+	for name, typeSvc := range cases {
+		t.Run(name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+			var types entityTypeAdapter
+			if typeSvc != nil {
+				types = typeSvc
+			}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, types, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc,
+				nil, nil, nil, nil, nil, discardingBus{})
+			content := agentYAML + "owner:\n  id: user-1\nkind: " +
+				string(providers.AgentKindPersonalAssistant) + "\n"
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusFailed, resp.Results[0].Status)
+			assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+			assert.Empty(t, agentSvc.created, "the agent was created though its credentials could not be checked")
+		})
+	}
+}
+
+// A type that does not exist, or is not named, declares no credential, so the check lets the document through and
+// the create refuses it with its own error rather than the check's internal one.
+func TestImportAgent_CreateLeavesAMissingTypeToTheCreate(t *testing.T) {
+	cases := map[string]struct {
+		content   string
+		createErr *tidcommon.ServiceError
+	}{
+		"type does not exist": {
+			content:   agentYAML,
+			createErr: &agent.ErrorAgentTypeNotFound,
+		},
+		"type not named": {
+			content:   strings.Replace(agentYAML, "type: default\n", "", 1),
+			createErr: &agent.ErrorInvalidAgentType,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{
+				existing:  map[string]*agentmodel.AgentGetResponse{},
+				createErr: tc.createErr,
+			}
+			typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{}}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, typeSvc, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc,
+				nil, nil, nil, nil, nil, discardingBus{})
+			content := tc.content + "owner:\n  id: user-1\nkind: " +
+				string(providers.AgentKindPersonalAssistant) + "\n"
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusFailed, resp.Results[0].Status)
+			assert.Equal(t, tc.createErr.Code, resp.Results[0].Code)
+		})
+	}
+}
+
+// A dry run refuses a personal agent's credentials the way the import does, rather than reporting a success the
+// import would not give.
+func TestImportAgent_DryRunRefusesAPersonalAgentsCredentials(t *testing.T) {
+	personal := "owner:\n  id: user-1\nkind: " + string(providers.AgentKindPersonalAssistant) + "\n"
+	declaring := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
+		"default": {Handle: "default", Schema: json.RawMessage(
+			`{"name":{"type":"string"},"password":{"type":"string","credential":true}}`)},
+	}}
+	cases := map[string]struct {
+		content   string
+		existing  map[string]*agentmodel.AgentGetResponse
+		operation string
+	}{
+		"create with credentials": {
+			content:   agentWithPasswordYAML + personal,
+			existing:  map[string]*agentmodel.AgentGetResponse{},
+			operation: operationCreate,
+		},
+		"create with a credential attribute": {
+			content: strings.Replace(agentYAML, "name: Test Agent\n", "name: Test Agent\n  password: s3cret\n", 1) +
+				personal,
+			existing:  map[string]*agentmodel.AgentGetResponse{},
+			operation: operationCreate,
+		},
+		"update with credentials": {
+			content: agentWithPasswordYAML,
+			existing: map[string]*agentmodel.AgentGetResponse{
+				"agent-1": {ID: "agent-1", Kind: providers.AgentKindPersonalAssistant}},
+			operation: operationUpdate,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{existing: tc.existing}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, declaring, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc,
+				nil, nil, nil, nil, nil, discardingBus{})
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: tc.content,
+				DryRun:  true,
+				Options: &ImportOptions{Upsert: boolPtr(true)},
+			})
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusFailed, resp.Results[0].Status)
+			assert.Equal(t, agent.ErrorPersonalAgentCredentialsNotUpdatable.Code, resp.Results[0].Code)
+			assert.Equal(t, tc.operation, resp.Results[0].Operation)
+			assert.Empty(t, agentSvc.created)
+			assert.Empty(t, agentSvc.updated)
+		})
+	}
+}
+
+// A dry run of a personal agent that carries no credential still succeeds, for a new agent and an existing one.
+func TestImportAgent_DryRunAcceptsAPersonalAgentWithoutCredentials(t *testing.T) {
+	personal := "owner:\n  id: user-1\nkind: " + string(providers.AgentKindPersonalAssistant) + "\n"
+	typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
+		"default": {Handle: "default", Schema: json.RawMessage(`{"name":{"type":"string"}}`)},
+	}}
+	cases := map[string]struct {
+		existing  map[string]*agentmodel.AgentGetResponse
+		operation string
+	}{
+		"create": {existing: map[string]*agentmodel.AgentGetResponse{}, operation: operationCreate},
+		"update": {
+			existing: map[string]*agentmodel.AgentGetResponse{
+				"agent-1": {ID: "agent-1", Kind: providers.AgentKindPersonalAssistant}},
+			operation: operationUpdate,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{existing: tc.existing}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, typeSvc, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc,
+				nil, nil, nil, nil, nil, discardingBus{})
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: agentYAML + personal,
+				DryRun:  true,
+				Options: &ImportOptions{Upsert: boolPtr(true)},
+			})
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+			assert.Equal(t, tc.operation, resp.Results[0].Operation)
+		})
+	}
 }
 
 // A new agent whose credentials are refused is deleted again, so a retry does not meet half of it.

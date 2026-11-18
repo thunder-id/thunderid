@@ -2034,26 +2034,7 @@ func (s *flowMgtService) GetVariables(
 		security.ResourceTypeFlow, flow.OUID, ouID); svcErr != nil {
 		return nil, svcErr
 	}
-	held, svcErr := s.sharingSvc.ResolveOverlayValues(ctx, FlowSharingType, flowID, ouID)
-	if svcErr != nil {
-		return nil, translateSharingError(svcErr)
-	}
-
-	values := map[string]interface{}{}
-	for _, def := range declaredVariables(flow) {
-		v, ok := held.Values[sharingKey(def.Identifier)]
-		if !ok || v.Source != sharing.SourceOverlay || len(v.Value) != 1 {
-			continue
-		}
-		value, err := jsonValue(def, v.Value[0])
-		if err != nil {
-			s.logger.Error(ctx, "A variable value of an organization unit is not readable",
-				log.String(logKeyFlowID, flowID), log.String("variable", def.Identifier), log.Error(err))
-			return nil, &tidcommon.InternalServerError
-		}
-		values[def.Identifier] = value
-	}
-	return &VariablesResponse{Values: values}, nil
+	return s.readVariables(ctx, flow, ouID)
 }
 
 // SetVariables sets the values an organization unit holds for the variables of a flow, replacing what it held: a
@@ -2063,41 +2044,15 @@ func (s *flowMgtService) GetVariables(
 func (s *flowMgtService) SetVariables(
 	ctx context.Context, flowID, ouID string, req SetVariablesRequest,
 ) (*VariablesResponse, *tidcommon.ServiceError) {
-	flow, svcErr := s.requireVisibleFlow(ctx, flowID, ouID)
+	flow, svcErr := s.setVariables(ctx, flowID, ouID, req)
+	// The flow is the target: neither the names nor the values of its variables are recorded, since a
+	// value may be a credential. Published from the write, so a read-back refusal or failure cannot misdescribe a
+	// stored change.
+	s.publishFlowEvent(ctx, audit.EventFlowVariablesUpdate, audit.ActionUpdate, flowID, svcErr)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	// The values are the organization unit's own, so it is the one the caller must be allowed to act for.
-	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, ouID); svcErr != nil {
-		return nil, svcErr
-	}
-	defs := variablesByID(declaredVariables(flow))
-
-	raws, svcErr := s.checkValues(ctx, flowID, ouID, defs, req.Values)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-
-	// The values are replaced together, in one transaction of the sharing store, which is where they live whichever
-	// store holds the flow: a write that fails leaves the unit with what it held before.
-	declared := declaredVariables(flow)
-	keys := make([]string, 0, len(declared))
-	values := make(map[string][]string, len(raws))
-	for _, def := range declared {
-		key := sharingKey(def.Identifier)
-		keys = append(keys, key)
-		if raw, set := raws[def.Identifier]; set {
-			values[key] = []string{raw}
-		}
-	}
-	replaceErr := s.sharingSvc.ReplaceOverlayValues(ctx, FlowSharingType, flowID, ouID, keys, values)
-	if replaceErr != nil {
-		if identifier, isVariable := strings.CutPrefix(replaceErr.FieldKey, sharingFieldKey+"."); isVariable {
-			return nil, translateValueError(identifier, replaceErr.Err)
-		}
-		return nil, translateSharingError(replaceErr.Err)
-	}
-	return s.GetVariables(ctx, flowID, ouID)
+	return s.readVariables(ctx, flow, ouID)
 }
 
 // checkValues validates every value of a request, and returns the raw form of each.
@@ -2271,6 +2226,75 @@ func invalidValue(variable, reason string) *tidcommon.ServiceError {
 	})
 }
 
+// setVariables stores the values an organization unit holds for the variables of a flow, and returns the flow,
+// without publishing its audit event.
+func (s *flowMgtService) setVariables(
+	ctx context.Context, flowID, ouID string, req SetVariablesRequest,
+) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	flow, svcErr := s.requireVisibleFlow(ctx, flowID, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// The values are the organization unit's own, so it is the one the caller must be allowed to act for.
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, ouID); svcErr != nil {
+		return nil, svcErr
+	}
+	defs := variablesByID(declaredVariables(flow))
+
+	raws, svcErr := s.checkValues(ctx, flowID, ouID, defs, req.Values)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// The values are replaced together, in one transaction of the sharing store, which is where they live whichever
+	// store holds the flow: a write that fails leaves the unit with what it held before.
+	declared := declaredVariables(flow)
+	keys := make([]string, 0, len(declared))
+	values := make(map[string][]string, len(raws))
+	for _, def := range declared {
+		key := sharingKey(def.Identifier)
+		keys = append(keys, key)
+		if raw, set := raws[def.Identifier]; set {
+			values[key] = []string{raw}
+		}
+	}
+	replaceErr := s.sharingSvc.ReplaceOverlayValues(ctx, FlowSharingType, flowID, ouID, keys, values)
+	if replaceErr != nil {
+		if identifier, isVariable := strings.CutPrefix(replaceErr.FieldKey, sharingFieldKey+"."); isVariable {
+			return nil, translateValueError(identifier, replaceErr.Err)
+		}
+		return nil, translateSharingError(replaceErr.Err)
+	}
+	return flow, nil
+}
+
+// readVariables returns the values an organization unit has set for the variables of flow, without checking that
+// the caller may view them.
+func (s *flowMgtService) readVariables(
+	ctx context.Context, flow *providers.CompleteFlowDefinition, ouID string,
+) (*VariablesResponse, *tidcommon.ServiceError) {
+	held, svcErr := s.sharingSvc.ResolveOverlayValues(ctx, FlowSharingType, flow.ID, ouID)
+	if svcErr != nil {
+		return nil, translateSharingError(svcErr)
+	}
+
+	values := map[string]interface{}{}
+	for _, def := range declaredVariables(flow) {
+		v, ok := held.Values[sharingKey(def.Identifier)]
+		if !ok || v.Source != sharing.SourceOverlay || len(v.Value) != 1 {
+			continue
+		}
+		value, err := jsonValue(def, v.Value[0])
+		if err != nil {
+			s.logger.Error(ctx, "A variable value of an organization unit is not readable",
+				log.String(logKeyFlowID, flow.ID), log.String("variable", def.Identifier), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		values[def.Identifier] = value
+	}
+	return &VariablesResponse{Values: values}, nil
+}
+
 // ---------------------------------------------------------------------------
 // Sharing
 // ---------------------------------------------------------------------------
@@ -2296,6 +2320,20 @@ func (s *flowMgtService) requireOwnPolicy(
 // CreateSharingPolicy records which organization units a flow is shared with, and on what terms. A policy is the
 // initiating organization unit's decision, so that unit is the one the caller must be allowed to act for.
 func (s *flowMgtService) CreateSharingPolicy(
+	ctx context.Context, flowID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := s.createSharingPolicy(ctx, flowID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	s.publishSharingPolicyEvent(ctx, audit.EventFlowSharingPolicyCreate, audit.ActionCreate, flowID, policyID,
+		svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of a flow without publishing its audit event.
+func (s *flowMgtService) createSharingPolicy(
 	ctx context.Context, flowID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
 	flow, svcErr := s.getFlow(ctx, flowID)
@@ -2355,6 +2393,16 @@ func (s *flowMgtService) ListSharingPolicies(
 func (s *flowMgtService) UpdateSharingPolicy(
 	ctx context.Context, flowID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateSharingPolicy(ctx, flowID, policyID, req)
+	s.publishSharingPolicyEvent(ctx, audit.EventFlowSharingPolicyUpdate, audit.ActionUpdate, flowID, policyID,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of a flow without publishing its audit event.
+func (s *flowMgtService) updateSharingPolicy(
+	ctx context.Context, flowID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	flow, policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -2376,10 +2424,23 @@ func (s *flowMgtService) UpdateSharingPolicy(
 
 // DeleteSharingPolicy removes a sharing policy and what depended on it. Deleting one that is gone succeeds.
 func (s *flowMgtService) DeleteSharingPolicy(ctx context.Context, flowID, policyID string) *tidcommon.ServiceError {
+	svcErr := s.deleteSharingPolicy(ctx, flowID, policyID)
+	// A delete that found no policy of the flow succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	s.publishSharingPolicyEvent(ctx, audit.EventFlowSharingPolicyDelete, audit.ActionDelete, flowID, policyID,
+		svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of a flow without publishing its audit event.
+func (s *flowMgtService) deleteSharingPolicy(ctx context.Context, flowID, policyID string) *tidcommon.ServiceError {
 	_, policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
 		return svcErr
 	}
@@ -2393,6 +2454,20 @@ func (s *flowMgtService) DeleteSharingPolicy(ctx context.Context, flowID, policy
 		return &ErrorSharingPolicyDeclared
 	}
 	return translateSharingError(s.sharingSvc.DeletePolicy(ctx, policyID))
+}
+
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the flow with flowID, after the change committed or was refused. The policy is the target and the
+// flow the subject, which a succeeded or denied attempt names: a sharing call is refused only once the
+// flow is found. Reshares the framework re-narrows or removes beneath a changed policy write no event of
+// their own, and nor do the terms a policy states.
+func (s *flowMgtService) publishSharingPolicyEvent(ctx context.Context, name string, action audit.Action,
+	flowID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller sent, as evidence of what was probed.
+	target := audit.Ref{Type: audit.TargetTypeFlowSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeFlow, ID: flowID}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }
 
 // ValidateSharingPolicies checks the terms policies state for the variables of a flow, without recording them. It is

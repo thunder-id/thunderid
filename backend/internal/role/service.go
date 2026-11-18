@@ -958,6 +958,7 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 	}
 
 	var capturedSvcErr, refusal *tidcommon.ServiceError
+	var removed []RoleAssignment
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if refusal = rs.requireRoleNotMandated(txCtx, id); refusal != nil {
 			return errors.New("rollback for a mandated role")
@@ -972,7 +973,8 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		// Delete all assignments for the role before deleting the role itself (cascade delete).
 		// The ROLE_ASSIGNMENT table does not have a FK constraint on ROLE_ID to allow assignments
 		// for roles that live in the file-based store, so cascade delete is handled here in code.
-		if err := rs.roleStore.DeleteAssignmentsByRoleID(txCtx, id); err != nil {
+		var err error
+		if removed, err = rs.roleStore.DeleteAssignmentsByRoleID(txCtx, id); err != nil {
 			return err
 		}
 		return rs.roleStore.DeleteRole(txCtx, id)
@@ -987,13 +989,43 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		logger.Error(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
-	// A token issued to an assignee while the role was being removed is revoked too.
-	if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+	// A token issued to an assignee while the role was being removed is revoked too, and so is one issued
+	// to a holder assigned after the pre flow planned the revocation.
+	postInputs, svcErr := rs.withRemovedHolders(ctx, inputs, removed)
+	if svcErr != nil {
+		// The role is gone, so a retry would revoke nothing: the post flow still runs for the holders the
+		// pre flow planned, and the expansion failure is reported.
+		if _, flowErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, inputs,
+			shared); flowErr != nil {
+			logger.Error(ctx, "Failed to run the post flow after the removed holders could not be expanded",
+				log.String("id", id), log.Any("error", flowErr))
+		}
+		return svcErr
+	}
+	if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, postInputs, shared); svcErr != nil {
 		return svcErr
 	}
 
 	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))
 	return nil
+}
+
+// withRemovedHolders adds to the post flow inputs the entities holding the removed assignments, with
+// groups expanded as the pre flow expands them, so the post flow revokes any it did not plan for.
+func (rs *roleService) withRemovedHolders(ctx context.Context, inputs map[string]string,
+	removed []RoleAssignment) (map[string]string, *tidcommon.ServiceError) {
+	if rs.systemFlows == nil || len(removed) == 0 {
+		return inputs, nil
+	}
+	entityIDs, svcErr := rs.appendHolders(ctx, removed, []string{}, map[string]struct{}{})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// A list of strings always encodes.
+	encoded, _ := json.Marshal(entityIDs)
+	withHolders := maps.Clone(inputs)
+	withHolders[systemFlowInputRemovedHolders] = string(encoded)
+	return withHolders, nil
 }
 
 // publishRoleEvent publishes the audit event of an attempt on the role with id, after the change
@@ -1536,19 +1568,30 @@ func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string
 			logger.Error(ctx, "Failed to get role assignments", log.String("id", id), log.Error(err))
 			return nil, &tidcommon.InternalServerError
 		}
-		for _, assignment := range assignments {
-			members, svcErr := expandPrincipal(ctx, rs.groupService, assignment.ID,
-				assignment.Type == AssigneeTypeGroup)
-			if svcErr != nil {
-				return nil, svcErr
+		var svcErr *tidcommon.ServiceError
+		if entityIDs, svcErr = rs.appendHolders(ctx, assignments, entityIDs, seen); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+	return entityIDs, nil
+}
+
+// appendHolders appends to entityIDs the entities holding the assignments, a group expanded to its
+// transitive members, skipping each one seen already. The pre plan and the post flow's removed holders
+// both expand assignments this way, so they name the same entities.
+func (rs *roleService) appendHolders(ctx context.Context, assignments []RoleAssignment, entityIDs []string,
+	seen map[string]struct{}) ([]string, *tidcommon.ServiceError) {
+	for _, assignment := range assignments {
+		members, svcErr := expandPrincipal(ctx, rs.groupService, assignment.ID, assignment.Type == AssigneeTypeGroup)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, entityID := range members {
+			if _, ok := seen[entityID]; ok {
+				continue
 			}
-			for _, entityID := range members {
-				if _, ok := seen[entityID]; ok {
-					continue
-				}
-				seen[entityID] = struct{}{}
-				entityIDs = append(entityIDs, entityID)
-			}
+			seen[entityID] = struct{}{}
+			entityIDs = append(entityIDs, entityID)
 		}
 	}
 	return entityIDs, nil
@@ -1717,6 +1760,20 @@ func (rs *roleService) CascadeDeleteDependencies(
 func (rs *roleService) CreateSharingPolicy(
 	ctx context.Context, roleID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := rs.createSharingPolicy(ctx, roleID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	rs.publishSharingPolicyEvent(ctx, audit.EventRoleSharingPolicyCreate, audit.ActionCreate, roleID, policyID,
+		svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of a role without publishing its audit event.
+func (rs *roleService) createSharingPolicy(
+	ctx context.Context, roleID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1782,6 +1839,16 @@ func (rs *roleService) ListSharingPolicies(
 func (rs *roleService) UpdateSharingPolicy(
 	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateSharingPolicy(ctx, roleID, policyID, req)
+	rs.publishSharingPolicyEvent(ctx, audit.EventRoleSharingPolicyUpdate, audit.ActionUpdate, roleID, policyID,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of a role without publishing its audit event.
+func (rs *roleService) updateSharingPolicy(
+	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1807,10 +1874,25 @@ func (rs *roleService) UpdateSharingPolicy(
 func (rs *roleService) DeleteSharingPolicy(
 	ctx context.Context, roleID, policyID string,
 ) *tidcommon.ServiceError {
+	svcErr := rs.deleteSharingPolicy(ctx, roleID, policyID)
+	// A delete that found no policy of the role succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	rs.publishSharingPolicyEvent(ctx, audit.EventRoleSharingPolicyDelete, audit.ActionDelete, roleID, policyID,
+		svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of a role without publishing its audit event.
+func (rs *roleService) deleteSharingPolicy(
+	ctx context.Context, roleID, policyID string,
+) *tidcommon.ServiceError {
 	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
 		return svcErr
 	}
@@ -1831,6 +1913,20 @@ func (rs *roleService) DeleteSharingPolicy(
 		return &ErrorSharingPolicyDeclared
 	}
 	return translateSharingError(rs.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the role with roleID, after the change committed or was refused. The policy is the target and the
+// role the subject, which a succeeded or denied attempt names: a sharing call is refused only once the
+// role is found. Reshares the framework re-narrows or removes beneath a changed policy write no event of
+// their own.
+func (rs *roleService) publishSharingPolicyEvent(ctx context.Context, name string, action audit.Action,
+	roleID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller sent, as evidence of what was probed.
+	target := audit.Ref{Type: audit.TargetTypeRoleSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeRole, ID: roleID}
+	eventbus.TryPublish(ctx, rs.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }
 
 // ResolveSharingOverlay answers whether one organization unit owns the role or is shared it, and
