@@ -92,9 +92,9 @@ To let the administrator select the mode for each agent, use **Choose Agent Mode
 
 All three delegation fields are required when delegated mode is selected. **Login flow** selects an existing authentication flow for users who later sign in through the agent.
 
-### Assign groups and roles during onboarding
+### Grant birthright permissions to agents at creation
 
-Configure these assignments when every agent created by the flow needs the same access:
+Birthright permissions are the baseline access granted to an agent at creation through group and role assignments. Configure these assignments when every agent created by the flow needs the same access:
 
 1. Create the required [groups](../../users/manage-groups) and [roles](../../users/manage-roles).
 2. Open the flow's **Provisioning** node. Select the groups in **Assign group** (`assignGroup`) and the roles in **Assign role** (`assignRole`). Both fields list the existing groups and roles by name.
@@ -253,7 +253,7 @@ The agent schema decides which attributes an agent carries, and each agent holds
 
 ### Groups and roles
 
-The onboarding flow can [assign groups and roles during creation](#assign-groups-and-roles-during-onboarding). Use the following options to review or change access afterward.
+The onboarding flow can [assign groups and roles during creation](#grant-birthright-permissions-to-agents-at-creation). Use the following options to review or change access afterward.
 
 An agent should reach only the resources its task needs. What its tokens are allowed to carry comes from the groups and roles assigned to it, so the agent's reach is controlled separately from its credential, and changing what an agent can do never rotates its secret.
 
