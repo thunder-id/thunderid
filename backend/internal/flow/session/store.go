@@ -64,6 +64,11 @@ func (st *store) GetByExecutionID(ctx context.Context, flowExecutionID string) (
 	return st.getSingle(ctx, queryGetSessionByExecutionID, flowExecutionID)
 }
 
+// GetByID fetches a session by its id.
+func (st *store) GetByID(ctx context.Context, sessionID string) (*Session, error) {
+	return st.getSingle(ctx, queryGetSessionByID, sessionID)
+}
+
 // ListBySubject returns every session owned by the subject.
 func (st *store) ListBySubject(ctx context.Context, subjectID string) ([]Session, error) {
 	result := make([]Session, 0)

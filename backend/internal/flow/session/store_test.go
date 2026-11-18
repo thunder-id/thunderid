@@ -227,6 +227,50 @@ func (s *StoreTestSuite) TestGetByExecutionID_Miss() {
 	s.Nil(got)
 }
 
+func (s *StoreTestSuite) TestGetByID_Hit() {
+	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	row := map[string]interface{}{
+		"session_id": "sess-1", "subject_id": "user-1", "flow_id": "flow-1",
+		"flow_version": int64(2), "flow_execution_id": "exec-1", "handle_id": "handle-abc",
+		"authenticated_at": base, "created_at": base, "last_active_at": base,
+		"idle_expires_at": base.Add(2 * time.Hour), "absolute_expires_at": base.Add(8 * time.Hour),
+		"state": "ACTIVE", "version": int64(1),
+	}
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetSessionByID,
+		"sess-1", testDeploymentID).Return([]map[string]interface{}{row}, nil)
+
+	got, err := s.store.GetByID(context.Background(), "sess-1")
+
+	s.NoError(err)
+	s.Require().NotNil(got)
+	s.Equal("sess-1", got.SessionID)
+	s.Equal(base.Add(2*time.Hour), got.IdleExpiresAt)
+	s.Equal(base.Add(8*time.Hour), got.AbsoluteExpiresAt)
+}
+
+func (s *StoreTestSuite) TestGetByID_Miss() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetSessionByID,
+		"missing", testDeploymentID).Return([]map[string]interface{}{}, nil)
+
+	got, err := s.store.GetByID(context.Background(), "missing")
+
+	s.NoError(err)
+	s.Nil(got)
+}
+
+func (s *StoreTestSuite) TestGetByID_QueryError() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryGetSessionByID,
+		"sess-1", testDeploymentID).Return(nil, errors.New("db down"))
+
+	got, err := s.store.GetByID(context.Background(), "sess-1")
+
+	s.Error(err)
+	s.Nil(got)
+}
+
 func (s *StoreTestSuite) TestListBySubject() {
 	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
 	row := map[string]interface{}{

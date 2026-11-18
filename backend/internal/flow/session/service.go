@@ -65,6 +65,11 @@ type Service interface {
 	// is left as it is without an error.
 	RecordActivity(ctx context.Context, sessionID string) error
 
+	// IsLive reports whether the session with the given id is active and within both of its deadlines
+	// at now. A terminated, expired or unknown session is not live, and is not an error; only a store
+	// failure is.
+	IsLive(ctx context.Context, sessionID string, now time.Time) (bool, error)
+
 	// Terminate ends the session referenced by handle: it revokes the token families of every
 	// participating application (when a revoker is wired) and hard-deletes the session along with its
 	// checkpoint contexts and participants, all in one transaction, so nothing is left that could back
@@ -498,6 +503,19 @@ func (s *service) RecordActivity(ctx context.Context, sessionID string) error {
 		return fmt.Errorf("failed to record SSO session activity: %w", err)
 	}
 	return nil
+}
+
+// IsLive implements Service. It applies the same liveness rules as the resolver, to a session looked up
+// by id rather than by handle.
+func (s *service) IsLive(ctx context.Context, sessionID string, now time.Time) (bool, error) {
+	sess, err := s.store.GetByID(ctx, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("failed to load session: %w", err)
+	}
+	if sess == nil || sess.State != StateActive {
+		return false, nil
+	}
+	return !expired(sess.IdleExpiresAt, now) && !expired(sess.AbsoluteExpiresAt, now), nil
 }
 
 // Terminate implements Service.

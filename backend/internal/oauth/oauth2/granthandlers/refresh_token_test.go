@@ -3203,6 +3203,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) stubSessionRefresh() *model.Toke
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RecordsSessionActivity() {
 	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().IsLive(mock.Anything, testSessionID, mock.Anything).Return(true, nil).Once()
 	ssoSession.EXPECT().RecordActivity(mock.Anything, testSessionID).Return(nil).Once()
 	suite.handler.ssoSession = ssoSession
 
@@ -3215,6 +3216,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RecordsSessionAc
 // Recording activity is best-effort: a failure does not fail a refresh that otherwise succeeded.
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SessionActivityFailureDoesNotFailRefresh() {
 	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().IsLive(mock.Anything, testSessionID, mock.Anything).Return(true, nil).Once()
 	ssoSession.EXPECT().RecordActivity(mock.Anything, testSessionID).Return(errors.New("db down")).Once()
 	suite.handler.ssoSession = ssoSession
 
@@ -3235,6 +3237,92 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_FailedRefreshDoe
 
 	assert.NotNil(suite.T(), err)
 	ssoSession.AssertNotCalled(suite.T(), "RecordActivity", mock.Anything, mock.Anything)
+}
+
+// stubSessionRefreshToken sets up a valid refresh token issued under testSessionID, for a refresh that is
+// rejected before any token is built.
+func (suite *RefreshTokenGrantHandlerTestSuite) stubSessionRefreshToken() *model.TokenRequest {
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:  testRefreshTokenClientID,
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			SessionID: testSessionID,
+		}, nil)
+	return &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+		Scope:        "read",
+	}
+}
+
+// A refresh token issued under a session that has ended or expired is rejected like any other invalid
+// refresh token, without recording activity or building tokens.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SessionNotLiveRejectsRefresh() {
+	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().IsLive(mock.Anything, testSessionID, mock.Anything).Return(false, nil).Once()
+	suite.handler.ssoSession = ssoSession
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.stubSessionRefreshToken(),
+		suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
+	assert.Equal(suite.T(), "Invalid refresh token", errResp.ErrorDescription)
+	ssoSession.AssertNotCalled(suite.T(), "RecordActivity", mock.Anything, mock.Anything)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// The session store being unreachable fails the refresh closed rather than issuing tokens unchecked.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SessionCheckFailureFailsClosed() {
+	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().IsLive(mock.Anything, testSessionID, mock.Anything).
+		Return(false, errors.New("db down")).Once()
+	suite.handler.ssoSession = ssoSession
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.stubSessionRefreshToken(),
+		suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	ssoSession.AssertNotCalled(suite.T(), "RecordActivity", mock.Anything, mock.Anything)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// A refresh token issued outside a session carries no sid, so there is no session to check.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RefreshTokenWithoutSessionSkipsCheck() {
+	ssoSession := sessionmock.NewServiceMock(suite.T())
+	ssoSession.EXPECT().RecordActivity(mock.Anything, "").Return(nil).Maybe()
+	suite.handler.ssoSession = ssoSession
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:  testRefreshTokenClientID,
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "new.access.token",
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"read"},
+	}, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
+	ssoSession.AssertNotCalled(suite.T(), "IsLive", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_CarriesResponseSessionID() {
