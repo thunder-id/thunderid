@@ -357,6 +357,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 	projectService.AddResourceCheck(flowMgtService.ProjectHasFlows)
 
+	// Two-phase initialization: inject the flow resolver into the OU service.
+	ouService.SetOUFlowResolver(flowMgtService)
 	exporters = append(exporters, flowMgtExporter)
 
 	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider())
