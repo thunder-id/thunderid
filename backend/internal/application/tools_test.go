@@ -23,6 +23,7 @@ import (
 
 type ApplicationToolsTestSuite struct {
 	suite.Suite
+	session *mcp.ClientSession
 }
 
 func TestApplicationToolsTestSuite(t *testing.T) {
@@ -48,6 +49,18 @@ func (suite *ApplicationToolsTestSuite) SetupTest() {
 	}
 	err := config.InitializeServerRuntime("/tmp/test-application-tools", cfg)
 	suite.Require().NoError(err)
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	registerMCPTools(server, NewApplicationServiceInterfaceMock(suite.T()))
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { _ = serverSession.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	suite.session, err = client.Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { _ = suite.session.Close() })
 }
 
 func (suite *ApplicationToolsTestSuite) TearDownTest() {
@@ -497,36 +510,24 @@ func (suite *ApplicationToolsTestSuite) TestGetApplicationTemplates_Success() {
 }
 
 func (suite *ApplicationToolsTestSuite) TestRegisterMCPTools() {
-	mockService := NewApplicationServiceInterfaceMock(suite.T())
-	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "test-server",
-		Version: "1.0.0",
-	}, nil)
+	listed, err := suite.session.ListTools(context.Background(), nil)
+	suite.Require().NoError(err)
 
-	// Register tools
-	registerMCPTools(server, mockService)
-
-	// Verify tools are registered by checking server has tools
-	// Note: We can't directly verify the tools list without accessing internal server state,
-	// but we can verify the function doesn't panic
-	assert.NotNil(suite.T(), server)
+	tools := map[string]*mcp.Tool{}
+	for _, t := range listed.Tools {
+		tools[t.Name] = t
+	}
+	suite.Require().Contains(tools, "regenerate_application_secret")
+	suite.False(tools["regenerate_application_secret"].Annotations.IdempotentHint)
+	suite.Require().NotNil(tools["regenerate_application_secret"].Annotations.DestructiveHint)
+	suite.True(*tools["regenerate_application_secret"].Annotations.DestructiveHint)
 }
 
 // TestRegisteredToolsRequireApplicationPermissions verifies that every application MCP tool is mapped
 // to an application catalog permission, so none falls back to root by accident.
 func (suite *ApplicationToolsTestSuite) TestRegisteredToolsRequireApplicationPermissions() {
-	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
-	registerMCPTools(server, NewApplicationServiceInterfaceMock(suite.T()))
-
 	ctx := context.Background()
-	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	_, err := server.Connect(ctx, serverTransport, nil)
-	suite.Require().NoError(err)
-	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
-		Connect(ctx, clientTransport, nil)
-	suite.Require().NoError(err)
-	defer func() { _ = session.Close() }()
-	tools, err := session.ListTools(ctx, nil)
+	tools, err := suite.session.ListTools(ctx, nil)
 	suite.Require().NoError(err)
 
 	suite.Require().NotEmpty(tools.Tools)

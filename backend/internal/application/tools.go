@@ -117,8 +117,9 @@ Behavior:
   and the notice says whether they were.
 - The new secret is returned only this once.`,
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Regenerate Application Secret",
-			IdempotentHint: false,
+			Title:           "Regenerate Application Secret",
+			DestructiveHint: new(true),
+			IdempotentHint:  false,
 		},
 	}, tools.regenerateApplicationSecret)
 
