@@ -4,6 +4,8 @@
 package gateway
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -107,6 +109,23 @@ func (ts *GatewayVersionsTestSuite) TestAMissingValueIsReportedWithWhatItIsFor()
 		"/configuration-versions/"+captured.Version, nil, &read))
 	ts.NotNil(ts.referenceTo(read.References, value), "a captured version did not say where it refers to the value")
 
-	ts.Equal(http.StatusConflict, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
-		map[string]any{"version": captured.Version}, nil))
+	encoded, err := json.Marshal(map[string]any{"version": captured.Version})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/gateways/"+ts.gatewayID+"/apply",
+		bytes.NewReader(encoded))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	var refusal struct {
+		Code        string `json:"code"`
+		Description struct {
+			Params map[string]string `json:"params"`
+		} `json:"description"`
+	}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&refusal))
+	ts.Equal(http.StatusConflict, resp.StatusCode)
+	ts.Equal("GTW-1017", refusal.Code)
+	ts.Contains(refusal.Description.Params["missing"], "variable "+value, "the refusal did not name the missing value")
 }

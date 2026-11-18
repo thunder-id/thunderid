@@ -100,6 +100,22 @@ func (s *ProjectScopeTestSuite) TestARefusedSyncDoesNotStopTheOthers() {
 	s.Equal(ErrorGatewayNotFound.Code, billing.AutoSync.LastRun.Error.Code)
 }
 
+func (s *ProjectScopeTestSuite) TestARefusedSyncNamesTheMissingValue() {
+	next := syncedDocs()
+	next[6] += "url: var:SHOP_URL\n"
+	s.captureAfter(projectAutoApply{projects: map[string]ProjectSyncSetting{
+		"shop": {AutoSync: on(), FirstGateway: "gw-1"},
+	}}, next)
+
+	shop, svcErr := s.f.svc.ProjectStatus(context.Background(), "gw-1", "shop", "", "")
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(shop.AutoSync.LastRun)
+	s.Require().NotNil(shop.AutoSync.LastRun.Error)
+	s.Equal(ErrorMissingValues.Code, shop.AutoSync.LastRun.Error.Code)
+	s.Equal("The gateway lacks variable SHOP_URL. Set them on the gateway, then apply again.",
+		shop.AutoSync.LastRun.Error.Message)
+}
+
 // A project without a setting of its own inherits the default, and syncs to the first stage of the
 // configured pipeline.
 func (s *ProjectScopeTestSuite) TestAProjectInheritsAutoSync() {

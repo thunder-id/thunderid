@@ -92,7 +92,7 @@ var (
 		},
 	}
 	// ErrorMissingValues is returned when a version refers to variables or secrets the gateway does not
-	// hold. A dry run of the same apply lists them.
+	// hold, naming them.
 	ErrorMissingValues = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "GTW-1017",
@@ -101,9 +101,8 @@ var (
 			DefaultValue: "The gateway does not hold every value this version refers to",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.gatewayservice.missing_values.description",
-			DefaultValue: "Set the missing variables and secrets on the gateway, then apply again. " +
-				"A dry run lists them.",
+			Key:          "error.gatewayservice.missing_values.description",
+			DefaultValue: "The gateway lacks {{param(missing)}}. Set them on the gateway, then apply again.",
 		},
 	}
 	// ErrorMisplacedSecret is returned when the configuration being captured refers to a secret from a
