@@ -81,8 +81,9 @@ func main() {
 		logger.Fatal(ctx, "Failed to configure log output", log.Error(err))
 	}
 
-	// Build the audit event bus before any service, so nothing that publishes can start without it.
-	auditBus, auditStopper := initAuditBus(ctx, logger, cfg)
+	// Build the event bus and its subscribers before any service, so nothing that publishes can start
+	// without them.
+	eventBus, busStopper := initEventBus(ctx, logger, cfg)
 
 	// Initialize the cache manager.
 	cacheManager := cache.Initialize(cfg.Cache, cfg.Server.Identifier)
@@ -97,14 +98,14 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager, auditBus)
+	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager, eventBus)
 
 	// When invoked as the bootstrap one-shot (`cpserver bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
 	if isBootstrapInvocation() {
 		err := runBootstrap(ctx, logger, serverHome, importService, cacheManager)
 		// The bootstrap creates audited resources, whose events must be written before the process exits.
-		auditStopper.Stop()
+		busStopper.Stop()
 		if err != nil {
 			logger.Error(ctx, "In-process bootstrap failed; exiting", log.Error(err))
 			os.Exit(1)
@@ -164,7 +165,7 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, auditStopper)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, busStopper)
 }
 
 // initSystemPermissions activates the Control Plane's permissions: the system root and its children.
@@ -172,12 +173,14 @@ func initSystemPermissions(cfg *config.Config) {
 	security.InitControlPlanePermissions(cfg.Server.SecurityConfig.SystemPermissionPrefix)
 }
 
-// initAuditBus builds the audit event bus with the default stdout sink. A failure stops startup, so
-// the Control Plane never runs with audit silently missing.
-func initAuditBus(ctx context.Context, logger *log.Logger,
+// initEventBus builds the event bus and subscribes the default audit sink to it. The registry stays
+// here, so only this composition root decides who receives events. A failure stops startup, so the
+// Control Plane never runs with audit silently missing.
+func initEventBus(ctx context.Context, logger *log.Logger,
 	cfg *config.Config) (eventbus.EventBusInterface, eventbus.StopperInterface) {
-	bus, stopper, err := defaultaudit.Initialize(cfg.Audit)
-	if err != nil {
+	bus, registry, stopper := eventbus.Initialize()
+	if err := defaultaudit.Initialize(cfg.Audit, registry); err != nil {
+		stopper.Stop()
 		logger.Fatal(ctx, "Failed to initialize audit", log.Error(err))
 	}
 	logger.Info(ctx, "Audit events", log.Bool("enabled", cfg.Audit.IsEnabled()))
@@ -358,7 +361,7 @@ func gracefulShutdown(
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
-	auditStopper eventbus.StopperInterface,
+	busStopper eventbus.StopperInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -377,8 +380,8 @@ func gracefulShutdown(
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()
 
-	// Stop audit once the HTTP server has stopped, so the last requests are still written.
-	auditStopper.Stop()
+	// Stop the event bus once the HTTP server has stopped, so the last requests are still audited.
+	busStopper.Stop()
 
 	// Shutdown services
 	unregisterServices()

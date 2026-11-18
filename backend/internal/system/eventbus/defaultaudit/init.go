@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package defaultaudit builds the event bus a server binary publishes audit events on, with the
-// default sink that writes them to standard output.
+// Package defaultaudit subscribes the default audit sink, which writes audit events to standard output,
+// on the event bus of a server binary.
 package defaultaudit
 
 import (
@@ -17,18 +17,15 @@ import (
 // stdoutSubscriberID is the stable subscriber ID of the stdout sink.
 const stdoutSubscriberID = "audit-stdout"
 
-// Initialize builds the event bus and subscribes the stdout sink when audit is on. With audit off the
-// bus has no sink: an event is still validated by the bus, then dropped, so a publisher never checks
-// whether audit is on.
-func Initialize(cfg config.AuditConfig) (eventbus.EventBusInterface, eventbus.StopperInterface, error) {
-	bus, registry, stopper := eventbus.Initialize()
+// Initialize subscribes the stdout sink to audit events on the bus that registry belongs to, when audit
+// is on. With audit off nothing subscribes: an audit event is still validated by the bus, then dropped,
+// so a publisher never checks whether audit is on.
+func Initialize(cfg config.AuditConfig, registry eventbus.RegistryInterface) error {
 	if !cfg.IsEnabled() {
-		return bus, stopper, nil
+		return nil
 	}
-
 	if err := audit.Subscribe(registry, stdoutSubscriberID, stdoutsink.Initialize()); err != nil {
-		stopper.Stop()
-		return nil, nil, fmt.Errorf("failed to subscribe the audit stdout sink: %w", err)
+		return fmt.Errorf("failed to subscribe the audit stdout sink: %w", err)
 	}
-	return bus, stopper, nil
+	return nil
 }
