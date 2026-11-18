@@ -36,7 +36,7 @@ func Initialize(
 	jwtService jwt.JWTServiceInterface,
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	ssoTransport session.HandleTransportInterface,
 	governance providers.IdentityGovernanceProvider,
 	variableValuesProvider variableValueProvider,
