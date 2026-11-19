@@ -592,6 +592,31 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
+      "header": "Extension Auth Resolver",
+      "label": "Extension Auth Resolver",
+      "description": "Sign in the local user an extension verified",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "ExtensionAuthResolver"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      },
+      "properties": {
+        "sourceKey": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
       "header": "User Type Resolver",
       "label": "User Type Resolver",
       "description": "Determine the type of the signing-in user",

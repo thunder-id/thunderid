@@ -454,6 +454,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameSharing: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSharing, newSharingExecutor(deps.FlowFactory, deps.SharingService))
 		},
+		ExecutorNameExtensionAuthResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameExtensionAuthResolver,
+				newExtensionAuthResolver(deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
+		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,
 				newAccountLinkingExecutor(deps.FlowFactory, deps.AuthnProvider, deps.EntityTypeService))

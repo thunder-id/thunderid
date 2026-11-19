@@ -41,7 +41,7 @@ type service struct {
 	resourceService     resource.ResourceServiceInterface
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
 	httpService         httpconnection.HTTPConnectionServiceInterface
-	valueCapturer       declarativeresource.ValueCapturer
+	valueReleaser       declarativeresource.ValueReleaser
 	sharingService      sharing.SharingServiceInterface
 	authzService        sysauthz.SystemAuthorizationServiceInterface
 	bus                 eventbus.EventBusInterface
@@ -817,6 +817,7 @@ func (s *service) updateStoredHTTP(ctx context.Context, existing *httpconnection
 	updated, svcErr := s.httpService.UpdateHTTPConnection(ctx, existing.ID, connection)
 	if svcErr == nil {
 		s.captureHTTPValues(ctx, updated)
+		s.releaseHTTPSecrets(ctx, existing, updated)
 	}
 	return updated, svcErr
 }
@@ -869,6 +870,7 @@ func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceE
 	if svcErr := s.httpService.DeleteHTTPConnection(ctx, id); svcErr != nil {
 		return svcErr
 	}
+	s.releaseHTTPSecrets(ctx, existing, nil)
 	return s.deleteSharingPolicies(ctx, id)
 }
 
@@ -882,7 +884,7 @@ func (s *service) usagesHTTP(ctx context.Context, id string) (
 }
 
 // HTTPConnectionWriterInterface writes HTTP connections under the rules the connection API applies:
-// the retention rule on update, and capturing the values an export refers to.
+// the retention rule on update, and capturing and releasing the values an export refers to.
 type HTTPConnectionWriterInterface interface {
 	CreateHTTPConnection(ctx context.Context, connection httpconnection.HTTPConnection) (
 		*httpconnection.HTTPConnection, *tidcommon.ServiceError)

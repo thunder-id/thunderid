@@ -1054,6 +1054,13 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithProvisionedEntityIDRe
 	suite.Empty(response.Assertion, "Rejected request should not mint an assertion")
 }
 
+func (suite *CredentialsAuthTestSuite) TestAuthenticateWithExtensionVerifiedEntityIDRejected() {
+	// A real user ID, so the rejection is the reserved-type guard and not an unresolvable entity.
+	suite.assertReservedCredentialTypeRejected(map[string]interface{}{
+		"extensionVerifiedEntityID": suite.users["username_password"],
+	})
+}
+
 // TestAuthenticateWithReservedCredentialTypesRejected verifies every reserved credential type is
 // rejected on the credentials API. The guard matches on key presence, so the values need not be
 // valid payloads. These names mirror InternalCredentialTypes and SystemCredentialTypes in the
@@ -1061,7 +1068,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithProvisionedEntityIDRe
 func (suite *CredentialsAuthTestSuite) TestAuthenticateWithReservedCredentialTypesRejected() {
 	reservedTypes := []string{
 		"provisionedEntityID", "passkey", "otp", "federated", "magiclink", "openid4vp",
-		"clientSecret", "flowSecret",
+		"extensionVerifiedEntityID", "clientSecret", "flowSecret",
 	}
 
 	for _, reserved := range reservedTypes {
