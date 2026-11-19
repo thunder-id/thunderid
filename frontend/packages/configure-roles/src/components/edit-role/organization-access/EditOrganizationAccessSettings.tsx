@@ -17,6 +17,10 @@ interface EditOrganizationAccessSettingsProps {
    * The role's Organization Access state, held by the edit page so it survives tab switches
    */
   access: OrganizationAccessState;
+  /**
+   * Whether the role can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -30,13 +34,14 @@ interface EditOrganizationAccessSettingsProps {
 export default function EditOrganizationAccessSettings({
   role,
   access,
+  readOnly = false,
 }: EditOrganizationAccessSettingsProps): JSX.Element {
   return (
     <OrganizationAccessSettings
       access={access}
       ownerOuId={role.ouId}
       resourceName={role.name}
-      readOnly={role.isReadOnly === true}
+      readOnly={readOnly}
       errorNamespace="roles"
     />
   );

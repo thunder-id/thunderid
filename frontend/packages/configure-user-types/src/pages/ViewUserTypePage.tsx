@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useRecordAccess} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
   getContactTypesMissingRegex,
@@ -101,7 +101,6 @@ export default function ViewUserTypePage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('ViewUserTypePage');
-  const {can} = useCapabilitiesContext();
   const {id} = useParams<{id: string}>();
   const routes = useUserTypeRoutes();
   const listUrl = routes.list();
@@ -382,6 +381,7 @@ export default function ViewUserTypePage(): JSX.Element {
 
   // Loading state
   const resourceTypeTitle = t('navigation:pages.userTypes', 'User types');
+  const {readOnly: isReadOnly, canDelete} = useRecordAccess('usertype', userType);
 
   if (isLoading) {
     return (
@@ -478,7 +478,7 @@ export default function ViewUserTypePage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{effectiveName}</Typography>
-                {!userType.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label={t('userTypes:edit.editName', 'Edit user type name')}
@@ -514,12 +514,14 @@ export default function ViewUserTypePage(): JSX.Element {
           aria-controls="usertype-tabpanel-1"
           sx={{textTransform: 'none'}}
         />
-        <Tab
-          label={t('userTypes:edit.tabs.advanced', 'Advanced')}
-          id="usertype-tab-2"
-          aria-controls="usertype-tabpanel-2"
-          sx={{textTransform: 'none'}}
-        />
+        {canDelete && (
+          <Tab
+            label={t('userTypes:edit.tabs.advanced', 'Advanced')}
+            id="usertype-tab-2"
+            aria-controls="usertype-tabpanel-2"
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -540,17 +542,15 @@ export default function ViewUserTypePage(): JSX.Element {
             properties={effectiveProperties}
             onPropertiesChange={handlePropertiesChange}
             userTypeHandle={userType.handle}
-            disabled={userType.isReadOnly}
+            disabled={isReadOnly}
           />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={2}>
-          <EditAdvancedSettings
-            onDeleteClick={
-              userType.isReadOnly || !can('usertype', 'delete') ? undefined : () => setDeleteDialogOpen(true)
-            }
-          />
-        </TabPanel>
+        {canDelete && (
+          <TabPanel value={activeTab} index={2}>
+            <EditAdvancedSettings onDeleteClick={() => setDeleteDialogOpen(true)} />
+          </TabPanel>
+        )}
       </>
 
       {/* Delete Dialog */}
@@ -601,7 +601,7 @@ export default function ViewUserTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateUserTypeMutation.isPending}
-          saveDisabled={userType.isReadOnly === true || !can('usertype', 'update')}
+          saveDisabled={isReadOnly}
           error={
             validationError ??
             (updateUserTypeMutation.error

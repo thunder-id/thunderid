@@ -141,11 +141,7 @@ describe('SignOutFlowSection', () => {
     mockFlows(mockSignOutFlows);
     render(
       <MemoryRouter>
-        <SignOutFlowSection
-          application={{...mockApplication, isReadOnly: true}}
-          editedApp={{}}
-          onFieldChange={mockOnFieldChange}
-        />
+        <SignOutFlowSection application={mockApplication} readOnly editedApp={{}} onFieldChange={mockOnFieldChange} />
       </MemoryRouter>,
     );
     expect(screen.getByPlaceholderText('Select a sign-out flow')).toBeDisabled();

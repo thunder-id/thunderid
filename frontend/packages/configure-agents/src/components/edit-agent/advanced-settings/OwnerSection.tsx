@@ -13,6 +13,8 @@ interface OwnerSectionProps {
   agent: Agent;
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  /** Whether the signed-in admin may change the agent here. */
+  readOnly?: boolean;
 }
 
 interface UserOption {
@@ -31,7 +33,12 @@ const formatUserLabel = (user: {id: string; display?: string; attributes?: Recor
 /**
  * Shows and edits the agent's owner. A read-only agent's owner, and a personal agent's, cannot be changed.
  */
-export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerSectionProps): JSX.Element {
+export default function OwnerSection({
+  agent,
+  editedAgent,
+  onFieldChange,
+  readOnly = false,
+}: OwnerSectionProps): JSX.Element {
   const {t} = useTranslation();
 
   const {data: usersData, isLoading: usersLoading} = useGetUsers({limit: 100, offset: 0});
@@ -46,7 +53,7 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
   const internalOwnerId = owner?.isLocal === false ? '' : (owner?.id ?? '');
   // A personal agent keeps the owner it was registered for.
   const isPersonal = agent.kind === PERSONAL_AGENT_KIND;
-  const isOwnerLocked = agent.isReadOnly === true || isPersonal;
+  const isOwnerLocked = readOnly || isPersonal;
 
   return (
     <SettingsCard

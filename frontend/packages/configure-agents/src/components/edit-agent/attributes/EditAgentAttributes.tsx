@@ -19,6 +19,7 @@ interface EditAgentAttributesProps {
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onLifespanValidationChange?: (hasError: boolean) => void;
+  readOnly?: boolean;
 }
 
 type AttributeFormData = Record<string, unknown>;
@@ -47,6 +48,7 @@ export default function EditAgentAttributes({
   editedAgent,
   onFieldChange,
   onLifespanValidationChange = undefined,
+  readOnly = false,
 }: EditAgentAttributesProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
@@ -111,6 +113,7 @@ export default function EditAgentAttributes({
   const lifespanSection = (
     <LifespanSection
       agent={agent}
+      readOnly={readOnly}
       editedAgent={editedAgent}
       onFieldChange={onFieldChange}
       onValidationChange={onLifespanValidationChange}
@@ -119,7 +122,7 @@ export default function EditAgentAttributes({
 
   // A read-only agent can't be edited at all, so there's nothing for a form to do here — fall
   // back to the same summary shown on the General tab.
-  if (agent.isReadOnly) {
+  if (readOnly) {
     return (
       <Stack spacing={3}>
         <AttributesSummarySection agent={agent} />

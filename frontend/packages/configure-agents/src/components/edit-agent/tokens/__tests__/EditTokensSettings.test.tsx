@@ -3,7 +3,6 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type {Application} from '@thunderid/configure-applications';
 import {useState} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import type {Agent} from '../../../../models/agent';
@@ -12,15 +11,15 @@ import EditTokensSettings from '../EditTokensSettings';
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
   EditTokenSettings: ({
-    application,
+    readOnly = false,
     sectionResetKey = undefined,
   }: {
-    application: Application;
+    readOnly?: boolean;
     sectionResetKey?: number;
   }) => (
     <div
       data-testid="token-settings"
-      data-readonly={String(application.isReadOnly)}
+      data-readonly={String(readOnly)}
       data-section-reset-key={String(sectionResetKey)}
     />
   ),
@@ -28,10 +27,10 @@ vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
 
 vi.mock('../AgentAccessTokenSection', () => ({
   // Carries local click state so a changed key (remount) is observable as the counter resetting.
-  default: function MockAgentAccessTokenSection({agent}: {agent: Agent}) {
+  default: function MockAgentAccessTokenSection({readOnly = false}: {readOnly?: boolean}) {
     const [clicks, setClicks] = useState(0);
     return (
-      <div data-testid="agent-access-token" data-readonly={String(agent.isReadOnly)}>
+      <div data-testid="agent-access-token" data-readonly={String(readOnly)}>
         Clicks: {clicks}
         <button type="button" data-testid="agent-access-token-bump" onClick={() => setClicks((c) => c + 1)}>
           Bump
@@ -131,7 +130,8 @@ describe('EditTokensSettings', () => {
     const user = userEvent.setup();
     render(
       <EditTokensSettings
-        agent={{...baseAgent, isReadOnly: true}}
+        agent={baseAgent}
+        readOnly
         editedAgent={{}}
         oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
         onFieldChange={mockOnFieldChange}
@@ -146,7 +146,7 @@ describe('EditTokensSettings', () => {
   it('keeps the Agent tab fully editable regardless of Delegated mode', () => {
     render(
       <EditTokensSettings
-        agent={{...baseAgent, isReadOnly: false}}
+        agent={baseAgent}
         editedAgent={{}}
         oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
         onFieldChange={mockOnFieldChange}

@@ -14,7 +14,7 @@ import {
   getInitials,
 } from '@thunderid/components';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {useProjectScope, useRecordAccess} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
@@ -87,7 +87,6 @@ interface TabConfig {
 export default function UserEditPage() {
   const navigate = useNavigate();
   const {t} = useTranslation();
-  const {can} = useCapabilitiesContext();
   const logger = useLogger('UserEditPage');
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const {userId} = useParams<{userId: string}>();
@@ -103,6 +102,7 @@ export default function UserEditPage() {
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {data: user, isLoading: isUserLoading, error: userError, refetch} = useGetUser(userId);
+  const {readOnly, canDelete, canChangeState} = useRecordAccess('user', user);
   const {projectId} = useProjectScope();
   // Inside a project, a user of another project or of the organization is not shown: the page returns to
   // the list.
@@ -446,6 +446,7 @@ export default function UserEditPage() {
         <EditUserAttributes
           key={attributesResetKey}
           user={user}
+          readOnly={readOnly}
           editedUser={editedUser}
           onFieldChange={handleFieldChange}
         />
@@ -453,7 +454,7 @@ export default function UserEditPage() {
     },
   ];
 
-  if (!user.isReadOnly && credentialFields.length > 0) {
+  if (!readOnly && credentialFields.length > 0) {
     tabs.push({
       key: 'credentials',
       label: t('users:manageUser.tabs.credentials', 'Credentials'),
@@ -476,10 +477,10 @@ export default function UserEditPage() {
   tabs.push({
     key: 'affiliations',
     label: t('users:manageUser.tabs.affiliations', 'Affiliations'),
-    render: () => <EditOrganizationAccessSettings user={user} access={organizationAccess} />,
+    render: () => <EditOrganizationAccessSettings user={user} readOnly={readOnly} access={organizationAccess} />,
   });
 
-  if (!user.isReadOnly && can('user', 'delete')) {
+  if (canDelete) {
     tabs.push({
       key: 'advanced',
       label: t('users:manageUser.tabs.advanced', 'Advanced'),
@@ -541,8 +542,8 @@ export default function UserEditPage() {
             <Chip label={matchedSchema?.displayName ?? user.type} size="small" sx={{px: 0.5}} />
           </Stack>
         </PageTitle.SubHeader>
-        {/* Read-only records too: the flows change only runtime state. */}
-        {!isSignedInUser && (
+        {/* Declarative records too: the flows change only runtime state. The default flows need update. */}
+        {!isSignedInUser && canChangeState && (
           <PageTitle.Actions>
             <AccountStatusAction
               category="user"
@@ -592,7 +593,7 @@ export default function UserEditPage() {
           savingLabel={t('users:manageUser.saving', 'Saving…')}
           isSaving={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
           resetDisabled={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
-          saveDisabled={user.isReadOnly === true || !can('user', 'update')}
+          saveDisabled={readOnly}
           error={
             (updateUserMutation.error
               ? getUserErrorMessage(
