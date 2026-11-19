@@ -173,6 +173,7 @@ describe('RouteConfig', () => {
 
   it('build nests the app builders under the build segment', () => {
     expect(RouteConfig.build.adminApp()).toBe('/build/admin-app');
+    expect(RouteConfig.build.myAccount()).toBe('/build/myaccount');
   });
 
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {

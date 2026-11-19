@@ -197,6 +197,7 @@ describe('DashboardLayout', () => {
         .compareDocumentPosition(screen.getByText('navigation:categories.build')) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.getByText('navigation:pages.adminApp')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.myAccount')).toBeInTheDocument();
   });
 
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {

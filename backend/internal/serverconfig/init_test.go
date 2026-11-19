@@ -77,7 +77,7 @@ func TestSystemAppSection_ServesEachAppsOwnSection(t *testing.T) {
 		name = r.PathValue("name")
 	}))
 
-	for app, want := range map[string]string{"admin": string(ConfigNameAdminApp)} {
+	for app, want := range map[string]string{"admin": string(ConfigNameAdminApp), "account": string(ConfigNameAccountApp)} {
 		mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/server-config/system-apps/"+app, nil))
 
 		assert.Equal(t, want, name)

@@ -34,6 +34,7 @@ export interface ConsoleRoutePaths {
   };
   build: {
     adminApp: () => string;
+    myAccount: () => string;
   };
 }
 
@@ -104,6 +105,7 @@ export const ROUTE_SEGMENTS = {
   settings: 'settings',
   build: 'build',
   adminApp: 'admin-app',
+  myAccount: 'myaccount',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -219,6 +221,7 @@ const RouteConfig: RouteConfig = {
   },
   build: {
     adminApp: () => `/${ROUTE_SEGMENTS.build}/${ROUTE_SEGMENTS.adminApp}`,
+    myAccount: () => `/${ROUTE_SEGMENTS.build}/${ROUTE_SEGMENTS.myAccount}`,
   },
 };
 

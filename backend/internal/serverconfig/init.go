@@ -109,7 +109,7 @@ func registerRoutes(mux *http.ServeMux, handler *serverConfigHandler) {
 }
 
 // systemAppSection serves a system app's section under the name of that app's server-config section:
-// "admin" is the adminApp section. Any other app names no section.
+// "admin" is the adminApp section and "account" the accountApp one. Any other app names no section.
 func systemAppSection(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.SetPathValue("name", r.PathValue("app")+"App")

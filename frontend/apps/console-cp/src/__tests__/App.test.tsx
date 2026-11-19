@@ -263,6 +263,10 @@ vi.mock('@thunderid/configure-apps/pages/AdminAppBuilderPage', () => ({
   default: () => <div data-testid="admin-app-builder-page">Admin App Builder Page</div>,
 }));
 
+vi.mock('@thunderid/configure-apps/pages/MyAccountBuilderPage', () => ({
+  default: () => <div data-testid="myaccount-builder-page">MyAccount Builder Page</div>,
+}));
+
 vi.mock('@thunderid/configure-organization-units/pages/OrganizationUnitEditPage', () => ({
   default: ({
     renderDefaultFlowsSettings,
@@ -580,6 +584,13 @@ describe('App', () => {
     });
   });
 
+  it('loads MyAccountBuilderPage lazily at /build/myaccount', async () => {
+    window.history.pushState({}, '', '/build/myaccount');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('myaccount-builder-page')).toBeInTheDocument();
+    });
+  });
 
   it('loads FlowCreatePage lazily at /flows/create', async () => {
     window.history.pushState({}, '', '/flows/create');

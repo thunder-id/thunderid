@@ -9,3 +9,4 @@ export * from './models/builder';
 
 // Pages
 export {default as AdminAppBuilderPage} from './pages/AdminAppBuilderPage';
+export {default as MyAccountBuilderPage} from './pages/MyAccountBuilderPage';

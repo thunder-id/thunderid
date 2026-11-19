@@ -27,6 +27,9 @@ const (
 	// ConfigNameAdminApp is the configuration key for the Admin App, served at
 	// /server-config/system-apps/admin.
 	ConfigNameAdminApp ConfigName = "adminApp"
+	// ConfigNameAccountApp is the configuration key for the Account App, served at
+	// /server-config/system-apps/account.
+	ConfigNameAccountApp ConfigName = "accountApp"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -40,6 +43,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameNotification,
 	ConfigNameGateway,
 	ConfigNameAdminApp,
+	ConfigNameAccountApp,
 }
 
 // IsPortable reports whether the section moves with the configuration: it is exported, captured into

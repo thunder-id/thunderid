@@ -37,6 +37,7 @@ export interface ConsoleRoutePaths {
   administrators: UserRoutePaths['users'];
   build: {
     adminApp: () => string;
+    myAccount: () => string;
   };
 }
 
@@ -116,6 +117,7 @@ export const ROUTE_SEGMENTS = {
   deployTargets: window.__THUNDERID_RUNTIME_CONFIG__?.deploy?.gateway_path ?? 'deploy/gateways',
   build: 'build',
   adminApp: 'admin-app',
+  myAccount: 'myaccount',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -241,6 +243,7 @@ const RouteConfig: RouteConfig = {
   },
   build: {
     adminApp: () => `/${ROUTE_SEGMENTS.build}/${ROUTE_SEGMENTS.adminApp}`,
+    myAccount: () => `/${ROUTE_SEGMENTS.build}/${ROUTE_SEGMENTS.myAccount}`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,

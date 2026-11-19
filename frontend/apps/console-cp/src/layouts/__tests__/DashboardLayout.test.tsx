@@ -634,7 +634,7 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     const category = screen.getByText('navigation:categories.signInExperience');
-    for (const page of ['navigation:pages.adminApp']) {
+    for (const page of ['navigation:pages.adminApp', 'navigation:pages.myAccount']) {
       expect(category.compareDocumentPosition(screen.getByText(page)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
   });

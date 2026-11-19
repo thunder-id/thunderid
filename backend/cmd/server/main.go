@@ -257,10 +257,10 @@ func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc common.T
 }
 
 // accessLogExcludePaths returns the path prefixes excluded from the access log: the always-excluded
-// Gate and Console frontend paths plus any configured extras. Empty and root ("/") entries are
-// dropped because they match every request and would silently disable all access logging.
+// Gate, Console and MyAccount frontend paths plus any configured extras. Empty and root ("/")
+// entries are dropped because they match every request and would silently disable all access logging.
 func accessLogExcludePaths(configured []string) []string {
-	paths := []string{"/gate/", "/console/"}
+	paths := []string{"/gate/", "/console/", "/myaccount/"}
 	for _, prefix := range configured {
 		if prefix != "" && prefix != "/" {
 			paths = append(paths, prefix)
@@ -439,6 +439,17 @@ func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *ht
 		logger.Debug(ctx, "Registering static file handler for Console application",
 			log.String("path", "/console/"), log.String("directory", consoleDir))
 		mux.Handle("/console/", handler)
+	}
+
+	// Serve MyAccount, the self-service Account App, from /myaccount. Only the data plane serves it: it signs its users in
+	// through the data plane's own Gate and edits their profile and credentials there.
+	accountDir := path.Join(serverHome, "apps", "myaccount")
+	if handler, err := createStaticFileHandler("/myaccount/", accountDir, logger); err != nil {
+		logger.Warn(ctx, "MyAccount not registered", log.String("directory", accountDir), log.Error(err))
+	} else {
+		logger.Debug(ctx, "Registering static file handler for MyAccount",
+			log.String("path", "/myaccount/"), log.String("directory", accountDir))
+		mux.Handle("/myaccount/", handler)
 	}
 }
 

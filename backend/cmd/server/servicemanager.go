@@ -273,6 +273,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
 		serverconfig.ConfigNameAdminApp:              systemapps.NewAppConfigHandler(systemapps.AppTypeAdmin),
+		serverconfig.ConfigNameAccountApp:            systemapps.NewAppConfigHandler(systemapps.AppTypeAccount),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc, auditBus, ouAuthzService)

@@ -21,6 +21,7 @@ import {
 import {
   Bot,
   Building,
+  CircleUserRound,
   Group,
   Home,
   IdCard,
@@ -337,6 +338,13 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             text: t('navigation:pages.adminApp', 'Admin App'),
             icon: <LayoutDashboard />,
             path: RouteConfig.build.adminApp(),
+          },
+          {
+            id: 'myaccount',
+            resource: 'serverconfig',
+            text: t('navigation:pages.myAccount', 'MyAccount'),
+            icon: <CircleUserRound />,
+            path: RouteConfig.build.myAccount(),
           },
         ],
       },

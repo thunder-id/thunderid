@@ -119,6 +119,7 @@ const ThemeCreatePage = lazy(() => import('@thunderid/configure-design/pages/The
 const FlowCreatePage = lazy(() => import('@thunderid/configure-flows/pages/FlowCreatePage'));
 const FlowsListPage = lazy(() => import('@thunderid/configure-flows/pages/FlowsListPage'));
 const AdminAppBuilderPage = lazy(() => import('@thunderid/configure-apps/pages/AdminAppBuilderPage'));
+const MyAccountBuilderPage = lazy(() => import('@thunderid/configure-apps/pages/MyAccountBuilderPage'));
 const CreateGroupPage = lazy(() => import('@thunderid/configure-groups/pages/CreateGroupPage'));
 const GroupEditPage = lazy(() => import('@thunderid/configure-groups/pages/GroupEditPage'));
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups/pages/GroupsListPage'));
@@ -430,6 +431,7 @@ export default function App(): JSX.Element {
                 }
               >
                 <Route path={ROUTE_SEGMENTS.adminApp} element={<AdminAppBuilderPage />} />
+                <Route path={ROUTE_SEGMENTS.myAccount} element={<MyAccountBuilderPage />} />
               </Route>
               <Route
                 path={RouteConfig.flows.detail(':flowId')}

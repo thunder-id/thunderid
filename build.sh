@@ -118,6 +118,10 @@ FRONTEND_CONSOLE_CP_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console-cp
 # prepare_admin_console_for_packaging). Applications, connections and flows are authored on a
 # Control Plane.
 FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/admin-console
+# MyAccount, the self-service Account App (profile and credentials). Every Data Plane distribution
+# serves it from /myaccount; a Control Plane does not.
+MYACCOUNT_APP_DIST_DIR=apps/myaccount
+FRONTEND_MYACCOUNT_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/myaccount
 SAMPLE_BASE_DIR=samples
 VANILLA_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/vanilla-sample
 REACT_SDK_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/react-sdk-sample
@@ -139,6 +143,7 @@ GATE_APP_DEFAULT_PORT=5190
 CONSOLE_APP_DEFAULT_PORT=5191
 ADMIN_CONSOLE_APP_DEFAULT_PORT=5192
 CONSOLE_CP_APP_DEFAULT_PORT=5193
+MYACCOUNT_APP_DEFAULT_PORT=5194
 DOCS_DEFAULT_PORT=3000
 
 # Integration test filters (optional)
@@ -631,6 +636,9 @@ function prepare_cp_backend_for_packaging() {
     # Ship the Control Plane resource server for the identity provider that signs operators into the
     # Control Plane. It sits outside bootstrap/ because the Control Plane must not import it.
     cp -r "$CPSERVER_DIR/idp-bootstrap" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
+    # A Control Plane does not serve MyAccount, and its default application is addressed by the
+    # Control Plane's own URL, which a sync would carry to every Data Plane it manages.
+    strip_application "$DIST_DIR/$CP_PRODUCT_FOLDER" MYACCOUNT
 
     # Key material is not generated into the distribution; setup-cp.sh generates it per deployment.
 }
@@ -660,6 +668,17 @@ function prepare_frontend_for_packaging() {
         shopt -u dotglob
     else
         echo "Warning: Console app build output not found at $FRONTEND_CONSOLE_APP_SOURCE_DIR/dist"
+    fi
+
+    # Copy MyAccount build output
+    if [ -d "$FRONTEND_MYACCOUNT_APP_SOURCE_DIR/dist" ]; then
+        echo "Copying MyAccount build output..."
+        mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$MYACCOUNT_APP_DIST_DIR"
+        shopt -s dotglob
+        cp -r "$FRONTEND_MYACCOUNT_APP_SOURCE_DIR/dist/"* "$DIST_DIR/$PRODUCT_FOLDER/$MYACCOUNT_APP_DIST_DIR"
+        shopt -u dotglob
+    else
+        echo "Warning: MyAccount build output not found at $FRONTEND_MYACCOUNT_APP_SOURCE_DIR/dist"
     fi
 
     echo "================================================================"
@@ -821,13 +840,13 @@ function assert_patched() {
     fi
 }
 
-# strip_console_application drops the default CONSOLE application from a plane's copy of
-# 01-default-resources.yaml. Documents are split on "---"; the one declaring clientId CONSOLE is
+# strip_application drops the default application with the client ID named by $2 from a plane's
+# copy of 01-default-resources.yaml. Documents are split on "---"; the one declaring that clientId is
 # skipped.
-function strip_console_application() {
+function strip_application() {
     local plane_dir="$1"
-    awk '
-        function flush() { if (doc != "" && doc !~ /clientId: CONSOLE\n/) printf "%s", doc; doc = "" }
+    awk -v client="$2" '
+        function flush() { if (doc != "" && index(doc, "clientId: " client "\n") == 0) printf "%s", doc; doc = "" }
         /^---$/ { flush() }
         { doc = doc $0 "\n" }
         END { flush() }
@@ -939,9 +958,9 @@ function stage_quickstart_pack() {
     # (04-quickstart-cp-console.yaml above) and serves no console UI; the Control Plane's console
     # signs in through auth-dp; and the managed dp's admin console has its own ADMIN_CONSOLE
     # client. It is dropped from every bootstrap, so it appears nowhere.
-    strip_console_application "$auth_dp_dir"
-    strip_console_application "$dp_dir"
-    strip_console_application "$cp_dir"
+    strip_application "$auth_dp_dir" CONSOLE
+    strip_application "$dp_dir" CONSOLE
+    strip_application "$cp_dir" CONSOLE
 
     rename_quickstart_service_desk_admin "$dp_dir"
     rename_quickstart_service_desk_admin "$cp_dir"
@@ -1595,13 +1614,15 @@ function apply_dev_quickstart_overrides() {
     assert_patched "$root/dp/deployment.yaml" "port: $GATE_APP_DEFAULT_PORT"
 
     write_cors_bootstrap "$root/dp/bootstrap/03-dev-cors.yaml" \
-        "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+        "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT" \
+        "https://localhost:$MYACCOUNT_APP_DEFAULT_PORT"
     # The Control Plane deploys its own cors list to the managed Data Plane (replacing the Data Plane's
     # and marking it read-only), so the Control Plane list must also include the Data Plane dev origins.
     write_cors_bootstrap "$root/cp/bootstrap/03-dev-cors.yaml" \
         "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT" \
         "https://localhost:$GATE_APP_DEFAULT_PORT" \
-        "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+        "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT" \
+        "https://localhost:$MYACCOUNT_APP_DEFAULT_PORT"
     # auth-dp keeps the pack's allowance for the Control Plane's own origin and gains the dev one:
     # the console calls its /oauth2/token and discovery endpoints from the browser.
     write_cors_bootstrap "$root/auth-dp/bootstrap/03-quickstart-cors.yaml" \
@@ -1694,6 +1715,9 @@ function run_quickstart() {
     # register (the pack registers the origins the planes serve them from).
     export ADMIN_CONSOLE_URL="https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
     export CP_CONSOLE_URL="https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT/console"
+    # MyAccount signs in from its dev server too. The Data Plane's bootstrap reads the extra redirect
+    # URIs of the MYACCOUNT application from the indexed MYACCOUNT_REDIRECT_URIS_<n> variables.
+    export MYACCOUNT_REDIRECT_URIS_0="https://localhost:$MYACCOUNT_APP_DEFAULT_PORT/myaccount"
 
     echo "⚙️  Setting up the quickstart..."
     if ! (cd "$DEV_QUICKSTART_DIR" && ./setup.sh); then
@@ -1736,6 +1760,10 @@ function run_quickstart() {
             THUNDERID_DEV_CLIENT_ID=ADMIN_CONSOLE \
             pnpm --filter "@thunderid/admin-console" dev &
         DEV_PIDS+=($!)
+        THUNDERID_DEV_SERVER_URL="$dp_url" THUNDERID_DEV_GATE_URL="https://localhost:$GATE_APP_DEFAULT_PORT" \
+            PORT="$MYACCOUNT_APP_DEFAULT_PORT" \
+            pnpm --filter "@thunderid/myaccount" dev &
+        DEV_PIDS+=($!)
     fi
     if [ "$run_cp" = "true" ]; then
         THUNDERID_DEV_SERVER_URL="$cp_url" THUNDERID_DEV_TRUSTED_ISSUER_URL="$auth_dp_url" \
@@ -1750,6 +1778,7 @@ function run_quickstart() {
         echo "  📱 Data Plane (managed): $dp_url"
         echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
         echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+        echo "      👤 MyAccount (Self Service): https://localhost:$MYACCOUNT_APP_DEFAULT_PORT/myaccount"
         echo "      Sign in as $SERVICE_DESK_USERNAME (Service Desk Admin)"
     fi
     if [ "$run_cp" = "true" ]; then
@@ -1853,7 +1882,7 @@ function run_frontend() {
     # In dev the apps are served on their own origins, so point them at the backend via
     # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
     THUNDERID_DEV_SERVER_URL="$PUBLIC_URL" \
-        pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" --filter "@thunderid/admin-console" dev &
+        pnpm -r --parallel --filter "@thunderid/console" --filter "@thunderid/gate" --filter "@thunderid/admin-console" --filter "@thunderid/myaccount" dev &
     FRONTEND_PID=$!
     
     # Return to script directory
