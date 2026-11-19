@@ -39,6 +39,21 @@ INSTRUMENTED_LIST="${2:?instrumented-file list is required}"
 
 NOT_IN_SERVER_BINARY=(
   "backend/pkg/thunderidengine/engine.go"
+  # The flow rule engine has no consumer in the server yet: the flow engine starts evaluating rules
+  # in a follow-up change. Its behaviour is covered by the package's unit and conformance tests.
+  # TODO: remove these entries once the flow engine links the rules package.
+  "backend/internal/flow/rules/comparator.go"
+  "backend/internal/flow/rules/compiler.go"
+  "backend/internal/flow/rules/engine.go"
+  "backend/internal/flow/rules/frame.go"
+  "backend/internal/flow/rules/init.go"
+  "backend/internal/flow/rules/leaf.go"
+  "backend/internal/flow/rules/operator.go"
+  "backend/internal/flow/rules/parser.go"
+  "backend/internal/flow/rules/plan.go"
+  "backend/internal/flow/rules/predicate.go"
+  "backend/internal/flow/rules/truth.go"
+  "backend/internal/flow/rules/value.go"
 )
 
 missing=()
