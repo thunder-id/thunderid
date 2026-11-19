@@ -93,6 +93,15 @@ func (h *projectHandler) HandleProjectDeleteRequest(w http.ResponseWriter, r *ht
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusNoContent, nil)
 }
 
+// HandleProjectDeletionCheckRequest answers as a delete of the project would, without deleting it.
+func (h *projectHandler) HandleProjectDeletionCheckRequest(w http.ResponseWriter, r *http.Request) {
+	if svcErr := h.service.CheckProjectDeletion(r.Context(), r.PathValue("id")); svcErr != nil {
+		writeProjectError(r.Context(), w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusNoContent, nil)
+}
+
 // sanitizeProjectRequest sanitizes the string fields of a project request.
 func sanitizeProjectRequest(request ProjectRequest) ProjectRequest {
 	return ProjectRequest{

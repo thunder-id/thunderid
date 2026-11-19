@@ -729,6 +729,10 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{name: "PUT project", method: http.MethodPut, path: "/projects/p-1", wantPerm: p.ProjectUpdate},
 		{name: "DELETE project", method: http.MethodDelete, path: "/projects/p-1", wantPerm: p.ProjectDelete},
 		{
+			name:   "GET project deletion check",
+			method: http.MethodGet, path: "/projects/p-1/deletion-check", wantPerm: p.ProjectDelete,
+		},
+		{
 			name:   "GET gateway variables needs root",
 			method: http.MethodGet, path: "/gateways/g-1/variables", wantPerm: p.Root,
 		},
