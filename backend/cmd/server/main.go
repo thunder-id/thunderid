@@ -75,8 +75,9 @@ func main() {
 		logger.Fatal(ctx, "Failed to configure log output", log.Error(err))
 	}
 
-	// Build the audit event bus before any service, so nothing that publishes can start without it.
-	auditBus, auditStopper := initAuditBus(ctx, logger, cfg)
+	// Build the event bus and its subscribers before any service, so nothing that publishes can start
+	// without them.
+	eventBus, busStopper := initEventBus(ctx, logger, cfg)
 
 	// Initialize the cache manager.
 	cacheManager := cache.Initialize(cfg.Cache, cfg.Server.Identifier)
@@ -92,14 +93,14 @@ func main() {
 
 	// Register the services.
 	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier :=
-		registerServices(mux, cacheManager, auditBus)
+		registerServices(mux, cacheManager, eventBus)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
 	if isBootstrapInvocation() {
 		err := runBootstrap(ctx, logger, serverHome, importService, cacheManager)
 		// The bootstrap creates audited resources, whose events must be written before the process exits.
-		auditStopper.Stop()
+		busStopper.Stop()
 		if err != nil {
 			logger.Error(ctx, "In-process bootstrap failed; exiting", log.Error(err))
 			os.Exit(1)
@@ -164,7 +165,7 @@ func main() {
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
 	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher, lockNotifier,
-		auditStopper)
+		busStopper)
 }
 
 // initSystemPermissions activates the Data Plane's permissions: the deployment-wide system root and the org
@@ -173,12 +174,14 @@ func initSystemPermissions(cfg *config.Config) {
 	security.InitDataPlanePermissions(cfg.Server.SecurityConfig.SystemPermissionPrefix)
 }
 
-// initAuditBus builds the audit event bus with the default stdout sink. A failure stops startup, so
-// the server never runs with audit silently missing.
-func initAuditBus(ctx context.Context, logger *log.Logger,
+// initEventBus builds the event bus and subscribes the default audit sink to it. The registry stays
+// here, so only this composition root decides who receives events. A failure stops startup, so the
+// server never runs with audit silently missing.
+func initEventBus(ctx context.Context, logger *log.Logger,
 	cfg *config.Config) (eventbus.EventBusInterface, eventbus.StopperInterface) {
-	bus, stopper, err := defaultaudit.Initialize(cfg.Audit)
-	if err != nil {
+	bus, registry, stopper := eventbus.Initialize()
+	if err := defaultaudit.Initialize(cfg.Audit, registry); err != nil {
+		stopper.Stop()
 		logger.Fatal(ctx, "Failed to initialize audit", log.Error(err))
 	}
 	logger.Info(ctx, "Audit events", log.Bool("enabled", cfg.Audit.IsEnabled()))
@@ -360,7 +363,7 @@ func gracefulShutdown(
 	revocationSyncer revocationcache.Syncer,
 	backchannelDispatcher backchannel.DispatcherInterface,
 	lockNotifier identitygovernance.LockNotifierInterface,
-	auditStopper eventbus.StopperInterface,
+	busStopper eventbus.StopperInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -384,9 +387,9 @@ func gracefulShutdown(
 		lockNotifier.Stop()
 	}
 
-	// Stop audit once the HTTP server and the background workers have stopped, so their last events
-	// are still written.
-	auditStopper.Stop()
+	// Stop the event bus once the HTTP server and the background workers have stopped, so their last
+	// events are still delivered.
+	busStopper.Stop()
 
 	// Shutdown services
 	unregisterServices()

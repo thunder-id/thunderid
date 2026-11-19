@@ -40,6 +40,14 @@ func userDelete(outcome audit.Outcome) *eventbus.Event {
 			outcome))
 }
 
+// newBus builds an event bus and subscribes the audit sink on it as cfg says.
+func (s *InitTestSuite) newBus(cfg config.AuditConfig) (eventbus.EventBusInterface, eventbus.StopperInterface) {
+	bus, registry, stopper := eventbus.Initialize()
+	s.T().Cleanup(stopper.Stop)
+	s.Require().NoError(Initialize(cfg, registry))
+	return bus, stopper
+}
+
 // captureStdout sends standard output to a pipe until the returned function is called, which returns
 // what was written.
 func (s *InitTestSuite) captureStdout() func() []byte {
@@ -60,8 +68,7 @@ func (s *InitTestSuite) captureStdout() func() []byte {
 // Stop drains the queue, so every event published before it is written.
 func (s *InitTestSuite) TestAuditOnWritesOneLinePerValidEventToStandardOutput() {
 	read := s.captureStdout()
-	bus, stopper, err := Initialize(auditConfig(true))
-	s.Require().NoError(err)
+	bus, stopper := s.newBus(auditConfig(true))
 
 	s.Require().NoError(bus.Publish(context.Background(), userDelete(audit.OutcomeSucceeded)))
 	s.Require().NoError(bus.Publish(context.Background(), userDelete(audit.OutcomeDenied(""))))
@@ -81,8 +88,7 @@ func (s *InitTestSuite) TestAuditOffValidatesAndDrops() {
 	} {
 		s.Run(name, func() {
 			read := s.captureStdout()
-			bus, stopper, err := Initialize(cfg)
-			s.Require().NoError(err)
+			bus, stopper := s.newBus(cfg)
 
 			s.NoError(bus.Publish(context.Background(), userDelete(audit.OutcomeSucceeded)))
 			s.Error(bus.Publish(context.Background(), eventbus.NewEvent(context.Background(), "User Deleted").
@@ -93,4 +99,14 @@ func (s *InitTestSuite) TestAuditOffValidatesAndDrops() {
 			s.Empty(read())
 		})
 	}
+}
+
+// A failed subscription is returned, so the caller can stop startup.
+func (s *InitTestSuite) TestSubscriptionFailureIsReturned() {
+	_, registry, stopper := eventbus.Initialize()
+	s.T().Cleanup(stopper.Stop)
+	s.Require().NoError(registry.Register(audit.CategoryAudit, stdoutSubscriberID,
+		func(context.Context, eventbus.Envelope, eventbus.Payload) error { return nil }))
+
+	s.ErrorContains(Initialize(auditConfig(true), registry), "failed to subscribe the audit stdout sink")
 }

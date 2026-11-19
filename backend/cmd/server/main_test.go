@@ -785,7 +785,7 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			require.NoError(t, err)
 
 			read := auditLines(t)
-			bus, stopper := initAuditBus(context.Background(), log.GetLogger(), cfg)
+			bus, stopper := initEventBus(context.Background(), log.GetLogger(), cfg)
 			mux := http.NewServeMux()
 			mux.HandleFunc("POST /import/managed", func(w http.ResponseWriter, r *http.Request) {
 				ctx := r.Context()
