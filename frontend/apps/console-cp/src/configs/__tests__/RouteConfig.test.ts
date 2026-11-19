@@ -171,6 +171,10 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.project?.('p-shop')).toBe('/projects');
   });
 
+  it('build nests the app builders under the build segment', () => {
+    expect(RouteConfig.build.adminApp()).toBe('/build/admin-app');
+  });
+
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);

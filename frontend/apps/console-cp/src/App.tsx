@@ -132,6 +132,7 @@ const ThemeBuilderPage = lazy(() => import('@thunderid/configure-design/pages/Th
 const ThemeCreatePage = lazy(() => import('@thunderid/configure-design/pages/ThemeCreatePage'));
 const FlowCreatePage = lazy(() => import('@thunderid/configure-flows/pages/FlowCreatePage'));
 const FlowsListPage = lazy(() => import('@thunderid/configure-flows/pages/FlowsListPage'));
+const AdminAppBuilderPage = lazy(() => import('@thunderid/configure-apps/pages/AdminAppBuilderPage'));
 const CreateGroupPage = lazy(() => import('@thunderid/configure-groups/pages/CreateGroupPage'));
 const GroupEditPage = lazy(() => import('@thunderid/configure-groups/pages/GroupEditPage'));
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups/pages/GroupsListPage'));
@@ -538,6 +539,17 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<ConnectionConfigureWizardPage />} />
+                </Route>
+                {/* The app builders take the full width, like the flow builder. */}
+                <Route
+                  path={`/${ROUTE_SEGMENTS.build}`}
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout collapseSidebar />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path={ROUTE_SEGMENTS.adminApp} element={<AdminAppBuilderPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.importExport.list()}

@@ -186,6 +186,19 @@ describe('DashboardLayout', () => {
     ).toBeInTheDocument();
   });
 
+  it('groups flows and the app builders under the build category', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:categories.build')).toBeInTheDocument();
+    // Build comes after Configure in the sidebar.
+    expect(
+      screen
+        .getByText('navigation:categories.configure')
+        .compareDocumentPosition(screen.getByText('navigation:categories.build')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText('navigation:pages.adminApp')).toBeInTheDocument();
+  });
+
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
     render(<DashboardLayout collapseSidebar={collapseSidebar} />);
 

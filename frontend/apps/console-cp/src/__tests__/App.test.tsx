@@ -259,6 +259,10 @@ vi.mock('@thunderid/configure-organization-units/pages/CreateOrganizationUnitPag
   default: () => <div data-testid="create-organization-unit-page">Create OU Page</div>,
 }));
 
+vi.mock('@thunderid/configure-apps/pages/AdminAppBuilderPage', () => ({
+  default: () => <div data-testid="admin-app-builder-page">Admin App Builder Page</div>,
+}));
+
 vi.mock('@thunderid/configure-organization-units/pages/OrganizationUnitEditPage', () => ({
   default: ({
     renderDefaultFlowsSettings,
@@ -567,6 +571,15 @@ describe('App', () => {
       expect(screen.getByTestId('flows-list-page')).toBeInTheDocument();
     });
   });
+
+  it('loads AdminAppBuilderPage lazily at /build/admin-app', async () => {
+    window.history.pushState({}, '', '/build/admin-app');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('admin-app-builder-page')).toBeInTheDocument();
+    });
+  });
+
 
   it('loads FlowCreatePage lazily at /flows/create', async () => {
     window.history.pushState({}, '', '/flows/create');

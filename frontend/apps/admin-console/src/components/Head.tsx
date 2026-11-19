@@ -3,6 +3,8 @@
 
 import {Helmet} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
+import {resolveAppImage} from '@thunderid/system-apps';
+import useAdminAppConfig from '../hooks/useAdminAppConfig';
 
 /**
  * Resolves a configured favicon path against the Vite base URL so it loads
@@ -25,15 +27,21 @@ function resolveFaviconHref(path: string): string {
  * browser picks the matching favicon based on the operating system / browser
  * color scheme. This is independent of the in-app color scheme toggle — the tab
  * icon tracks the OS theme, switching live when the OS theme changes.
+ *
+ * A favicon the Admin App configuration sets replaces the app's own; its dark variant falls back
+ * to its light one.
  */
 export default function Head() {
   const {config} = useConfig();
+  const {config: appConfig} = useAdminAppConfig();
   const {favicon} = config.brand;
+  const light: string = resolveAppImage(appConfig.branding.favicon, 'light') ?? favicon.light;
+  const dark: string = resolveAppImage(appConfig.branding.favicon, 'dark') ?? favicon.dark;
 
   return (
     <Helmet>
-      <link rel="icon" href={resolveFaviconHref(favicon.light)} media="(prefers-color-scheme: light)" />
-      <link rel="icon" href={resolveFaviconHref(favicon.dark)} media="(prefers-color-scheme: dark)" />
+      <link rel="icon" href={resolveFaviconHref(light)} media="(prefers-color-scheme: light)" />
+      <link rel="icon" href={resolveFaviconHref(dark)} media="(prefers-color-scheme: dark)" />
     </Helmet>
   );
 }
