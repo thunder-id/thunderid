@@ -1293,6 +1293,15 @@ aside.theme-doc-sidebar-container {
     --scalar-background-3: var(--oxygen-palette-background-paper);
 }
 
+
+
+/* Fix transparent API search modal in dark mode. */
+html[data-theme="dark"] .scalar-modal-body {
+  background-color: var(--oxygen-palette-background-default) !important;
+}
+
+
+
 [data-theme="light"] .dark-mode {
   --scalar-background-2: var(--oxygen-palette-grey-900);
   --scalar-background-3: var(--oxygen-palette-grey-900);
