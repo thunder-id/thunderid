@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.10
+- **Version:** 0.11
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -621,7 +621,7 @@ own.
 | Actions | Trigger an operation | Sign-in button, sign-out button, sign-up button |
 | Auth flow | Handle the redirect callback | Callback |
 | Control | Render conditionally on auth state | Signed-in, signed-out, loading |
-| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, language switcher |
+| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, invite to organization unit, user, user avatar, user dropdown, user profile, verify attribute, language switcher |
 
 Requirements:
 
@@ -1254,3 +1254,4 @@ server recorded and nothing else.
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
+| 0.11 | 2026-11-19 | Invite to organization unit component added. It runs an `INVITATION` flow, started by its flow ID with a token issued for the organization unit, and draws the flow's `ROLE_SELECT` input as a role picker. |

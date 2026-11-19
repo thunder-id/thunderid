@@ -91,6 +91,11 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks-and-tools/react/apis/components/flow-variables-form',
                   label: '<FlowVariablesForm />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/invite-to-organization-unit',
+                  label: '<InviteToOrganizationUnit />',
+                },
               ],
             },
             {
