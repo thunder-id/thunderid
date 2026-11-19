@@ -33,6 +33,7 @@ const EVENT: CommunityDayEvent = {
     note: 'In person only',
   },
   cost: 'Free',
+  registrationUrl: 'https://luma.com/event/evt-Zhgeai7Mqb4pc8d',
   heroPartner: LFDT,
   audience: [
     {
