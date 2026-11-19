@@ -42,6 +42,7 @@ var kindKeys = map[string]bool{"resource_type": true, "type": true, "category": 
 const (
 	resourceTypeAgentType            = "agent_type"
 	resourceTypeUserType             = "user_type"
+	resourceTypeOUType               = "ou_type"
 	resourceTypeNotificationTemplate = "notification_template"
 )
 

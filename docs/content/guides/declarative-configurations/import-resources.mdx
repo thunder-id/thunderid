@@ -143,8 +143,8 @@ otherwise linger on every deployment that configuration was applied to. `deletio
 resources to remove, so one request can reconcile a deployment with the configuration as it now
 stands.
 
-Each entry names a `resourceType` and an `id`. User types and agent types are separate resource
-types, `user_type` and `agent_type`, as they are in `content`. A `translation` is identified by its language, such as
+Each entry names a `resourceType` and an `id`. User types, agent types and organization unit types are
+separate resource types, `user_type`, `agent_type` and `ou_type`, as they are in `content`. A `translation` is identified by its language, such as
 `fr-FR`, and removing it clears every custom translation of that language.
 
 ```json

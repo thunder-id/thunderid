@@ -94,10 +94,11 @@ func ownerOf(resource bundleResource) string {
 }
 
 // organizationLevel are the kinds of resource that, in no project, are the organization's own: its
-// organization units, and the types its users and agents take. One that only one project's resources
-// need is still the organization's, so it is never counted as that project's, only as what it needs.
+// organization units, the types they take, and the types its users and agents take. One that only one
+// project's resources need is still the organization's, so it is never counted as that project's, only as
+// what it needs.
 var organizationLevel = map[string]bool{"organization_unit": true, resourceTypeAgentType: true,
-	resourceTypeUserType: true}
+	resourceTypeUserType: true, resourceTypeOUType: true}
 
 // carriedShared reports whether a shared resource goes with a project's deploy unless it is left out.
 // No application names the allowed origins or a translation, so they are never needed, yet a project's
