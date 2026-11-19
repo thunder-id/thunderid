@@ -231,6 +231,18 @@ func TestSoleNeedersLeaveTheOrganizationsOwnResourcesShared(t *testing.T) {
 	assert.Equal(t, map[string]string{"flow/flow-a": "shop"}, sole)
 }
 
+// An organization unit type stays the organization's, though only one project's resources name it.
+func TestSoleNeedersLeaveOrganizationUnitTypesShared(t *testing.T) {
+	sole := soleNeeders(parseBundle(joinBundle([]string{
+		projectApp("a", "shop", "ou-1", "flow-a") + "ouTypeId: out-1\n",
+		"resource_type: flow\nid: flow-a\nname: a",
+		"resource_type: organization_unit\nid: ou-1\nname: one",
+		"resource_type: ou_type\nid: out-1\nhandle: default\ndisplayName: Default\nouId: ou-1",
+	})))
+
+	assert.Equal(t, map[string]string{"flow/flow-a": "shop"}, sole)
+}
+
 // Settings that name only projects the deployment no longer has leave the whole version to auto apply.
 func (s *ProjectScopeTestSuite) TestStaleProjectSettingsLeaveTheWholeVersionToAutoApply() {
 	s.f.gateways.gateways[0].IsDefault = true

@@ -619,6 +619,7 @@ func TestACaptureRecordsTheExportOfEveryResource(t *testing.T) {
 	assert.Contains(t, v.Resources, "ou-a")
 	assert.NotEmpty(t, f.exporter.asked.Users)
 	assert.NotEmpty(t, f.exporter.asked.Groups)
+	assert.NotEmpty(t, f.exporter.asked.OUTypes)
 	assert.NotEmpty(t, f.exporter.asked.Applications)
 	assert.NotEmpty(t, f.exporter.asked.NotificationTemplates)
 }
