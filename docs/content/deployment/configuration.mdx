@@ -555,7 +555,6 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.revocation.token_family.on_explicit_revoke` | `true` | If `true`, revoking a token through `/oauth2/revoke` also revokes every other token of the same authorization grant |
 | `oauth.revocation.token_family.on_refresh_replay` | `true` | If `true`, presenting a refresh token that has already been rotated out revokes every token of that grant. Requires `oauth.refresh_token.renew_on_grant`, since a refresh token can only be replayed once it has been rotated |
 | `oauth.revocation.token_family.on_code_replay` | `true` | If `true`, redeeming an authorization code a second time revokes every token issued from that code |
-| `oauth.token_exchange.token_family` | `none` | Whether an exchanged token joins the subject token's authorization grant. `none` issues an independent token; `inherit` copies the subject token's token family, so revoking the grant also revokes the exchanged token |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
@@ -579,6 +578,10 @@ Set `oauth.client_assertion.max_lifetime` and `oauth.client_assertion.max_iat_ag
 
 :::note
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
+:::
+
+:::warning
+If you are upgrading from an earlier release, remove the `oauth.token_exchange` block from `deployment.yaml`. The server does not start while `deployment.yaml` has it. Tokens exchanged before the upgrade under the earlier default, `none`, carry no token family, so revoking the grant they came from does not revoke them. See [Where `tfid` Comes From](../../guides/protocols/oauth-oidc/token-revocation#where-tfid-comes-from).
 :::
 
 ## Flow Configuration

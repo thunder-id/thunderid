@@ -1854,7 +1854,6 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 		PAR:                      engineconfig.PARConfig{ExpiresIn: 600, RequirePAR: true},
 		DPoP:                     engineconfig.DPoPConfig{Required: true, AllowedAlgs: []string{"ES256"}},
 		CIBA:                     engineconfig.CIBAConfig{IDTokenHintMaxAgeDays: 30},
-		TokenExchange:            engineconfig.TokenExchangeConfig{TokenFamily: "inherit"},
 		IDJAG:                    idJAG,
 		AllowWildcardRedirectURI: true,
 		AllowedGrantTypes:        []string{"authorization_code"},
@@ -1872,7 +1871,6 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 	assert.Equal(suite.T(), src.PAR, dst.PAR)
 	assert.Equal(suite.T(), src.DPoP, dst.DPoP)
 	assert.Equal(suite.T(), src.CIBA, dst.CIBA)
-	assert.Equal(suite.T(), src.TokenExchange, dst.TokenExchange)
 	assert.Equal(suite.T(), src.IDJAG, dst.IDJAG)
 	assert.Equal(suite.T(), src.AllowWildcardRedirectURI, dst.AllowWildcardRedirectURI)
 	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)
@@ -1926,6 +1924,31 @@ allowed_subject_types:
 	assert.Empty(suite.T(), dst.AllowedClaims)
 	assert.Empty(suite.T(), dst.DefaultScopeClaimsMapping)
 	assert.Empty(suite.T(), dst.AllowedSubjectTypes)
+}
+
+// oauth.token_exchange.token_family was removed: exchanged tokens always inherit the subject token's
+// token family. A deployment that still sets it fails to load rather than silently losing its choice.
+func (suite *ConfigTestSuite) TestLoadConfigRefusesTheRemovedTokenExchangeSection() {
+	const valid = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	tempDir := suite.T().TempDir()
+	_, err := LoadConfig(suite.createTempFile(tempDir, "valid*.yaml", valid), "", tempDir)
+	suite.Require().NoError(err)
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "token-exchange*.yaml",
+		valid+"oauth:\n  token_exchange:\n    token_family: none\n"), "", tempDir)
+
+	suite.Nil(cfg)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "token_exchange")
 }
 
 // A deployment that sets max_gateways to zero means it administers none, and the merge has to keep

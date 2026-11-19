@@ -377,14 +377,6 @@ const (
 	SubjectTypePublic string = "public"
 )
 
-// Token-exchange token family modes (oauth.token_exchange.token_family).
-const (
-	// TokenExchangeTokenFamilyNone issues an exchanged token with no token family id (independent).
-	TokenExchangeTokenFamilyNone string = "none"
-	// TokenExchangeTokenFamilyInherit copies the subject token's token family id onto the exchanged token.
-	TokenExchangeTokenFamilyInherit string = "inherit"
-)
-
 // User attribute constants.
 const (
 	// UserAttributeGroups is the constant for user's groups attribute.

@@ -870,7 +870,6 @@ type OAuthConfig struct {
 	DeviceGrant              engineconfig.DeviceGrantConfig          `yaml:"device_grant" json:"device_grant"`
 	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
 	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
-	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
 	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
 	AllowedGrantTypes        []string                                `yaml:"allowed_grant_types" json:"allowed_grant_types"`                   //nolint:lll
 	AllowedResponseTypes     []string                                `yaml:"allowed_response_types" json:"allowed_response_types"`             //nolint:lll
@@ -898,7 +897,6 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		DeviceGrant:              c.DeviceGrant,
 		ClientAssertion:          c.ClientAssertion,
 		Revocation:               c.Revocation,
-		TokenExchange:            c.TokenExchange,
 		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,
 		AllowedGrantTypes:        c.AllowedGrantTypes,
 		AllowedResponseTypes:     c.AllowedResponseTypes,
@@ -1131,9 +1129,6 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.OAuth.ClientAssertion.Validate(); err != nil {
-		return nil, err
-	}
-	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {
 		return nil, err
 	}
 	if err := cfg.OAuth.Logout.Backchannel.Validate(); err != nil {
