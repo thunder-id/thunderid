@@ -62,6 +62,12 @@ export const FlowType = {
   DEVICE_GRANT: 'DEVICE_GRANT',
 
   /**
+   * CIBA flows notify the user of a backchannel authentication request and ask for approval, then call the
+   * application's authentication flow.
+   */
+  CIBA: 'CIBA',
+
+  /**
    * Self flows run operations a signed-in user performs on their own account, picked by handle
    */
   SELF: 'SELF',

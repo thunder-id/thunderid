@@ -17,11 +17,16 @@ export type CallPropertiesPropsInterface = CommonResourcePropertiesPropsInterfac
 function CallProperties({resource, onChange}: CallPropertiesPropsInterface): ReactElement {
   const {t} = useTranslation();
   const {flowId} = useParams<{flowId: string}>();
-  const {data, isLoading, error} = useGetFlows({limit: 100});
-
   const flowData = resource?.data as (StepData & {flow?: {ref?: string; filterFlowType?: string}}) | undefined;
   const currentRef = flowData?.flow?.ref ?? '';
   const filterFlowType = flowData?.flow?.filterFlowType;
+  // The type filter applies on the server, before the page limit, and every page loads, so an eligible flow is
+  // never missing from the list and a reference is reported as deleted only when it is absent from the full list.
+  const {data, isLoading, error} = useGetFlows({
+    flowType: filterFlowType as FlowType | undefined,
+    limit: 100,
+    fetchAllPages: true,
+  });
 
   const flows: BasicFlowDefinition[] = useMemo(() => {
     const list = data?.flows ?? [];
@@ -30,6 +35,7 @@ function CallProperties({resource, onChange}: CallPropertiesPropsInterface): Rea
         flow.id !== flowId &&
         flow.flowType !== FlowType.SIGNOUT &&
         flow.flowType !== FlowType.DEVICE_GRANT &&
+        flow.flowType !== FlowType.CIBA &&
         (!filterFlowType || flow.flowType === filterFlowType),
     );
   }, [data, flowId, filterFlowType]);

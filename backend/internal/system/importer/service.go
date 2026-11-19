@@ -1514,6 +1514,9 @@ func (s *importService) importApplication(
 	if mappedFlowID, ok := flowIDAliases[req.DeviceGrantFlowID]; ok {
 		req.DeviceGrantFlowID = mappedFlowID
 	}
+	if mappedFlowID, ok := flowIDAliases[req.CIBAFlowID]; ok {
+		req.CIBAFlowID = mappedFlowID
+	}
 	if mappedFlowID, ok := flowIDAliases[req.RegistrationFlowID]; ok {
 		req.RegistrationFlowID = mappedFlowID
 	}
@@ -1656,6 +1659,8 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			AuthFlowHandle:            req.AuthFlowHandle,
 			DeviceGrantFlowID:         req.DeviceGrantFlowID,
 			DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
+			CIBAFlowID:                req.CIBAFlowID,
+			CIBAFlowHandle:            req.CIBAFlowHandle,
 			RegistrationFlowID:        req.RegistrationFlowID,
 			RegistrationFlowHandle:    req.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,

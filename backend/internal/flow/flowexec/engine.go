@@ -208,10 +208,10 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	})
 	// The application's subject type constraints ride on the context for the same reason: the authn
 	// providers enforce them below the flow graph, so no node has to carry or check them. Only an
-	// authentication flow signs a subject in to the application; the other flow types resolve the
-	// eligible entity types through their own executors.
+	// authentication flow, or a CIBA flow that identifies the user a request names, signs a subject in to
+	// the application; the other flow types resolve the eligible entity types through their own executors.
 	nodeCtxContext := ssoCtx
-	if ctx.FlowType == providers.FlowTypeAuthentication {
+	if signsInToApplication(ctx.FlowType) {
 		nodeCtxContext = authnprovidercm.WithSubjectTypeConstraints(ssoCtx, authnprovidercm.SubjectTypeConstraints{
 			AllowedUserTypes:  ctx.Application.AllowedUserTypes,
 			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
@@ -1229,6 +1229,12 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
 	}
+	// A CIBA or Device Grant flow runs only as the root of the request that starts it, so no flow calls one.
+	if common.IsRequestOnlyFlowType(flow.FlowType) {
+		logger.Debug(ctx.Context, "Call target is started only by a request", log.String("targetFlowID", targetFlowID),
+			log.String("targetFlowType", string(flow.FlowType)))
+		return nil, &ErrorCallTargetRequestOnly
+	}
 	// A flow running with the system's authority would lend it to a callee that should act for its caller.
 	if !actsForCaller(ctx.rootFlowType()) && actsForCaller(flow.FlowType) {
 		logger.Debug(ctx.Context, "Call target acts for its caller", log.String("targetFlowID", targetFlowID),
@@ -1257,6 +1263,7 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	callerBounded := ctx.SignInBounded
 	callerOUID := ctx.RuntimeData[common.RuntimeKeyOUID]
 	callerOUFixed := ctx.RuntimeData[common.RuntimeKeyOUFixed]
+	callerRequestedSubject := ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID]
 
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
@@ -1286,6 +1293,11 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 		if callerOUFixed != "" {
 			ctx.RuntimeData[common.RuntimeKeyOUFixed] = callerOUFixed
 		}
+	}
+
+	// The user a CIBA request names stays the only one a callee signs in.
+	if callerRequestedSubject != "" {
+		ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID] = callerRequestedSubject
 	}
 
 	// Set the current node to the start node of the callee graph

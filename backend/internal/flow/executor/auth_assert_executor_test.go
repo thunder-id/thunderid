@@ -212,6 +212,40 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAuthenticated_Success(
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *AuthAssertExecutorTestSuite) TestExecute_RefusesAUserTheRequestDoesNotName() {
+	ctx := &providers.NodeContext{
+		Context:     context.Background(),
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{
+			common.RuntimeKeyRequestedSubjectID: "another-user",
+		},
+	}
+	suite.setupGetEntityReference("INTERNAL", testAuthOUID)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrAuthenticatedUserNotRequested.Code, resp.Error.Code)
+	assert.Empty(suite.T(), resp.Assertion)
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIsRequestedSubject() {
+	named := func(runtime map[string]string) *providers.NodeContext {
+		return &providers.NodeContext{RuntimeData: runtime}
+	}
+	key := common.RuntimeKeyRequestedSubjectID
+
+	assert.True(suite.T(), isRequestedSubject(named(nil), "user-123"), "a request naming no user accepts any")
+	assert.True(suite.T(), isRequestedSubject(named(map[string]string{key: "user-123"}), "user-123"))
+	assert.False(suite.T(), isRequestedSubject(named(map[string]string{key: "user-123"}), "user-456"))
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestExecute_UserNotAuthenticated() {
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),

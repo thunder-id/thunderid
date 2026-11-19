@@ -571,7 +571,8 @@ func (suite *InboundClientStoreTestSuite) TestCreateProfile() {
 		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateInboundClient,
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything).
 			Return(int64(1), nil).Once()
 
 		err := suite.store.CreateInboundClient(context.Background(), client)
@@ -606,7 +607,8 @@ func (suite *InboundClientStoreTestSuite) TestUpdateProfile() {
 		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateInboundClientByEntityID,
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything).
 			Return(int64(1), nil).Once()
 
 		err := suite.store.UpdateInboundClient(context.Background(), client)
@@ -843,10 +845,10 @@ func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_Flow() {
 	suite.Run("uses flow queries and repeats the id across slots", func() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
 		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByFlowIDCount,
-			"flow-1", "flow-1", "flow-1", "flow-1", "flow-1", testServerID).
+			"flow-1", "flow-1", "flow-1", "flow-1", "flow-1", "flow-1", testServerID).
 			Return([]map[string]interface{}{{"total": int64(2)}}, nil).Once()
 		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByFlowID,
-			"flow-1", "flow-1", "flow-1", "flow-1", "flow-1", testServerID, 10, 0).
+			"flow-1", "flow-1", "flow-1", "flow-1", "flow-1", "flow-1", testServerID, 10, 0).
 			Return([]map[string]interface{}{
 				{"entity_id": "app-1"},
 				{"entity_id": "app-2"},
@@ -888,7 +890,7 @@ func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_UnknownTyp
 func (suite *InboundClientStoreTestSuite) TestSubjectAttribute_RoundTrip() {
 	mapping := map[string]string{"employee": "email", "customer": "username"}
 
-	propertiesBytes, _, _, _, _, _, _, _, _, err := marshalInboundClient(inboundmodel.InboundClient{
+	propertiesBytes, _, _, _, _, _, _, _, _, _, err := marshalInboundClient(inboundmodel.InboundClient{
 		SubjectAttribute: mapping,
 	})
 	suite.Require().NoError(err)
@@ -912,4 +914,28 @@ func loadRuntimeForScope() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: testServerID},
 	})
+}
+
+func (suite *InboundClientStoreTestSuite) TestCIBAFlowID_RoundTrip() {
+	_, _, _, _, cibaFlowID, _, _, _, _, _, err := marshalInboundClient(inboundmodel.InboundClient{CIBAFlowID: "ciba-1"})
+	suite.Require().NoError(err)
+	suite.Equal("ciba-1", cibaFlowID)
+
+	_, _, _, _, unset, _, _, _, _, _, err := marshalInboundClient(inboundmodel.InboundClient{})
+	suite.Require().NoError(err)
+	suite.Nil(unset, "an unset CIBA flow is stored as NULL")
+
+	result, err := buildInboundClientFromRow(context.Background(), map[string]interface{}{
+		"entity_id":    testEntityID,
+		"ciba_flow_id": "ciba-1",
+	})
+	suite.Require().NoError(err)
+	suite.Equal("ciba-1", result.CIBAFlowID)
+}
+
+func (suite *InboundClientStoreTestSuite) TestClientReferences_CIBAFlowSlot() {
+	suite.True(clientReferences(&inboundmodel.InboundClient{CIBAFlowID: "flow-1"},
+		resourcedependency.ResourceTypeFlow, "flow-1"))
+	suite.False(clientReferences(&inboundmodel.InboundClient{CIBAFlowID: "flow-2"},
+		resourcedependency.ResourceTypeFlow, "flow-1"))
 }

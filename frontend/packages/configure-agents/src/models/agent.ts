@@ -63,6 +63,8 @@ export interface Agent {
   authFlowId?: string;
   /** Device Grant flow used when this agent accepts the OAuth Device Code grant. */
   deviceGrantFlowId?: string;
+  /** CIBA flow that notifies the user of a backchannel authentication request and asks for approval. */
+  cibaFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
   assertion?: AssertionConfig;
@@ -149,6 +151,7 @@ export interface UpdateAgentRequest {
   inboundAuthConfig?: AgentInboundAuthConfig[];
   authFlowId?: string;
   deviceGrantFlowId?: string;
+  cibaFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
   /** Absent leaves the lifespan unchanged; null removes its end. */

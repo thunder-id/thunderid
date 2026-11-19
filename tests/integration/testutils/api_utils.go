@@ -763,6 +763,7 @@ func CreateApplication(app Application) (string, error) {
 		"isRecoveryFlowEnabled":     app.IsRecoveryFlowEnabled,
 		"authFlowId":                app.AuthFlowID,
 		"deviceGrantFlowId":         app.DeviceGrantFlowID,
+		"cibaFlowId":                app.CIBAFlowID,
 		"registrationFlowId":        app.RegistrationFlowID,
 		"recoveryFlowId":            app.RecoveryFlowID,
 	}

@@ -197,10 +197,11 @@ func (s *cibaService) InitiateBackchannelAuth(
 	}
 
 	flowStep, flowErr := s.flowExecService.InitiateAndExecute(ctx, &flowexec.FlowInitContext{
-		ApplicationID: oauthApp.ID,
-		FlowType:      string(providers.FlowTypeAuthentication),
-		RuntimeData:   runtimeData,
-		ExpirySeconds: expiresIn,
+		ApplicationID:     oauthApp.ID,
+		FlowType:          string(providers.FlowTypeCIBA),
+		RuntimeData:       runtimeData,
+		SharedRuntimeData: calledFlowRuntimeData(runtimeData),
+		ExpirySeconds:     expiresIn,
 		InitialInputs: map[string]string{
 			oauth2const.RequestParamLoginHint: loginHint,
 		},
@@ -748,4 +749,32 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 	}
 
 	return claims, base.AuthTime, nil
+}
+
+// calledFlowRuntimeKeys are the keys of a CIBA request that the authentication flow the CIBA flow calls reads.
+// Everything else the request carries stays in the CIBA flow's own runtime data.
+var calledFlowRuntimeKeys = []string{
+	flowcm.RuntimeKeyAuthorizationRequestID,
+	flowcm.RuntimeKeyCallbackType,
+	flowcm.RuntimeKeyRequestedPermissions,
+	flowcm.RuntimeKeyResourceServerIdentifier,
+	flowcm.RuntimeKeyRequiredEssentialAttributes,
+	flowcm.RuntimeKeyRequiredOptionalAttributes,
+	flowcm.RuntimeKeyUserAttributesCacheTTLSeconds,
+	flowcm.RuntimeKeyBindingMessage,
+	flowcm.RuntimeKeyForceConsentReprompt,
+	flowcm.RuntimeKeyRequestedAuthClasses,
+	flowcm.RuntimeKeyRequestedAuthorizationDetails,
+}
+
+// calledFlowRuntimeData returns the part of the request's runtime data that stays readable inside the flows
+// the CIBA flow calls.
+func calledFlowRuntimeData(runtimeData map[string]string) map[string]string {
+	shared := make(map[string]string, len(calledFlowRuntimeKeys))
+	for _, key := range calledFlowRuntimeKeys {
+		if value, ok := runtimeData[key]; ok {
+			shared[key] = value
+		}
+	}
+	return shared
 }

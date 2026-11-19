@@ -118,6 +118,10 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 
 		// Resolved once, so the hold check and the assertion act on the same entity.
 		entityRef, svcErr, fault := a.resolveEntityReference(ctx, execResp)
+		if fault == nil && svcErr == nil && !isRequestedSubject(ctx, entityRef.EntityID) {
+			logger.Debug(ctx.Context, "Refused a sign-in by a user the request does not name")
+			svcErr = &ErrAuthenticatedUserNotRequested
+		}
 		if fault == nil && svcErr == nil {
 			svcErr, fault = a.accessGuard.refuseSignInIfHeld(ctx.Context, entityRef.EntityID, logger)
 		}
@@ -177,6 +181,12 @@ func (a *authAssertExecutor) resolveEntityReference(ctx *providers.NodeContext,
 	return entityRef, nil, nil
 }
 
+// isRequestedSubject reports whether entityID is the user the request names, or the request names none.
+func isRequestedSubject(ctx *providers.NodeContext, entityID string) bool {
+	requested := ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID]
+	return requested == "" || requested == entityID
+}
+
 // refuseOutsideSignInBoundary returns the refusal for a bounded sign-in that decided no organization unit, or one
 // the OU provider does not admit it to. A failed check is returned as a fault.
 func (a *authAssertExecutor) refuseOutsideSignInBoundary(ctx *providers.NodeContext,
@@ -207,7 +217,8 @@ func (a *authAssertExecutor) refuseOutsideSignInBoundary(ctx *providers.NodeCont
 func (a *authAssertExecutor) checkAssurance(ctx *providers.NodeContext,
 	logger *log.Logger) *tidcommon.ServiceError {
 	// acr_values: the completed authentication class must be one of the requested classes.
-	requested := strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequestedAuthClasses])
+	requested := strings.Fields(common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequestedAuthClasses))
 	if len(requested) > 0 {
 		completed := ctx.RuntimeData[common.RuntimeKeySelectedAuthClass]
 		if completed == "" || !slices.Contains(requested, completed) {
@@ -292,7 +303,8 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 	ctx *providers.NodeContext, jwtClaims map[string]interface{},
 	resolvedAttributes map[string]interface{}, entityRef *providers.EntityReference, logger *log.Logger,
 ) error {
-	ttlSecondsStr, exists := ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]
+	ttlSecondsStr, exists := common.LookupRuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyUserAttributesCacheTTLSeconds)
 	if !exists {
 		ttlSecondsStr, exists = ctx.SharedRuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]
 	}
@@ -578,11 +590,10 @@ func (a *authAssertExecutor) getRequestedUserAttributes(ctx *providers.NodeConte
 
 	// Check for essential/ optional attributes in runtime data.
 	// If present, we should apply attribute filtering based on these attributes
-	_, essentialExists := ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes]
-	_, optionalExists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
-	if !optionalExists {
-		_, optionalExists = ctx.SharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
-	}
+	_, essentialExists := common.LookupRuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequiredEssentialAttributes)
+	_, optionalExists := common.LookupRuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequiredOptionalAttributes)
 
 	if essentialExists || optionalExists {
 		userAttributes = []string{}
@@ -591,8 +602,8 @@ func (a *authAssertExecutor) getRequestedUserAttributes(ctx *providers.NodeConte
 
 		if essentialExists {
 			logger.Debug(ctx.Context, "Adding required essential attributes to user attributes list")
-			userAttributes = append(userAttributes,
-				strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes])...)
+			userAttributes = append(userAttributes, strings.Fields(common.RuntimeDataOrShared(ctx.RuntimeData,
+				ctx.SharedRuntimeData, common.RuntimeKeyRequiredEssentialAttributes))...)
 		}
 		if optionalExists {
 			logger.Debug(ctx.Context, "Adding required optional attributes to user attributes list")

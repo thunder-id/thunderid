@@ -133,8 +133,9 @@ The import creates:
 | `wayfinder-recovery-flow` | Flow | Email-link password recovery flow (RECOVERY) |
 | `wayfinder-onboarding-flow` | Flow | Staff onboarding flow (USER_ONBOARDING) with Support/DestinationsAdmin role-selection branches |
 | `wayfinder-agent-auth-flow` | Flow | Authentication flow with consent screen (assigned to the AI chat agent) |
-| `wayfinder-ciba-email-flow` | Flow | CIBA authentication flow that notifies the user via email (used by the upgrade scheduler by default) |
-| `wayfinder-ciba-sms-flow` | Flow | CIBA authentication flow that notifies the user via SMS (switch to this in Console to try the SMS channel) |
+| `wayfinder-ciba-email-flow` | Flow | CIBA flow that notifies the user via email, asks them to approve or deny, then calls the upgrade agent's authentication flow, `wayfinder-app-auth-consent-flow`, to sign them in (the upgrade agent's CIBA flow by default) |
+| `wayfinder-ciba-sms-flow` | Flow | CIBA flow that notifies the user via SMS, asks them to approve or deny, then calls `wayfinder-app-auth-consent-flow` to sign them in (switch the upgrade agent's CIBA flow to this in Console to try the SMS channel) |
+| `wayfinder-app-auth-consent-flow` | Flow | The Wayfinder sign-in flow with a User Consent step before the assertion. It is the upgrade agent's authentication flow, which the CIBA flows call, so the customer is asked for consent on every upgrade approval. The CIBA flows hold no consent step of their own, so consent comes from the flow they call |
 | `Traveler` | Role | Booking permissions, assigned to `john.doe` and `jane.smith` |
 | `Support` | Role | Staff role for consumer support workflows |
 | `DestinationsAdmin` | Role | Staff role for curating featured destinations |
@@ -204,11 +205,11 @@ ThunderID can deliver notifications, including CIBA upgrade approvals, via SMS i
 
    Re-import `thunderid-config/redirect/thunderid-config.yaml` so the CIBA SMS flow picks up the new sender.
 
-2. In the ThunderID Console, go to **Applications → WAYFINDER-UPGRADE-AGENT** and change the Authentication Flow to `wayfinder-ciba-sms-flow`. Save.
+2. In the ThunderID Console, go to **Agents → WAYFINDER-UPGRADE-AGENT**, open the **Flows** tab, and change the **CIBA flow** to `wayfinder-ciba-sms-flow`. Save.
 
 3. Update `john.doe`'s `mobile_number` field in the Console (E.164 format, for example `+15550101`).
 
-Notifications now arrive as SMS. If you already approved the consent during the email flow, the consent screen is skipped on future approvals.
+Notifications now arrive as SMS. The consent screen appears on every upgrade approval, including after you approved it before, because a CIBA request always asks for consent again.
 
 ## Configure the Sample
 
@@ -434,7 +435,7 @@ The Wayfinder sample includes an optional upgrade scheduler that demonstrates CI
    ./scripts/trigger-upgrade.sh
    ```
 
-4. Open `http://localhost:8788`, find the approval email, follow the link, enter `john.doe`'s password, and approve.
+4. Open `http://localhost:8788`, find the approval email, follow the link, select **Approve**, sign in as `john.doe` on the Wayfinder sign-in page, and approve the consent screen.
 
 5. Run `trigger-upgrade.sh` once more to complete the upgrade.
 

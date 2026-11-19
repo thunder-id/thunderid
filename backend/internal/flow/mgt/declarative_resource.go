@@ -217,23 +217,25 @@ func loadDeclarativeResources(
 		return fmt.Errorf("failed to load flow graph resources: %w", err)
 	}
 
-	deviceGrantValidator, ok := validator.(*flowValidator)
+	callValidator, ok := validator.(*flowValidator)
 	if !ok {
 		return nil
 	}
-	deviceGrantValidator.flowStore = referenceStore
+	callValidator.flowStore = referenceStore
 	flows, err := fileBasedStore.ListActiveFlowsWithNodes(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to validate declarative flow references: %w", err)
 	}
 	for _, flow := range flows {
-		if flow.FlowType != providers.FlowTypeDeviceGrant {
-			continue
+		var svcErr *tidcommon.ServiceError
+		if _, ok := authenticationCallRules[flow.FlowType]; ok {
+			svcErr = callValidator.validateCallTargetTypes(context.Background(), flow.FlowType, flow.Nodes)
+		} else {
+			svcErr = callValidator.validateCallTargetsCallable(context.Background(), flow.Nodes)
 		}
-		if svcErr := deviceGrantValidator.validateDeviceGrantCallTargetTypes(
-			context.Background(), flow.Nodes); svcErr != nil {
-			return fmt.Errorf("validation failed for declarative Device Grant flow %q: %s - %s",
-				flow.ID, svcErr.Code, svcErr.Error)
+		if svcErr != nil {
+			return fmt.Errorf("validation failed for declarative %s flow %q: %s - %s",
+				flow.FlowType, flow.ID, svcErr.Code, svcErr.Error)
 		}
 	}
 

@@ -9,11 +9,11 @@ var (
 	// queryCreateInboundClient creates a new inbound client entry for an entity.
 	queryCreateInboundClient = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-01",
-		Query: `INSERT INTO "INBOUND_CLIENT" (ENTITY_ID, AUTH_FLOW_ID, DEVICE_GRANT_FLOW_ID, REGISTRATION_FLOW_ID, ` +
-			`IS_REGISTRATION_FLOW_ENABLED, RECOVERY_FLOW_ID, IS_RECOVERY_FLOW_ENABLED, ` +
+		Query: `INSERT INTO "INBOUND_CLIENT" (ENTITY_ID, AUTH_FLOW_ID, DEVICE_GRANT_FLOW_ID, CIBA_FLOW_ID, ` +
+			`REGISTRATION_FLOW_ID, IS_REGISTRATION_FLOW_ENABLED, RECOVERY_FLOW_ID, IS_RECOVERY_FLOW_ENABLED, ` +
 			`SIGNOUT_FLOW_ID, ` +
 			`THEME_ID, LAYOUT_ID, PROPERTIES, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 	}
 	// queryCreateOAuthProfile creates a new OAuth inbound profile entry keyed by entity ID.
 	queryCreateOAuthProfile = dbmodel.DBQuery{
@@ -23,7 +23,8 @@ var (
 	// queryGetInboundClientByEntityID retrieves an inbound client by entity ID.
 	queryGetInboundClientByEntityID = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-03",
-		Query: `SELECT app.ENTITY_ID, app.AUTH_FLOW_ID, app.DEVICE_GRANT_FLOW_ID, app.REGISTRATION_FLOW_ID, ` +
+		Query: `SELECT app.ENTITY_ID, app.AUTH_FLOW_ID, app.DEVICE_GRANT_FLOW_ID, app.CIBA_FLOW_ID, ` +
+			`app.REGISTRATION_FLOW_ID, ` +
 			`app.IS_REGISTRATION_FLOW_ENABLED, app.RECOVERY_FLOW_ID, app.IS_RECOVERY_FLOW_ENABLED, ` +
 			`app.SIGNOUT_FLOW_ID, ` +
 			`app.THEME_ID, app.LAYOUT_ID, app.PROPERTIES ` +
@@ -38,7 +39,8 @@ var (
 	// queryGetInboundClientList lists all inbound clients.
 	queryGetInboundClientList = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-06",
-		Query: `SELECT app.ENTITY_ID, app.AUTH_FLOW_ID, app.DEVICE_GRANT_FLOW_ID, app.REGISTRATION_FLOW_ID, ` +
+		Query: `SELECT app.ENTITY_ID, app.AUTH_FLOW_ID, app.DEVICE_GRANT_FLOW_ID, app.CIBA_FLOW_ID, ` +
+			`app.REGISTRATION_FLOW_ID, ` +
 			`app.IS_REGISTRATION_FLOW_ENABLED, app.RECOVERY_FLOW_ID, app.IS_RECOVERY_FLOW_ENABLED, ` +
 			`app.SIGNOUT_FLOW_ID, ` +
 			`app.THEME_ID, app.LAYOUT_ID, app.PROPERTIES ` +
@@ -47,11 +49,11 @@ var (
 	// queryUpdateInboundClientByEntityID updates an inbound client by entity ID.
 	queryUpdateInboundClientByEntityID = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-07",
-		Query: `UPDATE "INBOUND_CLIENT" SET AUTH_FLOW_ID=$2, DEVICE_GRANT_FLOW_ID=$3, REGISTRATION_FLOW_ID=$4, ` +
-			`IS_REGISTRATION_FLOW_ENABLED=$5, RECOVERY_FLOW_ID=$6, IS_RECOVERY_FLOW_ENABLED=$7, ` +
-			`SIGNOUT_FLOW_ID=$8, ` +
-			`THEME_ID=$9, LAYOUT_ID=$10, PROPERTIES=$11 ` +
-			`WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $12`,
+		Query: `UPDATE "INBOUND_CLIENT" SET AUTH_FLOW_ID=$2, DEVICE_GRANT_FLOW_ID=$3, CIBA_FLOW_ID=$4, ` +
+			`REGISTRATION_FLOW_ID=$5, IS_REGISTRATION_FLOW_ENABLED=$6, RECOVERY_FLOW_ID=$7, ` +
+			`IS_RECOVERY_FLOW_ENABLED=$8, SIGNOUT_FLOW_ID=$9, ` +
+			`THEME_ID=$10, LAYOUT_ID=$11, PROPERTIES=$12 ` +
+			`WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $13`,
 	}
 	// queryUpdateOAuthProfileByEntityID updates an OAuth inbound profile by entity ID.
 	queryUpdateOAuthProfileByEntityID = dbmodel.DBQuery{
@@ -106,21 +108,21 @@ var (
 	}
 
 	// queryGetEntityIDsByFlowID retrieves paginated entity IDs for inbound clients referencing a specific
-	// flow through any of the authentication, registration, recovery, or sign-out flow slots.
+	// flow through any of the authentication, device grant, CIBA, registration, recovery, or sign-out flow slots.
 	queryGetEntityIDsByFlowID = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-15",
 		Query: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" WHERE ` +
-			`(AUTH_FLOW_ID = $1 OR DEVICE_GRANT_FLOW_ID = $2 OR REGISTRATION_FLOW_ID = $3 OR ` +
-			`RECOVERY_FLOW_ID = $4 OR SIGNOUT_FLOW_ID = $5) ` +
-			`AND DEPLOYMENT_ID = $6 ORDER BY ENTITY_ID ASC LIMIT $7 OFFSET $8`,
+			`(AUTH_FLOW_ID = $1 OR DEVICE_GRANT_FLOW_ID = $2 OR CIBA_FLOW_ID = $3 OR ` +
+			`REGISTRATION_FLOW_ID = $4 OR RECOVERY_FLOW_ID = $5 OR SIGNOUT_FLOW_ID = $6) ` +
+			`AND DEPLOYMENT_ID = $7 ORDER BY ENTITY_ID ASC LIMIT $8 OFFSET $9`,
 	}
 
 	// queryGetEntityIDsByFlowIDCount retrieves the total count of inbound clients referencing a specific flow.
 	queryGetEntityIDsByFlowIDCount = dbmodel.DBQuery{
 		ID: "ASQ-INBC_MGT-16",
 		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE ` +
-			`(AUTH_FLOW_ID = $1 OR DEVICE_GRANT_FLOW_ID = $2 OR REGISTRATION_FLOW_ID = $3 OR ` +
-			`RECOVERY_FLOW_ID = $4 OR SIGNOUT_FLOW_ID = $5) AND DEPLOYMENT_ID = $6`,
+			`(AUTH_FLOW_ID = $1 OR DEVICE_GRANT_FLOW_ID = $2 OR CIBA_FLOW_ID = $3 OR ` +
+			`REGISTRATION_FLOW_ID = $4 OR RECOVERY_FLOW_ID = $5 OR SIGNOUT_FLOW_ID = $6) AND DEPLOYMENT_ID = $7`,
 	}
 
 	// queryGetEntityIDsByAllowedAgentType retrieves paginated entity IDs for inbound clients whose allowed

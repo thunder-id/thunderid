@@ -206,11 +206,11 @@ func (suite *CIBAServiceTestSuite) TestInitiate_CustomExpiryPassedToFlow() {
 	suite.Equal(int64(300), resp.ExpiresIn)
 }
 
-func (suite *CIBAServiceTestSuite) TestInitiate_AuthReqIDInjectedIntoRuntimeData() {
+func (suite *CIBAServiceTestSuite) TestInitiate_AuthReqIDInjectedIntoSharedRuntimeData() {
 	var capturedAuthReqID string
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			capturedAuthReqID = initCtx.RuntimeData[flowcm.RuntimeKeyAuthorizationRequestID]
+			capturedAuthReqID = initCtx.SharedRuntimeData[flowcm.RuntimeKeyAuthorizationRequestID]
 			return capturedAuthReqID != ""
 		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.mockStore.EXPECT().Add(mock.Anything, mock.MatchedBy(func(r *CIBAAuthRequest) bool {
@@ -224,6 +224,38 @@ func (suite *CIBAServiceTestSuite) TestInitiate_AuthReqIDInjectedIntoRuntimeData
 
 	suite.Nil(cibaErr)
 	suite.Equal(capturedAuthReqID, resp.AuthReqID)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_SharesOnlyWhatTheCalledFlowReads() {
+	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
+		func(initCtx *flowexec.FlowInitContext) bool {
+			shared := initCtx.SharedRuntimeData
+			for _, key := range []string{
+				flowcm.RuntimeKeyAuthorizationRequestID,
+				flowcm.RuntimeKeyBindingMessage,
+				flowcm.RuntimeKeyUserAttributesCacheTTLSeconds,
+			} {
+				if shared[key] == "" {
+					return false
+				}
+			}
+			_, essentialPresent := shared[flowcm.RuntimeKeyRequiredEssentialAttributes]
+			_, optionalPresent := shared[flowcm.RuntimeKeyRequiredOptionalAttributes]
+			_, clientIDShared := shared[flowcm.RuntimeKeyClientID]
+			return initCtx.FlowType == string(providers.FlowTypeCIBA) &&
+				shared[flowcm.RuntimeKeyCallbackType] == string(providers.GrantTypeCIBA) &&
+				shared[flowcm.RuntimeKeyForceConsentReprompt] == "true" &&
+				essentialPresent && optionalPresent && !clientIDShared &&
+				initCtx.RuntimeData[flowcm.RuntimeKeyClientID] != ""
+		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
+	suite.mockStore.EXPECT().Add(mock.Anything, mock.Anything).Return(nil)
+
+	_, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid",
+	}, suite.oauthApp)
+
+	suite.Nil(cibaErr)
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_LoginHintInInitialInputs() {
@@ -245,7 +277,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_LoginHintInInitialInputs() {
 func (suite *CIBAServiceTestSuite) TestInitiate_ACRValuesPassedToRuntime() {
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			return initCtx.RuntimeData[flowcm.RuntimeKeyRequestedAuthClasses] == "urn:acr:silver"
+			return initCtx.SharedRuntimeData[flowcm.RuntimeKeyRequestedAuthClasses] == "urn:acr:silver"
 		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.expectStoreAddSuccess()
 
@@ -262,7 +294,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_ACRValuesPassedToRuntime() {
 func (suite *CIBAServiceTestSuite) TestInitiate_ACRValuesOmittedFromRuntimeWhenEmpty() {
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			_, present := initCtx.RuntimeData[flowcm.RuntimeKeyRequestedAuthClasses]
+			_, present := initCtx.SharedRuntimeData[flowcm.RuntimeKeyRequestedAuthClasses]
 			return !present
 		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.expectStoreAddSuccess()
@@ -279,7 +311,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_ACRValuesOmittedFromRuntimeWhenE
 func (suite *CIBAServiceTestSuite) TestInitiate_ForceConsentRepromptAlwaysSet() {
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			return initCtx.RuntimeData[flowcm.RuntimeKeyForceConsentReprompt] == "true"
+			return initCtx.SharedRuntimeData[flowcm.RuntimeKeyForceConsentReprompt] == "true"
 		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.expectStoreAddSuccess()
 
@@ -296,7 +328,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_StripsStandardScopesFromRuntime(
 	suite.expectDefaultResourceServer("rs-1", "https://default.example.com")
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			perms := strings.Fields(initCtx.RuntimeData[flowcm.RuntimeKeyRequestedPermissions])
+			perms := strings.Fields(initCtx.SharedRuntimeData[flowcm.RuntimeKeyRequestedPermissions])
 			return len(perms) == 2 &&
 				slices.Contains(perms, "read") && slices.Contains(perms, "write") &&
 				!slices.Contains(perms, "openid") && !slices.Contains(perms, "profile") &&
@@ -338,14 +370,14 @@ func (suite *CIBAServiceTestSuite) TestInitiate_ExplicitResourceBindsAndDownscop
 	suite.Equal([]string{"https://api.example.com"}, stored.Resources)
 }
 
-func (suite *CIBAServiceTestSuite) TestInitiate_SetsResourceServerIDInRuntimeData() {
+func (suite *CIBAServiceTestSuite) TestInitiate_SetsResourceServerIDInSharedRuntimeData() {
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
 	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
 		Return([]string{}, nil)
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			return initCtx.RuntimeData[flowcm.RuntimeKeyResourceServerIdentifier] == "https://api.example.com"
+			return initCtx.SharedRuntimeData[flowcm.RuntimeKeyResourceServerIdentifier] == "https://api.example.com"
 		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.expectStoreAddSuccess()
 
@@ -362,7 +394,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_SetsResourceServerIDInRuntimeDat
 func (suite *CIBAServiceTestSuite) TestInitiate_OIDCOnlyLeavesResourceServerIDEmpty() {
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
-			return initCtx.RuntimeData[flowcm.RuntimeKeyResourceServerIdentifier] == ""
+			return initCtx.SharedRuntimeData[flowcm.RuntimeKeyResourceServerIdentifier] == ""
 		})).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.expectStoreAddSuccess()
 
@@ -472,9 +504,9 @@ func (suite *CIBAServiceTestSuite) TestInitiate_InjectsRequiredAttributes() {
 
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.AnythingOfType("*flowexec.FlowInitContext")).
 		Run(func(_ context.Context, initCtx *flowexec.FlowInitContext) {
-			suite.Empty(strings.Fields(initCtx.RuntimeData[flowcm.RuntimeKeyRequiredEssentialAttributes]))
+			suite.Empty(strings.Fields(initCtx.SharedRuntimeData[flowcm.RuntimeKeyRequiredEssentialAttributes]))
 			suite.ElementsMatch([]string{"email", "given_name", "family_name", "name"},
-				strings.Fields(initCtx.RuntimeData[flowcm.RuntimeKeyRequiredOptionalAttributes]))
+				strings.Fields(initCtx.SharedRuntimeData[flowcm.RuntimeKeyRequiredOptionalAttributes]))
 		}).Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)
 	suite.mockStore.EXPECT().Add(mock.Anything, mock.Anything).Return(nil)
 
@@ -1666,8 +1698,9 @@ func (suite *CIBAServiceTestSuite) TestInitiate_AuthorizationDetailsTravelByValu
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testRSIdent}, nil)
 	carriesDetails := func(c *flowexec.FlowInitContext) bool {
 		var seeded []providers.AuthorizationDetail
-		err := json.Unmarshal([]byte(c.RuntimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails]), &seeded)
-		return err == nil && c.RuntimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails] == encodedPreparedDetails()
+		err := json.Unmarshal([]byte(c.SharedRuntimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails]), &seeded)
+		return err == nil &&
+			c.SharedRuntimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails] == encodedPreparedDetails()
 	}
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(carriesDetails)).
 		Return(&flowexec.FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete}, nil)

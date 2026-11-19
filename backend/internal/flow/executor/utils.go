@@ -549,7 +549,8 @@ func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
 
 // requestedAuthorizationDetails returns the requested authorization details, or nil when there are none.
 func requestedAuthorizationDetails(ctx *providers.NodeContext) ([]providers.AuthorizationDetail, error) {
-	encoded := ctx.RuntimeData[common.RuntimeKeyRequestedAuthorizationDetails]
+	encoded := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequestedAuthorizationDetails)
 	if encoded == "" {
 		return nil, nil
 	}

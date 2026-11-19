@@ -732,3 +732,14 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SkippedClearsCarriedSession
 	suite.True(present, "the key must be republished so the merge overwrites the carried value")
 	suite.Empty(published)
 }
+
+// TestSanitizeSnapshotRuntimeData_DropsTheUserARequestNames verifies the user a CIBA request names never enters
+// a snapshot, so a later sign-in that reuses the session is not held to that request's user.
+func (suite *SessionExecutorTestSuite) TestSanitizeSnapshotRuntimeData_DropsTheUserARequestNames() {
+	sanitized := sanitizeSnapshotRuntimeData(map[string]string{
+		common.RuntimeKeyRequestedSubjectID: "user-123", "keep_me": "value",
+	})
+
+	suite.NotContains(sanitized, common.RuntimeKeyRequestedSubjectID)
+	suite.Equal("value", sanitized["keep_me"])
+}

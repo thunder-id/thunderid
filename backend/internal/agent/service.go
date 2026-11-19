@@ -272,6 +272,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 	}
 
 	authFlowID, deviceGrantFlowID, regFlowID := agent.AuthFlowID, agent.DeviceGrantFlowID, agent.RegistrationFlowID
+	cibaFlowID := agent.CIBAFlowID
 	assertion, loginConsent := agent.Assertion, agent.LoginConsent
 	var inboundConfigs []providers.InboundAuthConfigWithSecret
 
@@ -283,6 +284,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		}
 		authFlowID = resolvedClient.AuthFlowID
 		deviceGrantFlowID = resolvedClient.DeviceGrantFlowID
+		cibaFlowID = resolvedClient.CIBAFlowID
 		regFlowID = resolvedClient.RegistrationFlowID
 		assertion = resolvedClient.Assertion
 		loginConsent = resolvedClient.LoginConsent
@@ -300,6 +302,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
 		agent.AllowedUserTypes, agent.AllowedAgentTypes, inboundConfigs)
 	resp.DeviceGrantFlowID = deviceGrantFlowID
+	resp.CIBAFlowID = cibaFlowID
 	resp.OUID = agent.OUID
 	resp.ProjectID = agent.ProjectID
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
@@ -1291,6 +1294,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 
 	authFlowID := resolvedClient.AuthFlowID
 	deviceGrantFlowID := resolvedClient.DeviceGrantFlowID
+	cibaFlowID := resolvedClient.CIBAFlowID
 	regFlowID := resolvedClient.RegistrationFlowID
 	assertion := resolvedClient.Assertion
 	loginConsent := resolvedClient.LoginConsent
@@ -1308,6 +1312,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
 	resp.DeviceGrantFlowID = deviceGrantFlowID
+	resp.CIBAFlowID = cibaFlowID
 	resp.OUID = ouID
 	resp.ProjectID = projectID
 	access := s.governance.ReadEntityAccess(ctx, *updated)
@@ -2201,6 +2206,7 @@ func (s *agentService) validatePlacedAgent(ctx context.Context, agent *providers
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
 		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
 	client.DeviceGrantFlowID = agent.DeviceGrantFlowID
+	client.CIBAFlowID = agent.CIBAFlowID
 
 	if needsInboundClient(agent) {
 		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
@@ -2790,6 +2796,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
 		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
 	client.DeviceGrantFlowID = agent.DeviceGrantFlowID
+	client.CIBAFlowID = agent.CIBAFlowID
 	setLogoProperty(&client, agent.LogoURL)
 
 	seedClientSubTypeAttribute(agent.InboundAuthConfig)
@@ -2841,6 +2848,8 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 		AuthFlowHandle:         req.AuthFlowHandle,
 		DeviceGrantFlowID:      req.DeviceGrantFlowID,
 		DeviceGrantFlowHandle:  req.DeviceGrantFlowHandle,
+		CIBAFlowID:             req.CIBAFlowID,
+		CIBAFlowHandle:         req.CIBAFlowHandle,
 		RegistrationFlowID:     req.RegistrationFlowID,
 		RegistrationFlowHandle: req.RegistrationFlowHandle,
 	}
@@ -2857,6 +2866,7 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 		req.IsRegistrationFlowEnabled, req.ThemeID, req.LayoutID, req.Assertion,
 		req.LoginConsent, req.AllowedUserTypes, req.AllowedAgentTypes, nil)
 	client.DeviceGrantFlowID = profile.DeviceGrantFlowID
+	client.CIBAFlowID = profile.CIBAFlowID
 	setLogoProperty(&client, req.LogoURL)
 	oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
 	hasSecret := clientSecret != ""
@@ -2920,6 +2930,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 
 	resp.AuthFlowID = inbound.AuthFlowID
 	resp.DeviceGrantFlowID = inbound.DeviceGrantFlowID
+	resp.CIBAFlowID = inbound.CIBAFlowID
 	resp.RegistrationFlowID = inbound.RegistrationFlowID
 	resp.IsRegistrationFlowEnabled = inbound.IsRegistrationFlowEnabled
 	resp.ThemeID = inbound.ThemeID
@@ -3129,6 +3140,7 @@ func needsInboundClient(agent *providers.Agent) bool {
 	}
 	return agent.AuthFlowID != "" ||
 		agent.DeviceGrantFlowID != "" ||
+		agent.CIBAFlowID != "" ||
 		agent.RegistrationFlowID != "" ||
 		agent.IsRegistrationFlowEnabled ||
 		agent.ThemeID != "" ||
@@ -3149,6 +3161,8 @@ func updateNeedsInboundClient(req *model.UpdateAgentRequest) bool {
 		req.AuthFlowHandle != "" ||
 		req.DeviceGrantFlowID != "" ||
 		req.DeviceGrantFlowHandle != "" ||
+		req.CIBAFlowID != "" ||
+		req.CIBAFlowHandle != "" ||
 		req.RegistrationFlowID != "" ||
 		req.RegistrationFlowHandle != "" ||
 		req.IsRegistrationFlowEnabled ||
@@ -3884,6 +3898,8 @@ func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 		return &ErrorInvalidAuthFlowID
 	case errors.Is(err, inboundclient.ErrFKInvalidDeviceGrantFlow):
 		return &ErrorInvalidDeviceGrantFlowID
+	case errors.Is(err, inboundclient.ErrFKInvalidCIBAFlow):
+		return &ErrorInvalidCIBAFlowID
 	case errors.Is(err, inboundclient.ErrFKDeviceGrantFlowRequired):
 		return &ErrorDeviceGrantFlowRequired
 	case errors.Is(err, inboundclient.ErrFKInvalidRegistrationFlow):

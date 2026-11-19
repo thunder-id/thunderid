@@ -5,6 +5,7 @@ package flowmgt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -64,6 +65,33 @@ func deviceGrantValidationNodes() []providers.NodeDefinition {
 		{
 			ID: "prompt", Type: string(common.NodeTypePrompt),
 			Prompts: []providers.PromptDefinition{{Action: &providers.ActionDefinition{NextNode: "verify"}}},
+		},
+		{
+			ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
+			Flow: &providers.FlowReferenceDefinition{Ref: "authentication-flow-id"},
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+}
+
+// cibaCallNodeID is the ID of the Call node in the CIBA validation fixture.
+const cibaCallNodeID = "call"
+
+func cibaValidationNodes() []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "verify"},
+		{
+			ID: "verify", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "InviteExecutor", Mode: "verify"},
+			OnSuccess: "approve", OnIncomplete: "prompt",
+		},
+		{
+			ID: "prompt", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{{Action: &providers.ActionDefinition{NextNode: "verify"}}},
+		},
+		{
+			ID: "approve", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{{Action: &providers.ActionDefinition{NextNode: "call"}}},
 		},
 		{
 			ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
@@ -1967,6 +1995,160 @@ func (s *ValidatorTestSuite) TestValidateDeviceGrantConstraints() {
 			s.Equal(tt.wantCode, err.Code)
 		})
 	}
+}
+
+func (s *ValidatorTestSuite) TestValidateCIBAConstraints() {
+	tests := []struct {
+		name     string
+		change   func([]providers.NodeDefinition)
+		wantCode string
+	}{
+		{name: "valid", change: func([]providers.NodeDefinition) {}},
+		{
+			name: "missing invite executor",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[1].Executor.Name = "CredentialsAuthExecutor"
+			},
+			wantCode: ErrorInvalidExecutorConfig.Code,
+		},
+		{
+			name: "no call node",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[3].Prompts[0].Action.NextNode = endNode
+				nodes[4].Type = string(common.NodeTypeTaskExecution)
+				nodes[4].Flow = nil
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "call before the approval link is verified",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[0].OnSuccess = cibaCallNodeID
+				nodes[1].OnSuccess = endNode
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "an invite that only generates the link does not count",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[1].Executor.Mode = "generate"
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "incomplete verification bypasses it",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[2].Prompts[0].Action.NextNode = cibaCallNodeID
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "condition skips verification",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[1].Condition = &providers.ConditionDefinition{OnSkip: cibaCallNodeID}
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			nodes := cibaValidationNodes()
+			tt.change(nodes)
+			err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeCIBA, nodes)
+			if tt.wantCode == "" {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(tt.wantCode, err.Code)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateCallTargetTypes() {
+	tests := []struct {
+		name     string
+		flowType providers.FlowType
+		target   *providers.CompleteFlowDefinition
+		storeErr error
+		wantCode string
+	}{
+		{name: "ciba calls an authentication flow", flowType: providers.FlowTypeCIBA,
+			target: &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeAuthentication}},
+		{name: "device grant calls an authentication flow", flowType: providers.FlowTypeDeviceGrant,
+			target: &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeAuthentication}},
+		{name: "ciba calls another flow type", flowType: providers.FlowTypeCIBA,
+			target:   &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeRegistration},
+			wantCode: ErrorInvalidNodeConfig.Code},
+		{name: "ciba calls a flow that is not there", flowType: providers.FlowTypeCIBA,
+			storeErr: errFlowNotFound, wantCode: ErrorFlowNotFound.Code},
+		{name: "ciba target cannot be read", flowType: providers.FlowTypeCIBA,
+			storeErr: errors.New("db down"), wantCode: tidcommon.InternalServerError.Code},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			store := newFlowStoreInterfaceMock(s.T())
+			store.EXPECT().GetFlowByID(mock.Anything, "authentication-flow-id").Return(tt.target, tt.storeErr)
+			v := &flowValidator{flowStore: store, logger: s.v.logger}
+
+			err := v.validateCallTargetTypes(context.Background(), tt.flowType, cibaValidationNodes())
+
+			if tt.wantCode == "" {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(tt.wantCode, err.Code)
+		})
+	}
+
+	s.Run("without a flow store the check is deferred", func() {
+		v := &flowValidator{logger: s.v.logger}
+		s.Nil(v.validateCallTargetTypes(context.Background(), providers.FlowTypeCIBA, cibaValidationNodes()))
+	})
+}
+
+func (s *ValidatorTestSuite) TestValidateCallTargetsCallable() {
+	tests := []struct {
+		name     string
+		target   *providers.CompleteFlowDefinition
+		storeErr error
+		wantCode string
+	}{
+		{name: "an authentication flow",
+			target: &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeAuthentication}},
+		{name: "a registration flow",
+			target: &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeRegistration}},
+		{name: "a CIBA flow", target: &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeCIBA},
+			wantCode: ErrorInvalidNodeConfig.Code},
+		{name: "a device grant flow",
+			target:   &providers.CompleteFlowDefinition{FlowType: providers.FlowTypeDeviceGrant},
+			wantCode: ErrorInvalidNodeConfig.Code},
+		{name: "a flow that is not there yet", storeErr: errFlowNotFound},
+		{name: "a flow that cannot be read", storeErr: errors.New("db down"),
+			wantCode: tidcommon.InternalServerError.Code},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			store := newFlowStoreInterfaceMock(s.T())
+			store.EXPECT().GetFlowByID(mock.Anything, "authentication-flow-id").Return(tt.target, tt.storeErr)
+			v := &flowValidator{flowStore: store, logger: s.v.logger}
+
+			err := v.validateCallTargetsCallable(context.Background(), cibaValidationNodes())
+
+			if tt.wantCode == "" {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(tt.wantCode, err.Code)
+		})
+	}
+
+	s.Run("without a flow store the check is left to the engine", func() {
+		v := &flowValidator{logger: s.v.logger}
+		s.Nil(v.validateCallTargetsCallable(context.Background(), cibaValidationNodes()))
+	})
 }
 
 func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertMissingInAuthentication() {

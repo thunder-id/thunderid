@@ -227,11 +227,27 @@ type SystemFlowResult struct {
 	RuntimeData map[string]string
 }
 
+// IsRequestOnlyFlowType reports whether a flow of flowType runs only as the root of an execution that a request
+// starts: a backchannel authentication request starts a CIBA flow, and a device authorization request a Device
+// Grant flow. No flow can call one, because the callee would run without the request that gives it its context and
+// its sign-in boundary.
+func IsRequestOnlyFlowType(flowType providers.FlowType) bool {
+	return flowType == providers.FlowTypeCIBA || flowType == providers.FlowTypeDeviceGrant
+}
+
 // RuntimeDataOrShared returns a frame-local runtime value when it is present, otherwise the
 // corresponding cross-frame shared value.
 func RuntimeDataOrShared(runtimeData, sharedRuntimeData map[string]string, key string) string {
+	value, _ := LookupRuntimeDataOrShared(runtimeData, sharedRuntimeData, key)
+	return value
+}
+
+// LookupRuntimeDataOrShared is RuntimeDataOrShared that also reports whether either map holds the key,
+// for a key whose presence matters even when its value is empty.
+func LookupRuntimeDataOrShared(runtimeData, sharedRuntimeData map[string]string, key string) (string, bool) {
 	if value, ok := runtimeData[key]; ok {
-		return value
+		return value, true
 	}
-	return sharedRuntimeData[key]
+	value, ok := sharedRuntimeData[key]
+	return value, ok
 }

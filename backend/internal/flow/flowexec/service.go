@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"time"
 
@@ -231,6 +232,8 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		}
 	}
 
+	surfaceBindingMessage(engineCtx, &flowStep)
+
 	// Build a signed error assertion for an in-band flow failure so the OAuth callback can verify and
 	// propagate it to the waiting authorization request.
 	if flowStep.Status == providers.FlowStatusError {
@@ -270,6 +273,27 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	}
 
 	return &flowStep, nil
+}
+
+// surfaceBindingMessage adds the binding message of a CIBA request to a step that waits for the user, so each
+// screen of the request can show it. Other requests and finished steps carry none.
+func surfaceBindingMessage(engineCtx *EngineContext, flowStep *FlowStep) {
+	if flowStep.Status != providers.FlowStatusIncomplete {
+		return
+	}
+	if common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyCallbackType) != string(providers.GrantTypeCIBA) {
+		return
+	}
+	message := common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyBindingMessage)
+	if message == "" {
+		return
+	}
+	if flowStep.Data.AdditionalData == nil {
+		flowStep.Data.AdditionalData = make(map[string]string)
+	}
+	flowStep.Data.AdditionalData[common.DataBindingMessage] = message
 }
 
 // flowErrorCallbackData returns the callback metadata needed to report a signed flow failure.
@@ -851,11 +875,11 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	return &engineCtx, nil
 }
 
-// boundSignIn applies the sign-in boundary to authentication and device grant flows. A named unit
+// boundSignIn applies the sign-in boundary to authentication, CIBA and device grant flows. A named unit
 // fixes the sign-in to that unit, and an unshared application fixes it to its own.
 func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineContext,
 	logger *log.Logger) *tidcommon.ServiceError {
-	if engineCtx.FlowType != providers.FlowTypeAuthentication && engineCtx.FlowType != providers.FlowTypeDeviceGrant {
+	if !signsInToApplication(engineCtx.FlowType) && engineCtx.FlowType != providers.FlowTypeDeviceGrant {
 		return nil
 	}
 	engineCtx.SignInBounded = true
@@ -1249,6 +1273,11 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 		return client.DeviceGrantFlowID, nil
 	}
 
+	// A client without a CIBA flow runs a backchannel request through its authentication flow.
+	if flowType == providers.FlowTypeCIBA && client.CIBAFlowID != "" {
+		return client.CIBAFlowID, nil
+	}
+
 	// Default to authentication flow ID
 	if client.AuthFlowID == "" {
 		logger.Error(ctx, "Authentication flow is not configured for the entity",
@@ -1273,9 +1302,13 @@ func validateFlowType(flowTypeStr string) (providers.FlowType, *tidcommon.Servic
 
 // validateInitiatedFlowType validates the type of a flow initiated for an application. A self flow
 // acts on the caller of the execute path, and an administrator-initiated flow is started only by an
-// administrator on that path, so no application initiates either.
+// administrator on that path, so no application initiates either. A CIBA flow is the reverse: only the
+// server starts one, for a backchannel request, so the execute path refuses its type.
 func (s *flowExecService) validateInitiatedFlowType(flowTypeStr string) (
 	providers.FlowType, *tidcommon.ServiceError) {
+	if providers.FlowType(flowTypeStr) == providers.FlowTypeCIBA {
+		return providers.FlowTypeCIBA, nil
+	}
 	flowType, err := validateFlowType(flowTypeStr)
 	if err != nil {
 		return "", err
@@ -1416,6 +1449,7 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 	}
 
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
+	engineCtx.sharedRuntimeData = maps.Clone(initContext.SharedRuntimeData)
 
 	// Store the context without executing the flow
 	if storeErr := s.storeContext(ctx, engineCtx, 0, logger); storeErr != nil {
@@ -1477,6 +1511,7 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 
 	engineCtx.TraceID = sysContext.GetTraceID(ctx)
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
+	engineCtx.sharedRuntimeData = maps.Clone(initContext.SharedRuntimeData)
 	prepareContext(engineCtx, "", initContext.InitialInputs)
 
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)

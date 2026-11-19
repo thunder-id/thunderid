@@ -47,9 +47,9 @@ You can use `*` to match a single path segment or part of a hostname label, and 
 
 When the authorization request included a `redirect_uri`, the token endpoint validates it with exact matching per [RFC 6749 §4.1.3](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.3): wildcard expansion does not apply at the token endpoint.
 
-## Configure Sign-In, Registration, Recovery, and Device Authorization Flows
+## Configure Sign-In, Registration, Recovery, Device Authorization, and CIBA Flows
 
-On the **Flows** tab, choose the flows that drive sign-in, sign-up, password recovery, and Device Authorization for this application.
+On the **Flows** tab, choose the flows that drive sign-in, sign-up, password recovery, Device Authorization, and CIBA for this application.
 
 **Authentication Flow** - select the flow users follow to sign in. You can assign a custom flow built with the Flow Designer or use the deployment default. Use the **open the flow builder** link to edit the selected flow directly.
 
@@ -58,6 +58,8 @@ On the **Flows** tab, choose the flows that drive sign-in, sign-up, password rec
 **Recovery flow** - toggle the switch to enable or disable password recovery. When enabled, select a flow that guides users through the password reset process.
 
 **Device Grant flow** - when the Device Code grant is enabled, select the flow that verifies the user's device code and calls this application's Authentication flow. The Console selects the default flow when you enable the grant. See the [Device Authorization Grant](../../protocols/oauth-oidc/device-authorization) for setup details.
+
+**CIBA flow** - when the CIBA grant is enabled, optionally select the flow that notifies the user and asks for approval, then calls this application's Authentication flow. Without one, the Authentication flow handles backchannel requests. See [Backchannel Authentication](../../protocols/oauth-oidc/backchannel-authentication#create-a-ciba-flow).
 
 ## Customize the Appearance
 

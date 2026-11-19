@@ -270,7 +270,7 @@ The credential the agent authenticates with, either a client secret or a signed 
 
 ### Flows
 
-Applies only when the agent signs users in with the authorization code or CIBA grant, or uses Device Code. An agent that holds only token exchange or JWT bearer never starts a sign-in, so these settings stay frozen. Pick the authentication and registration flows that decide how users authenticate through the agent. When Device Code is enabled, the Console selects the default Device Grant flow when available. Check that its `CALL` node calls the agent's Authentication flow, or select a Device Grant flow that does. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
+Applies only when the agent signs users in with the authorization code or CIBA grant, or uses Device Code. An agent that holds only token exchange or JWT bearer never starts a sign-in, so these settings stay frozen. Pick the authentication and registration flows that decide how users authenticate through the agent. When Device Code is enabled, the Console selects the default Device Grant flow when available. Check that its `CALL` node calls the agent's Authentication flow, or select a Device Grant flow that does. When the agent holds the CIBA grant, you can also select a CIBA flow that notifies the user and asks for approval before it calls the agent's Authentication flow. The flows themselves are built in the flow builder, [Login and Registration Flows](../../flows/build-a-flow); this tab selects which one the agent uses. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 
 ### Tokens
 

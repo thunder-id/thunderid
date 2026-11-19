@@ -175,14 +175,30 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 
 	switch ctx.ExecutorMode {
 	case ExecutorModeResolve:
-		return i.executeResolve(ctx, execResp)
+		resp, err := i.executeResolve(ctx, execResp)
+		return recordRequestedSubject(ctx, resp), err
 	case ExecutorModeCheckState:
 		return i.executeCheckState(ctx, execResp)
 	default:
 		// Default identify behavior (including explicit "identify" mode and unset).
 		// Fails if zero or more than one user matches.
-		return i.applyIdentifyProperties(ctx, i.executeIdentify(ctx, execResp))
+		resp, err := i.applyIdentifyProperties(ctx, i.executeIdentify(ctx, execResp))
+		return recordRequestedSubject(ctx, resp), err
 	}
+}
+
+// recordRequestedSubject records the user a CIBA login hint identified, which the engine carries into the flows the
+// request calls, so only that user can sign in. A step that identified no user, or that no CIBA login hint drove,
+// records nothing, and so does a step that finds a user already recorded: the first user the request names stays.
+func recordRequestedSubject(ctx *providers.NodeContext, resp *providers.ExecutorResponse) *providers.ExecutorResponse {
+	if resp == nil || resp.Status != providers.ExecComplete || cibaLoginHintAttribute(ctx) == "" ||
+		ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID] != "" {
+		return resp
+	}
+	if userID := resp.RuntimeData[userAttributeUserID]; userID != "" {
+		resp.RuntimeData[common.RuntimeKeyRequestedSubjectID] = userID
+	}
+	return resp
 }
 
 // applyIdentifyProperties applies the node's properties to the identify outcome: boundToUserType fails a match of

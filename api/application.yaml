@@ -1740,6 +1740,10 @@ components:
           type: string
           description: The ID of the Device Grant flow used to approve device authorization requests. Required when the Device Code grant is enabled.
           example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
+        cibaFlowId:
+          type: string
+          description: The ID of the CIBA flow that notifies the user and asks for approval of a backchannel authentication request. It must call the application's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.
@@ -1900,6 +1904,10 @@ components:
           type: string
           description: The ID of the Device Grant flow used to approve device authorization requests. Required when the Device Code grant is enabled.
           example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
+        cibaFlowId:
+          type: string
+          description: The ID of the CIBA flow that notifies the user and asks for approval of a backchannel authentication request. It must call the application's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.
@@ -2056,6 +2064,10 @@ components:
           type: string
           description: The ID of the Device Grant flow used to approve device authorization requests. Required when the Device Code grant is enabled.
           example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
+        cibaFlowId:
+          type: string
+          description: The ID of the CIBA flow that notifies the user and asks for approval of a backchannel authentication request. It must call the application's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.
@@ -2215,6 +2227,10 @@ components:
           type: string
           description: The ID of the Device Grant flow used to approve device authorization requests. Required when the Device Code grant is enabled.
           example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
+        cibaFlowId:
+          type: string
+          description: The ID of the CIBA flow that notifies the user and asks for approval of a backchannel authentication request. It must call the application's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.

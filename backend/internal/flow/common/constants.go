@@ -89,6 +89,9 @@ const (
 	DataInviteLink = "inviteLink"
 	// DataCallbackType is the OAuth grant type surfaced on the terminal flow response's additional data.
 	DataCallbackType = "callbackType"
+	// DataBindingMessage is the binding message of a CIBA request, surfaced on each step's additional data so the
+	// user can match the screen to the request that started it.
+	DataBindingMessage = "bindingMessage"
 	// DataEmailSent is the key used to indicate that an email was sent successfully in the flow response.
 	DataEmailSent = "emailSent"
 	// DataSMSSent is the key used to indicate that an SMS was sent successfully in the flow response.
@@ -322,6 +325,9 @@ const (
 	RuntimeKeyAllowedLoginOptions = "allowed_login_options"
 	// RuntimeKeyAllowRegistrationWithExistingUser indicates whether registration is allowed with an existing user
 	RuntimeKeyAllowRegistrationWithExistingUser = "allowRegistrationWithExistingUser"
+	// RuntimeKeyRequestedSubjectID holds the ID of the user a CIBA request names with its login hint. The engine
+	// carries it into each flow the request calls, so that flow can only sign in that user.
+	RuntimeKeyRequestedSubjectID = "requestedSubjectId"
 	// RuntimeKeyBindingMessage holds the human-readable binding message displayed to the user
 	// on both the consumption device and the authentication device to correlate the CIBA request.
 	RuntimeKeyBindingMessage = "bindingMessage"

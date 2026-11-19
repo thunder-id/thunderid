@@ -14,6 +14,7 @@ import (
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -79,7 +80,7 @@ func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*provider
 
 	// When a userID is pre-resolved (e.g., by an IdentifyingExecutor in resolve mode),
 	// only credential inputs are required — skip the identifier input check.
-	hasPreResolvedUser := ctx.RuntimeData[userAttributeUserID] != ""
+	hasPreResolvedUser := preResolvedUserID(ctx) != ""
 	if hasPreResolvedUser {
 		credentialInputs := b.getCredentialInputs(ctx)
 		hasMissingCredentials := false
@@ -143,6 +144,24 @@ func (b *credentialsAuthExecutor) getCredentialInputs(ctx *providers.NodeContext
 	return credentials
 }
 
+// retryInputs returns the inputs a failed attempt asks for again: the credentials only when the user is already
+// known, as on the first ask, and every required input otherwise.
+func (b *credentialsAuthExecutor) retryInputs(ctx *providers.NodeContext) []providers.Input {
+	if preResolvedUserID(ctx) != "" {
+		return b.getCredentialInputs(ctx)
+	}
+	return b.GetRequiredInputs(ctx)
+}
+
+// preResolvedUserID returns the user an earlier step of this flow identified, or else the user a CIBA request names,
+// so a flow the request calls checks the credentials of that user only.
+func preResolvedUserID(ctx *providers.NodeContext) string {
+	if userID := ctx.RuntimeData[userAttributeUserID]; userID != "" {
+		return userID
+	}
+	return ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID]
+}
+
 // authenticateUser perform authentication based on the provided identifying and
 // credential attributes and returns the authenticated user details.
 func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
@@ -153,8 +172,8 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 	userCredentials := map[string]interface{}{}
 
 	// When a userID is pre-resolved, use it as the identifier for authentication.
-	if preResolvedUserID, ok := ctx.RuntimeData[userAttributeUserID]; ok {
-		userIdentifiers[userAttributeUserID] = preResolvedUserID
+	if userID := preResolvedUserID(ctx); userID != "" {
+		userIdentifiers[userAttributeUserID] = userID
 	}
 
 	for _, inputData := range b.GetRequiredInputs(ctx) {
@@ -199,14 +218,14 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 			b.logger.Debug(ctx.Context, "Authentication refused by a stated hold",
 				log.String(log.LoggerKeyExecutionID, ctx.ExecutionID), log.String("errorCode", stated.Code))
 			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = b.GetRequiredInputs(ctx)
+			execResp.Inputs = b.retryInputs(ctx)
 			execResp.Error = stated
 			return nil
 		}
 
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = b.GetRequiredInputs(ctx)
+			execResp.Inputs = b.retryInputs(ctx)
 
 			switch svcErr.Code {
 			case authnprovidermgr.ErrorUserNotFound.Code:

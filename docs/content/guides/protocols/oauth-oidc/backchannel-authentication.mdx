@@ -34,11 +34,11 @@ The flow proceeds in three phases:
 **Phase 2: User Authentication**
 
 4. The user reviews the request on their authentication device and approves or denies it.
-5. <ProductName /> records the decision and marks the `auth_req_id` accordingly.
+5. <ProductName /> records the outcome against the `auth_req_id`. An approval completes the request. A failure the flow reports, such as a denied consent when **Fail flow when user denies consent** is on, ends it with `access_denied`. Denying on the approve or deny screen of a CIBA flow records nothing, so the request stays pending until it expires.
 
 **Phase 3: Token Retrieval**
 
-6. The client polls `POST /oauth2/token` with `grant_type=urn:openid:params:grant-type:ciba` until the user has acted.
+6. The client polls `POST /oauth2/token` with `grant_type=urn:openid:params:grant-type:ciba` until the request is approved, ends with an error, or expires.
 7. <ProductName /> returns an access token and, when `openid` is in the scope, an ID token.
 
 <details>
@@ -111,6 +111,64 @@ The attribute must identify exactly one user. When no user or more than one user
 When a client sends `id_token_hint` instead of `login_hint`, <ProductName /> passes the ID token's `sub` claim, the user's ID, to the flow as the login hint. To accept `id_token_hint`, set **Login hint attribute** to `userID`. Because a flow matches the hint against one attribute, use a separate flow and application for clients that send `id_token_hint`.
 
 **Identify from a CIBA login hint** applies only to CIBA requests. In a CIBA request, the **Identify User** step ignores its configured inputs and fails instead of prompting again when no user matches. Other sign-ins that run the same flow use the step's configured inputs as usual.
+
+## Create a CIBA Flow
+
+A CIBA flow sends the approval notification and asks the user to approve or deny the request. When the user approves, it calls the client's Authentication flow to sign the user in. The user signs in on their authentication device the same way they sign in elsewhere, and you keep a single sign-in experience to maintain.
+
+1. Navigate to **Flows** in the <ProductName /> Console and select **Create new flow**.
+2. Select **CIBA (Backchannel Authentication)** as the flow type.
+3. On the **Template** step, select **CIBA Email Notification** to send the approval link by email, or **CIBA SMS Notification** to send it by text message.
+4. Enter a **Flow name** and a **Handle**, then continue. The flow builder opens with the flow not yet saved.
+5. Select the step labeled **Select a flow to invoke**.
+6. In **Referenced flow**, select the Authentication flow of the client that sends the requests. The list shows only authentication flows.
+7. Save the flow.
+
+The two templates differ only in how the approval link is delivered:
+
+| Template | Sends to | Sender |
+|---|---|---|
+| **CIBA Email Notification** | The `email` attribute of the user the login hint identifies | The first email connection, selected when you create the flow |
+| **CIBA SMS Notification** | The `mobile_number` attribute of the user the login hint identifies | The SMS connection, selected when you create the flow only if exactly one exists |
+
+Both use the `ciba-notification` notification template of their channel. If the Console selects no sender, or you want another one, set the sender on the notification step in the flow builder. The user type must declare the attribute the template sends to.
+
+## Assign the CIBA Flow to the Client
+
+<Tabs groupId="ciba-flow-assignment">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Flows** tab. The **CIBA flow** section appears once the CIBA grant type is enabled.
+3. Select the CIBA flow.
+4. Save.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Set `cibaFlowId` to the flow's ID, or `cibaFlowHandle` to its handle in a declarative resource file, on the application or agent.
+
+</TabItem>
+</Tabs>
+
+<ProductName /> accepts a CIBA flow only when it calls the client's own Authentication flow. A client with no CIBA flow runs backchannel requests through its Authentication flow, so that flow has to send the notification and issue the assertion itself, and it also runs for browser sign-ins. Use a separate application for such a client.
+
+## How a CIBA Flow Behaves
+
+- After the user opens the link and the invite is verified, an approve or deny screen appears. **Approve** calls the Authentication flow. **Deny** shows a denial message and ends the flow.
+- Each screen that waits for the user, the approve or deny screen and the sign-in screens, shows the request's `binding_message` as **Request message**, so the user can match it to the request on the consumption device.
+- Denying does not tell the client. The request stays pending until it expires, and the client keeps receiving `authorization_pending` until then.
+- The Authentication flow issues the assertion that completes the request, so a CIBA flow has no **Auth Assertion Generator** of its own.
+- The CIBA flow must have an **Invite** step that verifies the approval link, and a **Call** node that runs only after that step. <ProductName /> refuses to save a CIBA flow that does not meet these rules, or that calls anything other than an Authentication flow.
+- Only a backchannel authentication request starts a CIBA flow. A client cannot start one through the flow execution API.
+- The Authentication flow sees the CIBA request, including the requested permissions, the `acr_values`, any authorization details, and the requirement to ask for consent every time. The template adds no **Authorization** or **User Consent** step, so those steps apply only if the Authentication flow has them.
+- The approve or deny screen is the user's decision on the request. Add **User Consent** to the Authentication flow when the request releases user attributes or permissions and the user should see them before approving.
+- A request with `authorization_details` needs **Check Intents** and **User Consent** in the Authentication flow. Without them the sign-in ends with `access_denied`. To ask every CIBA user for consent without adding it to your regular sign-in, give a client that only holds the CIBA grant an Authentication flow that includes **User Consent**.
+- The Authentication flow must finish with its own assertion. A path in it that leaves the sign-in, such as a **Forgot password** or **Sign up** link, ends without one, and the request stays pending until it expires. Use an Authentication flow that has no such links for this client.
+- A user who denies consent still signs in, and the client receives a token without what the user denied, such as the requested permission. Turn on **Fail flow when user denies consent** on the **User Consent** step to end the request with `access_denied` instead.
+- The user who signs in must be the user the login hint identifies. A credentials step rejects another user's password like a wrong one and asks again. Any other sign-in method fails with the error `FET-1141` (Sign-in refused) when the assertion is issued, and the request is not approved.
+
+For how a flow calls another flow, see [Call Node](../../flows/advanced-configurations#call-node).
 
 ## Run the Flow
 

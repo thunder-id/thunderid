@@ -59,6 +59,8 @@ const (
 	FlowTypeSystem FlowType = "SYSTEM"
 	// FlowTypeDeviceGrant represents a Device Authorization Grant flow.
 	FlowTypeDeviceGrant FlowType = "DEVICE_GRANT"
+	// FlowTypeCIBA represents a Client Initiated Backchannel Authentication flow.
+	FlowTypeCIBA FlowType = "CIBA"
 )
 
 // ValidFlowTypes is the set of supported flow types.
@@ -73,6 +75,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeAdministration,
 	FlowTypeInvitation,
 	FlowTypeDeviceGrant,
+	FlowTypeCIBA,
 }
 
 // NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.

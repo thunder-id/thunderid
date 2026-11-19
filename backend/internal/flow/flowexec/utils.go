@@ -13,11 +13,18 @@ import (
 func actsForCaller(flowType providers.FlowType) bool {
 	switch flowType {
 	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeRecovery,
-		providers.FlowTypeSignOut, providers.FlowTypeDeviceGrant, providers.FlowTypeSelf, providers.FlowTypeSystem:
+		providers.FlowTypeSignOut, providers.FlowTypeDeviceGrant, providers.FlowTypeCIBA, providers.FlowTypeSelf,
+		providers.FlowTypeSystem:
 		return false
 	default:
 		return true
 	}
+}
+
+// signsInToApplication reports whether a flow of flowType signs a subject in to the application, or names the
+// subject it will sign in: an authentication flow, and a CIBA flow that notifies the user a request names.
+func signsInToApplication(flowType providers.FlowType) bool {
+	return flowType == providers.FlowTypeAuthentication || flowType == providers.FlowTypeCIBA
 }
 
 // recordsAuthority reports whether a flow of flowType records the caller who started it, to run its later steps

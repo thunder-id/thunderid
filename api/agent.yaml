@@ -2661,6 +2661,10 @@ components:
           type: string
           description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
           example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
+        cibaFlowId:
+          type: string
+          description: Flow that notifies the user and asks for approval of a backchannel authentication request for this agent. It must call the agent's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           description: Registration flow for this agent.
@@ -2770,6 +2774,10 @@ components:
           type: string
           description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
           example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
+        cibaFlowId:
+          type: string
+          description: Flow that notifies the user and asks for approval of a backchannel authentication request for this agent. It must call the agent's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2878,6 +2886,10 @@ components:
           readOnly: true
           description: Device Grant flow assigned to this agent.
           example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
+        cibaFlowId:
+          type: string
+          description: Flow that notifies the user and asks for approval of a backchannel authentication request for this agent. It must call the agent's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2985,6 +2997,10 @@ components:
           readOnly: true
           description: Device Grant flow assigned to this agent.
           example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
+        cibaFlowId:
+          type: string
+          description: Flow that notifies the user and asks for approval of a backchannel authentication request for this agent. It must call the agent's authentication flow. When omitted, the authentication flow handles the request.
+          example: "7b1c3e52-0d6a-4f4e-9a52-2f0b7d8c9e11"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"

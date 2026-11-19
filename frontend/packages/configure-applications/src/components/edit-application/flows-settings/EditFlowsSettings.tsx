@@ -3,6 +3,7 @@
 
 import {Stack} from '@wso2/oxygen-ui';
 import AuthenticationFlowSection from './AuthenticationFlowSection';
+import CibaFlowSection from './CibaFlowSection';
 import DeviceGrantFlowSection from './DeviceGrantFlowSection';
 import RecoveryFlowSection from './RecoveryFlowSection';
 import RegistrationFlowSection from './RegistrationFlowSection';
@@ -87,6 +88,12 @@ export default function EditFlowsSettings({
       <DeviceGrantFlowSection
         application={application}
         readOnly={readOnly}
+        editedApp={editedApp}
+        onFieldChange={onFieldChange}
+        entityLabel={entityLabel}
+      />
+      <CibaFlowSection
+        application={application}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}

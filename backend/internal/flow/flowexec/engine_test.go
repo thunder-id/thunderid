@@ -3239,6 +3239,19 @@ func (s *EngineTestSuite) TestExecuteNodePackage_CarriesRequiredSubjectOnAuthent
 	s.Equal("owner-1", constraints.RequiredSubjectID)
 }
 
+// A CIBA flow identifies the user a request names, so the application's subject types bind it as they bind a
+// sign-in.
+func (s *EngineTestSuite) TestExecuteNodePackage_CarriesSubjectTypeConstraintsOnCIBAFlow() {
+	app := providers.Application{}
+	app.AllowedUserTypes = []string{"customer"}
+
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeCIBA, app, "")
+
+	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(nodeCtx)
+	s.True(ok)
+	s.Equal([]string{"customer"}, constraints.AllowedUserTypes)
+}
+
 func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOtherFlowTypes() {
 	app := providers.Application{}
 	app.AllowedAgentTypes = []string{"default"}
@@ -3509,6 +3522,41 @@ func (s *EngineTestSuite) TestCallTargetMustNotActForTheCallerOfASystemAuthority
 				return
 			}
 			s.Nil(svcErr)
+		})
+	}
+}
+
+// A CIBA or Device Grant flow runs only as the root of the request that starts it, so no flow calls one, whatever
+// type the caller is.
+func (s *EngineTestSuite) TestCallTargetMustNotBeAFlowOnlyARequestStarts() {
+	for _, tc := range []struct {
+		name       string
+		rootType   providers.FlowType
+		calleeType providers.FlowType
+	}{
+		{"authentication calls CIBA", providers.FlowTypeAuthentication, providers.FlowTypeCIBA},
+		{"authentication calls device grant", providers.FlowTypeAuthentication, providers.FlowTypeDeviceGrant},
+		{"registration calls CIBA", providers.FlowTypeRegistration, providers.FlowTypeCIBA},
+		{"administration calls device grant", providers.FlowTypeAdministration, providers.FlowTypeDeviceGrant},
+	} {
+		s.Run(tc.name, func() {
+			t := s.T()
+			flowProvider := NewFlowProviderMock(t)
+			graphBuilder := NewGraphBuilderInterfaceMock(t)
+			flowProvider.On("GetFlow", mock.Anything, "callee-flow").
+				Return(&providers.CompleteFlowDefinition{ID: "callee-flow", FlowType: tc.calleeType}, nil)
+			engine := &flowEngine{logger: log.GetLogger(), flowProvider: flowProvider, graphBuilder: graphBuilder}
+			ctx := &EngineContext{Context: context.Background(), Graph: coremock.NewGraphInterfaceMock(t),
+				CurrentNode: coremock.NewCallNodeInterfaceMock(t), FlowType: tc.rootType}
+
+			_, svcErr := engine.handleCallResponse(ctx, &common.NodeResponse{
+				Status: common.NodeStatusCall, CallTargetFlowID: "callee-flow",
+			}, log.GetLogger())
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorCallTargetRequestOnly.Code, svcErr.Code)
+			graphBuilder.AssertNotCalled(t, "GetGraph", mock.Anything, mock.Anything)
+			s.Empty(ctx.frameStack, "a refused call pushes no frame")
 		})
 	}
 }
@@ -6459,4 +6507,24 @@ func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInCalleeLeavesNoUse
 	s.False(seen.IsAuthenticated())
 	s.Empty(seen.ProviderNames())
 	s.Empty(c.ctx.Assertion)
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_CarriesTheUserARequestNames() {
+	ctx := s.calleeWithRuntimeData(providers.FlowTypeCIBA, false,
+		map[string]string{common.RuntimeKeyRequestedSubjectID: "user-123", "other": "kept in the caller"},
+		providers.FlowTypeAuthentication)
+
+	s.Equal("user-123", ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID])
+	s.NotContains(ctx.RuntimeData, "other")
+
+	ctx.popFrame()
+	s.Equal("user-123", ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID])
+	s.Equal("kept in the caller", ctx.RuntimeData["other"])
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_RequestNamingNoUserCarriesNone() {
+	ctx := s.calleeWithRuntimeData(providers.FlowTypeCIBA, false, map[string]string{"other": "x"},
+		providers.FlowTypeAuthentication)
+
+	s.NotContains(ctx.RuntimeData, common.RuntimeKeyRequestedSubjectID)
 }

@@ -29,7 +29,7 @@ interface SelectFlowTemplateProps {
   onTemplateChange: (template: FlowTemplate) => void;
 }
 
-const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS', 'DEVICE_AUTHORIZATION'];
+const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS', 'DEVICE_AUTHORIZATION', 'CIBA'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   PASSWORD: 'Password',
@@ -37,6 +37,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   MFA: 'Multi-factor',
   PASSWORDLESS: 'Passwordless',
   DEVICE_AUTHORIZATION: 'Device authorization',
+  CIBA: 'CIBA',
 };
 
 // Icons that use brand colors and should not be inverted in dark mode
@@ -74,6 +75,7 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   MAGIC_LINK: ['assets/images/icons/link.svg'],
   BASIC_MAGIC_LINK: ['assets/images/icons/password.svg', 'assets/images/icons/link.svg'],
   CIBA_EMAIL_NOTIFICATION: ['assets/images/icons/email-down.svg'],
+  CIBA_SMS_NOTIFICATION: ['assets/images/icons/mobile-message.svg'],
   DISAMBIGUATION_LOGIN: ['assets/images/icons/magnifying-glass.svg'],
   DEFAULT: ['assets/images/icons/user.svg'],
   SELF_ATTRIBUTE_VERIFICATION: ['assets/images/icons/email-down.svg'],

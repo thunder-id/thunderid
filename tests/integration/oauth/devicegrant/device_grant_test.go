@@ -336,6 +336,31 @@ func deviceGrantApplication(ouID, name, clientID, clientSecret, authFlowID, devi
 // TestDeviceGrantLifecycle exercises the complete browser and device sides of RFC 8628. It verifies
 // request creation, pending polling, rate limiting, user-code verification, the application-assigned
 // Authentication flow, callback binding, token issuance, and one-time request consumption.
+// Only a device authorization request starts a Device Grant flow, so no other flow can call one.
+func (ts *DeviceGrantTestSuite) TestAFlowCannotCallADeviceGrantFlow() {
+	_, err := testutils.CreateFlow(testutils.Flow{
+		Name:     "Device Grant Integration Flow Calling A Device Grant Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   "device_grant_integration_calls_device_grant_flow",
+		OUID:     ts.ouID,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "call_device_grant"},
+			{
+				"id": "call_device_grant", "type": "CALL", "onSuccess": "auth_assert",
+				"flow": map[string]interface{}{"ref": ts.deviceGrantFlowID},
+			},
+			{
+				"id": "auth_assert", "type": "TASK_EXECUTION", "onSuccess": "end",
+				"executor": map[string]interface{}{"name": "AuthAssertExecutor"},
+			},
+			{"id": "end", "type": "END"},
+		},
+	})
+
+	ts.Require().Error(err, "a flow that calls a Device Grant flow is refused")
+	ts.Contains(err.Error(), "only a request starts")
+}
+
 func (ts *DeviceGrantTestSuite) TestDeviceGrantLifecycle() {
 	authStatus, authResponse, headers := ts.deviceAuthorize("openid")
 	ts.Require().Equal(http.StatusOK, authStatus, "device authorization error: %s: %s",

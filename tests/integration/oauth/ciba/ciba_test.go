@@ -81,6 +81,9 @@ type CIBATestSuite struct {
 	noGrantAppID     string
 	idHintFlowID     string
 	idHintAppID      string
+	callInnerFlowID  string
+	callFlowID       string
+	callAppID        string
 }
 
 func TestCIBATestSuite(t *testing.T) {
@@ -223,6 +226,8 @@ func (ts *CIBATestSuite) SetupSuite() {
 
 	ts.idHintAppID = ts.createCIBAApp("CIBAIDHintTestApp", cibaIDHintClientID, cibaIDHintClientSecret,
 		[]string{cibaGrantType, "refresh_token"}, idHintFlowID)
+
+	ts.setUpCallFlowApp()
 }
 
 // SetupTest drops notifications captured by earlier tests, so that each test recovers the executionId
@@ -234,6 +239,7 @@ func (ts *CIBATestSuite) SetupTest() {
 }
 
 func (ts *CIBATestSuite) TearDownSuite() {
+	ts.tearDownCallFlowApp()
 	if ts.idHintAppID != "" {
 		_ = testutils.DeleteApplication(ts.idHintAppID)
 	}
@@ -1009,6 +1015,14 @@ func (ts *CIBATestSuite) createCIBATestApplication(authFlowID string) string {
 func (ts *CIBATestSuite) createCIBAApp(
 	name, clientID, clientSecret string, grantTypes []string, authFlowID string,
 ) string {
+	return ts.createCIBAAppWithCIBAFlow(name, clientID, clientSecret, grantTypes, authFlowID, "")
+}
+
+// createCIBAAppWithCIBAFlow creates a CIBA application with its own CIBA flow, which a backchannel
+// request runs in place of the authentication flow. An empty cibaFlowID leaves the slot unset.
+func (ts *CIBATestSuite) createCIBAAppWithCIBAFlow(
+	name, clientID, clientSecret string, grantTypes []string, authFlowID, cibaFlowID string,
+) string {
 	app := map[string]interface{}{
 		"name":                      name,
 		"description":               "Application for CIBA integration test",
@@ -1029,6 +1043,9 @@ func (ts *CIBATestSuite) createCIBAApp(
 				},
 			},
 		},
+	}
+	if cibaFlowID != "" {
+		app["cibaFlowId"] = cibaFlowID
 	}
 
 	jsonData, err := json.Marshal(app)

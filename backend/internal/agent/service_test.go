@@ -351,6 +351,18 @@ func (suite *AgentServiceTestSuite) TestUpdateNeedsInboundClient_WithThemeID() {
 	assert.True(suite.T(), updateNeedsInboundClient(req))
 }
 
+func (suite *AgentServiceTestSuite) TestInboundClientIsNeededForACIBAFlow() {
+	assert.True(suite.T(), needsInboundClient(&providers.Agent{
+		InboundAuthProfile: providers.InboundAuthProfile{CIBAFlowID: "ciba-flow"},
+	}))
+	assert.True(suite.T(), updateNeedsInboundClient(&model.UpdateAgentRequest{
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{CIBAFlowID: "ciba-flow"},
+	}))
+	assert.True(suite.T(), updateNeedsInboundClient(&model.UpdateAgentRequest{
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{CIBAFlowHandle: "ciba-flow"},
+	}))
+}
+
 // --- readSystemAttributes / buildSystemAttributesJSON ---
 
 func (suite *AgentServiceTestSuite) TestReadSystemAttributes_Empty() {
@@ -2613,6 +2625,7 @@ func (suite *AgentServiceTestSuite) TestTranslateInboundClientFKError() {
 	}{
 		{"InvalidAuthFlow", inboundclient.ErrFKInvalidAuthFlow, ErrorInvalidAuthFlowID.Code},
 		{"InvalidRegistrationFlow", inboundclient.ErrFKInvalidRegistrationFlow, ErrorInvalidRegistrationFlowID.Code},
+		{"InvalidCIBAFlow", inboundclient.ErrFKInvalidCIBAFlow, ErrorInvalidCIBAFlowID.Code},
 		{"FlowDefinitionRetrievalFailed", inboundclient.ErrFKFlowDefinitionRetrievalFailed,
 			ErrorWhileRetrievingFlowDefinition.Code},
 		{"FlowServerError", inboundclient.ErrFKFlowServerError, tidcommon.InternalServerError.Code},

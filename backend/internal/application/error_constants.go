@@ -933,6 +933,19 @@ var (
 			DefaultValue: "Only the organization unit that owns the application can change or delete it",
 		},
 	}
+	// ErrorInvalidCIBAFlowID is returned when an invalid CIBA flow is assigned.
+	ErrorInvalidCIBAFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1071",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_ciba_flow_id",
+			DefaultValue: "Invalid CIBA flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_ciba_flow_id_description",
+			DefaultValue: "The CIBA flow must call this application's configured Authentication flow",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

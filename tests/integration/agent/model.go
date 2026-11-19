@@ -27,6 +27,7 @@ type Agent struct {
 
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	DeviceGrantFlowID         string              `json:"deviceGrantFlowId,omitempty"`
+	CIBAFlowID                string              `json:"cibaFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
 	IsRegistrationFlowEnabled bool                `json:"isRegistrationFlowEnabled,omitempty"`
 	ThemeID                   string              `json:"themeId,omitempty"`

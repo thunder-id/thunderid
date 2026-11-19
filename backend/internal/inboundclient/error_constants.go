@@ -45,6 +45,8 @@ var (
 	ErrFKInvalidSignOutFlow = errors.New("invalid sign-out flow ID")
 	// ErrFKInvalidDeviceGrantFlow is returned when a Device Grant flow ID is invalid.
 	ErrFKInvalidDeviceGrantFlow = errors.New("invalid Device Grant flow ID")
+	// ErrFKInvalidCIBAFlow is returned when a CIBA flow ID is invalid.
+	ErrFKInvalidCIBAFlow = errors.New("invalid CIBA flow ID")
 	// ErrFKDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.
 	ErrFKDeviceGrantFlowRequired = errors.New("device grant flow is required when Device Code grant is enabled")
 	// ErrFKFlowDefinitionRetrievalFailed is returned when a flow definition cannot be retrieved.

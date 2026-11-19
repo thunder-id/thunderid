@@ -208,6 +208,9 @@ export interface Application {
   /** Device Grant flow used when this application accepts the OAuth Device Code grant. */
   deviceGrantFlowId?: string;
 
+  /** CIBA flow that notifies the user of a backchannel authentication request and asks for approval. */
+  cibaFlowId?: string;
+
   /**
    * Registration flow ID
    * @example '80024fb3-29ed-4c33-aa48-8aee5e96d522'

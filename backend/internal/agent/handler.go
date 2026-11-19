@@ -101,6 +101,8 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 			AuthFlowID:                req.AuthFlowID,
 			DeviceGrantFlowID:         req.DeviceGrantFlowID,
 			DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
+			CIBAFlowID:                req.CIBAFlowID,
+			CIBAFlowHandle:            req.CIBAFlowHandle,
 			RegistrationFlowID:        req.RegistrationFlowID,
 			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            req.RecoveryFlowID,
