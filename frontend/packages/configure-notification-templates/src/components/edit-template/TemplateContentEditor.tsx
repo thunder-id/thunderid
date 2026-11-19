@@ -23,6 +23,8 @@ export interface TemplateContentEditorProps {
   onColorSchemeChange: (value: TemplateColorScheme) => void;
   /** Wrap the fields in an outlined card. Defaults to true. */
   card?: boolean;
+  /** Shows the content without letting it change. */
+  readOnly?: boolean;
 }
 
 /**
@@ -41,6 +43,7 @@ export default function TemplateContentEditor({
   onBodyChange,
   onColorSchemeChange,
   card = true,
+  readOnly = false,
 }: TemplateContentEditorProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
   const isEmail = channel === 'email';
@@ -51,6 +54,7 @@ export default function TemplateContentEditor({
   const activeField = useRef<'subject' | 'body'>('body');
 
   const insertToken = (value: string): void => {
+    if (readOnly) return;
     const field = isEmail && activeField.current === 'subject' ? 'subject' : 'body';
     const el = field === 'subject' ? subjectRef.current : bodyRef.current;
     const current = field === 'subject' ? subject : body;
@@ -97,6 +101,7 @@ export default function TemplateContentEditor({
                 value={colorScheme}
                 exclusive
                 size="small"
+                disabled={readOnly}
                 onChange={(_, value: TemplateColorScheme | null) => {
                   if (value) onColorSchemeChange(value);
                 }}
@@ -128,6 +133,7 @@ export default function TemplateContentEditor({
               activeField.current = 'subject';
             }}
             inputRef={subjectRef}
+            InputProps={{readOnly}}
             sx={{mb: 2.5}}
           />
         </>
@@ -156,7 +162,10 @@ export default function TemplateContentEditor({
             activeField.current = 'body';
           }}
           inputRef={bodyRef}
-          InputProps={{sx: {fontFamily: 'monospace', fontSize: '0.8125rem', alignItems: 'flex-start', height: '100%'}}}
+          InputProps={{
+            readOnly,
+            sx: {fontFamily: 'monospace', fontSize: '0.8125rem', alignItems: 'flex-start', height: '100%'},
+          }}
           sx={{
             height: '100%',
             '& .MuiOutlinedInput-root': {height: '100%', borderRadius: 0, alignItems: 'flex-start'},

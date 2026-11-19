@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Editor from '@monaco-editor/react';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Alert, Box} from '@wso2/oxygen-ui';
 import {useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -76,6 +77,7 @@ export default function TranslationJsonEditor({
   onChange,
 }: TranslationJsonEditorProps): JSX.Element {
   const {t} = useTranslation('translations');
+  const {can} = useCapabilitiesContext();
 
   const [jsonText, setJsonText] = useState(() => JSON.stringify(values, null, 2));
   const [jsonError, setJsonError] = useState(false);
@@ -163,6 +165,7 @@ export default function TranslationJsonEditor({
           value={jsonText}
           onChange={handleEditorChange}
           options={{
+            readOnly: !can('i18n', 'update'),
             minimap: {enabled: false},
             scrollBeyondLastLine: false,
             automaticLayout: true,
