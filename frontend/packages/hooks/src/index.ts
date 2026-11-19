@@ -14,3 +14,5 @@ export {
 export {default as useDataGridLocaleText} from './useDataGridLocaleText';
 
 export {default as useCapabilities, type Capabilities, type CapabilitiesResponse} from './useCapabilities';
+
+export {default as useDebouncedValue} from './useDebouncedValue';

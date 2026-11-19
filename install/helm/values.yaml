@@ -568,8 +568,15 @@ configuration:
   # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
   # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
   # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  # unusedValueGraceSeconds: after each apply, the values this plane named for a resource that nothing
+  # refers to any more are removed from the gateway's store once last set longer ago than this. Below 1
+  # it is raised to 1; a negative number turns the removal off.
+  # unusedValueSweepIntervalSeconds is the least time between two such removals from the same gateway;
+  # 0 removes after every apply.
   gateway:
     applyTimeoutSeconds: 300
+    unusedValueGraceSeconds: 3600
+    unusedValueSweepIntervalSeconds: 300
 
   # Flow configuration
   flow:

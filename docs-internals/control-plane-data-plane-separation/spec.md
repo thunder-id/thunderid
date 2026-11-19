@@ -225,6 +225,8 @@ Error codes are listed in the user guides and in `error_constants.go` of each mo
 | `gateway.removal_confirmation_threshold` | CP | 5 | |
 | `gateway.apply_timeout_seconds` | CP | 300 | |
 | `gateway.auto_apply`, `gateway.pipeline` | CP | off, empty | `autoApply` overridable at runtime |
+| `gateway.unused_value_grace_seconds` | CP | 3600 | Minimum 1 (lower is raised with a startup warning); the DP checks the age on its own clock. Negative turns the unused value removal off |
+| `gateway.unused_value_sweep_interval_seconds` | CP | 300 | Least time between two removals on one gateway by one CP node, kept in memory (per node, reset on restart); 0 removes after every apply |
 | `import.timeout_seconds` | both | 120 | |
 | `server.security.management_api_key_hash` | DP | empty (off) | |
 | `server.security.trusted_issuer.*` | CP | empty | Includes `user_lookup.*` |

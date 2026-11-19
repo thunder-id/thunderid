@@ -5,7 +5,7 @@ import {Alert, Box, Button, Card, Chip, Stack, TextField, Typography} from '@wso
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import LaneIcon from './LaneIcon';
-import {useSetStoredValue} from '../api/useStoredValues';
+import {pendingWriteOf, usePendingValueWrites, useSetStoredValue} from '../api/useStoredValues';
 import {LANES, laneOfType, type Lane} from '../explorer/model';
 import type {StoredValue, ValueReference} from '../models/deploy';
 import {humanize} from '../utils/groupByResource';
@@ -46,6 +46,8 @@ export default function ResourceValuesView({
   const {t} = useTranslation('deploy');
   const setVariable = useSetStoredValue(gatewayId, 'variable');
   const setSecret = useSetStoredValue(gatewayId, 'secret');
+  // A removal of the same value started in another view, which would undo a save that landed first.
+  const pending = usePendingValueWrites(gatewayId);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +113,7 @@ export default function ResourceValuesView({
     const isSet = value.kind === 'secret' ? Boolean(held) : held !== undefined;
     const isEditing = editing === key;
     const saving = (value.kind === 'secret' ? setSecret : setVariable).isPending;
+    const removing = pending.removing.has(pendingWriteOf(value.kind, value.name));
     return (
       <Box key={key} data-testid={`resource-value-${value.name}`} sx={{py: 1.25, borderTop: 1, borderColor: 'divider'}}>
         <Stack direction="row" spacing={1.5} alignItems="center" sx={{flexWrap: 'wrap', rowGap: 1}}>
@@ -142,6 +145,7 @@ export default function ResourceValuesView({
               size="small"
               variant="text"
               onClick={() => start(value)}
+              disabled={removing}
               data-testid={`resource-value-edit-${value.name}`}
             >
               {isSet ? t('resourceValues.edit', 'Edit') : t('resourceValues.setValue', 'Set')}
@@ -175,7 +179,7 @@ export default function ResourceValuesView({
                 size="small"
                 variant="contained"
                 onClick={() => void save(value)}
-                disabled={saving || draft.trim() === ''}
+                disabled={saving || removing || draft.trim() === ''}
                 data-testid={`resource-value-save-${value.name}`}
               >
                 {t('resourceValues.save', 'Save')}

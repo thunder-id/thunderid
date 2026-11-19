@@ -5,6 +5,7 @@ package variablestore
 
 import (
 	"context"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -98,6 +99,19 @@ func (s *cacheBackedStore) DeleteVariable(ctx context.Context, name string) (boo
 	return deleted, err
 }
 
+// DeleteVariables forgets every name it was given, not only those it removed, so an entry left behind
+// for a name already gone from the database is dropped too.
+func (s *cacheBackedStore) DeleteVariables(ctx context.Context, names []string,
+	unchangedFor time.Duration) ([]string, error) {
+	deleted, err := s.store.DeleteVariables(ctx, names, unchangedFor)
+	if err == nil {
+		for _, name := range names {
+			s.forgetVariable(ctx, name)
+		}
+	}
+	return deleted, err
+}
+
 func (s *cacheBackedStore) GetSecret(ctx context.Context, name string) (*Secret, error) {
 	if held, found := s.secrets.Get(ctx, cache.CacheKey{Key: name}); found {
 		return held, nil
@@ -142,6 +156,18 @@ func (s *cacheBackedStore) DeleteSecret(ctx context.Context, name string) (bool,
 	deleted, err := s.store.DeleteSecret(ctx, name)
 	if err == nil {
 		s.forgetSecret(ctx, name)
+	}
+	return deleted, err
+}
+
+// DeleteSecrets forgets every name it was given, as DeleteVariables does.
+func (s *cacheBackedStore) DeleteSecrets(ctx context.Context, names []string,
+	unchangedFor time.Duration) ([]string, error) {
+	deleted, err := s.store.DeleteSecrets(ctx, names, unchangedFor)
+	if err == nil {
+		for _, name := range names {
+			s.forgetSecret(ctx, name)
+		}
 	}
 	return deleted, err
 }

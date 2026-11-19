@@ -65,9 +65,9 @@ export default function RuntimeEnvironmentsProvider({children}: {children: React
             candidate.resourceType === resourceType && candidate.resourceId === resourceId && candidate.field === field,
         );
         if (!reference) return {status: 'absent'};
-        const stored = (await source.values(environmentId, reference.kind)).find(
-          (candidate: StoredValue) => candidate.name === reference.name,
-        )?.value;
+        // Only the one name is looked up, not everything the environment holds.
+        const page = await source.listValues(environmentId, reference.kind, {names: [reference.name], limit: 1});
+        const stored = page.values.find((candidate: StoredValue) => candidate.name === reference.name)?.value;
         return stored ? {status: 'set', value: stored} : {status: 'unset'};
       },
     }),

@@ -35,6 +35,10 @@ gateway:
   max_gateways: 5
   # The suite registers the data plane on localhost.
   allow_private_addresses: true
+  # Every apply sweeps the gateway's store, and a value set more than a second ago can go, so a test
+  # sees unused values removed without waiting an hour.
+  unused_value_grace_seconds: 1
+  unused_value_sweep_interval_seconds: 0
 
 tls:
   min_version: "1.3"

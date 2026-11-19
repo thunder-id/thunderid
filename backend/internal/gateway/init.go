@@ -48,12 +48,15 @@ import (
 //
 // bus is required: the gateway service publishes registration events on it, and the version service
 // publishes capture, apply and revert events.
+//
+// The stopper it returns stops the sweeps of unused values that applies start in the background, and
+// is called on shutdown.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.ExportServiceInterface,
 	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
 	changes *ChangeCapture, settings serverconfig.ServerConfigService,
-	projects ProjectDirectory, bus eventbus.EventBusInterface) (ServiceInterface, error) {
+	projects ProjectDirectory, bus eventbus.EventBusInterface) (ServiceInterface, StopperInterface, error) {
 	if bus == nil {
-		return nil, errNilEventBus
+		return nil, nil, errNilEventBus
 	}
 	var (
 		gatewayStore storeInterface
@@ -74,8 +77,13 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 	// One pipeline, so the one the API shows is the one auto apply and value capture deploy to.
 	deployPipeline := newPipeline()
 	service := newService(gatewayStore, deployPipeline, bus)
-	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
+	versionStore := newVersionStore()
+	versions := newVersionService(gatewayStore, versionStore, exporter, newGatewayClient(),
 		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline, bus)
+	if grace, on := unusedValueGrace(context.Background()); on {
+		versions.unusedValues = newUnusedValueSweeper(versionStore, versions, newGatewayClient(),
+			goroutineRunner{}, grace, unusedValueSweepInterval())
+	}
 	versions.autoApply = newAutoApplySource(settings)
 	versions.syncSettings = settings
 	if projects != nil {
@@ -107,14 +115,14 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 	// declares and re-reading replaces rather than accumulates.
 	if fileStore != nil {
 		if err := loadDeclarativeGateways(fileStore); err != nil {
-			return service, err
+			return service, versions.unusedValues, err
 		}
 	}
 	// After the declared gateways are loaded, so the first gateway can be one of them.
 	if capture != nil {
 		go capture.fillMissingVariables(context.Background(), exporters)
 	}
-	return service, nil
+	return service, versions.unusedValues, nil
 }
 
 func registerRoutes(mux *http.ServeMux, h *handler) {

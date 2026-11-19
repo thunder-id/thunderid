@@ -102,6 +102,12 @@ type SecretListResponse struct {
 	Links        []Link   `json:"links"`
 }
 
+// DeleteResponse answers a delete of many names with those that were removed. A name that held
+// nothing is absent from it.
+type DeleteResponse struct {
+	Deleted []string `json:"deleted"`
+}
+
 // listQuery is a resolved list request: what to return and how much of it.
 type listQuery struct {
 	limit  int

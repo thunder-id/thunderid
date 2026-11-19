@@ -392,6 +392,8 @@ import:
 
 gateway:
   apply_timeout_seconds: {{ .Values.configuration.gateway.applyTimeoutSeconds }}
+  unused_value_grace_seconds: {{ .Values.configuration.gateway.unusedValueGraceSeconds }}
+  unused_value_sweep_interval_seconds: {{ .Values.configuration.gateway.unusedValueSweepIntervalSeconds }}
 
 direct_api:
   enabled: {{ .Values.configuration.directApi.enabled }}
