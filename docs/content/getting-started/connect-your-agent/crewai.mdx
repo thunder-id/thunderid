@@ -78,11 +78,11 @@ The administrator completes onboarding in the Console. The selected **Login flow
 
 ## Configure Access
 
-In **Resource servers**, create an **API** resource server named `Course Catalog` with **Identifier** `https://courses.example.com` and permission delimiter `:`. On **Resources**, create `Courses` with handle `courses`.
+In **Resource servers**, create an **API** resource server named `Course Catalog` with **Identifier** `https://courses.example.com` and permission delimiter `:`. On **Resources**, create `Courses` with handle `courses`. To add an action, click **Add** on the `Courses` resource row, not the page-level **Add** button.
 
 <Mode value="own">
 
-Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add assignment**:
+Create the following action under **Courses**. In **Roles**, create a role with that permission. Open **Assignments**, click **Add**, and select the **Agents** tab to assign the agent:
 
 | Action name | Handle | Permission | Role | Assign to |
 |---|---|---|---|---|
@@ -91,7 +91,7 @@ Create the following action under **Courses**. In **Roles**, create the role wit
 </Mode>
 <Mode value="obo">
 
-Use an existing non-admin user as the student, or create one in **Users** with a username, email, and password. Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add assignment**:
+Use an existing non-admin user as the student, or create one in **Users** with a username, email, and password. Create the following action under **Courses**. In **Roles**, create a role with that permission. Open **Assignments**, click **Add**, and select the **Users** tab to assign the student:
 
 | Action name | Handle | Permission | Role | Assign to |
 |---|---|---|---|---|

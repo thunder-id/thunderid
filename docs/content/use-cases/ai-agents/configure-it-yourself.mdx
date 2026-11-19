@@ -211,8 +211,8 @@ Each call then sends `-H "Authorization: Bearer $TOKEN"`.
 
 8. **Assign user roles.**
 
-   - **Roles** → **Chat User** → **Assignments** tab → **Add assignment**. Pick **User** and assign `john.doe`.
-   - **Roles** → **Booking User** → **Assignments** tab → **Add assignment**. Pick **User** and assign both `john.doe` and `jane.smith`.
+   - **Roles** → **Chat User** → **Assignments**. Click **Add**, select the **Users** tab, and assign `john.doe`.
+   - **Roles** → **Booking User** → **Assignments**. Click **Add**, select the **Users** tab, and assign both `john.doe` and `jane.smith`.
 
 9. **Register the `WAYFINDER` application.**
 
@@ -244,14 +244,14 @@ Use the `wayfinder-agent-auth-flow` definition in the sample distribution's `thu
 
 ## Register the Wayfinder Concierge Agent
 
-For agent creation, use an Administration flow with **Delegated Agent Details** and **Delegated mode** enabled on **Provisioning**, or **Choose Agent Mode** for an administrator-selected mode. The OBO and Choose Mode templates include these settings. [Set this onboarding flow as the Console default](../../../guides/agents/manage-agents#make-the-flow-active).
+For agent creation, use an Administration flow with **Delegated Agent Details** and **Delegated mode** enabled on **Provisioning**, or start from the **Agent Onboarding Flow (Choose Mode)** template when administrators need to select the mode. This template uses the **Choose Agent Mode** widget. [Set this onboarding flow as the Console default](../../../guides/agents/manage-agents#make-the-flow-active).
 
 1. Navigate to **Agents**. Click **Add agent**.
 2. Select the organization unit and owner when prompted. In **Agent Details**, set the **Name** schema attribute to `WAYFINDER-CONCIERGE`.
 3. If the flow asks for a mode, select **Act on behalf of a signed-in user**.
 4. Set **Authorized redirect URIs** to `{{WayFinderSampleUrl}}/agent-callback`. For **Login flow**, select **Wayfinder Agent Sign-in** or the existing authentication flow you configured for the sample. Select **Customer** as the **User type**.
 5. Complete onboarding. Copy the client ID and client secret for `ai-agent/.env`; the secret is shown only once.
-6. In **Roles** → **Recommender** → **Assignments**, click **Add assignment**. Select **Agent** and assign `WAYFINDER-CONCIERGE`.
+6. In **Roles** → **Recommender** → **Assignments**, click **Add**, then select the **Agents** tab and assign `WAYFINDER-CONCIERGE`.
 
 The Administration flow saves these settings during creation. It does not run the customer's sign-in flow. See [Create and Manage Agents](../../../guides/agents/manage-agents) for subsequent changes.
 
