@@ -71,6 +71,8 @@ An OU the application cannot be used from and an OU that does not exist both red
 
 Exchange the code at `/oauth2/token`, or at `/ou/{ouId}/oauth2/token` for the same OU. The OU token endpoint redeems only a code whose sign-in landed in that OU, which the sign-in records when the application's token configuration includes the `ouId` attribute. A code without it, or one for another OU, is refused with `invalid_grant`.
 
+To include the `ouId` attribute in the application's token configuration, see [Configure Attributes in Tokens](../applications/configure-token-attributes.mdx#example-organization-unit-details-and-roles).
+
 ### App-Native Sign-In
 
 Add `ouId` to the request that starts the sign-in on the Flow Execution API:

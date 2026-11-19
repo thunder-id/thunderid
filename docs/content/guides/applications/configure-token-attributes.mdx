@@ -1,0 +1,172 @@
+---
+title: Configure Attributes in Tokens
+docType: guide
+sidebar_position: 3
+description: Choose which user attributes an application's access token, ID token, and userinfo response carry, with organization unit details and roles as a worked example.
+---
+
+# Configure Attributes in Tokens
+
+Choose which user attributes an application's tokens carry. A token carries an attribute only when the application allows it for that token, so an access token carries only the standard claims until you add attributes.
+
+Use this guide when a token is missing an attribute you expect, such as an email address, a role, or the organization unit (OU) the user signed in to.
+
+## Prerequisites
+
+- <ProductName /> running locally. See [Get <ProductName />](../../getting-started/get-thunderid.mdx).
+- An OAuth 2.0 application that signs users in, for example with the `authorization_code` grant. See [Manage Applications](manage-applications.mdx).
+
+## Find the Token Settings
+
+Open the application's **Token** settings in the Console. Depending on the grant types the application holds, you see one of two layouts:
+
+- **Two sub-tabs, User and Application:** the application holds a user sign-in grant, such as `authorization_code`, and the `client_credentials` grant. This guide covers the **User** sub-tab, which configures the tokens issued when a user signs in. The **Application** sub-tab configures the access token the application receives for itself, which carries no user attributes.
+- **No sub-tabs:** the application holds only one kind of grant, and the Console shows the settings for that kind directly. This guide applies when those are the user token settings. An application that holds only `client_credentials` has no user attributes to configure.
+
+See [Configure What Goes Into Tokens](application-settings.mdx#configure-what-goes-into-tokens) for both sub-tabs.
+
+## How an Attribute Reaches a Token
+
+The access token has its own list of allowed attributes. The ID token and the userinfo response each have a list too, and both also need a scope that releases the attribute. The Console shows these lists as attribute selections on the application's token settings. The table gives the field each list has in the API.
+
+| Output | API field for the list | Also needed |
+|---|---|---|
+| Access token | `token.accessToken.userConfig.attributes` | Nothing. A scope does not release attributes into the access token. |
+| ID token | `token.idToken.userAttributes` | A scope in the request that maps to the attribute, from the application's `scopeClaims`. |
+| Userinfo | `userInfo.userAttributes` | The same scope mapping as the ID token. |
+
+If a list does not include an attribute, no token of that kind carries it, whatever the scopes say. If the ID token or userinfo list includes the attribute but no requested scope maps to it, the attribute is also left out. The exception is a request that names the attribute in the `claims` parameter. See [Claims & Scopes](../protocols/oauth-oidc/claims-and-scopes.mdx) for the full rules.
+
+The attributes you can allow are the ones the application's allowed user types declare, plus the computed attributes `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, `userTypeHandle`, and `userTypeName`. For each top-level `email` or `mobile` attribute, you can also allow its `<attribute>_verified` claim. See [Verified Contact Claims](../protocols/oauth-oidc/claims-and-scopes.mdx#verified-contact-claims).
+
+## Allow a User Type for the Application
+
+The Console builds its attribute choices from the schemas of the application's allowed user types, so what it lists depends on whether the application allows one:
+
+- **Access token:** the Console lists no attributes until the application allows at least one user type, unless the access token list already holds a selection. In that case the Console shows the computed attributes and the existing selection.
+- **ID token and userinfo:** the scope mappings offer the computed attributes (`groups`, `roles`, the organization unit attributes, `userTypeHandle`, and `userTypeName`) even when the application allows no user type. Mapping an attribute that no scope maps yet adds it to both lists. The lists themselves show nothing to select until the application allows a user type or already holds a selection. Allowing a user type adds the attributes its schema declares to the choices.
+
+The API does not require an allowed user type. You can create or update an application without one and set the attribute lists directly. To allow a user type through the API, set `allowedUserTypes` on the application.
+
+Without an allowed user type, a new application's ID token and userinfo lists start empty, so send the scope mapping and both lists yourself.
+
+When an application does allow user types, an attribute those types do not declare is handled differently on create and update. Apart from the computed attributes and verification claims described above, creating an application with such an attribute in a list is rejected. Updating an application drops it from the lists and the scope mapping and saves the rest, so a successful update does not mean every attribute you sent was kept. Read the application back to check.
+
+## Configure the Access Token
+
+1. Choose the access token attributes.
+
+    In the Console, select the attributes the access token carries. If the Console lists no attributes, allow a user type first.
+
+    Through the API, set `token.accessToken.userConfig.attributes` on the application. The following fragment shows where the field sits:
+
+    ```json
+    {
+      "inboundAuthConfig": [
+        {
+          "type": "oauth2",
+          "config": {
+            "token": {
+              "accessToken": {"userConfig": {"attributes": ["email"]}}
+            }
+          }
+        }
+      ]
+    }
+    ```
+
+    The access token does not use scopes, so no scope mapping is needed.
+
+2. Sign in again and decode the access token.
+
+    If you used the Console, save your changes first. Tokens reflect only the saved configuration.
+
+    Tokens already issued keep the attributes they had. Sign in again to get a token that reflects the new configuration.
+
+    If the authorization request fails with `invalid_target`, add a `resource` parameter or configure a default resource server. See [Tokens](../../key-concepts/tokens.mdx).
+
+## Configure the ID Token and Userinfo
+
+The ID token and the userinfo response share one scope mapping, and each has its own list of allowed attributes.
+
+1. Map the attributes to scopes.
+
+    In the Console, map each attribute you want to a scope in the scope mappings. Through the API, set `scopeClaims` on the application.
+
+2. Allow the attributes in both lists.
+
+    Make sure each attribute is in both the ID token list and the userinfo list.
+
+    In the Console, the first time you map an attribute to any scope, it is added to both lists for you. Mapping an attribute that another scope already maps does not change the lists, so check that it is still in each list.
+
+    Through the API, set `token.idToken.userAttributes` and `userInfo.userAttributes` in the same request as `scopeClaims`, because a mapping you add to an application that already exists does not change its lists.
+
+3. Request the scopes.
+
+    Add the scope names that release your attributes to the `scope` parameter of the authorization request, for example `scope=openid profile`.
+
+    If the authorization request fails with `invalid_target`, add a `resource` parameter or configure a default resource server. See [Tokens](../../key-concepts/tokens.mdx).
+
+4. Sign in again and decode the ID token.
+
+    If you used the Console, save your changes first. Tokens reflect only the saved configuration.
+
+    Tokens already issued keep the attributes they had. Sign in again to get a token that reflects the new configuration. Call the userinfo endpoint with the access token to check the userinfo response.
+
+The following fragment shows where these API fields sit on an application:
+
+```json
+{
+  "inboundAuthConfig": [
+    {
+      "type": "oauth2",
+      "config": {
+        "token": {
+          "idToken": {"userAttributes": ["email", "name"]}
+        },
+        "userInfo": {"userAttributes": ["email", "name"]},
+        "scopeClaims": {
+          "email": ["email", "email_verified"],
+          "profile": ["name"]
+        }
+      }
+    }
+  ]
+}
+```
+
+## Example: Organization Unit Details and Roles
+
+To put the OU the user signed in to and the user's roles in tokens, allow `ouId`, `ouHandle`, `ouName`, and `roles`. The access token and the ID token and userinfo are configured separately.
+
+### Access Token
+
+In the Console, add `ouId`, `ouHandle`, `ouName`, and `roles` to the access token attributes. Through the API, add them to `token.accessToken.userConfig.attributes`.
+
+If you used the Console, save your changes. After you sign in again, the access token carries these claims alongside the standard ones:
+
+```json
+{
+  "ouHandle": "acme",
+  "ouId": "<organization-unit-id>",
+  "ouName": "Acme",
+  "roles": ["Company Admin"]
+}
+```
+
+### ID Token and Userinfo
+
+1. Map the `ou` scope to `ouId`, `ouHandle`, and `ouName`. In the Console, use the scope mappings. Through the API, set `scopeClaims`.
+2. Check the `roles` scope. A new application's default mapping already maps it to `roles`, so you add only the `ou` scope.
+3. Make sure all four attributes are in the ID token and userinfo lists. In the Console, the first time you map an attribute to any scope, the mapping does this for you. Through the API, set `token.idToken.userAttributes` and `userInfo.userAttributes`.
+4. Send `scope=openid ou roles` in the authorization request.
+
+If you used the Console, save your changes. After you sign in again, the ID token and the userinfo response carry the same four claims.
+
+The `roles` claim lists only the roles assigned in the OU the user signed in to. See [Sign Users In to Organization Units](../organization-units/sign-in-to-organization-units.mdx#what-the-sign-in-carries).
+
+## Next Steps
+
+- [Application Settings](application-settings.mdx#configure-what-goes-into-tokens)
+- [Claims & Scopes](../protocols/oauth-oidc/claims-and-scopes.mdx)
+- [Sign Users In to Organization Units](../organization-units/sign-in-to-organization-units.mdx)
