@@ -239,7 +239,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, nil, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.ouProvider, engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
-		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
+		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil, nil,
 		engineCtx.identityGovernance, nil, nil, engineCtx.permissionProvider, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))

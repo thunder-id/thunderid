@@ -4761,7 +4761,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_FlowExecuteRequestNamingAnInaccessibl
 	req.Header.Set(serverconst.FlowSecretHeaderName, "flow-secret")
 	w := httptest.NewRecorder()
 
-	newFlowExecutionHandler(f.service, nil, 0).HandleFlowExecutionRequest(w, req)
+	newFlowExecutionHandler(f.service, nil, nil).HandleFlowExecutionRequest(w, req)
 
 	s.Equal(http.StatusBadRequest, w.Code)
 	s.Contains(w.Body.String(), ErrorInvalidOrganizationUnit.Code)

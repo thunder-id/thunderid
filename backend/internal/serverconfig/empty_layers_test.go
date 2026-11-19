@@ -23,7 +23,7 @@ func TestGetConfig_EmptyLayersSerializeToArrays(t *testing.T) {
 
 	svc := newServerConfigService(store,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}}, nil, discardingBus{},
-		allowingAuthz(t))
+		allowingAuthz(t), false)
 
 	layers, svcErr := svc.GetConfig(context.Background(), ConfigNameCORS)
 	require.Nil(t, svcErr)

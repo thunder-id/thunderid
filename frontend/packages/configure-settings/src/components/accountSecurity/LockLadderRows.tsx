@@ -5,8 +5,8 @@ import {Box, Button, FormControlLabel, IconButton, Radio, RadioGroup, Stack, Typ
 import {Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import DurationField from './DurationField';
 import type {AccountLockCategory} from '../../models/accountAccess';
+import DurationField from '../common/DurationField';
 
 /** The default first rung, used when there is nothing to escalate from. */
 const DEFAULT_RUNG_SECONDS = 300;

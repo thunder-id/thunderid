@@ -401,6 +401,9 @@
       }
     }
   },
+  "session": {
+    "activity_refresh_interval_seconds": 60
+  },
   "organization_unit": {
     "store": "composite"
   },

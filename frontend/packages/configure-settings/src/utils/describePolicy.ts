@@ -3,20 +3,8 @@
 
 import type {TFunction} from 'i18next';
 import type {AccountLockForm} from './accountLockPayload';
-import {toDurationParts, type DurationParts, type DurationUnit} from './duration';
+import {formatDurationShort} from './duration';
 import {LockGranularities, type AccountLockCategory} from '../models/accountAccess';
-
-/** Fallback copy for the dynamic keys, matching en-US. */
-const SHORT_UNIT_FALLBACKS: Record<string, string> = {
-  second: '{{count}} second',
-  seconds: '{{count}} seconds',
-  minute: '{{count}} minute',
-  minutes: '{{count}} minutes',
-  hour: '{{count}} hour',
-  hours: '{{count}} hours',
-  day: '{{count}} day',
-  days: '{{count}} days',
-};
 
 const TRIGGER_FALLBACKS: Record<
   AccountLockForm['granularity'],
@@ -77,37 +65,6 @@ const HELD_FALLBACKS: Record<
       'The first {{count}} lockouts end on their own, starting at {{from}}. Subsequent lockouts last until administrator intervention.',
   },
 };
-
-/** Units whose short form inflects, and the key suffix to use for one versus many. */
-const SHORT_UNIT_KEYS: Record<DurationUnit, {one: string; other: string}> = {
-  seconds: {one: 'second', other: 'seconds'},
-  minutes: {one: 'minute', other: 'minutes'},
-  hours: {one: 'hour', other: 'hours'},
-  days: {one: 'day', other: 'days'},
-};
-
-/**
- * Formats a duration for the summary sentence, as "5 minutes" or "1 day".
- *
- * Spelled out rather than abbreviated, because this reads inside a sentence rather than beside a
- * field; the unit dropdowns keep their own labels. Singular and plural are separate keys chosen
- * here rather than an i18next plural form, so a locale that inflects differently can say so.
- *
- * @param seconds - The duration
- * @param t - Translate function
- * @returns The compact label
- *
- * @public
- */
-export function formatDurationShort(seconds: number, t: TFunction): string {
-  const parts: DurationParts = toDurationParts(seconds);
-  const keys = SHORT_UNIT_KEYS[parts.unit];
-  const suffix: string = parts.value === 1 ? keys.one : keys.other;
-  return t(`settings:accountLock.units.short.${suffix}`, {
-    defaultValue: SHORT_UNIT_FALLBACKS[suffix],
-    count: parts.value,
-  });
-}
 
 /**
  * The policy as one or two sentences an operator can check without reading the form back.

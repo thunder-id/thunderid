@@ -740,7 +740,7 @@ components:
                 Seconds until the session reaches its absolute timeout, after which the handle no longer
                 resumes it. For a reused session this is the time it has left. The per-flow session cookie
                 expires at the same time.
-              example: 28800
+              example: 86400
 
     Data:
       type: object

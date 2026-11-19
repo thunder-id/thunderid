@@ -1,8 +1,32 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {TFunction} from 'i18next';
 import {describe, it, expect} from 'vitest';
-import {toDurationParts, toSeconds} from '../duration';
+import {formatDurationShort, toDurationParts, toSeconds} from '../duration';
+
+/**
+ * A stand-in for the real catalog, resolving the short unit keys. A key without the settings
+ * namespace resolves to itself, so a label that drops the prefix fails its assertion.
+ */
+const translate = (key: string, options?: Record<string, unknown>): string => {
+  const catalog: Record<string, string> = {
+    'units.short.second': '{{count}} second',
+    'units.short.seconds': '{{count}} seconds',
+    'units.short.minute': '{{count}} minute',
+    'units.short.minutes': '{{count}} minutes',
+    'units.short.hour': '{{count}} hour',
+    'units.short.hours': '{{count}} hours',
+    'units.short.day': '{{count}} day',
+    'units.short.days': '{{count}} days',
+  };
+  const name: string | undefined = key.startsWith('settings:') ? key.slice('settings:'.length) : undefined;
+  return Object.entries(options ?? {}).reduce<string>(
+    (text, [variable, value]) => text.replace(`{{${variable}}}`, String(value)),
+    (name !== undefined ? catalog[name] : undefined) ?? key,
+  );
+};
+const t = translate as unknown as TFunction;
 
 describe('toDurationParts', () => {
   it('shows a value in the largest unit that divides it exactly', () => {
@@ -37,5 +61,16 @@ describe('toSeconds', () => {
       const {value, unit} = toDurationParts(seconds);
       expect(toSeconds(value, unit)).toBe(seconds);
     });
+  });
+});
+
+describe('formatDurationShort', () => {
+  it('inflects the units that inflect and leaves the ones that do not', () => {
+    expect(formatDurationShort(3600, t)).toBe('1 hour');
+    expect(formatDurationShort(7200, t)).toBe('2 hours');
+    expect(formatDurationShort(86400, t)).toBe('1 day');
+    expect(formatDurationShort(172800, t)).toBe('2 days');
+    expect(formatDurationShort(60, t)).toBe('1 minute');
+    expect(formatDurationShort(900, t)).toBe('15 minutes');
   });
 });

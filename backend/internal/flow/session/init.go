@@ -6,38 +6,38 @@ package session
 import (
 	"fmt"
 
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
+// InitializeConfigHandler returns the "session" server-config handler, for the server-config service to
+// be built with. It is apart from Initialize because the handler is registered before that service is
+// built, and on a control plane, which runs no sessions and never calls Initialize.
+func InitializeConfigHandler(cfg flowconfig.Config) serverconfig.ServerConfigHandlerInterface {
+	return newConfigHandler(cfg)
+}
+
 // Initialize builds the SSO session Service and the hook that installs its termination listener.
 // Store construction stays inside this package: callers receive only the Service and never hold a
-// store. Timeouts fall back per field to the built-in
-// defaults so an unset (zero) value never makes sessions expire immediately.
+// store. The session timeouts are read from the "session" server-config section on every use, so a
+// change applies without a restart.
 func Initialize(dbProvider provider.DBProviderInterface, deploymentID string,
-	timeouts Timeouts, criteriaRevoker CriteriaRevoker, ouEligibility OUEligibility) (Service, TerminationHook, error) {
+	serverConfig serverconfig.ServerConfigService, cfg flowconfig.Config,
+	criteriaRevoker CriteriaRevoker, ouEligibility OUEligibility) (Service, TerminationHook, error) {
 	transactioner, err := dbProvider.GetRuntimePersistentDBTransactioner()
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"failed to get runtime persistent DB transactioner for the SSO session service: %w", err)
 	}
 
-	def := DefaultTimeouts()
-	if timeouts.Idle <= 0 {
-		timeouts.Idle = def.Idle
-	}
-	if timeouts.Absolute <= 0 {
-		timeouts.Absolute = def.Absolute
-	}
-	if timeouts.ActivityRefresh <= 0 {
-		timeouts.ActivityRefresh = def.ActivityRefresh
-	}
-
 	store := newStore(dbProvider, deploymentID)
+	timeouts := newSectionTimeouts(serverConfig, activityRefreshInterval(cfg.SessionActivityRefresh))
 	svc := &service{
 		store:            store,
-		resolver:         newResolver(store),
+		resolver:         newResolver(store, timeouts),
 		transactioner:    transactioner,
 		criteriaRevoker:  criteriaRevoker,
 		ouEligibility:    ouEligibility,

@@ -151,6 +151,11 @@ cat >> tests/integration/resources/deployment.yaml <<EOF
 flow:
   max_version_history: 3
 
+session:
+  # Shortened from the 60s default so the SSO session timeout tests can use idle timeouts of a few
+  # seconds; an idle timeout must be longer than this interval.
+  activity_refresh_interval_seconds: 1
+
 server_config:
   store: composite
 

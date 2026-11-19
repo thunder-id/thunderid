@@ -585,7 +585,7 @@ func (suite *AuthorizeHandlerTestSuite) TestCreateAuthorizationCode_AgedSessionK
 	suite.Require().Greater(validity, time.Duration(0), "a validity period is needed for this test to mean anything")
 
 	// A session that authenticated well before the configured code lifetime, which is the ordinary
-	// case for SSO: sessions live up to eight hours, codes for ten minutes.
+	// case for SSO: sessions live up to twenty-four hours, codes for ten minutes.
 	authTime := time.Now().Add(-2 * validity)
 
 	result, err := createAuthorizationCode(cfg, authRequestCtx, clms, authTime)

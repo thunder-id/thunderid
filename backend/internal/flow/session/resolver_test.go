@@ -30,8 +30,18 @@ func TestResolverTestSuite(t *testing.T) {
 func (s *ResolverTestSuite) SetupTest() {
 	s.mockDBProvider = &providermock.DBProviderInterfaceMock{}
 	s.mockDBClient = &providermock.DBClientInterfaceMock{}
-	s.resolver = newResolver(newStore(s.mockDBProvider, testDeploymentID))
 	s.now = time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
+	// Most cases end before the timeouts in effect are read, so the default source need not be read.
+	source := newTimeoutsSourceMock(s.T())
+	source.EXPECT().current(mock.Anything).Return(newTimeouts(Config{}, 0)).Maybe()
+	s.resolver = newResolver(newStore(s.mockDBProvider, testDeploymentID), source)
+}
+
+// withTimeouts builds the suite's resolver over timeouts as the ones in effect, which the case must read.
+func (s *ResolverTestSuite) withTimeouts(timeouts resolvedTimeouts) {
+	source := newTimeoutsSourceMock(s.T())
+	source.EXPECT().current(mock.Anything).Return(timeouts).Once()
+	s.resolver = newResolver(newStore(s.mockDBProvider, testDeploymentID), source)
 }
 
 // row builds a live session result row with the given state; idle/absolute deadlines default to
@@ -129,4 +139,70 @@ func (s *ResolverTestSuite) TestResolve_StoreError() {
 
 	s.Error(err)
 	s.Nil(got)
+}
+
+// A shorter absolute timeout ends an existing session older than it, though its stored deadline has
+// not passed.
+func (s *ResolverTestSuite) TestResolve_ShorterAbsoluteTimeoutEndsAnExistingSession() {
+	r := s.row("ACTIVE")
+	r["created_at"] = s.now.Add(-2 * time.Hour)
+	r["absolute_expires_at"] = s.now.Add(6 * time.Hour)
+	s.expectQuery([]map[string]interface{}{r}, nil)
+	timeouts := newTimeouts(Config{}, 0)
+	timeouts.Absolute = time.Hour
+	s.withTimeouts(timeouts)
+
+	got, err := s.resolver.Resolve(context.Background(), "handle-abc", s.now)
+
+	s.NoError(err)
+	s.Nil(got, "a session older than the current absolute timeout must not resolve")
+}
+
+// A shorter idle timeout ends an existing session left unused for longer than it.
+func (s *ResolverTestSuite) TestResolve_ShorterIdleTimeoutEndsAnIdleSession() {
+	r := s.row("ACTIVE")
+	r["last_active_at"] = s.now.Add(-45 * time.Minute)
+	r["idle_expires_at"] = s.now.Add(75 * time.Minute)
+	s.expectQuery([]map[string]interface{}{r}, nil)
+	timeouts := newTimeouts(Config{}, 0)
+	timeouts.Idle = 30 * time.Minute
+	s.withTimeouts(timeouts)
+
+	got, err := s.resolver.Resolve(context.Background(), "handle-abc", s.now)
+
+	s.NoError(err)
+	s.Nil(got, "a session idle for longer than the current idle timeout must not resolve")
+}
+
+// A longer timeout never stretches the deadline stored with a session.
+func (s *ResolverTestSuite) TestResolve_LongerTimeoutKeepsTheStoredDeadline() {
+	r := s.row("ACTIVE")
+	r["absolute_expires_at"] = s.now.Add(-time.Second)
+	s.expectQuery([]map[string]interface{}{r}, nil)
+	// A source with no expectations fails the case if read: the stored deadline settles it first.
+	s.resolver = newResolver(newStore(s.mockDBProvider, testDeploymentID), newTimeoutsSourceMock(s.T()))
+
+	got, err := s.resolver.Resolve(context.Background(), "handle-abc", s.now)
+
+	s.NoError(err)
+	s.Nil(got, "a session past its stored deadline must not resolve")
+}
+
+// A session within both its stored deadlines and the current timeouts resolves.
+func (s *ResolverTestSuite) TestResolve_WithinTheCurrentTimeouts() {
+	r := s.row("ACTIVE")
+	r["created_at"] = s.now.Add(-30 * time.Minute)
+	r["last_active_at"] = s.now.Add(-10 * time.Minute)
+	r["idle_expires_at"] = s.now.Add(110 * time.Minute)
+	r["absolute_expires_at"] = s.now.Add(450 * time.Minute)
+	s.expectQuery([]map[string]interface{}{r}, nil)
+	timeouts := newTimeouts(Config{}, 0)
+	timeouts.Idle = 15 * time.Minute
+	timeouts.Absolute = time.Hour
+	s.withTimeouts(timeouts)
+
+	got, err := s.resolver.Resolve(context.Background(), "handle-abc", s.now)
+
+	s.NoError(err)
+	s.NotNil(got)
 }

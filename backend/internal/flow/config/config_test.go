@@ -36,7 +36,8 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 		Server: engineconfig.ServerConfig{
 			HTTPOnly: true,
 		},
-		JWT: engineconfig.JWTConfig{Leeway: 30},
+		JWT:     engineconfig.JWTConfig{Leeway: 30},
+		Session: config.SessionConfig{ActivityRefreshIntervalSeconds: 90},
 	}
 	err := config.InitializeServerRuntime("/tmp/test-flow-config", cfg)
 	s.Require().NoError(err)
@@ -45,9 +46,7 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 
 	s.False(result.SecureCookies, "HTTPOnly deployment must not mark cookies Secure")
 	s.Equal(30*time.Second, result.TokenLeeway)
-	// Session config is sourced from the server-config section at the composition root, not here.
-	s.Zero(result.Session.IdleTimeoutSeconds)
-	s.Zero(result.Session.AbsoluteTimeoutSeconds)
+	s.Equal(90*time.Second, result.SessionActivityRefresh)
 }
 
 func (s *FlowConfigTestSuite) TestFromServerRuntimeSecureCookies() {

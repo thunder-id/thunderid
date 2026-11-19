@@ -154,15 +154,17 @@ var (
 	}
 
 	// querySlideIdleDeadline refreshes a session's last-active timestamp and idle deadline. It matches
-	// only an active, unexpired session whose last refresh is older than the throttle cutoff, so it
-	// neither revives an expired session nor writes on every call.
+	// only an active session whose last refresh is older than the throttle cutoff and that is within
+	// both its stored deadlines and the timeouts in effect now, so it neither revives an expired
+	// session nor writes on every call.
 	querySlideIdleDeadline = model.DBQuery{
 		ID: "SEQ-SESS-18",
 		Query: `UPDATE "SESSION" SET LAST_ACTIVE_AT = $1, IDLE_EXPIRES_AT = $2, ` +
 			`VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
 			`WHERE SESSION_ID = $3 AND STATE = $4 AND LAST_ACTIVE_AT <= $5 ` +
 			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $1) ` +
-			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $1) AND DEPLOYMENT_ID = $6`,
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $1) ` +
+			`AND LAST_ACTIVE_AT > $6 AND CREATED_AT > $7 AND DEPLOYMENT_ID = $8`,
 	}
 )
 

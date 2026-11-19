@@ -357,17 +357,26 @@ func (s *StoreTestSuite) TestTouchAuthenticatedAt_ExecuteError() {
 
 // TestSlideIdleDeadline_Success pins the parameter order of the slide statement, since a reordering
 // would write the wrong column or compare against the wrong cutoff rather than fail.
+// slideAllAt returns a slide whose every time is at.
+func slideAllAt(at time.Time) idleSlide {
+	return idleSlide{now: at, idleExpiresAt: at, refreshedBefore: at, activeAfter: at, createdAfter: at}
+}
+
 func (s *StoreTestSuite) TestSlideIdleDeadline_Success() {
 	now := time.Now().UTC()
 	idleAt := now.Add(30 * time.Minute)
 	cutoff := now.Add(-time.Minute)
+	activeAfter := now.Add(-30 * time.Minute)
+	createdAfter := now.Add(-8 * time.Hour)
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), querySlideIdleDeadline,
-		now, idleAt, "sess-1", string(StateActive), cutoff, testDeploymentID).
+		now, idleAt, "sess-1", string(StateActive), cutoff, activeAfter, createdAfter, testDeploymentID).
 		Return(int64(1), nil)
 
-	err := s.store.SlideIdleDeadline(context.Background(), "sess-1", now, idleAt, cutoff)
+	err := s.store.SlideIdleDeadline(context.Background(), "sess-1", idleSlide{
+		now: now, idleExpiresAt: idleAt, refreshedBefore: cutoff, activeAfter: activeAfter, createdAfter: createdAfter,
+	})
 
 	s.NoError(err)
 	s.mockDBClient.AssertExpectations(s.T())
@@ -380,10 +389,10 @@ func (s *StoreTestSuite) TestSlideIdleDeadline_NoRowsIsNotAnError() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), querySlideIdleDeadline,
-		now, now, "sess-1", string(StateActive), now, testDeploymentID).
+		now, now, "sess-1", string(StateActive), now, now, now, testDeploymentID).
 		Return(int64(0), nil)
 
-	s.NoError(s.store.SlideIdleDeadline(context.Background(), "sess-1", now, now, now))
+	s.NoError(s.store.SlideIdleDeadline(context.Background(), "sess-1", slideAllAt(now)))
 }
 
 func (s *StoreTestSuite) TestSlideIdleDeadline_ExecuteError() {
@@ -391,10 +400,10 @@ func (s *StoreTestSuite) TestSlideIdleDeadline_ExecuteError() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), querySlideIdleDeadline,
-		now, now, "sess-1", string(StateActive), now, testDeploymentID).
+		now, now, "sess-1", string(StateActive), now, now, now, testDeploymentID).
 		Return(int64(0), errors.New("db down"))
 
-	s.Error(s.store.SlideIdleDeadline(context.Background(), "sess-1", now, now, now))
+	s.Error(s.store.SlideIdleDeadline(context.Background(), "sess-1", slideAllAt(now)))
 }
 
 // TestSlideIdleDeadline_QueryDoesNotReviveExpiredSessions pins the guards that keep a refresh from
@@ -404,6 +413,8 @@ func (s *StoreTestSuite) TestSlideIdleDeadline_QueryDoesNotReviveExpiredSessions
 	s.Contains(querySlideIdleDeadline.Query, "IDLE_EXPIRES_AT > $1")
 	s.Contains(querySlideIdleDeadline.Query, "ABSOLUTE_EXPIRES_AT > $1")
 	s.Contains(querySlideIdleDeadline.Query, "LAST_ACTIVE_AT <= $5")
+	s.Contains(querySlideIdleDeadline.Query, "LAST_ACTIVE_AT > $6")
+	s.Contains(querySlideIdleDeadline.Query, "CREATED_AT > $7")
 	s.NotContains(querySlideIdleDeadline.Query, "ABSOLUTE_EXPIRES_AT =",
 		"the absolute deadline must never move")
 }
