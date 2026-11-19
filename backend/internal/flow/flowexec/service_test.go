@@ -4237,6 +4237,164 @@ func (s *ServiceTestSuite) TestInitiateAndExecute_IgnoresConstantInitialInputs()
 	s.NotContains(capturedCtx.UserInputs, "locale")
 }
 
+func (s *ServiceTestSuite) TestSurfaceBindingMessage() {
+	cibaType := string(providers.GrantTypeCIBA)
+	tests := []struct {
+		name      string
+		status    providers.FlowStatus
+		runtime   map[string]string
+		shared    map[string]string
+		additions map[string]string
+		want      string
+	}{
+		{name: "a CIBA step waiting for the user",
+			status:  providers.FlowStatusIncomplete,
+			runtime: map[string]string{common.RuntimeKeyCallbackType: cibaType, common.RuntimeKeyBindingMessage: "hi"},
+			want:    "hi"},
+		{name: "inside a called flow, where only shared data holds it",
+			status: providers.FlowStatusIncomplete,
+			shared: map[string]string{common.RuntimeKeyCallbackType: cibaType, common.RuntimeKeyBindingMessage: "hi"},
+			want:   "hi"},
+		{name: "keeps the data the step already carries",
+			status: providers.FlowStatusIncomplete,
+			runtime: map[string]string{
+				common.RuntimeKeyCallbackType: cibaType, common.RuntimeKeyBindingMessage: "hi",
+			},
+			additions: map[string]string{"consentPrompt": "[]"},
+			want:      "hi"},
+		{name: "a finished step", status: providers.FlowStatusComplete,
+			runtime: map[string]string{common.RuntimeKeyCallbackType: cibaType, common.RuntimeKeyBindingMessage: "hi"}},
+		{name: "a request that is not CIBA", status: providers.FlowStatusIncomplete,
+			runtime: map[string]string{common.RuntimeKeyBindingMessage: "hi"}},
+		{name: "a CIBA request with no message", status: providers.FlowStatusIncomplete,
+			runtime: map[string]string{common.RuntimeKeyCallbackType: cibaType}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			ctx := &EngineContext{RuntimeData: tt.runtime, sharedRuntimeData: tt.shared}
+			step := &FlowStep{Status: tt.status}
+			step.Data.AdditionalData = tt.additions
+
+			surfaceBindingMessage(ctx, step)
+
+			s.Equal(tt.want, step.Data.AdditionalData[common.DataBindingMessage])
+			for k, v := range tt.additions {
+				s.Equal(v, step.Data.AdditionalData[k])
+			}
+			if tt.want == "" {
+				s.NotContains(step.Data.AdditionalData, common.DataBindingMessage)
+			}
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestInitiateAndExecute_SeedsSharedRuntimeData() {
+	t := s.T()
+	appID := "test-app-shared-seed"
+	graph := s.graphWithConstantInput(providers.FlowTypeAuthentication)
+
+	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockEngine := newFlowEngineInterfaceMock(t)
+
+	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
+		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-shared-seed"}, nil)
+	mockEntityProvider.EXPECT().GetEntityProfile(mock.Anything, appID).Return(
+		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "auth-graph-shared-seed").
+		Return(&providers.CompleteFlowDefinition{ID: "auth-graph-shared-seed"}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]byte("encrypted"), nil, nil)
+	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	var capturedCtx *EngineContext
+	mockEngine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
+		capturedCtx = ctx
+		return true
+	})).Return(FlowStep{Status: providers.FlowStatusIncomplete}, nil)
+
+	service := &flowExecService{
+		flowStore:     mockStore,
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowEngine:    mockEngine,
+		actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil, nil, nil),
+		transactioner: &stubTransactioner{},
+		cryptoSvc:     mockCrypto,
+		cfg:           testFlowExecCfg,
+	}
+
+	shared := map[string]string{common.RuntimeKeyAuthorizationRequestID: "req-1"}
+	step, svcErr := service.InitiateAndExecute(context.Background(), &FlowInitContext{
+		ApplicationID:     appID,
+		FlowType:          "AUTHENTICATION",
+		RuntimeData:       map[string]string{"local": "value"},
+		SharedRuntimeData: shared,
+	})
+
+	s.Nil(svcErr)
+	s.NotNil(step)
+	s.Require().NotNil(capturedCtx)
+	s.Equal(shared, capturedCtx.sharedRuntimeData)
+	s.Equal(map[string]string{"local": "value"}, capturedCtx.RuntimeData)
+
+	shared[common.RuntimeKeyAuthorizationRequestID] = "changed"
+	s.Equal("req-1", capturedCtx.sharedRuntimeData[common.RuntimeKeyAuthorizationRequestID])
+}
+
+func (s *ServiceTestSuite) TestInitiateFlow_SeedsSharedRuntimeData() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+
+	mockStore := newFlowStoreInterfaceMock(s.T())
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(s.T())
+	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(plaintext []byte) bool {
+			return strings.Contains(string(plaintext), common.RuntimeKeyAuthorizationRequestID)
+		})).Return([]byte("encrypted-ctx"), nil, nil)
+
+	service := &flowExecService{
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowStore:     mockStore,
+		transactioner: &stubTransactioner{},
+		cryptoSvc:     mockCrypto,
+		cfg:           testFlowExecCfg,
+		governance:    identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T()),
+		serverConfigSvc: stubServerConfig{cfg: flowconfig.FlowSectionConfig{
+			UserOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: testUserOnboardingFlowHandle},
+		}},
+	}
+
+	onboarding := &providers.CompleteFlowDefinition{
+		ID: "onboarding-flow-123", FlowType: providers.FlowTypeUserOnboarding}
+	mockFlowProvider.EXPECT().GetFlowByHandle(mock.Anything, testUserOnboardingFlowHandle,
+		providers.FlowTypeUserOnboarding).Return(onboarding, nil)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "onboarding-flow-123").Return(onboarding, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).
+		Return(flowFactory.CreateGraph("onboarding-flow-123", providers.FlowTypeUserOnboarding, 1), nil)
+	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	security.InitControlPlanePermissions("")
+	executionID, svcErr := service.InitiateFlow(authenticatedAdminContext([]string{"system"}), &FlowInitContext{
+		ApplicationID:     "not-an-application",
+		FlowType:          string(providers.FlowTypeUserOnboarding),
+		SharedRuntimeData: map[string]string{common.RuntimeKeyAuthorizationRequestID: "req-1"},
+	})
+
+	s.Nil(svcErr)
+	s.NotEmpty(executionID)
+}
+
 // ----- firstPositiveExpiry -----
 
 func (s *ServiceTestSuite) TestFirstPositiveExpiry_PositiveVWins() {

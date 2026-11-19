@@ -131,3 +131,33 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_BelowAssurance_Interaction
 	assert.Equal(suite.T(), ErrInteractionRequired.Code, resp.Error.Code)
 	assert.Empty(suite.T(), resp.Assertion)
 }
+
+func (suite *AuthAssertExecutorTestSuite) TestCheckAssurance_AcrFromSharedRuntimeData() {
+	ctx := assuranceCtx(map[string]string{common.RuntimeKeySelectedAuthClass: "urn:acr:pwd"})
+	ctx.SharedRuntimeData = map[string]string{common.RuntimeKeyRequestedAuthClasses: "urn:acr:mfa"}
+
+	svcErr := suite.executor.checkAssurance(ctx, suite.executor.logger)
+
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrInteractionRequired.Code, svcErr.Code)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequestedUserAttributes_FromSharedRuntimeData() {
+	ctx := assuranceCtx(map[string]string{})
+	ctx.SharedRuntimeData = map[string]string{
+		common.RuntimeKeyRequiredEssentialAttributes: "email",
+		common.RuntimeKeyRequiredOptionalAttributes:  "name phone",
+	}
+
+	assert.Equal(suite.T(), []string{"email", "name", "phone"}, suite.executor.getRequestedUserAttributes(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequestedUserAttributes_EmptySharedKeysStillFilter() {
+	ctx := assuranceCtx(map[string]string{})
+	ctx.SharedRuntimeData = map[string]string{
+		common.RuntimeKeyRequiredEssentialAttributes: "",
+		common.RuntimeKeyRequiredOptionalAttributes:  "",
+	}
+
+	assert.Empty(suite.T(), suite.executor.getRequestedUserAttributes(ctx))
+}

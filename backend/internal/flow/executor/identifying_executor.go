@@ -178,14 +178,28 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 
 	switch ctx.ExecutorMode {
 	case ExecutorModeResolve:
-		return i.executeResolve(ctx, execResp)
+		resp, err := i.executeResolve(ctx, execResp)
+		return shareRequestedSubject(ctx, resp), err
 	case ExecutorModeCheckState:
 		return i.executeCheckState(ctx, execResp)
 	default:
 		// Default identify behavior (including explicit "identify" mode and unset).
 		// Fails if zero or more than one user matches.
-		return i.applyIdentifyProperties(ctx, i.executeIdentify(ctx, execResp))
+		resp, err := i.applyIdentifyProperties(ctx, i.executeIdentify(ctx, execResp))
+		return shareRequestedSubject(ctx, resp), err
 	}
+}
+
+// shareRequestedSubject shares the user a CIBA login hint identified with the flows the request calls, so only
+// that user can sign in. A step that identified no user, or that no CIBA login hint drove, shares nothing.
+func shareRequestedSubject(ctx *providers.NodeContext, resp *providers.ExecutorResponse) *providers.ExecutorResponse {
+	if resp == nil || resp.Status != providers.ExecComplete || cibaLoginHintAttribute(ctx) == "" {
+		return resp
+	}
+	if userID := resp.RuntimeData[userAttributeUserID]; userID != "" {
+		resp.SharedRuntimeData = map[string]string{common.RuntimeKeyRequestedSubjectID: userID}
+	}
+	return resp
 }
 
 // applyIdentifyProperties applies the node's properties to the identify outcome: boundToUserType fails a match of

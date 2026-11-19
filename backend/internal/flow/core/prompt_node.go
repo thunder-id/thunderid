@@ -272,7 +272,8 @@ func (n *promptNode) executeLoginOptions(ctx *providers.NodeContext,
 		return nodeResp, nil
 	}
 
-	requestedAuthClasses := parseAuthClasses(ctx.RuntimeData[common.RuntimeKeyRequestedAuthClasses])
+	requestedAuthClasses := parseAuthClasses(common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequestedAuthClasses))
 	effectivePrompts := n.filterAndOrderPrompts(requestedAuthClasses, authClassToAction)
 	actions := make([]common.Action, 0)
 	for _, p := range effectivePrompts {

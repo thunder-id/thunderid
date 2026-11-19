@@ -59,7 +59,8 @@ func (e *authorizationDetailExecutor) Execute(ctx *providers.NodeContext) (*prov
 		AuthUser:    ctx.AuthUser,
 	}
 
-	if ctx.RuntimeData[common.RuntimeKeyRequestedAuthorizationDetails] == "" {
+	if common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequestedAuthorizationDetails) == "" {
 		logger.Debug(ctx.Context, "No authorization details requested")
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
@@ -86,7 +87,8 @@ func (e *authorizationDetailExecutor) Execute(ctx *providers.NodeContext) (*prov
 	client := providers.EntityReference{EntityID: ctx.Application.ID,
 		EntityCategory: string(ctx.Application.EntityCategory), OUID: ctx.Application.OUID}
 	admitted, svcErr := e.authzDetails.ProcessAuthorizationDetails(ctx.Context, details, client,
-		ctx.Application.OAuthClientID(), *entityRef, ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier])
+		ctx.Application.OAuthClientID(), *entityRef,
+		common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData, common.RuntimeKeyResourceServerIdentifier))
 	if svcErr != nil {
 		switch {
 		case svcErr.Type == tidcommon.ClientErrorType:

@@ -647,6 +647,21 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeVisibility() {
 	suite.True(isReadOnly, "declarative flow should be marked as read-only in merged collection")
 }
 
+// An authentication flow that holds no assertion step of its own loads from a file when it calls another
+// authentication flow, which the server checks once every file is loaded. The server does not start otherwise.
+func (suite *CompositeModeSuite) TestDeclarativeFlowCallingAnAuthenticationFlowLoads() {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/flows/decl-flow-call-1", testutils.TestServerURL))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusOK, resp.StatusCode, "the calling flow should have loaded")
+
+	var flowResp map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&flowResp))
+	suite.Equal("AUTHENTICATION", flowResp["flowType"])
+	suite.True(flowResp["isReadOnly"].(bool), "a declarative flow is read-only")
+}
+
 // TestDeclarativeFlowOwnerResolvedFromOUHandle verifies a declarative flow that names its owner by ouHandle
 // (decl-flow-1 gives ouHandle: decl-ou-1) is owned by that organization unit.
 func (suite *CompositeModeSuite) TestDeclarativeFlowOwnerResolvedFromOUHandle() {

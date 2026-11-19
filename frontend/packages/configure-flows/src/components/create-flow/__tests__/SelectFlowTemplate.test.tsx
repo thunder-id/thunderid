@@ -117,6 +117,34 @@ const deviceGrantTemplate: FlowTemplate = {
   config: {name: 'Device Authorization Flow', handle: 'device-authorization-flow', nodes: []},
 };
 
+const cibaTemplate: FlowTemplate = {
+  resourceType: 'TEMPLATE',
+  category: 'CIBA',
+  type: 'CIBA_EMAIL_NOTIFICATION',
+  flowType: 'AUTHENTICATION',
+  display: {
+    label: 'CIBA Email Notification',
+    description: 'Backchannel authentication with an existing sign-in flow',
+    image: 'assets/images/icons/email-down.svg',
+    showOnResourcePanel: true,
+  },
+  config: {name: '', handle: '', nodes: []},
+};
+
+const cibaSmsTemplate: FlowTemplate = {
+  resourceType: 'TEMPLATE',
+  category: 'CIBA',
+  type: 'CIBA_SMS_NOTIFICATION',
+  flowType: 'AUTHENTICATION',
+  display: {
+    label: 'CIBA SMS Notification',
+    description: 'Backchannel authentication that texts an approval link',
+    image: 'assets/images/icons/mobile-message.svg',
+    showOnResourcePanel: true,
+  },
+  config: {name: '', handle: '', nodes: []},
+};
+
 const mockTemplates: FlowTemplate[] = [
   blankTemplate,
   passwordTemplate,
@@ -125,6 +153,8 @@ const mockTemplates: FlowTemplate[] = [
   compositeTemplate,
   unknownIconTemplate,
   deviceGrantTemplate,
+  cibaTemplate,
+  cibaSmsTemplate,
 ];
 
 vi.mock('../../../api/useGetFlowsMeta', () => ({
@@ -264,6 +294,14 @@ describe('SelectFlowTemplate', () => {
       expect(screen.getByText('Social login')).toBeInTheDocument();
     });
 
+    it('should leave the CIBA templates out of the sign-in templates', () => {
+      render(<SelectFlowTemplate {...defaultProps} />);
+
+      expect(screen.queryByText('CIBA Email Notification')).not.toBeInTheDocument();
+      expect(screen.queryByText('CIBA SMS Notification')).not.toBeInTheDocument();
+      expect(screen.queryByText('CIBA (Backchannel Authentication)')).not.toBeInTheDocument();
+    });
+
     it('should filter templates when a category chip is clicked', () => {
       render(<SelectFlowTemplate {...defaultProps} />);
 
@@ -281,6 +319,33 @@ describe('SelectFlowTemplate', () => {
 
       expect(screen.getByText('Username & password')).toBeInTheDocument();
       expect(screen.getByText('Google')).toBeInTheDocument();
+    });
+  });
+
+  describe('CIBA category', () => {
+    const cibaProps = {...defaultProps, category: 'CIBA'};
+
+    it('should list only the CIBA templates and the blank template', () => {
+      render(<SelectFlowTemplate {...cibaProps} />);
+
+      expect(screen.getByText('CIBA Email Notification')).toBeInTheDocument();
+      expect(screen.getByText('CIBA SMS Notification')).toBeInTheDocument();
+      expect(screen.getByText('Start from scratch')).toBeInTheDocument();
+      expect(screen.queryByText('Username & password')).not.toBeInTheDocument();
+      expect(screen.queryByText('Google')).not.toBeInTheDocument();
+    });
+
+    it('should not offer category filters for a single category', () => {
+      render(<SelectFlowTemplate {...cibaProps} />);
+
+      expect(screen.queryByText('All')).not.toBeInTheDocument();
+      expect(screen.queryByText('Password')).not.toBeInTheDocument();
+    });
+
+    it('should start on the CIBA template, not the blank one', () => {
+      render(<SelectFlowTemplate {...cibaProps} />);
+
+      expect(mockOnTemplateChange).toHaveBeenCalledWith(expect.objectContaining({type: 'CIBA_EMAIL_NOTIFICATION'}));
     });
   });
 

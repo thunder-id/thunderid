@@ -693,6 +693,66 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_InvalidStore
 	assert.Contains(s.T(), err.Error(), "failed to assert flowStore to *fileBasedStore")
 }
 
+// callingFlow is the authentication flow "ciba", with no assertion step of its own, that calls the given flow.
+func callingFlow(ref string) *providers.CompleteFlowDefinition {
+	return &providers.CompleteFlowDefinition{
+		ID:       "ciba",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "call"},
+			{ID: "call", Type: "CALL", OnSuccess: "end", Flow: &providers.FlowReferenceDefinition{Ref: ref}},
+			{ID: "end", Type: "END"},
+		},
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidateDeclarativeCallTargets() {
+	signIn := &providers.CompleteFlowDefinition{ID: "sign-in", FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "assert"},
+			{ID: "assert", Type: "TASK_EXECUTION", OnSuccess: "end",
+				Executor: &providers.ExecutorDefinition{Name: "AuthAssertExecutor"}},
+			{ID: "end", Type: "END"},
+		}}
+	registration := &providers.CompleteFlowDefinition{ID: "registration", FlowType: providers.FlowTypeRegistration}
+
+	tests := []struct {
+		name    string
+		flows   []*providers.CompleteFlowDefinition
+		wantErr string
+	}{
+		{name: "an authentication flow that calls one", flows: []*providers.CompleteFlowDefinition{
+			signIn, callingFlow("sign-in")}},
+		{name: "a flow that calls one loaded after it", flows: []*providers.CompleteFlowDefinition{
+			callingFlow("sign-in"), signIn}},
+		{name: "an authentication flow that calls another type", flows: []*providers.CompleteFlowDefinition{
+			registration, callingFlow("registration")}, wantErr: `Authentication flow "ciba"`},
+		{name: "an authentication flow that calls a flow that is not there", flows: []*providers.CompleteFlowDefinition{
+			callingFlow("missing")}, wantErr: `Authentication flow "ciba"`},
+		{name: "flows of other types are not checked", flows: []*providers.CompleteFlowDefinition{registration}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			store := newFlowStoreInterfaceMock(s.T())
+			for _, flow := range []*providers.CompleteFlowDefinition{signIn, registration} {
+				store.EXPECT().GetFlowByID(mock.Anything, flow.ID).Return(flow, nil).Maybe()
+			}
+			store.EXPECT().GetFlowByID(mock.Anything, "missing").Return(nil, errFlowNotFound).Maybe()
+			validator := newFlowValidator(nil, nil, nil, nil, nil, nil, nil)
+			validator.flowStore = store
+
+			err := validateDeclarativeCallTargets(context.Background(), validator, tt.flows)
+
+			if tt.wantErr == "" {
+				s.NoError(err)
+				return
+			}
+			s.Require().Error(err)
+			s.Contains(err.Error(), tt.wantErr)
+		})
+	}
+}
+
 // TestNodeDefinitionMarshalYAML_WithComplexMeta tests YAML marshaling with complex meta objects
 func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithComplexMeta() {
 	// Create a complex meta object similar to the test.yaml file

@@ -5,6 +5,7 @@ package flowmgt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -1922,7 +1923,7 @@ func (s *ValidatorTestSuite) TestValidateDeviceGrantConstraints() {
 		s.Run(tt.name, func() {
 			nodes := deviceGrantValidationNodes()
 			tt.change(nodes)
-			err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeDeviceGrant, nodes)
+			err := s.v.validateFlowTypeBasedConstraints(context.Background(), providers.FlowTypeDeviceGrant, nodes)
 			if tt.wantCode == "" {
 				s.Nil(err)
 				return
@@ -1943,7 +1944,7 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertMissingInAu
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeAuthentication, nodes)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeAuthentication, nodes)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
@@ -1958,8 +1959,112 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertPresentInAu
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeAuthentication, nodes)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeAuthentication, nodes)
 	s.Nil(err)
+}
+
+// An authentication flow that calls an authentication flow leaves the assertion to it.
+func (s *ValidatorTestSuite) callingFlowNodes(ref string) []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "call"},
+		{ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
+			Flow: &providers.FlowReferenceDefinition{Ref: ref}},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+}
+
+func (s *ValidatorTestSuite) validatorWithFlowStore(store flowStoreInterface) *flowValidator {
+	v := newFlowValidator(s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockGraphBuilder,
+		s.mockConnections, nil, s.mockGroups, s.mockRoles)
+	v.flowStore = store
+	return v
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertSatisfiedByACallToAnAuthenticationFlow() {
+	store := newFlowStoreInterfaceMock(s.T())
+	store.EXPECT().GetFlowByID(mock.Anything, "auth-flow-id").
+		Return(&providers.CompleteFlowDefinition{ID: "auth-flow-id", FlowType: providers.FlowTypeAuthentication}, nil)
+
+	err := s.validatorWithFlowStore(store).validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes("auth-flow-id"))
+
+	s.Nil(err)
+}
+
+// While files load, a call target cannot be resolved, so a flow that calls another passes and is checked again once
+// every file is loaded.
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertDeferredForACallWhileFilesLoad() {
+	v := s.validatorWithFlowStore(nil)
+	v.deferCallTargetChecks = true
+
+	s.Nil(v.validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes("auth-flow-id")))
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertNotDeferredWithoutACallTarget() {
+	v := s.validatorWithFlowStore(nil)
+	v.deferCallTargetChecks = true
+	noCall := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "end"},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+
+	for name, nodes := range map[string][]providers.NodeDefinition{
+		"no call node":       noCall,
+		"a call with no ref": s.callingFlowNodes(""),
+	} {
+		err := v.validateRequiredExecutors(context.Background(), providers.FlowTypeAuthentication, nodes)
+
+		s.Require().NotNil(err, name)
+		s.Equal(ErrorInvalidExecutorConfig.Code, err.Code, name)
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertNotSatisfiedByACallToAnotherFlowType() {
+	store := newFlowStoreInterfaceMock(s.T())
+	store.EXPECT().GetFlowByID(mock.Anything, "registration-flow-id").
+		Return(&providers.CompleteFlowDefinition{ID: "registration-flow-id",
+			FlowType: providers.FlowTypeRegistration}, nil)
+
+	err := s.validatorWithFlowStore(store).validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes("registration-flow-id"))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertNotSatisfiedByAMissingCallTarget() {
+	store := newFlowStoreInterfaceMock(s.T())
+	store.EXPECT().GetFlowByID(mock.Anything, "gone").Return(nil, errFlowNotFound)
+
+	err := s.validatorWithFlowStore(store).validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes("gone"))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertCallTargetLookupFailure() {
+	store := newFlowStoreInterfaceMock(s.T())
+	store.EXPECT().GetFlowByID(mock.Anything, "auth-flow-id").Return(nil, errors.New("db down"))
+
+	err := s.validatorWithFlowStore(store).validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes("auth-flow-id"))
+
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertNotSatisfiedByACallWithNoTargetOrNoStore() {
+	err := s.validatorWithFlowStore(newFlowStoreInterfaceMock(s.T())).validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes(""))
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+
+	err = s.v.validateRequiredExecutors(
+		context.Background(), providers.FlowTypeAuthentication, s.callingFlowNodes("auth-flow-id"))
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
 
 func (s *ValidatorTestSuite) TestValidateRequiredExecutors_ProvisioningMissingInRegistration() {
@@ -1972,7 +2077,7 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_ProvisioningMissingIn
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeRegistration, nodes)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeRegistration, nodes)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
@@ -1987,7 +2092,7 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_UserTypeResolverMissi
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeRegistration, nodes)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeRegistration, nodes)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
@@ -2007,7 +2112,7 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AllRequiredPresentInR
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeRegistration, nodes)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeRegistration, nodes)
 	s.Nil(err)
 }
 
@@ -2021,7 +2126,7 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_RecoveryHasNoRequirem
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeRecovery, nodes)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeRecovery, nodes)
 	s.Nil(err)
 }
 
@@ -2040,7 +2145,7 @@ func (s *ValidatorTestSuite) TestValidateRequiredExecutors_UserOnboardingBothReq
 		},
 		{ID: "end", Type: string(common.NodeTypeEnd)},
 	}
-	err := s.v.validateRequiredExecutors(providers.FlowTypeUserOnboarding, nodesWithBoth)
+	err := s.v.validateRequiredExecutors(context.Background(), providers.FlowTypeUserOnboarding, nodesWithBoth)
 	s.Nil(err)
 }
 
@@ -2815,7 +2920,8 @@ func (s *ValidatorTestSuite) TestValidateOUResolverPlacement() {
 }
 
 func (s *ValidatorTestSuite) TestValidateFlowTypeBasedConstraints_RefusesOUResolverAfterSession() {
-	err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeAuthentication, ouResolverSSOFlow("after"))
+	err := s.v.validateFlowTypeBasedConstraints(
+		context.Background(), providers.FlowTypeAuthentication, ouResolverSSOFlow("after"))
 
 	s.Require().NotNil(err)
 	s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
@@ -3598,11 +3704,11 @@ func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() 
 		s.Nil(s.v.validateExecutorFlowType(&node, &meta, flowType), string(flowType))
 	}
 	for _, flowType := range []providers.FlowType{providers.FlowTypeSelf, providers.FlowTypeAdminInitiated} {
-		s.Nil(s.v.validateFlowTypeBasedConstraints(flowType, companionNodes(executor.ExecutorNameOTPExecutor)),
-			string(flowType))
-		s.Nil(s.v.validateFlowTypeBasedConstraints(flowType,
+		s.Nil(s.v.validateFlowTypeBasedConstraints(context.Background(), flowType,
+			companionNodes(executor.ExecutorNameOTPExecutor)), string(flowType))
+		s.Nil(s.v.validateFlowTypeBasedConstraints(context.Background(), flowType,
 			attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)), string(flowType))
-		s.NotNil(s.v.validateFlowTypeBasedConstraints(flowType,
+		s.NotNil(s.v.validateFlowTypeBasedConstraints(context.Background(), flowType,
 			attributeVerificationNodes(executor.ExecutorModePrepare)), "%s must record what it prepares", flowType)
 	}
 }

@@ -2165,6 +2165,8 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.attribute_retrieval_failed_desc": "An error occurred while retrieving user attributes",
 	"flows.executor.errors.auth_not_available_for_app": "Authentication not available for this application",
 	"flows.executor.errors.auth_not_available_for_app_desc": "The requested authentication method is not available for this application",
+	"flows.executor.errors.authenticated_user_not_requested": "Sign-in refused",
+	"flows.executor.errors.authenticated_user_not_requested_desc": "This request is for a different user. Sign in as the user it was sent to",
 	"flows.executor.errors.authorization_details_change_refused": "Authorization details change refused",
 	"flows.executor.errors.authorization_details_change_refused_desc": "The change made to the authorization details is not allowed",
 	"flows.executor.errors.authorization_details_not_checked": "Authorization details were not checked",

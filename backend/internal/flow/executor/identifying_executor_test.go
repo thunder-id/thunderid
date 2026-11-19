@@ -254,6 +254,8 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_UserInputs() {
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), testUserID, resp.RuntimeData[userAttributeUserID])
+	assert.NotContains(suite.T(), resp.SharedRuntimeData, common.RuntimeKeyRequestedSubjectID,
+		"only a CIBA login hint names the user the request is for")
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_RuntimeData() {
@@ -376,6 +378,18 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_IdentifiesB
 	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
 }
 
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_SharesTheRequestedSubject() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&userID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(testUserID, resp.SharedRuntimeData[common.RuntimeKeyRequestedSubjectID])
+}
+
 // A CALLed flow reads the CIBA request from the data shared across frames.
 func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_ReadsTheSharedCallbackType() {
 	ctx := cibaLoginHintContext("", map[string]string{userInputLoginHint: "a@example.com"})
@@ -428,6 +442,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_CIBALoginHint_Reso
 	suite.Require().NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
+	suite.Equal(testUserID, resp.SharedRuntimeData[common.RuntimeKeyRequestedSubjectID])
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_CIBALoginHint_UnknownUserFails() {

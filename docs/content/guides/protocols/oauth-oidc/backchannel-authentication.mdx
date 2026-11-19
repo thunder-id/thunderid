@@ -112,6 +112,41 @@ When a client sends `id_token_hint` instead of `login_hint`, <ProductName /> pas
 
 **Identify from a CIBA login hint** applies only to CIBA requests. In a CIBA request, the **Identify User** step ignores its configured inputs and fails instead of prompting again when no user matches. Other sign-ins that run the same flow use the step's configured inputs as usual.
 
+## Sign the User In with an Existing Flow
+
+The CIBA template sends the approval notification and asks the user to approve or deny the request. When the user approves, it calls an authentication flow that you already maintain. The user signs in on their authentication device the same way they sign in elsewhere, and you keep a single sign-in experience to maintain.
+
+1. Navigate to **Flows** in the <ProductName /> Console and select **Create new flow**.
+2. Select **CIBA (Backchannel Authentication)** as the flow type. The flow it creates is an authentication flow, which <ProductName /> runs for a backchannel authentication request.
+3. On the **Template** step, select **CIBA Email Notification** to send the approval link by email, or **CIBA SMS Notification** to send it by text message.
+4. Enter a **Flow name** and a **Handle**, then continue. The flow builder opens with the flow not yet saved.
+5. Select the step labeled **Select a flow to invoke**.
+6. In **Referenced flow**, select the authentication flow to use. The list shows only authentication flows.
+7. Save the flow.
+
+The two templates differ only in how the approval link is delivered:
+
+| Template | Sends to | Sender |
+|---|---|---|
+| **CIBA Email Notification** | The `email` attribute of the user the login hint identifies | The first email connection, selected when you create the flow |
+| **CIBA SMS Notification** | The `mobile_number` attribute of the user the login hint identifies | The SMS connection, selected when you create the flow only if exactly one exists |
+
+Both use the `ciba-notification` notification template of their channel. If the Console selects no sender, or you want another one, set the sender on the notification step in the flow builder. The user type must declare the attribute the template sends to.
+
+The flow behaves as follows:
+
+- After the user opens the link and the invite is verified, an approve or deny screen appears. **Approve** calls the flow you selected. **Deny** shows a denial message and ends the flow.
+- Each screen that waits for the user, the approve or deny screen and the sign-in screens, shows the request's `binding_message` as **Request message**, so the user can match it to the request on the consumption device.
+- Denying does not tell the client. The request stays pending until it expires, and the client keeps receiving `authorization_pending` until then.
+- The called flow issues the assertion that completes the request, so the CIBA flow has no **Auth Assertion Generator** of its own. <ProductName /> accepts an authentication flow without one when it calls an authentication flow.
+- The called flow sees the CIBA request, including the requested permissions, the `acr_values`, any authorization details, and the requirement to ask for consent every time. The template adds no **Authorization** or **User Consent** step, so those steps apply only if the called flow has them.
+- A request with `authorization_details` needs **Check Intents** and **User Consent** in the called flow. Without them the sign-in ends with `access_denied`. To ask every CIBA user for consent without adding it to your regular sign-in, call a dedicated sign-in flow that includes **User Consent**.
+- The called flow must finish with its own assertion. A path in it that leaves the sign-in, such as a **Forgot password** or **Sign up** link, ends without one, and the request stays pending until it expires. Call a sign-in flow that has no such links.
+- A user who denies consent still signs in, and the client receives a token without what the user denied, such as the requested permission. Turn on **Fail flow when user denies consent** on the **User Consent** step to end the request with `access_denied` instead.
+- The user who signs in must be the user the login hint identifies. A credentials step rejects another user's password like a wrong one and asks again. Any other sign-in method fails with the error `FET-1139` (Sign-in refused) when the assertion is issued, and the request is not approved.
+
+For how a flow calls another flow, see [Call Node](../../flows/advanced-configurations#call-node).
+
 ## Run the Flow
 
 ### Step 1: Initiate Backchannel Authentication

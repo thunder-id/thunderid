@@ -717,6 +717,120 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_PreResolvedUser_WithP
 	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
 }
 
+// A flow a CIBA request calls has no identify step of its own, so the user the request names is the one whose
+// credentials it checks.
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_RequestedSubject_IsTheUserWhoseCredentialsAreChecked() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			userAttributePassword: "password123",
+		},
+		RuntimeData: map[string]string{},
+		SharedRuntimeData: map[string]string{
+			common.RuntimeKeyRequestedSubjectID: "requested-user-123",
+		},
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+		map[string]interface{}{userAttributeUserID: "requested-user-123"},
+		map[string]interface{}{userAttributePassword: "password123"},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newCredentialsAuthAuthenticatedUser(), providers.AuthenticatedClaims{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_RequestedSubject_AsksOnlyForThePassword() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{},
+		SharedRuntimeData: map[string]string{
+			common.RuntimeKeyRequestedSubjectID: "requested-user-123",
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Len(suite.T(), resp.Inputs, 1)
+	assert.Equal(suite.T(), userAttributePassword, resp.Inputs[0].Identifier)
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_OwnIdentifiedUser_WinsOverTheRequestedSubject() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			userAttributePassword: "password123",
+		},
+		RuntimeData: map[string]string{userAttributeUserID: "own-user-123"},
+		SharedRuntimeData: map[string]string{
+			common.RuntimeKeyRequestedSubjectID: "requested-user-123",
+		},
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+		map[string]interface{}{userAttributeUserID: "own-user-123"},
+		map[string]interface{}{userAttributePassword: "password123"},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newCredentialsAuthAuthenticatedUser(), providers.AuthenticatedClaims{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+// Once the user is known, a failed attempt asks for the credentials again and not for the identifier.
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_RequestedSubject_RetryAsksOnlyForTheCredentials() {
+	cases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		wantCode string
+	}{
+		{name: "a wrong password", svcErr: &authnprovidermgr.ErrorAuthenticationFailed,
+			wantCode: ErrInvalidCredentials.Code},
+		{name: "a stated lock", svcErr: &authnprovidermgr.ErrorAccountLocked, wantCode: ErrAccountLocked.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:       "flow-123",
+				FlowType:          providers.FlowTypeAuthentication,
+				UserInputs:        map[string]string{userAttributePassword: "password123"},
+				RuntimeData:       map[string]string{},
+				SharedRuntimeData: map[string]string{common.RuntimeKeyRequestedSubjectID: "requested-user-123"},
+			}
+			execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+			suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+				map[string]interface{}{userAttributeUserID: "requested-user-123"},
+				map[string]interface{}{userAttributePassword: "password123"},
+				mock.Anything, mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, (providers.AuthenticatedClaims)(nil), tc.svcErr)
+
+			err := suite.executor.authenticateUser(ctx, execResp)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecUserInputRequired, execResp.Status)
+			assert.Equal(suite.T(), tc.wantCode, execResp.Error.Code)
+			assert.Len(suite.T(), execResp.Inputs, 1)
+			if len(execResp.Inputs) == 1 {
+				assert.Equal(suite.T(), userAttributePassword, execResp.Inputs[0].Identifier)
+			}
+		})
+	}
+}
+
 // A stated hold re-prompts, so the form still offers recovery.
 func (suite *CredentialsAuthExecutorTestSuite) TestExecute_StatedHoldsDifferFromEachOther() {
 	cases := []struct {

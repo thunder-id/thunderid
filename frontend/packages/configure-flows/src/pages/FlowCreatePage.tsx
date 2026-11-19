@@ -21,9 +21,10 @@ import FlowOrganizationUnitStep from '../components/create-flow/FlowOrganization
 import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
-import {FlowType} from '../models/flows';
+import {CIBA_FLOW_KIND, FlowType} from '../models/flows';
 import type {FlowDefinitionResponse} from '../models/responses';
 import type {FlowTemplate} from '../models/templates';
+import {TemplateCategories} from '../models/templates';
 import {fillParentOrganizationUnit, PARENT_OU_ID_PLACEHOLDER} from '../utils/parentOrganizationUnit';
 import resolveConnectionPlaceholders from '../utils/resolveConnectionPlaceholders';
 
@@ -54,13 +55,17 @@ export default function FlowCreatePage(): JSX.Element {
     identityProviders.isPending || smsProviders.isPending || emailProviders.isPending;
 
   const [requestedStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.ORGANIZATION_UNIT);
-  const [selectedType, setSelectedType] = useState<FlowType | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<FlowTemplate | null>(null);
   const [typeReady, setTypeReady] = useState(false);
   const [nameValue, setNameValue] = useState<ConfigureFlowNameValue>({name: '', handle: ''});
   const [nameReady, setNameReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOuId, setSelectedOuId] = useState('');
+
+  // The CIBA kind creates an authentication flow, from the templates of the CIBA category.
+  const flowType: FlowType | null =
+    selectedType === CIBA_FLOW_KIND ? FlowType.AUTHENTICATION : (selectedType as FlowType | null);
 
   // The organization unit is the wizard's first step whenever there is a choice to make. A single-unit deployment
   // uses its one unit, so once that is known the step is skipped. Inside a project the flow goes to the system
@@ -157,7 +162,7 @@ export default function FlowCreatePage(): JSX.Element {
       return;
     }
     if (currentStep === FlowCreateStep.CONFIGURE) {
-      if (!selectedType || !selectedTemplate) return;
+      if (!flowType || !selectedTemplate) return;
       if (!isInProject && !ouId) {
         setError(t('flows:create.organizationUnit.required', 'Organization unit is required'));
         return;
@@ -165,7 +170,7 @@ export default function FlowCreatePage(): JSX.Element {
       const flowRequest = {
         name: nameValue.name,
         handle: nameValue.handle,
-        flowType: selectedType,
+        flowType,
         ...(isInProject ? {projectId} : {}),
         ...(ouId ? {ouId} : {}),
         // A Resolve OU step's parent OU defaults to the organization unit the flow is created in. A project without
@@ -177,7 +182,7 @@ export default function FlowCreatePage(): JSX.Element {
             smsProviders: smsProviders.data,
             emailProviders: emailProviders.data,
           }),
-          selectedType,
+          flowType,
           ouId || PARENT_OU_ID_PLACEHOLDER,
         ),
       };
@@ -212,7 +217,7 @@ export default function FlowCreatePage(): JSX.Element {
     }
   };
 
-  const handleTypeChange = (type: FlowType): void => {
+  const handleTypeChange = (type: string): void => {
     clearCreateError();
     setSelectedType(type);
     setSelectedTemplate(type === FlowType.DEVICE_GRANT ? deviceGrantTemplate : null);
@@ -247,17 +252,14 @@ export default function FlowCreatePage(): JSX.Element {
   const renderStepContent = (): JSX.Element | null => {
     if (currentStep === FlowCreateStep.TYPE) {
       return (
-        <SelectFlowType
-          selectedType={selectedType}
-          onTypeChange={(type) => handleTypeChange(type as FlowType)}
-          onReadyChange={setTypeReady}
-        />
+        <SelectFlowType selectedType={selectedType} onTypeChange={handleTypeChange} onReadyChange={setTypeReady} />
       );
     }
-    if (currentStep === FlowCreateStep.TEMPLATE && selectedType) {
+    if (currentStep === FlowCreateStep.TEMPLATE && flowType) {
       return (
         <SelectFlowTemplate
-          flowType={selectedType}
+          flowType={flowType}
+          category={selectedType === CIBA_FLOW_KIND ? TemplateCategories.Ciba : undefined}
           selectedTemplate={selectedTemplate}
           onTemplateChange={handleTemplateChange}
         />

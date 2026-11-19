@@ -212,31 +212,54 @@ func loadDeclarativeResources(
 		},
 	}
 
-	loader := declarativeresource.NewResourceLoader(resourceConfig, fileBasedStore)
-	if err := loader.LoadResources(); err != nil {
-		return fmt.Errorf("failed to load flow graph resources: %w", err)
+	callValidator, isFlowValidator := validator.(*flowValidator)
+	if isFlowValidator {
+		callValidator.deferCallTargetChecks = true
 	}
-
-	deviceGrantValidator, ok := validator.(*flowValidator)
-	if !ok {
+	loader := declarativeresource.NewResourceLoader(resourceConfig, fileBasedStore)
+	loadErr := loader.LoadResources()
+	if isFlowValidator {
+		callValidator.deferCallTargetChecks = false
+	}
+	if loadErr != nil {
+		return fmt.Errorf("failed to load flow graph resources: %w", loadErr)
+	}
+	if !isFlowValidator {
 		return nil
 	}
-	deviceGrantValidator.flowStore = referenceStore
+
+	callValidator.flowStore = referenceStore
 	flows, err := fileBasedStore.ListActiveFlowsWithNodes(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to validate declarative flow references: %w", err)
 	}
+	return validateDeclarativeCallTargets(context.Background(), callValidator, flows)
+}
+
+// validateDeclarativeCallTargets runs the checks that need the flows a loaded flow calls, now that every file is
+// loaded: a Device Grant flow calls authentication flows, and an authentication flow with no assertion step of
+// its own calls one.
+func validateDeclarativeCallTargets(
+	ctx context.Context, v *flowValidator, flows []*providers.CompleteFlowDefinition,
+) error {
 	for _, flow := range flows {
-		if flow.FlowType != providers.FlowTypeDeviceGrant {
+		var svcErr *tidcommon.ServiceError
+		var kind string
+		switch flow.FlowType {
+		case providers.FlowTypeDeviceGrant:
+			kind = "Device Grant"
+			svcErr = v.validateDeviceGrantCallTargetTypes(ctx, flow.Nodes)
+		case providers.FlowTypeAuthentication:
+			kind = "Authentication"
+			svcErr = v.validateRequiredExecutors(ctx, flow.FlowType, flow.Nodes)
+		default:
 			continue
 		}
-		if svcErr := deviceGrantValidator.validateDeviceGrantCallTargetTypes(
-			context.Background(), flow.Nodes); svcErr != nil {
-			return fmt.Errorf("validation failed for declarative Device Grant flow %q: %s - %s",
-				flow.ID, svcErr.Code, svcErr.Error)
+		if svcErr != nil {
+			return fmt.Errorf("validation failed for declarative %s flow %q: %s - %s",
+				kind, flow.ID, svcErr.Code, svcErr.Error)
 		}
 	}
-
 	return nil
 }
 

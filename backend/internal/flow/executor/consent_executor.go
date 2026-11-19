@@ -154,7 +154,8 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	appName := ctx.Application.Name
 	// The request can ask for a fresh consent (prompt=consent, CIBA), and so can the client's own setting.
 	loginConsent := ctx.Application.LoginConsent
-	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true" ||
+	forceReprompt := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyForceConsentReprompt) == "true" ||
 		(loginConsent != nil && loginConsent.AlwaysPrompt != nil && *loginConsent.AlwaysPrompt)
 	authorizationDetails, err := requestedAuthorizationDetails(ctx)
 	if err != nil {
@@ -303,7 +304,8 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		logger.Debug(ctx.Context, "Consent prompt timed out. Completing without recording consent")
 		execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = ""
 		execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = ""
-		if ctx.RuntimeData[common.RuntimeKeyRequestedAuthorizationDetails] != "" {
+		if common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+			common.RuntimeKeyRequestedAuthorizationDetails) != "" {
 			if err := setConsentedAuthorizationDetails(execResp, []providers.AuthorizationDetail{}); err != nil {
 				return nil, err
 			}
@@ -399,14 +401,13 @@ func (e *consentExecutor) getRequiredAttributes(ctx *providers.NodeContext) (
 	requiredAttributesProvided := false
 
 	// Get required attributes from essential and optional attributes if present in runtime data
-	if essentialAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes]; exists {
+	if essentialAttrsStr, exists := common.LookupRuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequiredEssentialAttributes); exists {
 		requiredAttributesProvided = true
 		essentialAttributes = strings.Fields(essentialAttrsStr)
 	}
-	if optionalAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]; exists {
-		requiredAttributesProvided = true
-		optionalAttributes = strings.Fields(optionalAttrsStr)
-	} else if optionalAttrsStr, exists := ctx.SharedRuntimeData[common.RuntimeKeyRequiredOptionalAttributes]; exists {
+	if optionalAttrsStr, exists := common.LookupRuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
+		common.RuntimeKeyRequiredOptionalAttributes); exists {
 		requiredAttributesProvided = true
 		optionalAttributes = strings.Fields(optionalAttrsStr)
 	}

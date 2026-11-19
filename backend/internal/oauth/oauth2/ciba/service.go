@@ -156,7 +156,8 @@ func (s *cibaService) InitiateBackchannelAuth(
 	}
 	cacheTTL := strconv.FormatInt(s.resolveUserAttributesCacheTTL(oauthApp), 10)
 
-	// authReqID is injected into runtime data for two reasons:
+	// The request context is seeded as runtime data, for the steps of this flow, and as shared runtime data, so
+	// it stays readable inside any flow this one calls. authReqID is part of it for two reasons:
 	//   a) auth_assert_executor binds it as the authorization_request_id claim in the assertion JWT,
 	//      enabling the callback to verify this assertion authorizes this specific request.
 	//   b) invite_executor includes it in the notification link URL so Gate UI can pass it
@@ -196,10 +197,11 @@ func (s *cibaService) InitiateBackchannelAuth(
 	}
 
 	flowStep, flowErr := s.flowExecService.InitiateAndExecute(ctx, &flowexec.FlowInitContext{
-		ApplicationID: oauthApp.ID,
-		FlowType:      string(providers.FlowTypeAuthentication),
-		RuntimeData:   runtimeData,
-		ExpirySeconds: expiresIn,
+		ApplicationID:     oauthApp.ID,
+		FlowType:          string(providers.FlowTypeAuthentication),
+		RuntimeData:       runtimeData,
+		SharedRuntimeData: runtimeData,
+		ExpirySeconds:     expiresIn,
 		InitialInputs: map[string]string{
 			oauth2const.RequestParamLoginHint: loginHint,
 		},

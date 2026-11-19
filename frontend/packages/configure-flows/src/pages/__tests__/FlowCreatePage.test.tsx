@@ -440,6 +440,69 @@ describe('FlowCreatePage', () => {
       ).toBe(true);
     });
 
+    describe('the CIBA kind', () => {
+      const chooseCibaTemplate = (): void => {
+        act(() => {
+          (capturedTypeProps['onTypeChange'] as (type: string) => void)('CIBA');
+          (capturedTypeProps['onReadyChange'] as (ready: boolean) => void)(true);
+        });
+        fireEvent.click(screen.getByText('Continue'));
+        act(() => {
+          (capturedTemplateProps['onTemplateChange'] as (t: unknown) => void)({
+            resourceType: 'TEMPLATE',
+            category: 'CIBA',
+            type: 'CIBA_EMAIL_NOTIFICATION',
+            flowType: 'AUTHENTICATION',
+            display: {label: 'CIBA', description: '', image: '', showOnResourcePanel: true},
+            config: {name: 'CIBA Flow', handle: 'ciba-flow', nodes: [{id: 'start', type: 'START'}]},
+          });
+        });
+        fireEvent.click(screen.getByText('Continue'));
+      };
+
+      it('lists the authentication templates of the CIBA category', () => {
+        render(<FlowCreatePage />);
+
+        chooseCibaTemplate();
+        fireEvent.click(screen.getByText('Back'));
+
+        expect(capturedTemplateProps['flowType']).toBe('AUTHENTICATION');
+        expect(capturedTemplateProps['category']).toBe('CIBA');
+      });
+
+      it('creates an authentication flow', () => {
+        render(<FlowCreatePage />);
+
+        chooseCibaTemplate();
+        act(() => {
+          (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+            name: 'My CIBA Flow',
+            handle: 'my-ciba-flow',
+          });
+          (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+        });
+        fireEvent.click(screen.getByText('Create'));
+
+        expect(mockMutate).toHaveBeenCalledWith(
+          expect.objectContaining({name: 'My CIBA Flow', handle: 'my-ciba-flow', flowType: 'AUTHENTICATION'}),
+          expect.any(Object),
+        );
+      });
+
+      it('offers sign-in templates with no category scope', () => {
+        render(<FlowCreatePage />);
+
+        act(() => {
+          (capturedTypeProps['onTypeChange'] as (type: string) => void)('AUTHENTICATION');
+          (capturedTypeProps['onReadyChange'] as (ready: boolean) => void)(true);
+        });
+        fireEvent.click(screen.getByText('Continue'));
+
+        expect(capturedTemplateProps['flowType']).toBe('AUTHENTICATION');
+        expect(capturedTemplateProps['category']).toBeUndefined();
+      });
+    });
+
     it('should call createFlow.mutate when Create is clicked', () => {
       render(<FlowCreatePage />);
 
