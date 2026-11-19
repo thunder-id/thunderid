@@ -51,6 +51,7 @@ import {
   VISUALLY_HIDDEN_SX,
 } from '@site/src/components/Events/eventsTheme';
 import {SectionTitle} from '@site/src/components/Events/shared';
+import EventBanner from '@site/src/components/HomePage/EventBanner';
 import {ACCENTS, DISPLAY_FONT, gradientTextSx, useHomeTokens} from '@site/src/components/HomePage/homeTheme';
 
 // TODO: Replace with the final event intake form URL.
@@ -1016,20 +1017,23 @@ export default function EventsHub(): JSX.Element {
         <link rel="canonical" href={CANONICAL_URL} />
       </Head>
       <StructuredData hosted={hosted} />
-      <Box component="main" sx={{display: 'grid', gridTemplateColumns: {xs: 'minmax(0,1fr)', md: '44% minmax(0,1fr)'}}}>
-        <IdentityPanel />
-        {/* Feed column; the first section's top border is dropped so it meets the panel cleanly. */}
-        <Box
-          sx={{
-            minWidth: 0,
-            px: {xs: 2, sm: 5, lg: 7},
-            '& > section:first-of-type': {borderTop: 'none'},
-          }}
-        >
-          <Box sx={{maxWidth: 720}}>
-            {featured && <Featured event={featured} />}
-            <Upcoming events={upcoming} />
-            <Past events={past} />
+      <Box component="main">
+        <EventBanner sx={{pb: 2.5}} />
+        <Box sx={{display: 'grid', gridTemplateColumns: {xs: 'minmax(0,1fr)', md: '44% minmax(0,1fr)'}}}>
+          <IdentityPanel />
+          {/* Feed column; the first section's top border is dropped so it meets the panel cleanly. */}
+          <Box
+            sx={{
+              minWidth: 0,
+              px: {xs: 2, sm: 5, lg: 7},
+              '& > section:first-of-type': {borderTop: 'none'},
+            }}
+          >
+            <Box sx={{maxWidth: 720}}>
+              {featured && <Featured event={featured} />}
+              <Upcoming events={upcoming} />
+              <Past events={past} />
+            </Box>
           </Box>
         </Box>
       </Box>
