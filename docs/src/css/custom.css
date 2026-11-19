@@ -13,6 +13,14 @@ html[data-theme='dark'] [class*='docMainContainer'] {
  * bundles Infima by default. Infima is a CSS framework designed to
  * work well for content-centric websites.
  */
+/**
+ * Keep long code lines inside their block instead of overflowing the page.
+ */
+.markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 
 @font-face {
   font-family: 'Inter';
