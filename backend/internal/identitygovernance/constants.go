@@ -8,6 +8,7 @@ import (
 	"time"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -182,4 +183,15 @@ var heldAtRecovery = map[providers.AuthenticationMethod]bool{
 
 	// Account-wide key; never derived.
 	AuthenticationMethodAccount: false,
+}
+
+// auditEventNames maps a category and lifecycle action to its audit event.
+var auditEventNames = map[providers.EntityCategory]map[audit.Action]string{
+	providers.EntityCategoryUser: {audit.ActionLock: audit.EventUserLock, audit.ActionUnlock: audit.EventUserUnlock,
+		audit.ActionSuspend: audit.EventUserSuspend, audit.ActionUnsuspend: audit.EventUserUnsuspend},
+	providers.EntityCategoryAgent: {audit.ActionLock: audit.EventAgentLock, audit.ActionUnlock: audit.EventAgentUnlock,
+		audit.ActionSuspend: audit.EventAgentSuspend, audit.ActionUnsuspend: audit.EventAgentUnsuspend},
+	providers.EntityCategoryApp: {audit.ActionLock: audit.EventApplicationLock,
+		audit.ActionUnlock: audit.EventApplicationUnlock, audit.ActionSuspend: audit.EventApplicationSuspend,
+		audit.ActionUnsuspend: audit.EventApplicationUnsuspend},
 }
