@@ -283,6 +283,24 @@ paths:
                       onSuccess: end
                     - id: end
                       type: END
+              projectLogin:
+                summary: A login flow in a project, as the Control Plane requires
+                value:
+                  handle: shop-login
+                  name: Shop Login Flow
+                  flowType: AUTHENTICATION
+                  projectId: 01900000-0000-7000-8000-000000000002
+                  nodes:
+                    - id: start
+                      type: START
+                      onSuccess: auth_assert
+                    - id: auth_assert
+                      type: TASK_EXECUTION
+                      executor:
+                        name: AuthAssertExecutor
+                      onSuccess: end
+                    - id: end
+                      type: END
       responses:
         '201':
           description: Flow created successfully
@@ -291,7 +309,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FlowDefinitionResponse'
         '400':
-          description: Invalid flow definition, a project that does not exist (FLM-1045), or an organization unit outside the project (FLM-1046)
+          description: Invalid flow definition, a missing project (FLM-1047), a project that does not exist (FLM-1045), or an organization unit outside the project (FLM-1046)
           content:
             application/json:
               schema:
@@ -1732,7 +1750,9 @@ components:
         projectId:
           type: string
           description: |
-            ID of the project the flow belongs to. Without `ouId`, the flow is created in the system organization unit.
+            ID of the project the flow belongs to. On a deployment that serves projects, such as the Control Plane,
+            creating a flow without one is refused (`FLM-1047`). Without `ouId`, the flow is created in the system
+            organization unit.
             With `ouId`, that organization unit must belong to the project. An update that leaves it out keeps the
             flow in its current project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
