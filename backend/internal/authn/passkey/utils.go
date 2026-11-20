@@ -10,52 +10,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
-	"github.com/thunder-id/thunderid/internal/system/config"
 )
-
-const (
-	// defaultOriginHTTP is the default HTTP origin for local development.
-	defaultOriginHTTP = "https://localhost:8090"
-)
-
-// resolveAllowedOrigins returns overrideOrigins when non-empty; otherwise falls back to
-// the server-level configured origins from deployment configuration.
-func resolveAllowedOrigins(overrideOrigins []string) []string {
-	if len(overrideOrigins) > 0 {
-		return overrideOrigins
-	}
-	return getConfiguredOrigins()
-}
-
-// getConfiguredOrigins retrieves the allowed origins from runtime configuration.
-func getConfiguredOrigins() []string {
-	// Default origins if not configured
-	defaultOrigins := []string{defaultOriginHTTP}
-
-	// Try to get runtime configuration with panic recovery
-	var originList []string
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// If configuration access fails, originList stays nil
-				originList = nil
-			}
-		}()
-
-		runtime := config.GetServerRuntime()
-		if runtime != nil {
-			originList = runtime.Config.Passkey.AllowedOrigins
-		}
-	}()
-
-	// If no origins configured, return defaults
-	if len(originList) == 0 {
-		return defaultOrigins
-	}
-
-	return originList
-}
 
 // parseEntityAttributes parses an entity's attributes JSON into a generic map.
 func parseEntityAttributes(attributes json.RawMessage) map[string]interface{} {

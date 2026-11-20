@@ -29,7 +29,7 @@ All approaches follow the WebAuthn standard ceremony:
 ## Prerequisites
 
 - Serve the UI over HTTPS with a hostname that matches your WebAuthn Relying Party ID (RP ID).
-- Add allowed origins for WebAuthn to your deployment configuration. Example (`deployment.yaml`):
+- Passkeys on the <ProductName /> sign-in page work with no origin configuration. To use passkeys from your own pages, add their origins to the application's passkey allowed origins, or to your deployment configuration. Example (`deployment.yaml`):
 
 ```yaml
 passkey:
@@ -275,7 +275,7 @@ curl -k -X POST https://localhost:8090/flow/execute \
 
 ## Common Issues
 
-- **Origin mismatch**: The browser origin must be listed under `passkey.allowed_origins` and must match the RP ID domain.
+- **Origin mismatch**: The browser origin must be allowed for the application (its passkey allowed origins, otherwise `passkey.allowed_origins`, otherwise the sign-in page's origin) and must match the RP ID domain.
 - **HTTP instead of HTTPS**: WebAuthn requires HTTPS in production.
 - **Stale session token**: Use the `sessionToken` from the most recent start call for each ceremony.
 - **Unsupported platform authenticator**: Adjust `authenticatorSelection` (e.g., `authenticatorAttachment`) in the start request to match the target device.

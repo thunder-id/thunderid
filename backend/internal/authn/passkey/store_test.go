@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnconfig "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
@@ -25,7 +26,7 @@ const testDeploymentID = "test-deployment"
 // TestInitialize verifies the service wiring builds a store backed by the injected runtime store.
 func TestInitialize(t *testing.T) {
 	svc := Initialize(entitymock.NewEntityServiceInterfaceMock(t), inmemory.Initialize(testDeploymentID),
-		identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t))
+		identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t), authnconfig.Config{})
 	assert.NotNil(t, svc)
 }
 

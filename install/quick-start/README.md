@@ -101,9 +101,11 @@ server:
 # gate_client is optional and defaults to server.public_url.
 # Required only when Gate is hosted separately from the server.
 
+# passkey is optional: passkeys are accepted from the origin of the sign-in page by default.
+# Add origins only for passkeys used from other pages.
 passkey:
   allowed_origins:
-    - "https://<your-host>:<your-port>"  # e.g. https://thunderid.local:8090
+    - "https://<your-app-host>"  # e.g. https://app.example.com
 
 # Other configurations...
 ```
