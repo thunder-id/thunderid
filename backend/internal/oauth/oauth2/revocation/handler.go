@@ -59,7 +59,7 @@ func (h *revocationHandler) HandleRevoke(w http.ResponseWriter, r *http.Request)
 		clientID = client.ClientID
 	}
 
-	revokeOutcome, err := h.service.RevokeToken(ctx, token, tokenTypeHint, clientID)
+	result, err := h.service.RevokeToken(ctx, token, tokenTypeHint, clientID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to revoke token", log.Error(err))
 		h.publishRevoke(ctx, oauth2utils.AuditOutcome(constants.ErrorServerError))
@@ -69,7 +69,7 @@ func (h *revocationHandler) HandleRevoke(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	switch revokeOutcome {
+	switch result.Outcome {
 	case RevokeOutcomeNotOwned:
 		// Refusing another client's token is an ownership decision, whatever the error code says.
 		h.publishRevoke(ctx, audit.OutcomeDenied(constants.ErrorInvalidGrant))
@@ -77,7 +77,11 @@ func (h *revocationHandler) HandleRevoke(w http.ResponseWriter, r *http.Request)
 			"The token was not issued to the authenticated client", http.StatusBadRequest, nil)
 	default:
 		// RFC 7009 §2.2: success is HTTP 200 with an empty body.
-		h.publishRevoke(ctx, audit.OutcomeSucceeded)
+		payload := revokePayload(ctx, audit.OutcomeSucceeded)
+		if result.TokenSubject != "" {
+			payload = payload.WithSubject(audit.Ref{Type: audit.TargetTypeUser, ID: result.TokenSubject})
+		}
+		h.publish(ctx, payload)
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -86,11 +90,20 @@ func (h *revocationHandler) HandleRevoke(w http.ResponseWriter, r *http.Request)
 // unknown or invalid token succeeds, as RFC 7009 answers it, so the event never tells whether a token
 // existed, and it never carries the token.
 func (h *revocationHandler) publishRevoke(ctx context.Context, outcome audit.Outcome) {
+	h.publish(ctx, revokePayload(ctx, outcome))
+}
+
+// publish publishes the audit event of a revocation request.
+func (h *revocationHandler) publish(ctx context.Context, payload audit.Payload) {
+	eventbus.TryPublish(ctx, h.bus, eventbus.NewEvent(ctx, audit.EventTokenRevoke).With(payload))
+}
+
+// revokePayload builds the audit payload of a revocation request by the authenticated client.
+func revokePayload(ctx context.Context, outcome audit.Outcome) audit.Payload {
 	var oauthApp *providers.OAuthClient
 	if client := clientauth.GetOAuthClient(ctx); client != nil {
 		oauthApp = client.OAuthApp
 	}
-	payload := audit.NewPayload(ctx, audit.Ref{Type: audit.TargetTypeToken}, audit.ActionRevoke, outcome).
+	return audit.NewPayload(ctx, audit.Ref{Type: audit.TargetTypeToken}, audit.ActionRevoke, outcome).
 		WithActor(oauth2utils.AuditClientActor(oauthApp))
-	eventbus.TryPublish(ctx, h.bus, eventbus.NewEvent(ctx, audit.EventTokenRevoke).With(payload))
 }

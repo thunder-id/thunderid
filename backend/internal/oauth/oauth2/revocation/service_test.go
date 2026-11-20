@@ -48,6 +48,10 @@ func (s *RevocationServiceTestSuite) SetupTest() {
 		testMaxEntriesPerChange)
 }
 
+func (s *RevocationServiceTestSuite) SetupSubTest() {
+	s.SetupTest()
+}
+
 // buildToken constructs a JWT-shaped string with the given claims. DecodeJWT only base64-decodes the
 // header/payload (signature verification is mocked), so a dummy signature segment is sufficient.
 func buildToken(claims map[string]interface{}) string {
@@ -69,9 +73,9 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_Success() {
 	})).Return(nil)
 	s.obsMock.On("IsEnabled").Return(false)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_RevokesTokenFamily() {
@@ -89,9 +93,9 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_RevokesTokenFamily() {
 	})).Return(nil)
 	s.obsMock.On("IsEnabled").Return(false)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_PublishesAuditEvent() {
@@ -101,9 +105,9 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_PublishesAuditEvent() {
 	s.obsMock.On("IsEnabled").Return(true)
 	s.obsMock.On("PublishEvent", mock.Anything, mock.Anything).Return()
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "refresh_token", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "refresh_token", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_InvalidSignatureIsNoOp() {
@@ -112,9 +116,9 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_InvalidSignatureIsNoOp() {
 		Type: serviceerror.ServerErrorType, Code: "INVALID_SIGNATURE",
 	})
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
 }
 
@@ -128,18 +132,18 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_ExpiredTokenStillRevocable(
 	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil)
 	s.obsMock.On("IsEnabled").Return(false)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_NotOwnedByClient() {
 	token := buildToken(map[string]interface{}{"jti": "jti-123", "client_id": "another-client"})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeNotOwned, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeNotOwned, result.Outcome)
 	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
 }
 
@@ -149,9 +153,9 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_RefreshTokenNotOwnedByClien
 	token := buildToken(map[string]interface{}{"jti": "rt-jti", "sub": "another-client"})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeNotOwned, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeNotOwned, result.Outcome)
 	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
 }
 
@@ -162,19 +166,121 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_RefreshTokenOwnedBySubjectS
 	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil)
 	s.obsMock.On("IsEnabled").Return(false)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_NoJtiIsNoOp() {
 	token := buildToken(map[string]interface{}{"client_id": testClientID})
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, result.Outcome)
 	s.storeMock.AssertNotCalled(s.T(), "InsertRevokedToken", mock.Anything, mock.Anything)
+}
+
+// A revoked token names its user only for a user access token, or a refresh token carrying its
+// access_token_sub, that the actor provider resolves to a user; the claims are the shapes the token builder mints.
+func (s *RevocationServiceTestSuite) TestRevokeToken_ReportsTheTokenSubject() {
+	const (
+		userID   = "01900000-0000-7000-8000-0000000000a1"
+		entityID = "01900000-0000-7000-8000-0000000000a2"
+	)
+	exp := float64(time.Now().Add(time.Hour).Unix())
+	user := &providers.Entity{ID: userID, Category: providers.EntityCategoryUser}
+	cases := []struct {
+		name     string
+		claims   map[string]interface{}
+		lookupID string
+		entity   *providers.Entity
+		lookErr  *serviceerror.ServiceError
+		want     string
+	}{
+		{
+			name:     "a user access token",
+			claims:   map[string]interface{}{"sub": userID, "client_id": testClientID},
+			lookupID: userID, entity: user, want: userID,
+		},
+		{
+			name:     "a refresh token naming its user in access_token_sub",
+			claims:   map[string]interface{}{"sub": testClientID, "access_token_sub": userID, "tfid": "tfid-1"},
+			lookupID: userID, entity: user, want: userID,
+		},
+		{
+			name:     "a client_credentials access token of an application",
+			claims:   map[string]interface{}{"sub": entityID, "client_id": testClientID},
+			lookupID: entityID, entity: &providers.Entity{ID: entityID, Category: providers.EntityCategoryApp},
+		},
+		{
+			name:     "a client_credentials access token of an agent",
+			claims:   map[string]interface{}{"sub": entityID, "client_id": testClientID},
+			lookupID: entityID, entity: &providers.Entity{ID: entityID, Category: providers.EntityCategoryAgent},
+		},
+		{
+			name:     "an access token of an external or mapped subject",
+			claims:   map[string]interface{}{"sub": "alex@example.com", "client_id": testClientID},
+			lookupID: "alex@example.com", lookErr: &serviceerror.ServiceError{Code: "ENTITY_NOT_FOUND"},
+		},
+		{
+			name:     "an access token whose subject lookup fails",
+			claims:   map[string]interface{}{"sub": userID, "client_id": testClientID},
+			lookupID: userID, lookErr: &serviceerror.ServiceError{Code: "INTERNAL_SERVER_ERROR"},
+		},
+		{
+			name:   "a jwt-bearer access token with an idp claim",
+			claims: map[string]interface{}{"sub": userID, "client_id": testClientID, "idp": "https://idp.example"},
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			provider := newActorLookupMock(s.T())
+			s.service.(*revocationService).actorProvider = provider
+			claims := map[string]interface{}{"jti": "jti-subject", "exp": exp}
+			for key, value := range tc.claims {
+				claims[key] = value
+			}
+			token := buildToken(claims)
+			s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil).Once()
+			s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil).Once()
+			s.storeMock.On("insertCriterion", mock.Anything, mock.Anything).Return(nil).Maybe()
+			s.obsMock.On("IsEnabled").Return(false).Once()
+			if tc.lookupID != "" {
+				provider.EXPECT().GetActor(mock.Anything, tc.lookupID).Return(tc.entity, tc.lookErr).Once()
+			}
+
+			result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+
+			s.NoError(err)
+			s.Equal(RevokeResult{Outcome: RevokeOutcomeRevoked, TokenSubject: tc.want}, result)
+		})
+	}
+}
+
+// Without an actor provider a user's access token revokes without naming the user.
+func (s *RevocationServiceTestSuite) TestRevokeToken_WithoutActorProviderReportsNoSubject() {
+	token := buildToken(map[string]interface{}{"jti": "jti-1", "sub": "user-1", "client_id": testClientID})
+	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil)
+	s.obsMock.On("IsEnabled").Return(false)
+
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+
+	s.NoError(err)
+	s.Equal(RevokeResult{Outcome: RevokeOutcomeRevoked}, result)
+}
+
+// A token of another client is not revoked and its user is never looked up or named.
+func (s *RevocationServiceTestSuite) TestRevokeToken_NotOwnedNamesNoSubject() {
+	s.service.(*revocationService).actorProvider = newActorLookupMock(s.T())
+	token := buildToken(map[string]interface{}{"jti": "jti-1", "sub": "user-1", "client_id": "another-client"})
+	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+
+	s.NoError(err)
+	s.Equal(RevokeResult{Outcome: RevokeOutcomeNotOwned}, result)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_StoreErrorReturnsError() {
@@ -182,9 +288,9 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_StoreErrorReturnsError() {
 	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
 	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(errors.New("db error"))
 
-	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.Error(s.T(), err)
-	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	assert.Equal(s.T(), RevokeResult{}, result)
 	assert.Contains(s.T(), err.Error(), "failed to record token revocation")
 }
 
@@ -614,10 +720,10 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_ExpiryAddsTheLeeway() {
 
 	revoker := newRevocationService(s.jwtServiceMock, s.storeMock, time.Hour, leeway, false, s.obsMock,
 		testMaxEntriesPerChange)
-	revokeOutcome, err := revoker.RevokeToken(context.Background(), token, "", testClientID)
+	result, err := revoker.RevokeToken(context.Background(), token, "", testClientID)
 
 	s.NoError(err)
-	s.Equal(RevokeOutcomeRevoked, revokeOutcome)
+	s.Equal(RevokeOutcomeRevoked, result.Outcome)
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeRefreshToken_ExpiryAddsTheLeeway() {

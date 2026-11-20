@@ -35,8 +35,8 @@ type RevocationServiceInterface interface {
 	// from the token and never guides a lookup — the case where RFC 7009 §2.1 explicitly permits ignoring it.
 	// It is retained in the signature as a forward-fit for a future opaque/reference-token model.
 	//
-	// It returns an error only on server errors; all token-state outcomes are conveyed via RevokeOutcome.
-	RevokeToken(ctx context.Context, token, tokenTypeHint, authenticatedClientID string) (RevokeOutcome, error)
+	// It returns an error only on server errors; all token-state outcomes are conveyed via RevokeResult.
+	RevokeToken(ctx context.Context, token, tokenTypeHint, authenticatedClientID string) (RevokeResult, error)
 }
 
 // RefreshTokenRevokerInterface is the narrow write seam the refresh grant uses to enforce single-use
@@ -65,6 +65,11 @@ type CriteriaRevokerInterface interface {
 	RevokeTokenFamily(ctx context.Context, tokenFamilyID string, reason RevocationReason) error
 }
 
+// actorLookup is the narrow seam through which RevokeToken confirms that a token's subject is a local user.
+type actorLookup interface {
+	GetActor(ctx context.Context, actorID string) (*providers.Entity, *tidcommon.ServiceError)
+}
+
 // defaultTokenFamilyRevocationTTL bounds a family revocation entry when no refresh-token lifetime is
 // configured. It is a safe upper bound: the entry only needs to outlive the longest-lived token of
 // the family, and expired tokens are rejected on their own exp regardless.
@@ -81,7 +86,9 @@ type revocationService struct {
 	observabilitySvc  providers.ObservabilityProvider
 	// maxEntriesPerChange bounds one RevokeCriteriaBatch call.
 	maxEntriesPerChange int
-	logger              *log.Logger
+	// actorProvider is set after construction and is nil until then, in which case no token subject is reported.
+	actorProvider actorLookup
+	logger        *log.Logger
 }
 
 // newRevocationService creates a new revocationService (internal use). It returns
@@ -123,25 +130,25 @@ func newRevocationService(
 // different client is rejected with invalid_grant.
 func (s *revocationService) RevokeToken(
 	ctx context.Context, token, _, authenticatedClientID string,
-) (RevokeOutcome, error) {
+) (RevokeResult, error) {
 	// Signature-only verification: a token we did not issue (or a tampered one) must not pollute the
 	// deny list. Expiry is deliberately ignored so expired tokens remain revocable.
 	if err := s.jwtService.VerifyJWTSignature(ctx, token); err != nil {
 		s.logger.Debug(ctx, "Revocation request for a token that failed signature verification; "+
 			"treating as a no-op success per RFC 7009")
-		return RevokeOutcomeRevoked, nil
+		return RevokeResult{Outcome: RevokeOutcomeRevoked}, nil
 	}
 
 	_, payload, decodeErr := jwt.DecodeJWT(token)
 	if decodeErr != nil {
 		s.logger.Debug(ctx, "Revocation request for an undecodable token; treating as a no-op success")
-		return RevokeOutcomeRevoked, nil
+		return RevokeResult{Outcome: RevokeOutcomeRevoked}, nil
 	}
 
 	jti, _ := payload[constants.ClaimJTI].(string)
 	if jti == "" {
 		s.logger.Debug(ctx, "Revocation request for a token without a jti claim; nothing to revoke")
-		return RevokeOutcomeRevoked, nil
+		return RevokeResult{Outcome: RevokeOutcomeRevoked}, nil
 	}
 
 	// Ownership enforcement: a client may only revoke tokens issued to it (RFC 7009 §2.1). ThunderID
@@ -156,7 +163,7 @@ func (s *revocationService) RevokeToken(
 	}
 	if tokenClientID != "" && authenticatedClientID != "" && tokenClientID != authenticatedClientID {
 		s.logger.Debug(ctx, "Revocation request for a token belonging to a different client")
-		return RevokeOutcomeNotOwned, nil
+		return RevokeResult{Outcome: RevokeOutcomeNotOwned}, nil
 	}
 
 	revoked := RevokedToken{
@@ -166,7 +173,7 @@ func (s *revocationService) RevokeToken(
 		ExpiryTime:       extractExpiryTime(payload).Add(s.validationLeeway),
 	}
 	if err := s.store.InsertRevokedToken(ctx, revoked); err != nil {
-		return RevokeOutcomeRevoked, fmt.Errorf("failed to record token revocation: %w", err)
+		return RevokeResult{}, fmt.Errorf("failed to record token revocation: %w", err)
 	}
 
 	// When the revoked token carries a token family id, drop the whole family so revoking a login's
@@ -175,13 +182,17 @@ func (s *revocationService) RevokeToken(
 		if tokenFamilyID, _ := payload[constants.ClaimTokenFamilyID].(string); tokenFamilyID != "" {
 			if err := s.RevokeTokenFamily(ctx, tokenFamilyID,
 				RevocationReasonExplicitTokenFamily); err != nil {
-				return RevokeOutcomeRevoked, fmt.Errorf("failed to revoke token family: %w", err)
+				return RevokeResult{}, fmt.Errorf("failed to revoke token family: %w", err)
 			}
 		}
 	}
 
 	s.publishTokenRevokedEvent(ctx, authenticatedClientID, jti)
-	return RevokeOutcomeRevoked, nil
+
+	return RevokeResult{
+		Outcome:      RevokeOutcomeRevoked,
+		TokenSubject: s.localUserSubject(ctx, payload),
+	}, nil
 }
 
 // RevokeRefreshToken records a refresh token on the deny list with the refresh_rotation reason,
@@ -273,6 +284,34 @@ func (s *revocationService) RevokeCriteriaBatch(ctx context.Context,
 
 	s.logger.Debug(ctx, "Revoked tokens by criteria batch", log.Int("count", len(rows)))
 	return nil
+}
+
+// localUserSubject returns the user a revoked token was issued to, or an empty string when the token names
+// no local user. The subject is the sub of an access token and the access_token_sub of a refresh token.
+func (s *revocationService) localUserSubject(ctx context.Context, payload map[string]interface{}) string {
+	if s.actorProvider == nil {
+		return ""
+	}
+	if idp, _ := payload[constants.ClaimIDP].(string); idp != "" {
+		return ""
+	}
+	subject, _ := payload[constants.ClaimAccessTokenSubject].(string)
+	if clientID, _ := payload[constants.ClaimClientID].(string); clientID != "" {
+		subject, _ = payload[constants.ClaimSub].(string)
+	}
+	if subject == "" {
+		return ""
+	}
+	entity, svcErr := s.actorProvider.GetActor(ctx, subject)
+	if svcErr != nil {
+		s.logger.Debug(ctx, "Failed to resolve the subject of a revoked token; reporting no subject",
+			log.MaskedString(log.LoggerKeyEntityID, subject), log.String("errorCode", svcErr.Code))
+		return ""
+	}
+	if entity.Category != providers.EntityCategoryUser {
+		return ""
+	}
+	return subject
 }
 
 // validatedCriterionRow validates a revocation and builds its deny-list row, or nil when it has no value.
