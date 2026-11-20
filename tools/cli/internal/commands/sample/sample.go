@@ -482,7 +482,7 @@ func splitYAML(content string) []string {
 
 // writeFrontendEnv updates frontend/.env with ThunderID client config and the
 // VITE_AI_FEATURES_ENABLED flag so the React dev server picks up the right mode.
-// Keys the sample ships (VITE_THUNDER_APP_ID, VITE_AUTH_IS_REDIRECT_BASED, ...)
+// Keys the sample ships (VITE_THUNDERID_APP_ID, VITE_AUTH_IS_REDIRECT_BASED, ...)
 // are preserved.
 func writeFrontendEnv(sampleDir, baseURL string, vars map[string]string, aiEnabled bool) error {
 	path := filepath.Join(sampleDir, "frontend", ".env")
@@ -494,8 +494,16 @@ func writeFrontendEnv(sampleDir, baseURL string, vars map[string]string, aiEnabl
 	if clientID == "" {
 		clientID = "WAYFINDER"
 	}
-	env["VITE_THUNDER_CLIENT_ID"] = clientID
-	env["VITE_THUNDER_BASE_URL"] = baseURL
+	if _, ok := env["VITE_THUNDERID_APP_ID"]; !ok {
+		if old, exists := env["VITE_THUNDER_APP_ID"]; exists {
+			env["VITE_THUNDERID_APP_ID"] = old
+		}
+	}
+	delete(env, "VITE_THUNDER_APP_ID")
+	delete(env, "VITE_THUNDER_CLIENT_ID")
+	delete(env, "VITE_THUNDER_BASE_URL")
+	env["VITE_THUNDERID_CLIENT_ID"] = clientID
+	env["VITE_THUNDERID_BASE_URL"] = baseURL
 	env["VITE_AI_FEATURES_ENABLED"] = strconv.FormatBool(aiEnabled)
 	return writeEnvFile(path, env)
 }
@@ -517,7 +525,8 @@ func writeBaseURLEnvs(sampleDir, baseURL string) error {
 		if err != nil {
 			return err
 		}
-		env["THUNDER_BASE_URL"] = baseURL
+		delete(env, "THUNDER_BASE_URL")
+		env["THUNDERID_BASE_URL"] = baseURL
 		if err := writeEnvFile(path, env); err != nil {
 			return err
 		}
@@ -536,7 +545,8 @@ func writeServiceEnv(sampleDir, baseURL string, vars map[string]string, opts Opt
 		return err
 	}
 
-	env["THUNDER_BASE_URL"] = baseURL
+	delete(env, "THUNDER_BASE_URL")
+	env["THUNDERID_BASE_URL"] = baseURL
 	setIfNotEmpty(env, "AGENT_ID", vars["AGENT_CLIENT_ID"])
 	setIfNotEmpty(env, "AGENT_SECRET", vars["AGENT_CLIENT_SECRET"])
 	setIfNotEmpty(env, "UPGRADE_AGENT_ID", vars["UPGRADE_AGENT_CLIENT_ID"])
