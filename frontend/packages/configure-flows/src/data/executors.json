@@ -224,10 +224,6 @@
         "onSuccess": "",
         "onFailure": "",
         "onIncomplete": ""
-      },
-      "properties": {
-        "relyingPartyId": "localhost",
-        "relyingPartyName": "{{productName}}"
       }
     }
   },
@@ -278,8 +274,10 @@
         "onIncomplete": ""
       },
       "properties": {
-        "relyingPartyId": "localhost",
-        "relyingPartyName": "{{productName}}"
+        "authenticatorSelection": {
+          "residentKey": "required",
+          "requireResidentKey": true
+        }
       }
     }
   },

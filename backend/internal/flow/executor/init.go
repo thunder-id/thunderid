@@ -14,6 +14,7 @@ import (
 func Initialize(deps ExecutorDependencies, flowConfig flowconfig.Config) (ExecutorRegistryInterface, error) {
 	reg := newExecutorRegistry()
 	deps.tokenLeeway = flowConfig.TokenLeeway
+	deps.gateHostname = flowConfig.GateHostname
 	names := flowConfig.Flow.Executors
 	if err := registerBuiltInExecutors(reg, deps, names); err != nil {
 		return nil, err

@@ -291,7 +291,6 @@ export default function ConfigureDetails({
     selectedTemplateConfig,
     integrations,
     selectedAuthFlow,
-    relyingPartyId: contextRelyingPartyId,
     setRelyingPartyId,
     relyingPartyName: contextRelyingPartyName,
     setRelyingPartyName,
@@ -415,27 +414,10 @@ export default function ConfigureDetails({
    * Initialize relying party fields with defaults if empty.
    */
   useEffect(() => {
-    if (isPasskeyConfigEnabled) {
-      if (!relyingPartyId && !contextRelyingPartyId) {
-        // Default to hostname from window location (or hostingUrl if valid domain?)
-        // Better to use window.location.hostname as a sensible default for local dev
-        // or extract domain from hostingUrl if possible.
-        // For now using window.location.hostname to match previous behavior
-        setValue('relyingPartyId', window.location.hostname);
-      }
-      if (!relyingPartyName && !contextRelyingPartyName) {
-        setValue('relyingPartyName', appName);
-      }
+    if (isPasskeyConfigEnabled && !relyingPartyName && !contextRelyingPartyName) {
+      setValue('relyingPartyName', appName);
     }
-  }, [
-    isPasskeyConfigEnabled,
-    relyingPartyId,
-    relyingPartyName,
-    contextRelyingPartyId,
-    contextRelyingPartyName,
-    appName,
-    setValue,
-  ]);
+  }, [isPasskeyConfigEnabled, relyingPartyName, contextRelyingPartyName, appName, setValue]);
 
   /**
    * Sync relying party fields with context.
@@ -479,8 +461,8 @@ export default function ConfigureDetails({
   useEffect((): void => {
     let ready: boolean;
 
-    if (isPasskeyConfigEnabled && (!relyingPartyId || !relyingPartyName)) {
-      // If Passkey is enabled, we MUST have valid relying party info
+    if (isPasskeyConfigEnabled && (!relyingPartyName || (isEmbeddedApproach && !relyingPartyId))) {
+      // Embedded sign-in runs passkeys on the application's own page, so the gate host cannot stand in.
       ready = false;
     } else if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.NONE) {
       // Even if no base config needed, if Passkey is enabled we need those fields valid, which the
@@ -512,6 +494,7 @@ export default function ConfigureDetails({
     relyingPartyId,
     relyingPartyName,
     isPasskeyConfigEnabled,
+    isEmbeddedApproach,
     errors,
     onReadyChange,
     selectedTemplateConfig,
@@ -836,7 +819,7 @@ export default function ConfigureDetails({
               <TextField
                 labelPlacement="top"
                 label={t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying party ID'}
-                required
+                required={isEmbeddedApproach}
                 {...field}
                 fullWidth
                 id="relying-party-id-input"
@@ -846,7 +829,9 @@ export default function ConfigureDetails({
                 error={!!errors.relyingPartyId}
                 helperText={
                   errors.relyingPartyId?.message ??
-                  t('applications:onboarding.configure.details.relyingPartyId.helperText')
+                  (isEmbeddedApproach
+                    ? t('applications:onboarding.configure.details.relyingPartyId.embeddedHelperText')
+                    : t('applications:onboarding.configure.details.relyingPartyId.helperText'))
                 }
               />
             )}
