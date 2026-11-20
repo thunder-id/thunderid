@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, renderHook, screen, fireEvent} from '@thunderid/test-utils';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -65,6 +66,16 @@ describe('TranslationFieldsView', () => {
   });
 
   describe('Rendering', () => {
+    it('shows the values read-only without i18n:update', () => {
+      render(
+        <CapabilitiesProvider capabilities={{can: (_r, a = 'view') => a === 'view', isLoading: false}}>
+          <TranslationFieldsView {...defaultProps} />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.getByDisplayValue('Save')).toHaveAttribute('readonly');
+    });
+
     it('renders a text field for each translation key', () => {
       render(<TranslationFieldsView {...defaultProps} />);
 

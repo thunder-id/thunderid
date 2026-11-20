@@ -1,12 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice} from '@thunderid/components';
 import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -90,20 +90,10 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<TemplateSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            {can('notificationtemplate', 'update') && (
-              <Tooltip title={t('common:actions.edit', 'Edit')}>
-                <IconButton
-                  size="small"
-                  aria-label={t('common:actions.edit', 'Edit')}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(params.row.id);
-                  }}
-                >
-                  <Pencil size={16} />
-                </IconButton>
-              </Tooltip>
-            )}
+            <EditOrViewAction
+              canEdit={can('notificationtemplate', 'update')}
+              onClick={() => handleEditClick(params.row.id)}
+            />
             {can('notificationtemplate', 'delete') && (
               <Tooltip title={t('common:actions.delete', 'Delete')}>
                 <IconButton

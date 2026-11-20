@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import I18nContext, {type I18nContextProps} from '../../../context/I18nContext';
@@ -37,7 +38,8 @@ vi.mock('react-i18next', async (importOriginal) => ({
 }));
 
 // Mock contexts
-vi.mock('@thunderid/contexts', () => ({
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     getServerUrl: () => 'https://localhost:8090',
   }),
@@ -108,7 +110,11 @@ describe('I18nConfigurationCard', () => {
 
   const createWrapper = (i18nValue: I18nContextProps = createContextValue()) =>
     function Wrapper({children}: {children: ReactNode}) {
-      return <I18nContext.Provider value={i18nValue}>{children}</I18nContext.Provider>;
+      return (
+        <I18nContext.Provider value={i18nValue}>
+          <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>
+        </I18nContext.Provider>
+      );
     };
 
   beforeEach(() => {
@@ -204,6 +210,58 @@ describe('I18nConfigurationCard', () => {
       );
 
       expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    });
+  });
+
+  describe('Capabilities', () => {
+    const renderCard = (): void => {
+      render(
+        <I18nConfigurationCard
+          open
+          anchorEl={anchorEl}
+          propertyKey="label"
+          onClose={mockOnClose}
+          onChange={mockOnChange}
+          i18nKey=""
+        />,
+        {wrapper: createWrapper()},
+      );
+    };
+
+    it('should offer to create a translation by default', () => {
+      renderCard();
+
+      expect(screen.getByText('flows:core.elements.textPropertyField.i18nCard.createTitle')).toBeInTheDocument();
+    });
+
+    it('should not offer to create a translation without i18n:update', () => {
+      const Wrapper = createWrapper();
+      render(
+        <I18nConfigurationCard
+          open
+          anchorEl={anchorEl}
+          propertyKey="label"
+          onClose={mockOnClose}
+          onChange={mockOnChange}
+          i18nKey=""
+        />,
+        {
+          wrapper: ({children}: {children: ReactNode}) => (
+            <Wrapper>
+              <CapabilitiesProvider
+                capabilities={{
+                  can: (r, a = 'view') => !(r === 'i18n' && a === 'update'),
+                  isLoading: false,
+                }}
+              >
+                {children}
+              </CapabilitiesProvider>
+            </Wrapper>
+          ),
+        },
+      );
+
+      expect(screen.queryByText('flows:core.elements.textPropertyField.i18nCard.createTitle')).not.toBeInTheDocument();
     });
   });
 

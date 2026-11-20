@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {I18nDefaultConstants, useGetTranslations, useUpdateTranslation} from '@thunderid/i18n';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, IconButton, InputAdornment, Stack, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -116,6 +117,7 @@ export default function TokenCatalog({channel, onInsert, collapsed, onToggleColl
     namespace: NOTIFICATION_NAMESPACE,
   });
   const updateTranslation = useUpdateTranslation();
+  const {can} = useCapabilitiesContext();
 
   const [adding, setAdding] = useState(false);
   const [newKey, setNewKey] = useState('');
@@ -250,15 +252,17 @@ export default function TokenCatalog({channel, onInsert, collapsed, onToggleColl
         resolveLabel={resolveLabel}
         emptyLabel={t('editor.tokens.noTranslation', 'No translation keys match your search.')}
         action={
-          <Tooltip title={t('editor.tokens.add.title', 'Add translation key')}>
-            <IconButton
-              size="small"
-              onClick={() => setAdding((v) => !v)}
-              aria-label={t('editor.tokens.add.title', 'Add translation key')}
-            >
-              <Plus size={14} />
-            </IconButton>
-          </Tooltip>
+          can('i18n', 'update') ? (
+            <Tooltip title={t('editor.tokens.add.title', 'Add translation key')}>
+              <IconButton
+                size="small"
+                onClick={() => setAdding((v) => !v)}
+                aria-label={t('editor.tokens.add.title', 'Add translation key')}
+              >
+                <Plus size={14} />
+              </IconButton>
+            </Tooltip>
+          ) : undefined
         }
       />
 
