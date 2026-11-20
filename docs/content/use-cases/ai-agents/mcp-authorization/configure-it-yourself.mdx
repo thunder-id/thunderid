@@ -38,15 +38,23 @@ If you don't want to register every MCP client up-front, <ProductName /> also su
 
 If you want the Wayfinder MCP server to call the <ProductName /> AuthZEN PDP instead of checking token scopes locally, configure the server-level Direct Auth Secret for the PDP call.
 
-Open the <ProductName /> deployment configuration and set:
+For the local sample, keep the file-backed setting in the
+<ProductName /> `deployment.yaml`:
 
 ```yaml
 server:
   security:
-    direct_auth_secret: "wayfinder-direct-auth-secret"
+    direct_auth_secret: "file://config/secrets/direct_auth_secret"
 ```
 
-Restart <ProductName /> after updating the deployment configuration. Then set the same value in `samples/apps/wayfinder-sample/backend/.env`:
+Create or update `backend/cmd/server/config/secrets/direct_auth_secret`
+relative to the repository root with:
+
+```text
+wayfinder-direct-auth-secret
+```
+
+Restart <ProductName /> after updating the secret file. Then set the same value in `samples/apps/wayfinder-sample/backend/.env`:
 
 ```env
 AUTHORIZATION_MODE=authzen
