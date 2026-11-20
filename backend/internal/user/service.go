@@ -1072,14 +1072,11 @@ func (us *userService) UpdateUserCredentials(
 // explicitly: the user whose credentials were set, or anonymous when they were not.
 func (us *userService) publishCredentialUpdate(ctx context.Context, userID string, svcErr *tidcommon.ServiceError) {
 	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
-	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr)
-	if security.IsRuntimeContext(ctx) {
-		actor := audit.Actor{Type: audit.ActorTypeAnonymous}
-		if svcErr == nil {
-			actor = audit.Actor{Type: audit.ActorTypeUser, ID: userID}
-		}
-		payload = payload.WithActor(actor)
+	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+	if svcErr == nil {
+		actor = audit.Actor{Type: audit.ActorTypeUser, ID: userID}
 	}
+	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr).WithRuntimeActor(ctx, actor)
 	eventbus.TryPublish(ctx, us.bus, eventbus.NewEvent(ctx, audit.EventUserCredentialUpdate).With(payload))
 }
 

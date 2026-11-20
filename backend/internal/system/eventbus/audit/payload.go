@@ -10,6 +10,7 @@ import (
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -142,6 +143,16 @@ func (p Payload) WithActor(actor Actor) Payload {
 	actor.ID = capID(actor.ID)
 	p.actor = actor
 	p.onBehalfOf = Ref{}
+	return p
+}
+
+// WithRuntimeActor sets actor when ctx marks an internal runtime caller, and keeps the actor resolved from the
+// request otherwise. A flow on the server's authority runs with the subject of the request it came in on,
+// which a public path lets anyone's bearer token be, so an event it publishes names its actor explicitly.
+func (p Payload) WithRuntimeActor(ctx context.Context, actor Actor) Payload {
+	if security.IsRuntimeContext(ctx) {
+		return p.WithActor(actor)
+	}
 	return p
 }
 
