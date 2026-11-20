@@ -2415,6 +2415,9 @@ describe('ApplicationCreatePage', () => {
         expect(mockCreateApplication).toHaveBeenCalled();
       });
 
+      // With no relying party ID entered, none is sent, so the server uses its sign-in page host
+      expect((mockGenerateFlowGraph.mock.calls[0][0] as {relyingPartyId?: string}).relyingPartyId).toBeUndefined();
+
       // The generated flow is owned by the organization unit of the application
       expect(mockCreateFlow).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}), expect.anything());
 

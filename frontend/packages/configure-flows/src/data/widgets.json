@@ -1494,10 +1494,6 @@
                 "onSuccess": "{{PASSKEY_VERIFY_EXECUTOR_ID}}",
                 "onFailure": "{{PASSWORD_FOR_REG_VIEW_ID}}",
                 "onIncomplete": ""
-              },
-              "properties": {
-                "relyingPartyId": "localhost",
-                "relyingPartyName": "{{productName}}"
               }
             }
           },
@@ -1632,8 +1628,10 @@
                 "onIncomplete": ""
               },
               "properties": {
-                "relyingPartyId": "localhost",
-                "relyingPartyName": "{{productName}}"
+                "authenticatorSelection": {
+                  "residentKey": "required",
+                  "requireResidentKey": true
+                }
               }
             }
           },

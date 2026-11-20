@@ -24,6 +24,7 @@ const (
 	testPasskeyUserID    = "test-user-123"
 	testRelyingPartyID   = "example.com"
 	testRelyingPartyName = "Example App"
+	testGateHostname     = "signin.example.org"
 	testPasskeyFlowID    = "passkey-flow-123"
 	testSessionToken     = "session-token-abc"
 	// nolint:gosec // G101: This is a test value, not an actual credential
@@ -57,7 +58,13 @@ func (suite *PasskeyAuthExecutorTestSuite) SetupTest() {
 		mock.Anything, mock.Anything, mock.Anything).Return(mockExec)
 
 	suite.executor = newPasskeyAuthExecutor(suite.mockFlowFactory, suite.mockAuthnProvider,
-		newAccessGuard(admitAllAccess(suite.T())))
+		newAccessGuard(admitAllAccess(suite.T())), testGateHostname)
+}
+
+// executorWithoutGateHost returns an executor whose deployment has no gate host to fall back to.
+func (suite *PasskeyAuthExecutorTestSuite) executorWithoutGateHost() *passkeyAuthExecutor {
+	return newPasskeyAuthExecutor(suite.mockFlowFactory, suite.mockAuthnProvider,
+		newAccessGuard(admitAllAccess(suite.T())), "")
 }
 
 func createMockPasskeyAuthExecutor(t *testing.T) providers.Executor {
@@ -193,15 +200,25 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_MissingUserID() 
 	assert.NotEmpty(suite.T(), resp.AdditionalData[runtimePasskeyChallenge])
 }
 
-func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_MissingRelyingPartyID() {
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_NoRelyingPartyIDUsesGateHost() {
 	ctx := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
 	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
-	ctx.NodeProperties = map[string]interface{}{} // Empty node properties
+	ctx.NodeProperties = map[string]interface{}{}
 
-	_, err := suite.executor.Execute(ctx)
+	suite.mockAuthnProvider.On("InitiateAuthentication", mock.Anything, passkey.CredentialType, mock.MatchedBy(
+		func(req *passkey.PasskeyAuthenticationStartRequest) bool {
+			return req.RelyingPartyID == testGateHostname
+		}), mock.Anything).Return(&passkey.PasskeyAuthenticationStartData{
+		SessionToken: testSessionToken,
+		PublicKeyCredentialRequestOptions: passkey.PublicKeyCredentialRequestOptions{
+			Challenge: "dGVzdC1jaGFsbGVuZ2U=",
+		},
+	}, nil)
 
-	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "relying party ID is not configured")
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_ServiceError_Client() {
@@ -501,15 +518,67 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStart_MissingUserI
 	assert.Equal(suite.T(), ErrUserIDRequiredForPasskeyReg.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
-func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStart_MissingRelyingPartyID() {
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStart_NoRelyingPartyIDUsesGateHost() {
 	ctx := createPasskeyNodeContext(passkeyExecutorModeRegStart, providers.FlowTypeRegistration)
 	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
-	ctx.NodeProperties = map[string]interface{}{} // Empty
+	ctx.NodeProperties = map[string]interface{}{}
 
-	_, err := suite.executor.Execute(ctx)
+	suite.mockAuthnProvider.On("InitiateEnrollment", mock.Anything, passkey.CredentialType, mock.MatchedBy(
+		func(req *passkey.PasskeyRegistrationStartRequest) bool {
+			return req.RelyingPartyID == testGateHostname && req.RelyingPartyName == testGateHostname
+		}), mock.Anything).Return(&passkey.PasskeyRegistrationStartData{
+		SessionToken: testSessionToken,
+		PublicKeyCredentialCreationOptions: passkey.PublicKeyCredentialCreationOptions{
+			Challenge: "cmVnaXN0cmF0aW9uLWNoYWxsZW5nZQ==",
+		},
+	}, nil)
 
-	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "relying party ID is not configured")
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_NoRelyingPartyIDOrGateHost() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	ctx.NodeProperties = map[string]interface{}{}
+
+	_, err := suite.executorWithoutGateHost().Execute(ctx)
+
+	assert.ErrorContains(suite.T(), err, "relying party ID is not configured")
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStart_NoRelyingPartyIDOrGateHost() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeRegStart, providers.FlowTypeRegistration)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	ctx.NodeProperties = map[string]interface{}{}
+
+	_, err := suite.executorWithoutGateHost().Execute(ctx)
+
+	assert.ErrorContains(suite.T(), err, "relying party ID is not configured")
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStart_NoRelyingPartyNameUsesApplicationName() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeRegStart, providers.FlowTypeRegistration)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	ctx.NodeProperties = map[string]interface{}{"relyingPartyId": testRelyingPartyID}
+	ctx.Application.Name = "My App"
+
+	suite.mockAuthnProvider.On("InitiateEnrollment", mock.Anything, passkey.CredentialType, mock.MatchedBy(
+		func(req *passkey.PasskeyRegistrationStartRequest) bool {
+			return req.RelyingPartyName == "My App"
+		}), mock.Anything).Return(&passkey.PasskeyRegistrationStartData{
+		SessionToken: testSessionToken,
+		PublicKeyCredentialCreationOptions: passkey.PublicKeyCredentialCreationOptions{
+			Challenge: "cmVnaXN0cmF0aW9uLWNoYWxsZW5nZQ==",
+		},
+	}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStart_ServiceError_Client() {
@@ -790,7 +859,7 @@ func (suite *PasskeyAuthExecutorTestSuite) TestGetRelyingPartyID_EmptyNodeProper
 
 	rpID := suite.executor.getRelyingPartyID(ctx)
 
-	assert.Empty(suite.T(), rpID)
+	assert.Equal(suite.T(), testGateHostname, rpID)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestGetRelyingPartyName_FromNodeProperties() {
@@ -873,7 +942,7 @@ func (suite *PasskeyAuthExecutorTestSuite) TestGetRelyingPartyID_InvalidType() {
 
 	rpID := suite.executor.getRelyingPartyID(ctx)
 
-	assert.Empty(suite.T(), rpID)
+	assert.Equal(suite.T(), testGateHostname, rpID)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestGetRelyingPartyID_EmptyStringValue() {
@@ -884,7 +953,7 @@ func (suite *PasskeyAuthExecutorTestSuite) TestGetRelyingPartyID_EmptyStringValu
 
 	rpID := suite.executor.getRelyingPartyID(ctx)
 
-	assert.Empty(suite.T(), rpID)
+	assert.Equal(suite.T(), testGateHostname, rpID)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestGetRelyingPartyName_InvalidType() {
