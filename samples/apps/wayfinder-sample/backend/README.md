@@ -69,5 +69,10 @@ Sample flights, hotels, and trips live in memory (`src/data.js`) and are reloade
 | `get_flight_bookings` | `booking:read`        | `GET /api/bookings/flights`   |
 | `create_booking`      | `booking:create`      | `POST /api/bookings`          |
 | `delete_all_bookings` | `booking:cancel`      | `DELETE /api/bookings/flights` |
+| `find_upgrade_options` | `upgrade:search` | — (direct MCP handler) |
+| `upgrade_booking` | `booking:upgrade` | — (direct MCP handler) |
+| `request_upgrade` | `booking:upgrade` | — (direct MCP handler) |
+| `get_pending_upgrade` | `upgrade:read` | — (direct MCP handler) |
+| `process_upgrade` | `upgrade:process` | — (direct MCP handler) |
 
 OpenAPI documentation is available in `openapi.yaml`.
