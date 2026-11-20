@@ -101,7 +101,7 @@ function dashboard(s) {
       t.access_token,
       ["sub", "act", "scope", "aud", "email", "username"],
       "Access token (on-behalf-of)",
-      "Because the client is an agent, this bearer token names John as sub and the Concierge as act (actor). It carries the booking scopes John's Playground Booking User role grants, and the user attributes userConfig.attributes allow-lists.",
+      "Because the client is an agent, this bearer token names John as sub and the Concierge as act (actor). It carries only the booking scopes John approves through consent from his Playground Booking User role, and the user attributes userConfig.attributes allow-lists.",
       changedByRefresh,
     ) +
     tokenSection({

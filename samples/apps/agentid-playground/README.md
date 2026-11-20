@@ -221,7 +221,7 @@ merge the subject token's existing actor. That is why step 2 exists.
 **This tab signs John in itself.** The chain starts with a person asking for something, so step 3
 runs its own login at `/chain/callback` and John consents to `openid booking:read booking:create`.
 The exchanges then narrow that to `booking:read` for the worker. Nothing is borrowed from the Acts
-for a customer tab.
+for a customer tab. On John's consent screen, enable the `booking:read` and `booking:create` permission toggles before selecting **Allow**.
 
 `npm run cli` is the exception: there is no browser, so it uses the Concierge's own token as the
 subject and labels it a stand-in. The `act` nesting is identical; only the subject differs.
