@@ -12,6 +12,8 @@ import type {
   Master,
   ResourceHistory,
   StoredValue,
+  StoredValuePage,
+  StoredValueQuery,
   ValueKind,
   ValueReference,
   Version,
@@ -21,8 +23,8 @@ import type {AutoApplySetting, Pipeline} from '../models/pipeline';
 import type {Project} from '../models/project';
 import type {ProjectStatus} from '../models/projectStatus';
 
-/** How many values a gateway's store answers with in one page. */
-const PAGE_SIZE = 100;
+/** The most values a gateway's store answers with in one page. */
+const MAX_PAGE_SIZE = 100;
 
 const gateway = (id: string): string => `/gateways/${encodeURIComponent(id)}`;
 const collectionOf = (kind: ValueKind): string => (kind === 'secret' ? 'secrets' : 'variables');
@@ -93,20 +95,20 @@ export default function useGatewaySource(): DeploySource {
         const query = new URLSearchParams({project, ...(from ? {from} : {})});
         return request<ProjectStatus>('GET', `${gateway(targetId)}/project-status?${query.toString()}`);
       },
-      values: async (targetId: string, kind: ValueKind): Promise<StoredValue[]> => {
+      listValues: async (targetId: string, kind: ValueKind, query: StoredValueQuery = {}): Promise<StoredValuePage> => {
         const collection = collectionOf(kind);
-        const values: StoredValue[] = [];
-        for (;;) {
-          const page = await request<Record<string, unknown>>(
-            'GET',
-            `${gateway(targetId)}/${collection}?limit=${PAGE_SIZE}&offset=${values.length}`,
-          );
-          const entries = (page[collection] as StoredValue[] | undefined) ?? [];
-          values.push(...entries);
-          if (entries.length === 0 || values.length >= Number(page['totalResults'] ?? values.length)) {
-            return values;
-          }
-        }
+        const params = new URLSearchParams({
+          limit: String(query.limit ?? MAX_PAGE_SIZE),
+          offset: String(query.offset ?? 0),
+        });
+        if (query.names && query.names.length > 0) params.set('names', query.names.join(','));
+        if (query.prefix) params.set('filter', `name sw "${query.prefix}"`);
+        const page = await request<Record<string, unknown>>(
+          'GET',
+          `${gateway(targetId)}/${collection}?${params.toString()}`,
+        );
+        const values = (page[collection] as StoredValue[] | undefined) ?? [];
+        return {values, totalResults: Number(page['totalResults'] ?? values.length)};
       },
       setValue: (targetId: string, kind: ValueKind, name: string, input: StoredValueInput): Promise<StoredValue> =>
         request<StoredValue>('PUT', `${gateway(targetId)}/${collectionOf(kind)}/${encodeURIComponent(name)}`, {

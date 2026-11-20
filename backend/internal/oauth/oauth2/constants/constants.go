@@ -107,6 +107,7 @@ const (
 	SessionDataKeyConsent string = "sessionDataKeyConsent"
 	ShowInsecureWarning   string = "showInsecureWarning"
 	AppID                 string = "applicationId"
+	Ref                   string = "ref"
 	ExecutionID           string = "executionId"
 )
 
@@ -374,14 +375,6 @@ var SurfaceableClientSystemClaims = map[string]bool{
 // OIDC subject types.
 const (
 	SubjectTypePublic string = "public"
-)
-
-// Token-exchange token family modes (oauth.token_exchange.token_family).
-const (
-	// TokenExchangeTokenFamilyNone issues an exchanged token with no token family id (independent).
-	TokenExchangeTokenFamilyNone string = "none"
-	// TokenExchangeTokenFamilyInherit copies the subject token's token family id onto the exchanged token.
-	TokenExchangeTokenFamilyInherit string = "inherit"
 )
 
 // User attribute constants.

@@ -47,6 +47,8 @@ Controls the <ProductName /> server's network settings and identity.
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
 | `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `import.timeout_seconds`, whichever is longer, since a tool can deploy or import. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
+| `gateway.unused_value_grace_seconds` | `3600` | A variable or secret the control plane named for a resource is removed from a gateway when it was last set longer ago than this many seconds, and nothing refers to it. After each apply, the control plane removes from that gateway's store the values with such a name that no resource that still exists, no version this deployment keeps and no master the gateway keeps refers to, and that were last set longer ago than this. The time counts from when the value was last set, so an old value goes at the first removal after its resource is deleted. A resource that exists keeps its values however long its deploy waits, so this only covers a value set for a resource while a removal runs. A value you named yourself is never removed. The gateway measures the age on its own clock when it removes a value, so a value below `1`, such as `0`, is raised to `1` with a warning at startup; a negative number turns the removal off. A gateway too old to remove values by age has nothing removed. See [Unused Values Are Removed](../guides/declarative-configurations/configuration-versions.mdx#unused-values-are-removed). |
+| `gateway.unused_value_sweep_interval_seconds` | `300` | The least number of seconds between two removals of unused values from the same gateway by one control plane node. Each removal reads the whole configuration, so applies in quick succession run one and skip the rest until this has passed; the next apply after it removes what the skipped ones would have. The time is kept in each node's memory, so with several nodes each removes on its own schedule, and a restart starts afresh. `0` removes after every apply. |
 | `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `gateway.apply_timeout_seconds`, whichever is longer. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 | `notification.template.store` | `composite` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
@@ -555,7 +557,6 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.revocation.token_family.on_explicit_revoke` | `true` | If `true`, revoking a token through `/oauth2/revoke` also revokes every other token of the same authorization grant |
 | `oauth.revocation.token_family.on_refresh_replay` | `true` | If `true`, presenting a refresh token that has already been rotated out revokes every token of that grant. Requires `oauth.refresh_token.renew_on_grant`, since a refresh token can only be replayed once it has been rotated |
 | `oauth.revocation.token_family.on_code_replay` | `true` | If `true`, redeeming an authorization code a second time revokes every token issued from that code |
-| `oauth.token_exchange.token_family` | `none` | Whether an exchanged token joins the subject token's authorization grant. `none` issues an independent token; `inherit` copies the subject token's token family, so revoking the grant also revokes the exchanged token |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
@@ -579,6 +580,10 @@ Set `oauth.client_assertion.max_lifetime` and `oauth.client_assertion.max_iat_ag
 
 :::note
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
+:::
+
+:::warning
+If you are upgrading from an earlier release, remove the `oauth.token_exchange` block from `deployment.yaml`. The server does not start while `deployment.yaml` has it. Tokens exchanged before the upgrade under the earlier default, `none`, carry no token family, so revoking the grant they came from does not revoke them. See [Where `tfid` Comes From](../../guides/protocols/oauth-oidc/token-revocation#where-tfid-comes-from).
 :::
 
 ## Flow Configuration
@@ -1228,7 +1233,7 @@ A declarative default takes precedence and locks the setting: while `defaultReso
 
 ## Flow Defaults
 
-Controls server-wide default flows and context expiry times for each flow type. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
+Controls server-wide default flows, context expiry times for each flow type, and where the sign-in page sends the user when it has no flow to continue. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
 
 Flow configuration uses the following fields. `selfFlow` uses only `expirySeconds`.
 
@@ -1236,6 +1241,7 @@ Flow configuration uses the following fields. `selfFlow` uses only `expirySecond
 |-------|-------------|
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
+| `defaultReturnUrl` | Where the sign-in page sends the user when it has no flow to continue and no application URL to return to, such as a bookmarked sign-in page. Must be an absolute `http` or `https` URL without credentials, otherwise the update is rejected with `SCF-1003`. It can't be the sign-in page itself, which ignores such a URL to avoid a redirect loop. When no value is in effect, the page asks the user to return to the application. A writable value overrides the one in `flow.yaml`, so clearing the writable value keeps a `flow.yaml` value in effect. |
 
 Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `agentOnboardingFlow`, and `adminAttributeVerificationFlow`.
 

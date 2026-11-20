@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -55,6 +56,34 @@ func (c *countingStore) DeleteSecret(context.Context, string) (bool, error) {
 	}
 	deleted := c.secret != nil
 	c.secret = nil
+	return deleted, nil
+}
+
+func (c *countingStore) DeleteVariables(_ context.Context, names []string, _ time.Duration) ([]string, error) {
+	if c.deleteErr != nil {
+		return nil, c.deleteErr
+	}
+	var deleted []string
+	for _, name := range names {
+		if c.variable != nil && c.variable.Name == name {
+			deleted = append(deleted, name)
+			c.variable = nil
+		}
+	}
+	return deleted, nil
+}
+
+func (c *countingStore) DeleteSecrets(_ context.Context, names []string, _ time.Duration) ([]string, error) {
+	if c.deleteErr != nil {
+		return nil, c.deleteErr
+	}
+	var deleted []string
+	for _, name := range names {
+		if c.secret != nil && c.secret.Name == name {
+			deleted = append(deleted, name)
+			c.secret = nil
+		}
+	}
 	return deleted, nil
 }
 
@@ -254,5 +283,62 @@ func TestNothingCachedForASecretHoldsItsValue(t *testing.T) {
 	}
 	if held.Name != "API_KEY" || !held.Exists {
 		t.Fatalf("the cached secret is wrong: %+v", held)
+	}
+}
+
+// A delete of many names drops each of them from the cache, so none keeps resolving, and passes the
+// names removed through.
+func TestADeleteOfManyNamesMakesTheNextReadsMiss(t *testing.T) {
+	ctx := context.Background()
+	vars, secrets := newTestCaches()
+	inner := &countingStore{variable: &Variable{Name: "DB_HOST", Value: heldValue},
+		secret: &Secret{Name: "API_KEY", Exists: true}}
+	store := newCacheBackedStore(inner, vars, secrets)
+	if _, err := store.GetVariable(ctx, "DB_HOST"); err != nil {
+		t.Fatalf("priming read: %v", err)
+	}
+	if _, err := store.GetSecret(ctx, "API_KEY"); err != nil {
+		t.Fatalf("priming read: %v", err)
+	}
+
+	deleted, err := store.DeleteVariables(ctx, []string{"DB_HOST", "OTHER"}, time.Duration(0))
+	if err != nil || len(deleted) != 1 || deleted[0] != "DB_HOST" {
+		t.Fatalf("delete of variables: %v, %v", deleted, err)
+	}
+	deleted, err = store.DeleteSecrets(ctx, []string{"API_KEY"}, time.Duration(0))
+	if err != nil || len(deleted) != 1 || deleted[0] != "API_KEY" {
+		t.Fatalf("delete of secrets: %v, %v", deleted, err)
+	}
+
+	if variable, _ := store.GetVariable(ctx, "DB_HOST"); variable != nil {
+		t.Fatal("a deleted variable was still served from the cache")
+	}
+	if secret, _ := store.GetSecret(ctx, "API_KEY"); secret != nil {
+		t.Fatal("a deleted secret was still served from the cache")
+	}
+	if inner.reads != 4 {
+		t.Fatalf("the database was read %d times, want the two priming reads and two misses", inner.reads)
+	}
+}
+
+// A failed delete of many names leaves the cache as it was.
+func TestAFailedDeleteOfManyNamesKeepsTheCache(t *testing.T) {
+	ctx := context.Background()
+	vars, secrets := newTestCaches()
+	inner := &countingStore{variable: &Variable{Name: "DB_HOST", Value: heldValue}}
+	store := newCacheBackedStore(inner, vars, secrets)
+	if _, err := store.GetVariable(ctx, "DB_HOST"); err != nil {
+		t.Fatalf("priming read: %v", err)
+	}
+	inner.deleteErr = errors.New("connection reset")
+
+	if _, err := store.DeleteVariables(ctx, []string{"DB_HOST"}, time.Duration(0)); err == nil {
+		t.Fatal("the failure was not passed through")
+	}
+	if _, err := store.GetVariable(ctx, "DB_HOST"); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if inner.reads != 1 {
+		t.Fatalf("the database was read %d times; the cache entry was dropped by a failed delete", inner.reads)
 	}
 }

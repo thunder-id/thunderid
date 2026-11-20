@@ -43,7 +43,8 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.port = newEntityStateProviderMock(s.T())
 	s.source = newAccountAccessSourceInterfaceMock(s.T())
 	s.now = time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
-	s.svc = newIdentityGovernanceService(s.port, s.source, transaction.NewNoOpTransactioner(), nil, nil, nil)
+	s.svc = newIdentityGovernanceService(s.port, s.source, transaction.NewNoOpTransactioner(), nil, nil, nil,
+		discardingBus(s.T()))
 	s.svc.now = func() time.Time { return s.now }
 	s.ctx = context.Background()
 }
@@ -53,7 +54,8 @@ func newTestService(t *testing.T, port entityStateProvider, cfg accountAccessVal
 	authorizer sysauthz.SystemAuthorizationServiceInterface) *identityGovernanceService {
 	source := newAccountAccessSourceInterfaceMock(t)
 	source.EXPECT().Current(mock.Anything).Return(cfg).Maybe()
-	return newIdentityGovernanceService(port, source, transaction.NewNoOpTransactioner(), notifier, authorizer, nil)
+	return newIdentityGovernanceService(port, source, transaction.NewNoOpTransactioner(), notifier, authorizer, nil,
+		discardingBus(t))
 }
 
 // admittedFailure returns RecordFailure's error and requires an attempt that read cleanly to be
@@ -2784,7 +2786,7 @@ func (s *ServiceTestSuite) TestReadEntityAccessReportsCurrentStatus() {
 				source.EXPECT().Current(s.ctx).Return(cfg).Once()
 			}
 			svc := newIdentityGovernanceService(newEntityStateProviderMock(s.T()), source,
-				transaction.NewNoOpTransactioner(), nil, nil, nil)
+				transaction.NewNoOpTransactioner(), nil, nil, nil, discardingBus(s.T()))
 			svc.now = func() time.Time { return s.now }
 			stored := RuntimeAttributes{AccessState: AccessState{LastLoginAt: "2026-09-07T10:00:00Z"}}
 			if tc.unlockAt != "" {

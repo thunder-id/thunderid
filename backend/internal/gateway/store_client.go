@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,6 +84,37 @@ const (
 // maxNamesPerLookup matches the most names a gateway's store answers for in one call.
 const maxNamesPerLookup = 100
 
+// maxNamesQueryBytes bounds the names= parameter of one call to a gateway's store, as it is sent: each
+// name escaped and a %2C between two. Many proxies refuse a request line past 8 KB with a 414 or a
+// 400, and a name may run to 255 characters, so a hundred of them would not fit; a batch stays well
+// short of that, leaving room for the rest of the request line.
+const maxNamesQueryBytes = 6 * 1024
+
+// nameBatches splits names into the batches a call to the store takes: at most maxNamesPerLookup
+// names each, whose names= parameter fits in maxNamesQueryBytes. A name too long to fit on its own,
+// which a valid name never is, goes alone.
+func nameBatches(names []string) [][]string {
+	var batches [][]string
+	batch := make([]string, 0, min(len(names), maxNamesPerLookup))
+	size := 0
+	for _, name := range names {
+		cost := len(url.QueryEscape(name))
+		if len(batch) > 0 {
+			cost += len("%2C")
+		}
+		if len(batch) == maxNamesPerLookup || (len(batch) > 0 && size+cost > maxNamesQueryBytes) {
+			batches = append(batches, batch)
+			batch, size, cost = make([]string, 0, maxNamesPerLookup), 0, len(url.QueryEscape(name))
+		}
+		batch = append(batch, name)
+		size += cost
+	}
+	if len(batch) > 0 {
+		batches = append(batches, batch)
+	}
+	return batches
+}
+
 func (c *gatewayClient) ListVariables(ctx context.Context, gw *Gateway, key string,
 	query StoreListQuery) (*variablestore.VariableListResponse, error) {
 	var listing variablestore.VariableListResponse
@@ -127,6 +159,15 @@ func (c *gatewayClient) SetVariable(ctx context.Context, gw *Gateway, key, name 
 func (c *gatewayClient) DeleteVariable(ctx context.Context, gw *Gateway, key, name string) error {
 	_, err := c.callStore(ctx, gw, key, http.MethodDelete, itemPath(collectionVariables, name), nil, nil, nil)
 	return err
+}
+
+// DeleteVariables removes the named variables, a batch nameBatches makes, in one call, and
+// returns those the gateway removed. A positive unchangedFor asks the gateway to remove only those
+// last set longer ago than it, which the gateway checks on its own clock in the statement that removes
+// them. A gateway too old to remove many at once refuses with a 404 or a 405.
+func (c *gatewayClient) DeleteVariables(ctx context.Context, gw *Gateway, key string,
+	names []string, unchangedFor time.Duration) ([]string, error) {
+	return c.deleteMany(ctx, gw, key, collectionVariables, names, unchangedFor)
 }
 
 func (c *gatewayClient) ListSecrets(ctx context.Context, gw *Gateway, key string,
@@ -175,13 +216,33 @@ func (c *gatewayClient) DeleteSecret(ctx context.Context, gw *Gateway, key, name
 	return err
 }
 
+// DeleteSecrets removes the named secrets in one call, as DeleteVariables does variables.
+func (c *gatewayClient) DeleteSecrets(ctx context.Context, gw *Gateway, key string,
+	names []string, unchangedFor time.Duration) ([]string, error) {
+	return c.deleteMany(ctx, gw, key, collectionSecrets, names, unchangedFor)
+}
+
+func (c *gatewayClient) deleteMany(ctx context.Context, gw *Gateway, key, collection string,
+	names []string, unchangedFor time.Duration) ([]string, error) {
+	var answer variablestore.DeleteResponse
+	query := url.Values{"names": []string{strings.Join(names, ",")}}
+	if unchangedFor > 0 {
+		// Whole seconds, rounded up, so a value is never removed younger than asked.
+		seconds := (unchangedFor + time.Second - 1) / time.Second
+		query.Set("unchangedFor", strconv.FormatInt(int64(seconds), 10))
+	}
+	if _, err := c.callStore(ctx, gw, key, http.MethodDelete, "/"+collection, query, nil, &answer); err != nil {
+		return nil, err
+	}
+	return answer.Deleted, nil
+}
+
 // HeldValues asks the gateway's store for the named variables and secrets, in batches it answers
 // for, and returns those it holds with when each was last set.
 func (c *gatewayClient) HeldValues(ctx context.Context, gw *Gateway, key string,
 	variables, secrets []string) (*HeldValues, error) {
 	held := &HeldValues{Variables: map[string]time.Time{}, Secrets: map[string]time.Time{}}
-	for start := 0; start < len(variables); start += maxNamesPerLookup {
-		batch := variables[start:min(start+maxNamesPerLookup, len(variables))]
+	for _, batch := range nameBatches(variables) {
 		listing, err := c.ListVariables(ctx, gw, key, lookupOf(batch))
 		if err != nil {
 			return nil, err
@@ -190,8 +251,7 @@ func (c *gatewayClient) HeldValues(ctx context.Context, gw *Gateway, key string,
 			held.Variables[variable.Name] = asTime(variable.UpdatedAt)
 		}
 	}
-	for start := 0; start < len(secrets); start += maxNamesPerLookup {
-		batch := secrets[start:min(start+maxNamesPerLookup, len(secrets))]
+	for _, batch := range nameBatches(secrets) {
 		listing, err := c.ListSecrets(ctx, gw, key, lookupOf(batch))
 		if err != nil {
 			return nil, err

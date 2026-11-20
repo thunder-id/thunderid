@@ -75,3 +75,6 @@ var errNoServerConfigService = errors.New("identity governance requires a server
 
 // errNoDBProvider is returned when the service is built without a database provider.
 var errNoDBProvider = errors.New("identity governance requires a database provider")
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("identity governance requires an event bus")

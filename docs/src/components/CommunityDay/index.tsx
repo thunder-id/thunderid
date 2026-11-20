@@ -45,8 +45,10 @@ import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
 
 export interface CommunityDaySpeaker {
   name: string;
-  /** GitHub username, used for the avatar. */
+  /** GitHub username, used for the avatar and profile link. */
   github: string;
+  /** Site path of a photo to use instead of the GitHub avatar. */
+  photo?: string;
   /** Role or affiliation shown under the name. `{{ProductName}}` is replaced. */
   affiliation?: string;
   /** Short bio shown when the speaker chip is clicked. `{{ProductName}}` is replaced. */
@@ -586,12 +588,13 @@ function chipSx(t: HomeTokens, dashed = false) {
   } as const;
 }
 
-function SpeakerPhoto({github, size}: {github: string; size: number}): JSX.Element {
+function SpeakerPhoto({speaker, size}: {speaker: CommunityDaySpeaker; size: number}): JSX.Element {
   const t = useHomeTokens();
+  const photoUrl = useBaseUrl(speaker.photo ?? '');
   return (
     <Box
       component="img"
-      src={`https://github.com/${github}.png?size=160`}
+      src={speaker.photo ? photoUrl : `https://github.com/${speaker.github}.png?size=160`}
       alt=""
       loading="lazy"
       width={size}
@@ -650,7 +653,7 @@ function Speaker({
           [REDUCED_MOTION]: {'&:hover': {transform: 'none'}},
         }}
       >
-        <SpeakerPhoto github={speaker.github} size={36} />
+        <SpeakerPhoto speaker={speaker} size={36} />
         <Box component="span" sx={{display: 'block', minWidth: 0}}>
           <Typography
             component="span"
@@ -707,7 +710,7 @@ function Speaker({
         </IconButton>
 
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1.75, pr: 4}}>
-          <SpeakerPhoto github={speaker.github} size={56} />
+          <SpeakerPhoto speaker={speaker} size={56} />
           <Box sx={{minWidth: 0}}>
             <Typography
               id={titleId}

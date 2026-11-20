@@ -185,6 +185,78 @@ describe('autoWireWidget', () => {
     });
   });
 
+  describe('account linking on a flow with several federated executors', () => {
+    const linkingAutoWire: AutoWireMeta = {
+      entry: {stepRef: 'LINKING_EXECUTOR_STEP_ID'},
+      exit: {stepRef: 'LINKING_EXECUTOR_STEP_ID', handle: 'success'},
+      spliceAfter: [{executorName: 'GoogleOIDCAuthExecutor'}, {executorName: 'GithubOAuthExecutor'}],
+      spliceBefore: [{executorName: 'ProvisioningExecutor'}, {executorName: 'AuthAssertExecutor'}],
+    };
+
+    it('attaches a second linking widget after the federated executor that has none yet', () => {
+      // Google already leads into a linking widget; GitHub still goes straight to provisioning.
+      const preExisting: Node[] = [
+        executorNode('google', 'GoogleOIDCAuthExecutor', 'linking_a'),
+        executorNode('github', 'GithubOAuthExecutor', 'provisioning'),
+        executorNode('linking_a', 'AccountLinkingExecutor', 'provisioning'),
+        executorNode('provisioning', 'ProvisioningExecutor'),
+      ];
+      const resultNodes: Node[] = [...preExisting, executorNode('linking_b', 'AccountLinkingExecutor')];
+      const resultEdges: Edge[] = [
+        edge('google', 'linking_a'),
+        edge('github', 'provisioning'),
+        edge('linking_a', 'provisioning'),
+      ];
+
+      const {nodes, edges} = autoWireWidget(
+        preExisting,
+        resultNodes,
+        resultEdges,
+        linkingAutoWire,
+        new Map([['LINKING_EXECUTOR_STEP_ID', 'linking_b']]),
+        EDGE_STYLE,
+      );
+
+      expect(has(edges, 'google', 'linking_a')).toBe(true);
+      expect(has(edges, 'github', 'linking_b')).toBe(true);
+      expect(has(edges, 'github', 'provisioning')).toBe(false);
+      expect(has(edges, 'linking_b', 'provisioning')).toBe(true);
+      expect(onSuccessOf(nodes, 'google')).toBe('linking_a');
+      expect(onSuccessOf(nodes, 'github')).toBe('linking_b');
+    });
+
+    it('leaves the entry unconnected when every federated executor already has a widget after it', () => {
+      const preExisting: Node[] = [
+        executorNode('google', 'GoogleOIDCAuthExecutor', 'linking_a'),
+        executorNode('github', 'GithubOAuthExecutor', 'linking_b'),
+        executorNode('linking_a', 'AccountLinkingExecutor', 'provisioning'),
+        executorNode('linking_b', 'AccountLinkingExecutor', 'provisioning'),
+        executorNode('provisioning', 'ProvisioningExecutor'),
+      ];
+      const resultNodes: Node[] = [...preExisting, executorNode('linking_c', 'AccountLinkingExecutor')];
+      const resultEdges: Edge[] = [
+        edge('google', 'linking_a'),
+        edge('github', 'linking_b'),
+        edge('linking_a', 'provisioning'),
+        edge('linking_b', 'provisioning'),
+      ];
+
+      const {edges} = autoWireWidget(
+        preExisting,
+        resultNodes,
+        resultEdges,
+        linkingAutoWire,
+        new Map([['LINKING_EXECUTOR_STEP_ID', 'linking_c']]),
+        EDGE_STYLE,
+      );
+
+      expect(has(edges, 'google', 'linking_a')).toBe(true);
+      expect(has(edges, 'github', 'linking_b')).toBe(true);
+      expect(edges.some((e: Edge) => e.target === 'linking_c')).toBe(false);
+      expect(has(edges, 'linking_c', 'provisioning')).toBe(true);
+    });
+  });
+
   describe('reuse / dedup (federation shape)', () => {
     const federationAutoWire: AutoWireMeta = {
       reuse: [{stepRef: 'AUTH_ASSERT_EXECUTOR_ID', matchBy: 'executorName', match: 'AuthAssertExecutor'}],

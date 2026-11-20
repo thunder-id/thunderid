@@ -155,6 +155,22 @@ export interface DesignConfig {
 }
 
 /**
+ * One item of the Gate sign-in slogan panel.
+ *
+ * @public
+ */
+export interface SloganItemConfig {
+  /** Heading of the item. */
+  title: string;
+
+  /** Optional supporting text under the title. */
+  description?: string;
+
+  /** Optional icon image path, relative to the Gate base path. */
+  icon?: string;
+}
+
+/**
  * Branding configuration interface that defines product name and other branding-related settings.
  *
  * @public
@@ -176,6 +192,16 @@ export interface BrandConfig {
    * Design configuration for theming and UI customization.
    */
   design?: DesignConfig;
+
+  /**
+   * Overrides the content shown beside the Gate sign-in card when no application design applies.
+   * A string is a single title. An object is a single item. An array is a list of items.
+   * When omitted or empty, the built-in ThunderID items are shown.
+   * @example "Sign in to Acme"
+   * @example { title: "Fast", description: "Sign in quickly.", icon: "assets/images/fast.svg" }
+   * @example [{ title: "Fast", description: "Sign in quickly.", icon: "assets/images/fast.svg" }]
+   */
+  slogan?: string | SloganItemConfig | SloganItemConfig[];
 }
 
 /**

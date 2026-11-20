@@ -115,6 +115,9 @@ func (s *StoreTestSuite) TestSecretQueriesNeverSelectTheValue() {
 	}{
 		{"get", querySecretExists.Query},
 		{"list", queryListSecrets.Query},
+		{"list on sqlite", queryListSecrets.SQLiteQuery},
+		{"count", queryCountSecrets.Query},
+		{"count on sqlite", queryCountSecrets.SQLiteQuery},
 	} {
 		s.NotContains(query.sql, "VALUE", "the %s query must not read a secret's value", query.name)
 	}
@@ -132,65 +135,114 @@ func (s *StoreTestSuite) TestInsertSecretStoresWhateverItIsGiven() {
 	s.True(inserted)
 }
 
-func (s *StoreTestSuite) TestListVariablesPagesAndReportsTheTotal() {
+// listArgsFor is what the list and count statements are given for a query in the test deployment.
+func listArgsFor(names interface{}, equals, prefix, pattern string) []interface{} {
+	return []interface{}{testDeploymentID, names, equals, prefix, pattern}
+}
+
+func (s *StoreTestSuite) expectCount(query dbmodel.DBQuery, args []interface{}, total int64) {
+	s.dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return([]map[string]interface{}{{"total": total}}, nil).Once()
+}
+
+func (s *StoreTestSuite) TestListVariablesPagesInTheDatabase() {
 	s.expectDBClient()
-	rows := []map[string]interface{}{
-		{"name": "C"}, {"name": "A"}, {"name": "B"}, {"name": "D"},
-	}
-	s.dbClientMock.On("QueryContext", mock.Anything, queryListVariables, testDeploymentID).
-		Return(rows, nil).Once()
+	args := listArgsFor(nil, "", "", "")
+	s.expectCount(queryCountVariables, args, 4)
+	s.dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, queryListVariables},
+		append(args, 2, 1)...)...).
+		Return([]map[string]interface{}{{"name": "B"}, {"name": "C"}}, nil).Once()
 
 	page, total, err := s.store.ListVariables(context.Background(), listQuery{limit: 2, offset: 1})
 
 	s.Require().NoError(err)
 	s.Equal(4, total)
 	s.Require().Len(page, 2)
-	// Sorted before paging, so a page is stable across requests.
 	s.Equal("B", page[0].Name)
 	s.Equal("C", page[1].Name)
 }
 
-func (s *StoreTestSuite) TestListVariablesNarrowsByName() {
+func (s *StoreTestSuite) TestListVariablesPassesAnEscapedPrefix() {
 	s.expectDBClient()
-	rows := []map[string]interface{}{{"name": "DB_HOST"}, {"name": "DB_PORT"}, {"name": "API_URL"}}
-	s.dbClientMock.On("QueryContext", mock.Anything, queryListVariables, testDeploymentID).
-		Return(rows, nil).Once()
+	args := listArgsFor(nil, "", "DB_", `DB\_%`)
+	s.expectCount(queryCountVariables, args, 2)
+	s.dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, queryListVariables},
+		append(args, 10, 0)...)...).
+		Return([]map[string]interface{}{{"name": "DB_HOST"}, {"name": "DB_PORT"}}, nil).Once()
 
 	page, total, err := s.store.ListVariables(context.Background(),
 		listQuery{limit: 10, namePrefix: "DB_"})
 
 	s.Require().NoError(err)
-	// The total counts what the query matched, not what the table holds.
 	s.Equal(2, total)
 	s.Len(page, 2)
 }
 
-func (s *StoreTestSuite) TestListSecretsNarrowsByNamesRequested() {
+func (s *StoreTestSuite) TestListSecretsPassesTheNamesAsOneJSONArray() {
 	s.expectDBClient()
-	rows := []map[string]interface{}{{"name": "A"}, {"name": "B"}, {"name": "C"}}
-	s.dbClientMock.On("QueryContext", mock.Anything, queryListSecrets, testDeploymentID).
-		Return(rows, nil).Once()
+	args := listArgsFor(`["A","C","NOT_STORED"]`, "", "", "")
+	s.expectCount(queryCountSecrets, args, 2)
+	s.dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, queryListSecrets},
+		append(args, 10, 0)...)...).
+		Return([]map[string]interface{}{{"name": "A"}, {"name": "C"}}, nil).Once()
 
 	page, total, err := s.store.ListSecrets(context.Background(),
 		listQuery{limit: 10, names: []string{"A", "C", "NOT_STORED"}})
 
 	s.Require().NoError(err)
-	// A requested name with nothing stored is simply absent, not an error.
 	s.Equal(2, total)
 	s.Require().Len(page, 2)
 	s.True(page[0].Exists)
 }
 
+func (s *StoreTestSuite) TestListSecretsPassesAnExactName() {
+	s.expectDBClient()
+	s.expectCount(queryCountSecrets, listArgsFor(nil, "A", "", ""), 0)
+
+	page, total, err := s.store.ListSecrets(context.Background(), listQuery{limit: 10, nameEquals: "A"})
+
+	s.Require().NoError(err)
+	s.Equal(0, total)
+	s.Empty(page)
+}
+
+// The count says the page is past the end, so the page is never read.
 func (s *StoreTestSuite) TestAnOffsetPastTheEndIsAnEmptyPage() {
 	s.expectDBClient()
-	s.dbClientMock.On("QueryContext", mock.Anything, queryListVariables, testDeploymentID).
-		Return([]map[string]interface{}{{"name": "A"}}, nil).Once()
+	s.expectCount(queryCountVariables, listArgsFor(nil, "", "", ""), 1)
 
 	page, total, err := s.store.ListVariables(context.Background(), listQuery{limit: 10, offset: 500})
 
 	s.Require().NoError(err)
 	s.Equal(1, total)
+	s.NotNil(page)
 	s.Empty(page)
+}
+
+func TestLikePrefixEscapesWildcards(t *testing.T) {
+	for in, want := range map[string]string{
+		"DB":  "DB%",
+		"DB_": `DB\_%`,
+		"A%B": `A\%B%`,
+		`A\B`: `A\\B%`,
+		`_%\`: `\_\%\\%`,
+	} {
+		if got := likePrefix(in); got != want {
+			t.Errorf("likePrefix(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRowIntReadsDriverShapes(t *testing.T) {
+	for _, value := range []interface{}{int64(7), 7, int32(7), float64(7), []byte("7"), "7"} {
+		got, err := rowInt(map[string]interface{}{"TOTAL": value}, "total")
+		if err != nil || got != 7 {
+			t.Errorf("rowInt(%T) = %d, %v", value, got, err)
+		}
+	}
+	if _, err := rowInt(map[string]interface{}{}, "total"); err == nil {
+		t.Error("expected an error for a missing count")
+	}
 }
 
 // The insert decides. One row inserted means the name was free, so this created it.
@@ -431,7 +483,10 @@ func (s *StoreTestSuite) TestEveryWriteReportsADatabaseFailure() {
 
 func (s *StoreTestSuite) TestListReportsADatabaseFailure() {
 	s.expectDBClient()
-	s.dbClientMock.On("QueryContext", mock.Anything, queryListVariables, testDeploymentID).
+	args := listArgsFor(nil, "", "", "")
+	s.expectCount(queryCountVariables, args, 3)
+	s.dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, queryListVariables},
+		append(args, 10, 0)...)...).
 		Return(nil, errors.New("timeout")).Once()
 
 	_, _, err := s.store.ListVariables(context.Background(), listQuery{limit: 10})
@@ -440,15 +495,16 @@ func (s *StoreTestSuite) TestListReportsADatabaseFailure() {
 	s.Contains(err.Error(), "failed to list variables")
 }
 
-func (s *StoreTestSuite) TestListSecretsReportsADatabaseFailure() {
+func (s *StoreTestSuite) TestListSecretsReportsACountFailure() {
 	s.expectDBClient()
-	s.dbClientMock.On("QueryContext", mock.Anything, queryListSecrets, testDeploymentID).
+	s.dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, queryCountSecrets},
+		listArgsFor(nil, "", "", "")...)...).
 		Return(nil, errors.New("timeout")).Once()
 
 	_, _, err := s.store.ListSecrets(context.Background(), listQuery{limit: 10})
 
 	s.Require().Error(err)
-	s.Contains(err.Error(), "failed to list secrets")
+	s.Contains(err.Error(), "failed to count secrets")
 }
 
 func (s *StoreTestSuite) TestGetSecretReportsADatabaseFailure() {
@@ -534,4 +590,49 @@ func (s *StoreTestSuite) TestGetSecretValueReportsAFailedRead() {
 	_, _, err := s.store.GetSecretValue(context.Background(), "DB_PASSWORD")
 
 	s.Error(err)
+}
+
+// A delete of many names is one statement, its names one JSON array, then the deployment and no time
+// bound, and answers with the names it removed.
+func (s *StoreTestSuite) TestDeleteVariablesIsOneDeploymentScopedStatement() {
+	s.expectDBClient()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryDeleteVariables, `["A","B"]`, testDeploymentID, nil).
+		Return([]map[string]interface{}{{"name": "A"}}, nil).Once()
+
+	deleted, err := s.store.DeleteVariables(context.Background(), []string{"A", "B"}, time.Duration(0))
+
+	s.Require().NoError(err)
+	s.Equal([]string{"A"}, deleted)
+}
+
+// An age goes to the statement as whole seconds, rounded up so a value is never removed younger than
+// it, for the database to compare against its own clock.
+func (s *StoreTestSuite) TestDeleteBoundIsWholeSeconds() {
+	s.expectDBClient()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryDeleteSecrets, `["S"]`, testDeploymentID,
+		int64(91)).Return([]map[string]interface{}{}, nil).Once()
+
+	deleted, err := s.store.DeleteSecrets(context.Background(), []string{"S"}, 90*time.Second+time.Millisecond)
+
+	s.Require().NoError(err)
+	s.Empty(deleted)
+}
+
+func (s *StoreTestSuite) TestDeleteSecretsWrapsAQueryFailure() {
+	s.expectDBClient()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryDeleteSecrets, `["S"]`, testDeploymentID, nil).
+		Return(nil, errors.New("connection reset")).Once()
+
+	_, err := s.store.DeleteSecrets(context.Background(), []string{"S"}, time.Duration(0))
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to delete secrets")
+}
+
+// No names is nothing to delete, and the database is not asked.
+func (s *StoreTestSuite) TestDeleteOfNoNamesAsksNothing() {
+	deleted, err := s.store.DeleteVariables(context.Background(), nil, time.Duration(0))
+
+	s.Require().NoError(err)
+	s.Empty(deleted)
 }

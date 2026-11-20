@@ -106,7 +106,7 @@ var changeCapture = gateway.NewChangeCapture()
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface,
-	*mcpsdk.Server) {
+	*mcpsdk.Server, gateway.StopperInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -262,7 +262,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Identity governance derives the status management reads report. The Control Plane sends no lock
 	// email.
 	governanceService, _, err := identitygovernance.Initialize(dbprovider.GetDBProvider(), entityService,
-		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc)
+		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
@@ -440,8 +440,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters, changeCapture,
-		serverConfigService, projectService, auditBus)
+	gatewayService, gatewayStopper, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters,
+		changeCapture, serverConfigService, projectService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -485,7 +485,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService, mcpServer
+	return jwtService, runtimeCryptoSvc, importService, mcpServer, gatewayStopper
 }
 
 // initializeFlowValidation builds the flow services needed to validate a flow definition, without

@@ -6,6 +6,7 @@ package variablestore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
@@ -26,6 +27,11 @@ type VariableServiceInterface interface {
 	UpdateVariable(ctx context.Context, name string, request VariableUpdateRequest) (
 		*Variable, bool, *common.ServiceError)
 	DeleteVariable(ctx context.Context, name string) *common.ServiceError
+	// DeleteVariables removes the named variables, 1 to 100 of them, and returns those it removed. A
+	// name that held nothing is not an error, and is absent from the answer. A positive unchangedFor
+	// removes only a variable last set longer ago than it, by the store's clock, when it is removed; a
+	// younger one is kept and absent too.
+	DeleteVariables(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, *common.ServiceError)
 }
 
 // SecretServiceInterface is the secrets half of the store.
@@ -42,6 +48,9 @@ type SecretServiceInterface interface {
 	UpdateSecret(ctx context.Context, name string, request SecretUpdateRequest) (
 		*Secret, bool, *common.ServiceError)
 	DeleteSecret(ctx context.Context, name string) *common.ServiceError
+	// DeleteSecrets removes the named secrets, 1 to 100 of them, and returns those it removed, bounded by
+	// unchangedFor as DeleteVariables is.
+	DeleteSecrets(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, *common.ServiceError)
 }
 
 // ServiceInterface is both halves, which is what the HTTP layer registers: the two collections are
@@ -152,6 +161,15 @@ func (s *service) DeleteVariable(ctx context.Context, name string) *common.Servi
 	return svcErr
 }
 
+// DeleteVariables removes the named variables in one statement. Each one removed is audited as a
+// delete of it alone would be; a name that held nothing is not, as with DeleteVariable.
+func (s *service) DeleteVariables(ctx context.Context, names []string,
+	unchangedFor time.Duration) ([]string, *common.ServiceError) {
+	deleted, svcErr := s.deleteVariables(ctx, names, unchangedFor)
+	s.publishDeletes(ctx, variableDelete, names, deleted, svcErr)
+	return deleted, svcErr
+}
+
 // CreateSecret stores a secret. Its audit event records the write, not the read that builds the response.
 func (s *service) CreateSecret(ctx context.Context, request SecretRequest) (
 	*Secret, *common.ServiceError) {
@@ -221,6 +239,14 @@ func (s *service) DeleteSecret(ctx context.Context, name string) *common.Service
 	}
 	s.publishEvent(ctx, secretDelete, name, svcErr)
 	return svcErr
+}
+
+// DeleteSecrets removes the named secrets in one statement, audited as DeleteVariables is.
+func (s *service) DeleteSecrets(ctx context.Context, names []string,
+	unchangedFor time.Duration) ([]string, *common.ServiceError) {
+	deleted, svcErr := s.deleteSecrets(ctx, names, unchangedFor)
+	s.publishDeletes(ctx, secretDelete, names, deleted, svcErr)
+	return deleted, svcErr
 }
 
 func (s *service) ResolveVariable(ctx context.Context, name string) (string, bool, *common.ServiceError) {
@@ -316,6 +342,19 @@ func (s *service) deleteVariable(ctx context.Context, name string) (bool, *commo
 	return deleted, nil
 }
 
+// deleteVariables validates the names and removes those held, returning the names removed.
+func (s *service) deleteVariables(ctx context.Context, names []string,
+	unchangedFor time.Duration) ([]string, *common.ServiceError) {
+	if svcErr := validateNames(names); svcErr != nil {
+		return nil, svcErr
+	}
+	deleted, err := s.store.DeleteVariables(ctx, names, unchangedFor)
+	if err != nil {
+		return nil, s.unexpected(ctx, "failed to delete variables", err)
+	}
+	return deleted, nil
+}
+
 // createSecret validates, seals and inserts a secret.
 func (s *service) createSecret(ctx context.Context, request SecretRequest) *common.ServiceError {
 	if svcErr := validateName(request.Name); svcErr != nil {
@@ -385,6 +424,35 @@ func (s *service) deleteSecret(ctx context.Context, name string) (bool, *common.
 		return false, s.unexpected(ctx, "failed to delete secret", err)
 	}
 	return deleted, nil
+}
+
+// deleteSecrets validates the names and removes those held, returning the names removed.
+func (s *service) deleteSecrets(ctx context.Context, names []string,
+	unchangedFor time.Duration) ([]string, *common.ServiceError) {
+	if svcErr := validateNames(names); svcErr != nil {
+		return nil, svcErr
+	}
+	deleted, err := s.store.DeleteSecrets(ctx, names, unchangedFor)
+	if err != nil {
+		return nil, s.unexpected(ctx, "failed to delete secrets", err)
+	}
+	return deleted, nil
+}
+
+// publishDeletes publishes the delete event of each name a delete of many names removed. A failed
+// attempt publishes a failed delete for each name asked for, as a failed delete of one name does; past
+// the most names one call takes nothing reached the store, and only that many are recorded.
+func (s *service) publishDeletes(ctx context.Context, change auditedChange, names, deleted []string,
+	svcErr *common.ServiceError) {
+	if svcErr != nil {
+		for _, name := range names[:min(len(names), maxNamesPerQuery)] {
+			s.publishEvent(ctx, change, name, svcErr)
+		}
+		return
+	}
+	for _, name := range deleted {
+		s.publishEvent(ctx, change, name, nil)
+	}
 }
 
 // publishEvent publishes the audit event of an attempt on the variable or secret named name. The name is

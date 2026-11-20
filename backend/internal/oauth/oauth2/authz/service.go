@@ -627,6 +627,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	queryParams := make(map[string]string)
 	queryParams[oauth2const.AuthID] = identifier
 	queryParams[oauth2const.AppID] = app.ID
+	if ref := utils.EncodeURLSafeID(app.ID); ref != "" {
+		queryParams[oauth2const.Ref] = ref
+	}
 	queryParams[oauth2const.ExecutionID] = executionID
 	if oauthParams.UILocales != "" {
 		queryParams[oauth2const.RequestParamUILocales] = oauthParams.UILocales
