@@ -53,6 +53,12 @@ func (suite *JWTBearerGrantHandlerTestSuite) SetupTest() {
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	// A request that resolves no explicit resource (empty identifier) falls back to the deployment
 	// default RS, as the default-aware provider does.
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return suite.mockResourceService.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(&providers.ResourceServer{
 			ID:         testJWTBearerDefaultRSID,
@@ -430,6 +436,12 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionResource_A
 // with invalid_target.
 func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionNoResource_NoDefault_InvalidTarget() {
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return rsvc.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	handler := &jwtBearerGrantHandler{

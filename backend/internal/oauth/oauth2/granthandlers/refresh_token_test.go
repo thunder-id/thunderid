@@ -102,6 +102,13 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	suite.mockRefreshRevoker = revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T())
 	suite.mockCriteriaRevoker = revocationmock.NewCriteriaRevokerInterfaceMock(suite.T())
 
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return suite.mockResourceService.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
+
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}

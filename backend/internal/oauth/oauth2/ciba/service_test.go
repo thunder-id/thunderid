@@ -98,6 +98,12 @@ func (suite *CIBAServiceTestSuite) expectStoreAddSuccess() {
 // expectDefaultResourceServer stubs the resolver path for a request without an explicit resource:
 // the configured default resolves to the given RS and its permissions validate as requested.
 func (suite *CIBAServiceTestSuite) expectDefaultResourceServer(rsID, identifier string) {
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return suite.mockResourceSvc.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(&providers.ResourceServer{ID: rsID, Identifier: identifier}, nil)
 	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, rsID, mock.Anything).
@@ -275,7 +281,8 @@ func (suite *CIBAServiceTestSuite) TestInitiate_StripsStandardScopesFromRuntime(
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_ExplicitResourceBindsAndDownscopes() {
-	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(
+		mock.Anything, "https://api.example.com", mock.Anything).
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
 	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
 		Return([]string{}, nil)
@@ -298,7 +305,8 @@ func (suite *CIBAServiceTestSuite) TestInitiate_ExplicitResourceBindsAndDownscop
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_SetsResourceServerIDInRuntimeData() {
-	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(
+		mock.Anything, "https://api.example.com", mock.Anything).
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
 	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
 		Return([]string{}, nil)
@@ -354,6 +362,12 @@ func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceWithPermissionUse
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceNoDefaultRejects() {
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			ctx context.Context, identifier string, _ []string,
+		) (*providers.ResourceServer, *tidcommon.ServiceError) {
+			return suite.mockResourceSvc.GetResourceServerByIdentifier(ctx, identifier)
+		}).Maybe()
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 
@@ -368,7 +382,8 @@ func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceNoDefaultRejects(
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_UnknownResourceRejects() {
-	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://nope.example.com").
+	suite.mockResourceSvc.EXPECT().GetResourceServerByPermissions(
+		mock.Anything, "https://nope.example.com", mock.Anything).
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RS-1001"})
 
 	resp, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
