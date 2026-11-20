@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {HiddenResourcesProvider, ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, HiddenResourcesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -119,6 +119,71 @@ function replacementCheck(sent: unknown[]): void {
 }
 
 describe('ApplyPanel', () => {
+  it("says why the missing values are locked to an admin who may not set the gateway's values", async () => {
+    http = fakeHttp({
+      'POST /gateways/gw-dev/apply': () => ({
+        gatewayId: 'gw-dev',
+        dryRun: true,
+        diff: {
+          toVersion: version.version,
+          changes: [
+            {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'added'},
+          ],
+        },
+        missing: {variables: ['APP_ORDERS_CLIENT_ID']},
+      }),
+    });
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource) => resource !== 'gatewayvariable' && resource !== 'gatewaysecret',
+          isLoading: false,
+        }}
+      >
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </CapabilitiesProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    expect(await within(panel).findByLabelText(/APP_ORDERS_CLIENT_ID/)).toBeDisabled();
+    expect(
+      within(panel).getByText(/Your account may not set this gateway's variables and secrets/),
+    ).toBeInTheDocument();
+  });
+
+  it("doesn't say the deploy waits when only a refused resource's values are locked", async () => {
+    projectCheck([]);
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource) => resource !== 'gatewayvariable' && resource !== 'gatewaysecret',
+          isLoading: false,
+        }}
+      >
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          only={['application/app-1']}
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </CapabilitiesProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    await waitFor(() => expect(within(panel).getByRole('button', {name: /^Deploy/})).toBeEnabled());
+    expect(within(panel).queryByText(/this deploy waits for an admin/)).not.toBeInTheDocument();
+  });
+
   it("retries what a project's gateway refused with what it needs, scoped to the project", async () => {
     const sent: unknown[] = [];
     projectCheck(sent);
@@ -356,5 +421,121 @@ describe('ApplyPanel', () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     const request = sent[0] as {selection: string[]};
     expect([...request.selection].sort()).toEqual(['resource_server/rs-new', 'resource_server/rs-old']);
+  });
+});
+
+/** A promotion's check: Orders, which uses a value Prod lacks, and Billing, which the source holds back. */
+function promotionCheck(sent: unknown[], refusal?: Error): void {
+  http = fakeHttp({
+    'PUT /gateways/gw-dev/variables/ORDERS_ID': {name: 'ORDERS_ID'},
+    'POST /gateways/gw-dev/apply': (call: Call) => {
+      const data = call.data as {dryRun?: boolean};
+      if (!data.dryRun) {
+        sent.push(call.data);
+        return refusal ?? {gatewayId: 'gw-dev', dryRun: false};
+      }
+      return {
+        gatewayId: 'gw-dev',
+        dryRun: true,
+        diff: {
+          toVersion: version.version,
+          changes: [
+            {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'added'},
+            {
+              key: 'application/app-2',
+              resourceType: 'application',
+              id: 'app-2',
+              name: 'Billing',
+              change: 'added',
+              sourceExcluded: true,
+            },
+          ],
+        },
+        missing: {
+          variables: ['ORDERS_ID'],
+          secrets: ['BILLING_SECRET'],
+          references: [
+            {name: 'ORDERS_ID', kind: 'variable', resourceType: 'application', resourceId: 'app-1'},
+            {name: 'BILLING_SECRET', kind: 'secret', resourceType: 'application', resourceId: 'app-2'},
+          ],
+        },
+      };
+    },
+  });
+}
+
+function renderPromotion(): void {
+  render(
+    <ApplyPanel
+      version={version}
+      label="v2"
+      gateways={[gateway]}
+      gatewayId="gw-dev"
+      variant="drawer"
+      targetName="Prod"
+      sourceName="Stage"
+      onClose={vi.fn()}
+      onDeployed={vi.fn()}
+    />,
+  );
+}
+
+describe('ApplyPanel promoting what the source holds back', () => {
+  it('neither sends a change the source holds back nor asks for the values only it uses', async () => {
+    const sent: unknown[] = [];
+    promotionCheck(sent);
+    renderPromotion();
+
+    const orders = await screen.findByLabelText(/ORDERS_ID/);
+    expect(screen.queryByLabelText(/BILLING_SECRET/)).not.toBeInTheDocument();
+    await userEvent.type(orders, 'orders-prod');
+    await userEvent.click(await screen.findByRole('button', {name: /^Promote/}));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect((sent[0] as {selection: string[]}).selection).toEqual(['application/app-1']);
+  });
+});
+
+describe('ApplyPanel explaining a refusal', () => {
+  it.each([
+    [
+      "a known refusal's details, naming each resource as the changes do",
+      {
+        code: 'GTW-1032',
+        description: {
+          key: 'error.gatewayservice.dependency_not_deployed.description',
+          defaultValue: 'raw server words',
+          params: {missing: 'role/r-1 needs application/app-1'},
+        },
+      },
+      'Some selected resources need ones the gateway does not hold: role/r-1 needs Orders application. Tick what ' +
+        'they need as well, or deploy with what these need.',
+    ],
+    [
+      'a known refusal without details as the catalog has it',
+      {code: 'GTW-1029'},
+      'Another deploy to this gateway is running. Try again once it finishes.',
+    ],
+    [
+      'the generic line for a refusal the catalog does not know, never the server text',
+      {code: 'GTW-9998', description: {key: 'unknown', defaultValue: 'Person cannot be promoted.', params: {}}},
+      'The version could not be deployed.',
+    ],
+    [
+      'the generic line for a plain error a service in between answered with',
+      {error: 'only what an environment runs can be promoted'},
+      'The version could not be deployed.',
+    ],
+  ])('shows %s', async (_, data, shown) => {
+    promotionCheck([], Object.assign(new Error('Request failed'), {response: {status: 409, data}}));
+    renderPromotion();
+
+    await userEvent.type(await screen.findByLabelText(/ORDERS_ID/), 'orders-prod');
+    await userEvent.click(await screen.findByRole('button', {name: /^Promote/}));
+
+    expect(await screen.findByText(shown)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/raw server words|Person cannot be promoted|only what an environment runs/),
+    ).not.toBeInTheDocument();
   });
 });

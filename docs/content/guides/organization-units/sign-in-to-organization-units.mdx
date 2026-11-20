@@ -71,6 +71,8 @@ An OU the application cannot be used from and an OU that does not exist both red
 
 Exchange the code at `/oauth2/token`, or at `/ou/{ouId}/oauth2/token` for the same OU. The OU token endpoint redeems only a code whose sign-in landed in that OU, which the sign-in records when the application's token configuration includes the `ouId` attribute. A code without it, or one for another OU, is refused with `invalid_grant`.
 
+To include the `ouId` attribute in the application's token configuration, see [Configure Attributes in Tokens](../applications/configure-token-attributes.mdx#example-organization-unit-details-and-roles).
+
 ### App-Native Sign-In
 
 Add `ouId` to the request that starts the sign-in on the Flow Execution API:
@@ -91,7 +93,7 @@ Flow-Secret: <flow-secret>
 
 ### Sign-In With a Device Secret
 
-A client that holds a device secret signs the user in to an OU without a redirect. A code exchange returns the device secret when the authorization request asked for the `device_sso` scope. Exchange it at `/ou/{ouId}/oauth2/token`:
+A client that holds a device secret signs the user in to an OU without a redirect. A code exchange returns the device secret when the authorization request asked for the `device_sso` scope, whether the sign-in started a single sign-on session or reused one. The device secret lasts as long as the session absolute timeout. When every session posted to `/oauth2/auth/callback` includes its `expiresIn`, the device secret ends when the last of those sessions ends. If every posted session has ended, the code exchange returns no device secret, even though the granted scope includes `device_sso`. Exchange it at `/ou/{ouId}/oauth2/token`:
 
 ```bash
 curl -X POST https://localhost:8090/ou/019f8c21-4b7e-7a39-b5d0-6e2c91f4a8b7/oauth2/token \

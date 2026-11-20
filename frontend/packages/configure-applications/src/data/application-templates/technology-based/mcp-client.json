@@ -6,7 +6,8 @@
   "quickstarts": [
     {
       "label": "Python",
-      "docsUrl": "{{applications.templates.mcpClient.docs}}"
+      "docsUrl": "{{applications.templates.mcpClient.docs}}",
+      "section": "connect-an-mcp-client"
     }
   ],
   "metadataDocumentClients": [

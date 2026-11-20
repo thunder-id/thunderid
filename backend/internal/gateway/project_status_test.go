@@ -109,7 +109,20 @@ func (s *ProjectScopeTestSuite) TestWhatOnlyOneProjectNeedsIsItsPendingChange() 
 	s.Equal(0, shop.Shared.Pending, "billing's flow was offered to the shop as shared")
 }
 
-// An unknown project, a promotion to itself and a source that runs nothing are refused.
+// A source that runs nothing yet has nothing to promote, so the status says nothing waits rather than
+// failing to be read.
+func (s *ProjectScopeTestSuite) TestASourceThatRunsNothingHasNothingToPromote() {
+	s.captureDocs(docs(flow("flow-1"))...)
+
+	status, svcErr := s.f.svc.ProjectStatus(context.Background(), "gw-1", "shop", scopeTarget, "")
+
+	s.Require().Nil(svcErr)
+	s.Equal(0, status.Project.Pending)
+	s.Equal(0, status.Project.Required)
+	s.Equal(0, status.Shared.Pending)
+}
+
+// An unknown project and a promotion to itself are refused.
 func (s *ProjectScopeTestSuite) TestRefusals() {
 	s.captureDocs(docs(flow("flow-1"))...)
 	ctx := context.Background()
@@ -118,8 +131,6 @@ func (s *ProjectScopeTestSuite) TestRefusals() {
 	s.Equal(&ErrorProjectNotFound, svcErr)
 	_, svcErr = s.f.svc.ProjectStatus(ctx, "gw-1", "shop", "gw-1", "")
 	s.Equal(&ErrorPromoteToItself, svcErr)
-	_, svcErr = s.f.svc.ProjectStatus(ctx, "gw-1", "shop", scopeTarget, "")
-	s.Equal(&ErrorSourceRunsNothing, svcErr)
 	_, svcErr = s.f.svc.ProjectStatus(ctx, "gw-9", "shop", "", "")
 	s.Equal(&ErrorGatewayNotFound, svcErr)
 }
@@ -193,4 +204,51 @@ func TestALaterDeployFollowsARollback(t *testing.T) {
 	assert.Nil(t, at)
 	assert.Nil(t, by)
 	assert.Empty(t, action)
+}
+
+// What the gateway holds back is counted apart from what is pending, section by section, so a project
+// whose changes an earlier deploy left out still has something to deploy; a shared change only another
+// project needs is counted for neither.
+func TestHeldBackChangesAreCountedApartFromPending(t *testing.T) {
+	change := func(key, section string, heldBack, required bool) Change {
+		return Change{Key: key, ResourceType: "application", Change: ChangeAdded, Section: section,
+			HeldBack: heldBack, Required: required}
+	}
+	diff := &Diff{Changes: []Change{
+		change("application/own", sectionProject, false, false),
+		change("application/own-left-out", sectionProject, true, false),
+		change("application/required-left-out", sectionNeeded, true, true),
+		change("application/shared", sectionShared, false, false),
+		change("application/shared-left-out", sectionShared, true, false),
+		change("application/billing-only", sectionShared, true, false),
+		{Key: "application/unchanged", Change: ChangeUnchanged, Section: sectionProject, HeldBack: true},
+	}}
+
+	status := countSections(diff, nil, "shop", map[string]string{"application/billing-only": "billing"})
+
+	assert.Equal(t, 1, status.Project.Pending)
+	assert.Equal(t, 0, status.Project.Required)
+	assert.Equal(t, 2, status.Project.HeldBack, "the project's own and required changes left out were not counted")
+	assert.Equal(t, 1, status.Shared.Pending)
+	assert.Equal(t, 1, status.Shared.HeldBack, "a shared change left out was not counted, or another project's was")
+}
+
+// Against a source gateway, a change the target holds back that the source runs is still counted, as held
+// back: it is left out of what a promotion sends, not out of what waits there.
+func TestAHeldBackChangeTheSourceRunsIsCountedAgainstTheSource(t *testing.T) {
+	version := &Version{Resources: joinBundle(unitsOf("ou-a", "ou-b", "ou-c"))}
+	source := deployedMaster("v1", "ou-a", "ou-b")
+	diff := &Diff{Changes: []Change{
+		{Key: "organization_unit/ou-a", ResourceType: "organization_unit", Change: ChangeAdded,
+			Section: sectionShared, HeldBack: true},
+		{Key: "organization_unit/ou-b", ResourceType: "organization_unit", Change: ChangeAdded, Section: sectionShared},
+		{Key: "organization_unit/ou-c", ResourceType: "organization_unit", Change: ChangeAdded, Section: sectionShared},
+	}}
+
+	assert.Equal(t, []string{"organization_unit/ou-b"}, promoteSelection(source, version, diff),
+		"a promotion sent what the target holds back, or what the source does not run")
+	status := countSections(diff, toSet(sourceRuns(source, version, diff, true)), "shop", nil)
+
+	assert.Equal(t, 1, status.Shared.Pending)
+	assert.Equal(t, 1, status.Shared.HeldBack, "a held-back change the source runs was not counted")
 }

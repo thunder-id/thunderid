@@ -6,6 +6,8 @@ package user
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -159,4 +161,64 @@ func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_RefusedValueRevokesNothi
 	ts.Require().Error(err, "A credential the user type does not declare was accepted")
 
 	ts.True(ts.isActive(u, token), "A refused credential change revoked the user's token")
+}
+
+// Setting the password the user already has still replaces it and revokes, so a reset that keeps the password
+// still ends a session that was taken without it.
+func (ts *UserAPITestSuite) TestCredentialUpdateByAdmin_TheSamePasswordStillRevokes() {
+	const password = "UnchangedReset@123" // #nosec G101 -- test fixture
+	u := ts.newCredentialRevocationUser("admin-cred-unchanged", password)
+	token := ts.signIn(u, password)
+
+	ts.Require().NoError(testutils.UpdateUserCredentials(u.id, map[string]string{"password": password}))
+
+	ts.False(ts.isActive(u, token), "A reset with the same password left the user's token active")
+}
+
+// A control plane re-sends the password it deployed on every apply, so a managed import that carries the
+// user's current password revokes nothing, and one that carries a different password revokes.
+func (ts *UserAPITestSuite) TestManagedImport_OnlyAChangedPasswordRevokes() {
+	const (
+		password    = "BeforeManagedApply@123" // #nosec G101 -- test fixture
+		newPassword = "AfterManagedApply@123"  // #nosec G101 -- test fixture
+	)
+	u := ts.newCredentialRevocationUser("managed-cred-apply", password)
+	ts.T().Cleanup(func() {
+		ts.managedImport(testutils.ImportRequest{Options: testutils.ImportOptions{Target: "runtime"},
+			Deletions: []testutils.ResourceDeletion{{ResourceType: "user", ID: u.id}}})
+	})
+	token := ts.signIn(u, password)
+	apply := func(pw string) {
+		ts.managedImport(testutils.ImportRequest{
+			Content: fmt.Sprintf("resource_type: user\nid: %s\ntype: admin-cred-update-type\nouId: %s\n"+
+				"attributes:\n  username: %s\n  email: %s@example.com\ncredentials:\n  password: %s\n",
+				u.id, testOUID, u.username, u.username, pw),
+			Options: testutils.ImportOptions{Upsert: true, Target: "runtime"},
+		})
+	}
+
+	apply(password)
+	ts.True(ts.isActive(u, token), "An apply with the user's current password revoked their token")
+
+	apply(newPassword)
+	ts.False(ts.isActive(u, token), "An apply with a different password left the user's token active")
+}
+
+// managedImport sends the request to the managed import a control plane deploys through, and requires every
+// item to succeed.
+func (ts *UserAPITestSuite) managedImport(request testutils.ImportRequest) {
+	payload, err := json.Marshal(request)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Post(testServerURL+"/import/managed",
+		"application/json", bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+	var result testutils.ImportResponse
+	ts.Require().NoError(json.Unmarshal(body, &result))
+	for _, item := range result.Results {
+		ts.Require().Equal("success", item.Status, "%+v", item)
+	}
 }

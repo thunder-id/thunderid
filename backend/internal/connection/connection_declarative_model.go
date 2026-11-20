@@ -42,6 +42,7 @@ type connectionExportModel struct {
 	Issuer                string   `yaml:"issuer,omitempty"                json:"issuer,omitempty"`
 	TokenExchangeEnabled  *bool    `yaml:"tokenExchangeEnabled,omitempty"  json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `yaml:"trustedTokenAudience,omitempty"  json:"trustedTokenAudience,omitempty"`
+	IDJagEnabled          *bool    `yaml:"idJagEnabled,omitempty"          json:"idJagEnabled,omitempty"`
 
 	//nolint:lll
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`

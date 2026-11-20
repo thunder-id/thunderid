@@ -1037,30 +1037,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Pre Delete Executor",
-      "label": "Validate and Plan Full Revocation",
-      "description": "Validate the user being deleted, then plan revocation of every grant they hold",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": false
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "PreDeleteExecutor",
-          "mode": "revoke_all"
-        },
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Criteria Revocation Executor",
       "label": "Revoke Tokens",
       "description": "Persist every token criterion from the trusted revocation plan",
@@ -1096,47 +1072,6 @@
           "name": "SessionRevocationExecutor"
         },
         "onSuccess": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Secret Regeneration Validator",
-      "label": "Validate and Plan Secret Regeneration",
-      "description": "Validate the application whose client secret is being regenerated, then plan revocation of the artifacts issued under the old secret",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ApplicationActionValidator", "mode": "revoke_before_action"},
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Client Secret Executor",
-      "label": "Regenerate Client Secret",
-      "description": "Regenerate the application's client secret, returning the new value once",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ClientSecretExecutor"},
-        "onSuccess": "",
-        "onFailure": ""
       }
     }
   },

@@ -4,6 +4,8 @@
 package inboundclient
 
 import (
+	"fmt"
+
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
@@ -69,4 +71,16 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (
 	oauthProfileCache := cache.GetCache[*providers.OAuthProfile](cacheManager, oauthProfileCacheName)
 	cached := newCachedBackStore(dbStore, inboundClientCache, oauthProfileCache)
 	return newCompositeStore(fileStore, cached), transactioner, nil
+}
+
+// SetSystemFlowProvider gives the inbound client service the engine that runs the system flows around a
+// client's deletion. It is bound after the service, once the engine exists, and only on a server that issues
+// tokens. A service that cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service InboundClientServiceInterface, provider systemFlowProvider) error {
+	ics, ok := service.(*inboundClientService)
+	if !ok {
+		return fmt.Errorf("inbound client service does not support system flow provider injection")
+	}
+	ics.systemFlows = provider
+	return nil
 }

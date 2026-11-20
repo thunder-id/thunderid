@@ -70,11 +70,8 @@ func (ts *AgentOnboardingUniquenessTestSuite) TestDuplicateNameReturnsToTheDetai
 	step = ts.runWithName(name)
 
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the run continues so the name can be corrected")
-	ts.Contains(inputIdentifiers(step), agentNameInput,
-		"the name is asked again, on the details prompt that collects it")
-	ts.Contains(inputIdentifiers(step), agentModelInput, "the run is back on the details prompt")
-	ts.NotEmpty(detailsSelectOptions(&ts.Suite, ts.flowID)[agentModelProviderInput],
-		"the details prompt carries the model provider choices")
+	ts.Equal([]string{agentNameInput}, inputIdentifiers(step),
+		"only the conflicting name is asked again, on the details prompt that collects it")
 	ts.Require().NotNil(step.Error)
 	ts.Equal("FET-1061", step.Error.Code, "the conflict names the attribute rather than the entity")
 }

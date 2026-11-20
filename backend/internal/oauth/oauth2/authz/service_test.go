@@ -496,6 +496,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Su
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), testAuthID, result.QueryParams[oauth2const.AuthID])
 	assert.Equal(suite.T(), "test-app-id", result.QueryParams[oauth2const.AppID])
+	assert.Equal(suite.T(), "~dGVzdC1hcHAtaWQ", result.QueryParams[oauth2const.Ref])
 	assert.Equal(suite.T(), "test-flow-id", result.QueryParams[oauth2const.ExecutionID])
 }
 
@@ -2909,46 +2910,15 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Un
 	assert.False(suite.T(), authErr.SendErrorToClient)
 }
 
-func (suite *AuthorizeServiceTestSuite) TestBindDeviceSession() {
-	first := oauth2model.SessionData{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}
-	second := oauth2model.SessionData{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-2"}
-	longest := oauth2model.SessionData{FlowIdentifier: "77e0937879f72858",
-		SessionHandle: strings.Repeat("h", maxDeviceSessionFieldLength)}
-	overLong := strings.Repeat("x", maxDeviceSessionFieldLength+1)
-	tooMany := make([]oauth2model.SessionData, 0, maxDeviceSessions+1)
-	for i := range maxDeviceSessions + 1 {
-		tooMany = append(tooMany, oauth2model.SessionData{FlowIdentifier: fmt.Sprintf("identifier-%d", i),
-			SessionHandle: "handle"})
-	}
-	cases := []struct {
-		name        string
-		scopes      string
-		sessionData []oauth2model.SessionData
-		want        []oauth2model.SessionData
-	}{
-		{"every posted session is kept", "openid device_sso", []oauth2model.SessionData{first, second},
-			[]oauth2model.SessionData{first, second}},
-		{"device_sso was not requested", "openid", []oauth2model.SessionData{first}, nil},
-		{"nothing was posted", "device_sso", nil, nil},
-		{"an entry missing a field is dropped", "device_sso",
-			[]oauth2model.SessionData{{FlowIdentifier: "identifier"}, {SessionHandle: "handle"}, first},
-			[]oauth2model.SessionData{first}},
-		{"an entry with an over-long field is dropped", "device_sso",
-			[]oauth2model.SessionData{{FlowIdentifier: overLong, SessionHandle: "handle"},
-				{FlowIdentifier: "identifier", SessionHandle: overLong}, longest},
-			[]oauth2model.SessionData{longest}},
-		{"no more than maxDeviceSessions are kept", "device_sso", tooMany, tooMany[:maxDeviceSessions]},
-	}
+func (suite *AuthorizeServiceTestSuite) TestFromFlowSessionData_KeepsTheTimeLeft() {
+	got := fromFlowSessionData([]flowexec.IssuedSessionData{{
+		SessionData: flowexec.SessionData{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"},
+		ExpiresIn:   600,
+	}})
 
-	for _, tc := range cases {
-		suite.Run(tc.name, func() {
-			code := AuthorizationCode{Scopes: tc.scopes}
-
-			bindDeviceSession(&code, tc.sessionData)
-
-			suite.Equal(tc.want, code.SessionData)
-		})
-	}
+	suite.Equal([]oauth2model.SessionData{
+		{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1", ExpiresIn: new(int64(600))},
+	}, got)
 }
 
 const (

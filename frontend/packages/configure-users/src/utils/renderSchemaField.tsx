@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CredentialFieldInput} from '@thunderid/components';
 import {resolveAttributeRegex} from '@thunderid/utils';
 import {
   Box,
@@ -19,7 +20,6 @@ import type {ReactNode} from 'react';
 import {Controller} from 'react-hook-form';
 import type {Control, FieldErrors, Path} from 'react-hook-form';
 import ArrayFieldInput from '../components/ArrayFieldInput';
-import CredentialFieldInput from '../components/CredentialFieldInput';
 import type {PropertyDefinition} from '../models/users';
 
 /**

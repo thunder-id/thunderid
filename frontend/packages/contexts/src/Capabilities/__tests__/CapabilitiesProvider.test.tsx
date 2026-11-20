@@ -33,7 +33,6 @@ describe('CapabilitiesProvider', () => {
   it('exposes the supplied capabilities to descendants via useCapabilitiesContext', () => {
     const capabilities: Capabilities = {
       can: (resource, action = 'view') => resource === 'app' && action === 'view',
-      canManageRoot: false,
       isLoading: false,
     };
 
@@ -48,11 +47,11 @@ describe('CapabilitiesProvider', () => {
     expect(container.querySelector('button')).toBeNull();
   });
 
-  it('allows everything when rendered without a provider', () => {
+  it('allows nothing when rendered without a provider', () => {
     act(() => {
       root.render(<DeleteAppButton />);
     });
 
-    expect(container.querySelector('button')?.textContent).toBe('Delete');
+    expect(container.querySelector('button')).toBeNull();
   });
 });

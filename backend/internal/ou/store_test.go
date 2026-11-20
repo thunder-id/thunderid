@@ -1903,6 +1903,30 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 			},
 		},
 		{
+			name: "returns the parent of a child and none for a root",
+			ids:  []string{"child", "root"},
+			setup: func(ids []string) {
+				suite.expectDBClient()
+				parent := testCoverageParentOUID
+				rows := []map[string]interface{}{
+					makeOUResultRow("child", "child", "Child", "", &parent),
+					makeOUResultRow("root", "root", "Root", "", nil),
+				}
+				suite.dbClientMock.
+					On(
+						"QueryContext", mock.Anything,
+						mock.AnythingOfType("model.DBQuery"), mock.Anything, mock.Anything, mock.Anything).
+					Return(rows, nil).
+					Once()
+			},
+			assert: func(ous []OrganizationUnitBasic) {
+				suite.Require().Len(ous, 2)
+				suite.Require().NotNil(ous[0].Parent)
+				suite.Equal(testCoverageParentOUID, *ous[0].Parent)
+				suite.Nil(ous[1].Parent)
+			},
+		},
+		{
 			name: "empty ids",
 			ids:  []string{},
 			assert: func(ous []OrganizationUnitBasic) {

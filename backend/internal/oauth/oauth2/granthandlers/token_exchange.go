@@ -372,7 +372,8 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 	finalScopes = compactPermissionScopes(finalScopes, oidcScopes, targetRS)
 
-	// Build access token using token builder
+	// Build access token using token builder. It joins the subject token's token family, so revoking the grant
+	// it came from, or ending the session that grant belongs to, also revokes it.
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
 		Subject:           subjectClaims.Sub,
@@ -385,7 +386,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ActorClaims:       actorClaims,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     h.exchangedTokenFamilyID(ctx, subjectClaims, logger),
+		TokenFamilyID:     subjectClaims.TokenFamilyID,
 		SubjectEntityID:   subjectEntityID,
 		SubjectCategory:   subjectCategory,
 	})
@@ -694,22 +695,6 @@ func isCurrentActor(
 	sub, _ := act["sub"].(string)
 	iss, _ := act["iss"].(string)
 	return sub == actorClaims.Sub && cmp.Or(iss, serverIssuer) == cmp.Or(actorClaims.Iss, serverIssuer)
-}
-
-// exchangedTokenFamilyID resolves how the exchanged token relates to the subject token's revocation
-// family: inherit joins the subject's family (both revoked together); none (the default, and the empty
-// value) issues an independent token with no tfid. An unrecognized value is treated as none and surfaced.
-func (h *tokenExchangeGrantHandler) exchangedTokenFamilyID(ctx context.Context,
-	subjectClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) string {
-	switch h.cfg.OAuth.TokenExchange.TokenFamily {
-	case constants.TokenExchangeTokenFamilyInherit:
-		return subjectClaims.TokenFamilyID
-	case constants.TokenExchangeTokenFamilyNone, "":
-	default:
-		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
-			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
-	}
-	return ""
 }
 
 // resolveExchangeParties names the subject and the actor by resource ID and category, even where the

@@ -12,6 +12,9 @@ import (
 // errConsentNotFound is the sentinel error returned by the store when a consent record does not exist.
 var errConsentNotFound = errors.New("consent not found")
 
+// errNilEventBus is returned when the consent service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the consent service needs an event bus")
+
 // Client errors for consent operations.
 var (
 	// ErrorInvalidRequestFormat is the error returned when the request format is invalid.

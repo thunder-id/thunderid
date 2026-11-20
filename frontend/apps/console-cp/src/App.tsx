@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoader} from '@thunderid/components';
+import {CapabilityGuard, PageLoader} from '@thunderid/components';
 import {PROJECT_HANDLE_PARAM} from '@thunderid/configure-projects';
 import {
   AdministrationModes,
@@ -19,6 +19,12 @@ import RouteProjectScope from './components/RouteProjectScope';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
+
+// The Import / Export landing offers both, so either one opens it.
+const IMPORT_OR_EXPORT = [
+  {resource: 'import', action: 'create'},
+  {resource: 'export', action: 'create'},
+];
 
 // The route-scoped providers are loaded lazily, like the pages they wrap. Importing them statically
 // would put their packages in the entry graph, and since the pages are imported dynamically from the
@@ -41,6 +47,9 @@ const OrganizationUnitProvider = lazy(
   () => import('@thunderid/configure-organization-units/contexts/OrganizationUnitProvider'),
 );
 const RoleCreateProvider = lazy(() => import('@thunderid/configure-roles/contexts/RoleCreate/RoleCreateProvider'));
+const RuntimeEnvironmentsProvider = lazy(
+  () => import('@thunderid/configure-gateways/components/RuntimeEnvironmentsProvider'),
+);
 const TranslationCreateProvider = lazy(
   () => import('@thunderid/configure-translations/contexts/TranslationCreate/TranslationCreateProvider'),
 );
@@ -201,9 +210,25 @@ function projectDashboardRoutes(): JSX.Element {
   return (
     <>
       <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-      <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+      {/* An application's client ID and endpoints differ in each environment it is deployed to. */}
+      <Route
+        path={`${ROUTE_SEGMENTS.applications}/:applicationId`}
+        element={
+          <RuntimeEnvironmentsProvider>
+            <ApplicationEditPage />
+          </RuntimeEnvironmentsProvider>
+        }
+      />
       <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
-      <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+      {/* An agent's client ID and endpoints differ in each environment too. */}
+      <Route
+        path={`${ROUTE_SEGMENTS.agents}/:agentId`}
+        element={
+          <RuntimeEnvironmentsProvider>
+            <AgentEditPage />
+          </RuntimeEnvironmentsProvider>
+        }
+      />
       <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
       <Route path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`} element={<ResourceServerEditPage />} />
       <Route
@@ -522,7 +547,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ImportExportPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard anyOf={IMPORT_OR_EXPORT}>
+                        <ImportExportPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.export.page()}
@@ -532,7 +564,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ExportPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="export" action="create">
+                        <ExportPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.importConfiguration.upload()}
@@ -542,9 +581,30 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ImportConfigurationUploadPage />} />
-                  <Route path="validate" element={<ImportConfigurationValidatePage />} />
-                  <Route path="summary" element={<ImportConfigurationSummaryPage />} />
+                  <Route
+                    index
+                    element={
+                      <CapabilityGuard resource="import" action="create">
+                        <ImportConfigurationUploadPage />
+                      </CapabilityGuard>
+                    }
+                  />
+                  <Route
+                    path="validate"
+                    element={
+                      <CapabilityGuard resource="import" action="create">
+                        <ImportConfigurationValidatePage />
+                      </CapabilityGuard>
+                    }
+                  />
+                  <Route
+                    path="summary"
+                    element={
+                      <CapabilityGuard resource="import" action="create">
+                        <ImportConfigurationSummaryPage />
+                      </CapabilityGuard>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.translations.create()}

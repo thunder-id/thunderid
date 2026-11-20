@@ -243,6 +243,35 @@ You should see the `<SignInButton />` button. Click it, you'll land on your appl
 
 </Stepper>
 
+## Run the Sample App
+
+The [Nuxt sample](https://github.com/thunder-id/samples/tree/main/quickstarts/nuxt) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fnuxt&expanded=true) and open its folder.
+2. Create `.env` in the sample's folder with your application's values:
+
+   ```dotenv title=".env"
+   NUXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+   NUXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
+   THUNDERID_FLOW_SECRET=<your-flow-secret>
+   THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
+   NUXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
+   NUXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
+   # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+   NODE_TLS_REJECT_UNAUTHORIZED=0
+   ```
+
+3. Install the dependencies and start the app:
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+   On Windows, run these from a POSIX shell such as Git Bash or WSL. The sample's `dev` script sets `TMPDIR` the way a POSIX shell does.
+
+4. Open [http://localhost:3000](http://localhost:3000) and sign in.
+
 ## What's Next
 
 <NextSteps>

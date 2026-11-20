@@ -341,6 +341,113 @@ sections:
                 )
             }
         }
+    - group: Components
+      kind: component
+      name: FlowVariablesForm
+      description: 'The `FlowVariablesForm` composable lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit, the values the unit has set, and what the unit may change, shows them as a form, and saves the values that differ from their defaults. `FlowVariablesForm` requires `ThunderIDProvider` in its ancestor composable hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: flowId
+        type: 'String'
+        tag: required
+        description: 'Identifier of the flow whose variables are configured.'
+      - name: ouId
+        type: 'String'
+        tag: required
+        description: 'The organization unit the overrides belong to.'
+      - name: modifier
+        type: 'Modifier'
+        tag: optional
+        description: 'Compose modifier applied to the form.'
+      - name: onSaved
+        type: '((Map<String, Any>) -> Unit)?'
+        tag: optional
+        description: 'Called with the overrides as the server stored them.'
+      - name: onCancel
+        type: '(() -> Unit)?'
+        tag: optional
+        description: 'Called when the admin taps Cancel.'
+      - name: ouName
+        type: 'String?'
+        tag: optional
+        description: 'The name of the organization unit, used in the notice and the connection hint.'
+      - name: ownerName
+        type: 'String?'
+        tag: optional
+        description: 'The name of whoever owns the flow, shown on a variable the unit may not set.'
+      - name: readOnly
+        type: 'Boolean'
+        tag: optional
+        description: 'Shows the variables without letting them be changed. Defaults to `false`.'
+      - name: showScopeNotice
+        type: 'Boolean'
+        tag: optional
+        description: 'Shows a notice that the settings apply to the organization unit only. Defaults to `false`.'
+      - name: content
+        type: '@Composable (FlowVariablesFormState) -> Unit'
+        tag: optional
+        description: 'Renders custom UI in place of the default form.'
+      example: |-
+        import dev.thunderid.compose.components.management.FlowVariablesForm
+
+        @Composable
+        fun FlowSettings(flowId: String, ouId: String) {
+            FlowVariablesForm(
+                flowId = flowId,
+                ouId = ouId,
+                onSaved = { Log.d("Flow", "Saved") },
+            )
+        }
+    - group: Components
+      kind: component
+      name: SharedFlowList
+      description: 'The `SharedFlowList` composable lists the flows shared with an organization unit, the flows it owns, or both. Choosing a flow calls `onSelect`, so your app decides what to open, for example `FlowVariablesForm`. `SharedFlowList` requires `ThunderIDProvider` in its ancestor composable hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: ouId
+        type: 'String'
+        tag: required
+        description: 'The organization unit to list the flows of.'
+      - name: modifier
+        type: 'Modifier'
+        tag: optional
+        description: 'Compose modifier applied to the list.'
+      - name: ownership
+        type: 'SharedFlowOwnership'
+        tag: optional
+        description: 'Which flows to list: `SHARED`, `OWNED`, or `ALL`. Defaults to `SHARED`.'
+      - name: flowType
+        type: 'String?'
+        tag: optional
+        description: 'Restricts the list to one flow type, for example `AUTHENTICATION`.'
+      - name: limit
+        type: 'Int'
+        tag: optional
+        description: 'Page size. Defaults to `20`.'
+      - name: selectedFlowId
+        type: 'String?'
+        tag: optional
+        description: 'Identifier of the flow to highlight.'
+      - name: onSelect
+        type: '((ManagedFlow) -> Unit)?'
+        tag: optional
+        description: 'Called when a flow is chosen. Rows are selectable only when set.'
+      - name: content
+        type: '@Composable (AdminListState<ManagedFlow>) -> Unit'
+        tag: optional
+        description: 'Renders custom UI in place of the default list.'
+      example: |-
+        import dev.thunderid.compose.components.management.SharedFlowList
+
+        @Composable
+        fun FlowPicker(ouId: String) {
+            var selectedFlowId by remember { mutableStateOf<String?>(null) }
+            SharedFlowList(
+                ouId = ouId,
+                selectedFlowId = selectedFlowId,
+                onSelect = { selectedFlowId = it.id },
+            )
+        }
     - group: Functions
       kind: function
       name: Configuration

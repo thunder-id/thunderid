@@ -61,6 +61,10 @@ vi.mock('@thunderid/configure-gateways', () => ({
   GatewayValuesPage: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
 }));
 
+vi.mock('@thunderid/configure-gateways/components/RuntimeEnvironmentsProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
 vi.mock('@thunderid/configure-gateways/pages/GatewaysListPage', () => ({
   default: () => <div data-testid="gateways-list-page">Gateways List Page</div>,
 }));
@@ -81,8 +85,13 @@ vi.mock('@thunderid/configure-gateways/pages/GatewayValuesPage', () => ({
   default: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
 }));
 
+const mockCan: (resource: string) => boolean = () => true;
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (resource: string) => mockCan(resource),
+    isLoading: false,
+  }),
   AdministrationProvider: ({
     administration,
     children,

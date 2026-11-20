@@ -76,11 +76,15 @@ describe('useProjectChanges', () => {
 });
 
 describe('useProjectsPending', () => {
-  it("counts each project's own pending changes on a gateway, and the shared ones once", async () => {
+  it("counts each project's own changes and what they need on a gateway, and the shared ones once", async () => {
     http = fakeHttp({
       'GET /gateways/gw-dev/project-status': (call: Call) => ({
         ...status,
-        project: {versions: [], pending: call.url.includes('project=p-shop') ? 3 : 0, required: 0},
+        project: {
+          versions: [],
+          pending: call.url.includes('project=p-shop') ? 3 : 0,
+          required: call.url.includes('project=p-shop') ? 2 : 0,
+        },
         shared: {pending: 2, byType: []},
       }),
     });
@@ -89,7 +93,7 @@ describe('useProjectsPending', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current).toEqual({
-      byProject: {'p-shop': 3, 'p-bill': 0},
+      byProject: {'p-shop': 5, 'p-bill': 0},
       shared: 2,
       isLoading: false,
       isError: false,

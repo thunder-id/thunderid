@@ -320,18 +320,9 @@ func (c *compositeRoleStore) getCompositeAssignments(
 	dbCountFn, fileCountFn func(context.Context, string) (int, error),
 	dbListFn, fileListFn func(int) ([]RoleAssignment, error),
 ) ([]RoleAssignment, error) {
-	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
-		return func() (int, error) {
-			count, err := fn(ctx, id)
-			if err != nil {
-				return 0, err
-			}
-			return min(count, serverconst.MaxCompositeStoreRecords), nil
-		}
-	}
 	assignments, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
-		capCount(dbCountFn),
-		capCount(fileCountFn),
+		func() (int, error) { return dbCountFn(ctx, id) },
+		func() (int, error) { return fileCountFn(ctx, id) },
 		dbListFn,
 		fileListFn,
 		mergeAssignments,
@@ -393,18 +384,9 @@ func (c *compositeRoleStore) getCompositeAssignmentsCount(
 	dbCountFn, fileCountFn func(context.Context, string) (int, error),
 	dbListFn, fileListFn func(int) ([]RoleAssignment, error),
 ) (int, error) {
-	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
-		return func() (int, error) {
-			count, err := fn(ctx, id)
-			if err != nil {
-				return 0, err
-			}
-			return min(count, serverconst.MaxCompositeStoreRecords), nil
-		}
-	}
 	assignments, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
-		capCount(dbCountFn),
-		capCount(fileCountFn),
+		func() (int, error) { return dbCountFn(ctx, id) },
+		func() (int, error) { return fileCountFn(ctx, id) },
 		dbListFn,
 		fileListFn,
 		mergeAssignments,
@@ -442,8 +424,9 @@ func (c *compositeRoleStore) DeleteRole(ctx context.Context, id string) error {
 	return c.dbStore.DeleteRole(ctx, id)
 }
 
-// DeleteAssignmentsByRoleID deletes all assignments for a role from the database store only.
-func (c *compositeRoleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
+// DeleteAssignmentsByRoleID deletes all assignments for a role from the database store only, returning
+// the ones it removed. File-based assignments are declarative and are never removed.
+func (c *compositeRoleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error) {
 	return c.dbStore.DeleteAssignmentsByRoleID(ctx, id)
 }
 

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {DateTimePickerField} from '@thunderid/design';
 import {FormControl, FormLabel} from '@wso2/oxygen-ui';
 import {useEffect, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useLifespanEndText from '../../../hooks/useLifespanEndText';
 import type {Agent} from '../../../models/agent';
-import ValidUntilPicker from '../../ValidUntilPicker';
 
 interface LifespanSectionProps {
   agent: Agent;
@@ -61,7 +61,7 @@ export default function LifespanSection({
     >
       <FormControl fullWidth size="small">
         <FormLabel htmlFor="agent-valid-until">{t('agents:edit.attributes.lifespan.label', 'Valid Until')}</FormLabel>
-        <ValidUntilPicker
+        <DateTimePickerField
           id="agent-valid-until"
           value={validUntil}
           // Only a newly chosen end must be in the future; the stored one is shown even once it has passed.

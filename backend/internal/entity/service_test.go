@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -4222,4 +4225,199 @@ func (s *ServiceTestSuite) TestGetEntityListByType() {
 	runtime.On("GetRuntimeData", mock.Anything, []string{failing.ID}).Return(nil, s.testErr)
 	_, err = svc.GetEntityListByType(s.ctx, providers.EntityCategoryAgent, "tools", 10)
 	s.ErrorIs(err, s.testErr, "runtime read error")
+}
+
+// flowRecorder records the system flows an entity service runs, in order with the store writes the tests
+// add to it, failing the run of the handle named failing.
+type flowRecorder struct {
+	flows   *systemFlowProviderMock
+	order   []string
+	runs    []*flowcommon.SystemFlowContext
+	failing string
+}
+
+func (s *ServiceTestSuite) recordFlows(svc *entityService, failing string) *flowRecorder {
+	r := &flowRecorder{flows: newSystemFlowProviderMock(s.T()), failing: failing}
+	r.flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+			*tidcommon.ServiceError) {
+			r.runs = append(r.runs, sysCtx)
+			r.order = append(r.order, sysCtx.Handle)
+			if sysCtx.Handle == r.failing {
+				return nil, &tidcommon.InternalServerError
+			}
+			return &flowcommon.SystemFlowResult{RuntimeData: map[string]string{"plan": sysCtx.Handle}}, nil
+		}).Maybe()
+	svc.systemFlows = r.flows
+	return r
+}
+
+// Deleting an entity revokes what was issued to it before the row goes, and moves the cutoff past the delete
+// with what the first flow shared.
+func (s *ServiceTestSuite) TestDeleteEntity_RevokesAroundTheDelete() {
+	svc := s.svc.(*entityService)
+	r := s.recordFlows(svc, "")
+	s.store.On("DeleteEntity", mock.Anything, "del-flows").
+		Run(func(mock.Arguments) { r.order = append(r.order, "deleted") }).Return(nil).Once()
+
+	s.Require().NoError(svc.DeleteEntity(s.ctx, "del-flows"))
+
+	inputs := map[string]string{systemFlowInputEntity: "del-flows"}
+	s.Equal([]*flowcommon.SystemFlowContext{
+		{Handle: systemFlowEntityDeletePre, Inputs: inputs},
+		{Handle: systemFlowRevocationPost, Inputs: inputs,
+			RuntimeData: map[string]string{"plan": systemFlowEntityDeletePre}},
+	}, r.runs)
+	s.Equal([]string{systemFlowEntityDeletePre, "deleted", systemFlowRevocationPost}, r.order)
+}
+
+// A revocation that fails before the delete deletes nothing.
+func (s *ServiceTestSuite) TestDeleteEntity_RevocationFailureDeletesNothing() {
+	svc := s.svc.(*entityService)
+	s.recordFlows(svc, systemFlowEntityDeletePre)
+
+	s.ErrorIs(svc.DeleteEntity(s.ctx, "del-refused"), errRevocationFailed)
+	s.store.AssertNotCalled(s.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+// A revocation that fails after the delete is logged, and the delete reported as done, since the entity is
+// gone and deleting again could not revoke anything more.
+func (s *ServiceTestSuite) TestDeleteEntity_FailedPostFlowStillDeletes() {
+	svc := s.svc.(*entityService)
+	r := s.recordFlows(svc, systemFlowRevocationPost)
+	s.store.On("DeleteEntity", mock.Anything, "del-post").
+		Run(func(mock.Arguments) { r.order = append(r.order, "deleted") }).Return(nil).Once()
+
+	s.NoError(svc.DeleteEntity(s.ctx, "del-post"))
+	s.Equal([]string{systemFlowEntityDeletePre, "deleted", systemFlowRevocationPost}, r.order)
+}
+
+// A failed delete runs no flow after it.
+func (s *ServiceTestSuite) TestDeleteEntity_FailedDeleteRunsNoPostFlow() {
+	svc := s.svc.(*entityService)
+	r := s.recordFlows(svc, "")
+	s.store.On("DeleteEntity", mock.Anything, "del-store").Return(s.testErr).Once()
+
+	s.ErrorIs(svc.DeleteEntity(s.ctx, "del-store"), s.testErr)
+	s.Equal([]string{systemFlowEntityDeletePre}, r.order)
+}
+
+// credentialUpdateFixture is an agent whose type declares a password, holding the stored credentials given.
+// A supplied password matches the stored one when matches is set.
+func (s *ServiceTestSuite) credentialUpdateFixture(id string, stored json.RawMessage, matches bool) (
+	*entityService, *flowRecorder, json.RawMessage) {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity(id)
+	e.Category = providers.EntityCategoryAgent
+	e.Type = testCredentialEntityType
+	creds := json.RawMessage(`{"password":"long-enough"}`)
+	declaresCredentials(ets, entitytype.TypeCategoryAgent, testCredentialEntityType, "password")
+	ets.On("ValidateEntityValues", mock.Anything, entitytype.TypeCategoryAgent, testCredentialEntityType, creds).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: stored}, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Maybe()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Return(nil).Maybe()
+	s.hashService.On("Verify", []byte("long-enough"), mock.Anything).Return(matches, nil).Maybe()
+	r := s.recordFlows(svc, "")
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(mock.Arguments) { r.order = append(r.order, "written") }).Return(nil).Maybe()
+	return svc, r, creds
+}
+
+// Replacing a credential the entity holds revokes what was issued to it before the write, and once it is
+// written ends what was issued while it ran.
+func (s *ServiceTestSuite) TestUpdateCredentials_ReplacingAHeldCredentialRevokesAroundTheWrite() {
+	svc, r, creds := s.credentialUpdateFixture("e-replace", json.RawMessage(`{"password":[{"value":"h1"}]}`),
+		false)
+
+	s.Require().NoError(svc.UpdateCredentials(s.ctx, "e-replace", creds))
+
+	inputs := map[string]string{systemFlowInputEntity: "e-replace"}
+	s.Equal([]*flowcommon.SystemFlowContext{
+		{Handle: systemFlowCredentialUpdatePre, Inputs: inputs},
+		{Handle: systemFlowCredentialUpdatePost, Inputs: inputs,
+			RuntimeData: map[string]string{"plan": systemFlowCredentialUpdatePre}},
+	}, r.runs)
+	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
+}
+
+// A credential set for the first time replaces nothing, so nothing is revoked.
+func (s *ServiceTestSuite) TestUpdateCredentials_FirstCredentialRevokesNothing() {
+	svc, r, creds := s.credentialUpdateFixture("e-first", nil, false)
+
+	s.Require().NoError(svc.UpdateCredentials(s.ctx, "e-first", creds))
+
+	s.Equal([]string{"written"}, r.order)
+}
+
+// A managed import re-sends the credentials a control plane deployed on every apply, so a value the entity
+// already holds is not written there and nothing is revoked.
+func (s *ServiceTestSuite) TestUpdateCredentials_AManagedImportOfTheHeldValueChangesNothing() {
+	svc, r, creds := s.credentialUpdateFixture("e-same", json.RawMessage(`{"password":[{"value":"h1"}]}`), true)
+
+	s.Require().NoError(svc.UpdateCredentials(managedresource.WithManagedImport(s.ctx), "e-same", creds))
+
+	s.Empty(r.order, "the held value was written or revoked")
+	s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, "e-same", mock.Anything)
+}
+
+// Anywhere else, setting the value the entity holds replaces it and revokes, so a reset with the same password
+// still ends a session that was taken without it.
+func (s *ServiceTestSuite) TestUpdateCredentials_ResettingTheHeldValueRevokes() {
+	svc, r, creds := s.credentialUpdateFixture("e-reset", json.RawMessage(`{"password":[{"value":"h1"}]}`), true)
+
+	s.Require().NoError(svc.UpdateCredentials(s.ctx, "e-reset", creds))
+
+	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
+	s.hashService.AssertNotCalled(s.T(), "Verify", mock.Anything, mock.Anything)
+}
+
+// A held value that cannot be compared, such as one stored under an unknown algorithm, counts as replaced.
+func (s *ServiceTestSuite) TestUpdateCredentials_AValueThatCannotBeComparedIsReplaced() {
+	svc, r, creds := s.credentialUpdateFixture("e-unknown", json.RawMessage(`{"password":[{"value":"h1"}]}`),
+		false)
+	s.hashService.ExpectedCalls = slices.DeleteFunc(s.hashService.ExpectedCalls,
+		func(c *mock.Call) bool { return c.Method == "Verify" })
+	s.hashService.On("Verify", []byte("long-enough"), mock.Anything).Return(false, errors.New("unknown algorithm"))
+
+	s.Require().NoError(svc.UpdateCredentials(managedresource.WithManagedImport(s.ctx), "e-unknown", creds))
+
+	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
+}
+
+// The credentials the entity holds cannot be read: nothing is written and nothing is revoked.
+func (s *ServiceTestSuite) TestUpdateCredentials_UnreadableHeldCredentialsWriteNothing() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-unreadable")
+	e.Category = providers.EntityCategoryAgent
+	e.Type = testCredentialEntityType
+	creds := json.RawMessage(`{"password":"long-enough"}`)
+	declaresCredentials(ets, entitytype.TypeCategoryAgent, testCredentialEntityType, "password")
+	ets.On("ValidateEntityValues", mock.Anything, entitytype.TypeCategoryAgent, testCredentialEntityType, creds).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return((*entityWithCredentials)(nil), s.testErr)
+	r := s.recordFlows(svc, "")
+
+	s.ErrorIs(svc.UpdateCredentials(s.ctx, e.ID, creds), s.testErr)
+
+	s.Empty(r.order)
+	s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, e.ID, mock.Anything)
+}
+
+// A revocation that fails before the write writes nothing; one that fails after it is reported as
+// incomplete, since the credential is stored by then.
+func (s *ServiceTestSuite) TestUpdateCredentials_RevocationFailures() {
+	svc, r, creds := s.credentialUpdateFixture("e-fail", json.RawMessage(`{"password":[{"value":"h1"}]}`), false)
+
+	r.failing = systemFlowCredentialUpdatePre
+	s.ErrorIs(svc.UpdateCredentials(s.ctx, "e-fail", creds), errRevocationFailed)
+	s.Equal([]string{systemFlowCredentialUpdatePre}, r.order)
+
+	r.order, r.failing = nil, systemFlowCredentialUpdatePost
+	s.ErrorIs(svc.UpdateCredentials(s.ctx, "e-fail", creds), ErrRevocationIncomplete)
+	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
 }

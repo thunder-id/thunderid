@@ -33,26 +33,32 @@ paths:
         - i18n translations based on language and namespace filters
         - Registration and recovery flow enablement status
 
-        **Note:** When `type=APP`, the OU metadata is only included in the response
-        when the deployment has exactly one organization unit (i.e., `totalResults == 1`).
-        For deployments with multiple OUs, the OU metadata will be omitted from APP-type responses.
+        **Note:** For `type=APP` and `type=REF`, the OU metadata is the organization unit the
+        application belongs to, when it has one.
+
+        With neither `type` nor `id`, the application and OU metadata are omitted, and
+        `defaultReturnUrl` is included when set. `type` and `id` are sent together.
       operationId: getFlowMetadata
       parameters:
         - name: type
           in: query
-          required: true
-          description: The type of entity to retrieve metadata for
+          required: false
+          description: |
+            The type of entity to retrieve metadata for. `REF` names the entity by the opaque `ref` query
+            parameter the authorize endpoint adds to the sign-in page URL. A `ref` names an application,
+            and returns the same metadata as `APP`.
           schema:
             type: string
-            enum: [APP, OU]
+            enum: [APP, REF, OU]
           example: APP
         - name: id
           in: query
-          required: true
-          description: The UUID of the entity (application ID or organization unit ID)
+          required: false
+          description: |
+            The application ID or organization unit ID. For `type=REF`, the `ref` value from the
+            sign-in page URL. A `ref` that names no application returns `404`.
           schema:
             type: string
-            format: uuid
           example: "60a9b38b-6eba-9f9e-55f9-267067de4680"
         - name: language
           in: query
@@ -175,10 +181,18 @@ components:
           $ref: '#/components/schemas/DesignMetadata'
         i18n:
           $ref: '#/components/schemas/I18nMetadata'
+        defaultReturnUrl:
+          type: string
+          format: uri
+          description: |
+            The `defaultReturnUrl` of the server config `flow` section. A sign-in page sends the user
+            here when it has no flow to continue and no application URL to return to. Omitted when not
+            set.
+          example: "https://app.example.com"
 
     ApplicationMetadata:
       type: object
-      description: Application metadata (only present when type=APP)
+      description: Application metadata (only present when type=APP or type=REF)
       properties:
         id:
           type: string
@@ -219,7 +233,7 @@ components:
       description: |
         Organization unit metadata.
         - Always present when `type=OU`
-        - For `type=APP`, the organization unit the application belongs to. Omitted when the
+        - For `type=APP` and `type=REF`, the organization unit the application belongs to. Omitted when the
           application is not associated with an organization unit.
       properties:
         id:
@@ -318,8 +332,8 @@ components:
       properties:
         code:
           type: string
-          description: "Error code. Codes follow the FLM-XXXX convention."
-          example: "FLM-1001"
+          description: "Error code. Codes follow the FM-XXXX convention."
+          example: "FM-1001"
         message:
           $ref: '#/components/schemas/I18nMessage'
         description:
@@ -350,17 +364,17 @@ components:
             invalid-type:
               summary: Invalid type parameter
               value:
-                code: "FLM-1001"
+                code: "FM-1001"
                 message:
                   key: "error.flowmetaservice.invalid_request"
                   defaultValue: "Invalid request"
                 description:
                   key: "error.flowmetaservice.invalid_type_description"
-                  defaultValue: "The 'type' parameter must be either 'APP' or 'OU'"
+                  defaultValue: "The 'type' parameter must be one of 'APP', 'REF' or 'OU'"
             missing-type:
               summary: Missing type parameter
               value:
-                code: "FLM-1004"
+                code: "FM-1004"
                 message:
                   key: "error.flowmetaservice.missing_required_parameter"
                   defaultValue: "Missing required parameter"
@@ -370,7 +384,7 @@ components:
             missing-id:
               summary: Missing id parameter
               value:
-                code: "FLM-1005"
+                code: "FM-1005"
                 message:
                   key: "error.flowmetaservice.missing_id_parameter"
                   defaultValue: "Missing required parameter"
@@ -388,7 +402,7 @@ components:
             application-not-found:
               summary: Application not found
               value:
-                code: "FLM-1002"
+                code: "FM-1002"
                 message:
                   key: "error.flowmetaservice.resource_not_found"
                   defaultValue: "Resource not found"
@@ -398,7 +412,7 @@ components:
             ou-not-found:
               summary: Organization unit not found
               value:
-                code: "FLM-1003"
+                code: "FM-1003"
                 message:
                   key: "error.flowmetaservice.ou_not_found"
                   defaultValue: "Resource not found"
@@ -416,7 +430,7 @@ components:
             application-fetch-failed:
               summary: Application fetch failed
               value:
-                code: "FLM-5001"
+                code: "FM-5001"
                 message:
                   key: "error.flowmetaservice.internal_server_error"
                   defaultValue: "Internal server error"
@@ -426,7 +440,7 @@ components:
             ou-fetch-failed:
               summary: Organization unit fetch failed
               value:
-                code: "FLM-5002"
+                code: "FM-5002"
                 message:
                   key: "error.flowmetaservice.internal_server_error"
                   defaultValue: "Internal server error"

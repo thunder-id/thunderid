@@ -627,6 +627,7 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /users/me/update-credentials", ""},
 		{"GET /capabilities", ""},
 		{"DELETE /users/me/agents/*", ""},
+		{"POST /users/me/agents/*/update-credentials", ""},
 		{"POST /users/me/agents/suspend", ""},
 		{"POST /users/me/agents/*/suspend", ""},
 		{"POST /users/me/agents/*/unsuspend", ""},
@@ -661,6 +662,8 @@ func activatePermissions(p *SystemPermissions) {
 		// Agent APIs.
 		{"GET /agents", p.AgentView},
 		{"POST /agents", p.AgentCreate},
+		{"POST /agents/*/client-secret/regenerate", p.AgentUpdate},
+		{"POST /agents/*/update-credentials", p.AgentUpdate},
 		{"GET /agents/**", p.AgentView},
 		{"PUT /agents/**", p.AgentUpdate},
 		{"DELETE /agents/**", p.AgentDelete},
@@ -831,6 +834,7 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /applications", p.AppCreate},
 		{"POST /applications/*/sharing-policies", p.AppUpdate},
 		{"DELETE /applications/*/sharing-policies/**", p.AppUpdate},
+		{"POST /applications/*/client-secret/regenerate", p.AppUpdate},
 		{"GET /applications/**", p.AppView},
 		{"PUT /applications/**", p.AppUpdate},
 		{"DELETE /applications/**", p.AppDelete},
@@ -860,10 +864,11 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /notification-templates/**", p.NotificationTemplateUpdate},
 		{"DELETE /notification-templates/**", p.NotificationTemplateDelete},
 
-		// Import APIs.
+		// Import and export APIs.
 		{"POST /import", p.Root},
 		{"POST /import/delete", p.Root},
 		{"POST /import/managed", p.Root},
+		{"POST /export", p.Root},
 	}
 
 	mcpToolPermissions = map[string]string{
@@ -943,12 +948,13 @@ func activatePermissions(p *SystemPermissions) {
 		"update_authorization_detail_type":    p.AuthzDetailUpdate,
 
 		// Application tools.
-		"list_applications":            p.AppView,
-		"get_application_by_id":        p.AppView,
-		"get_application_by_client_id": p.AppView,
-		"get_application_templates":    p.AppView,
-		"create_application":           p.AppCreate,
-		"update_application":           p.AppUpdate,
+		"list_applications":             p.AppView,
+		"get_application_by_id":         p.AppView,
+		"get_application_by_client_id":  p.AppView,
+		"get_application_templates":     p.AppView,
+		"create_application":            p.AppCreate,
+		"update_application":            p.AppUpdate,
+		"regenerate_application_secret": p.AppUpdate,
 	}
 
 	// Only the Control Plane serves projects. A plane that declares no project permission leaves the
@@ -964,6 +970,8 @@ func activatePermissions(p *SystemPermissions) {
 		apiPermissionEntries = append(apiPermissionEntries,
 			apiPermissionEntry{"GET /projects", p.ProjectView},
 			apiPermissionEntry{"POST /projects", p.ProjectCreate},
+			// The deletion check answers as the delete would, so it needs what the delete needs.
+			apiPermissionEntry{"GET /projects/*/deletion-check", p.ProjectDelete},
 			apiPermissionEntry{"GET /projects/**", p.ProjectView},
 			apiPermissionEntry{"PUT /projects/**", p.ProjectUpdate},
 			apiPermissionEntry{"DELETE /projects/**", p.ProjectDelete},
@@ -975,6 +983,12 @@ func activatePermissions(p *SystemPermissions) {
 			"update_project":    p.ProjectUpdate,
 		})
 	}
+
+	compiled, err := compileAPIPermissions(apiPermissionEntries)
+	if err != nil {
+		panic(err)
+	}
+	compiledAPIPermissionEntries = compiled
 }
 
 // GetSystemPermissions returns the active system permissions.
@@ -1016,6 +1030,30 @@ type apiPermissionEntry struct {
 //
 // Rebuilt by activatePermissions at startup.
 var apiPermissionEntries []apiPermissionEntry
+
+// compiledAPIPermissionEntries holds apiPermissionEntries in their regex form, for ResolveAPIPermission.
+// Rebuilt by activatePermissions at startup.
+var compiledAPIPermissionEntries []compiledAPIPermission
+
+// ResolveAPIPermission returns the permission a request to route requires, where route is a
+// "METHOD /path" pattern whose wildcards stand for any segment. It resolves the pattern as a request to
+// a concrete path is resolved, first match wins, so a broader rule listed earlier answers for it as it
+// would for the request. It reports false when no rule matches, and returns the root permission such a
+// request needs.
+func ResolveAPIPermission(route string) (string, bool) {
+	return matchAPIPermission(compiledAPIPermissionEntries, strings.ReplaceAll(route, "*", "_"))
+}
+
+// matchAPIPermission returns the permission of the first entry matching request, a "METHOD /path" key.
+// It reports false when no entry matches, and returns the root system permission as the fallback.
+func matchAPIPermission(entries []compiledAPIPermission, request string) (string, bool) {
+	for _, entry := range entries {
+		if entry.re.MatchString(request) {
+			return entry.permission, true
+		}
+	}
+	return GetSystemRootPermission(), false
+}
 
 // ---- MCP tool → Permission map ----
 

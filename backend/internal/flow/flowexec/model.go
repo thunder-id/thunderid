@@ -274,7 +274,6 @@ func (c *InterceptorRunnerContext) GetConsumedInputs() []string {
 // FlowStep represents the outcome of a individual flow step
 type FlowStep struct {
 	ExecutionID    string
-	StepID         string
 	Type           common.FlowStepType
 	Status         providers.FlowStatus
 	ChallengeToken string
@@ -283,17 +282,20 @@ type FlowStep struct {
 	ErrorAssertion string
 	Error          *tidcommon.ServiceError
 
-	// SSOHandleOut / SSOFlowID carry an SSO session handle minted during this step back to the
-	// transport layer (the handler), which sets it as a per-flow cookie. They are not part of
-	// the JSON response body.
+	// SSOHandleOut / SSOFlowID carry an SSO session handle minted or reused during this step, and the flow
+	// it belongs to, back to the transport layer (the handler). They are not part of the JSON response body.
 	SSOHandleOut string
 	SSOFlowID    string
+	// SSOHandleReused marks SSOHandleOut as the handle the request presented.
+	SSOHandleReused bool
+	// SSOHandleExpiresAt is when SSOHandleOut's session ends, zero when unknown.
+	SSOHandleExpiresAt time.Time
 	// SSOClearFlowID carries the flow id whose per-flow SSO cookie the transport layer must clear
 	// after this step terminated the session (sign-out). Empty when nothing was cleared. Not part of
 	// the JSON response body.
 	SSOClearFlowID string
-	// SessionData and ClearedSessions are the SSO sessions this step started and ended, in the shape the
-	// response body returns them to a caller that holds its handles itself.
+	// SessionData and ClearedSessions are the SSO sessions this step started or reused and ended, in the
+	// shape the response body returns them to a caller that holds its handles itself.
 	SessionData     []IssuedSessionData
 	ClearedSessions []string
 	// ExpiresAt is when the paused execution expires. Zero when the step did not pause the flow, or the
@@ -314,11 +316,10 @@ type FlowData struct {
 // FlowResponse represents the flow execution API response body
 type FlowResponse struct {
 	ExecutionID    string                  `json:"executionId"`
-	StepID         string                  `json:"stepId,omitempty"`
 	FlowStatus     string                  `json:"flowStatus"`
 	Type           string                  `json:"type,omitempty"`
 	ChallengeToken string                  `json:"challengeToken,omitempty"`
-	Data           FlowData                `json:"data,omitempty"`
+	Data           FlowData                `json:"data,omitzero"`
 	Assertion      string                  `json:"assertion,omitempty"`
 	ErrorAssertion string                  `json:"errorAssertion,omitempty"`
 	Error          *apierror.ErrorResponse `json:"error,omitempty"`
@@ -338,8 +339,7 @@ type SessionData struct {
 	SessionHandle  string `json:"sessionHandle"`
 }
 
-// IssuedSessionData is the SSO session a step started, with how long its handle stays usable, as the
-// per-flow cookie's Max-Age says.
+// IssuedSessionData is the SSO session a step started or reused, with how long its handle stays usable.
 type IssuedSessionData struct {
 	SessionData
 	ExpiresIn int64 `json:"expiresIn"`

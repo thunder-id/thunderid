@@ -48,6 +48,14 @@ const (
 	ActionReuse Action = "reuse"
 	// ActionEnd ends a session.
 	ActionEnd Action = "end"
+	// ActionLock holds an identity from authenticating.
+	ActionLock Action = "lock"
+	// ActionUnlock releases the locks on an identity.
+	ActionUnlock Action = "unlock"
+	// ActionSuspend places an administrative hold on an identity.
+	ActionSuspend Action = "suspend"
+	// ActionUnsuspend releases an administrative hold on an identity.
+	ActionUnsuspend Action = "unsuspend"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

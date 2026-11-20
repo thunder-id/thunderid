@@ -5,13 +5,19 @@ package sso
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const deviceSSOScope = "openid device_sso"
+const (
+	deviceSSOScope = "openid device_sso"
+	// otherAppClientID is the second application of the reuse test, a client of its own so no other test
+	// deletes an application with the same client ID just before it signs in.
+	otherAppClientID = "sso_device_secret_other_app"
+)
 
 // TestCodeExchange_ReturnsDeviceSecret verifies that a code whose callback posted the session the flow
 // started, requested with device_sso, returns that session as a server-signed device secret addressed to
@@ -84,21 +90,137 @@ func (ts *SSOLogoutTestSuite) TestCallback_OversizedBodyRefused() {
 	ts.Equal(collected, ts.deviceSecretClaims(token.DeviceSecret))
 }
 
-// TestCodeExchange_NoDeviceSecretOnSSOReuse verifies that a sign-in that reuses the session starts none,
-// so its callback has nothing to post and its code returns no device secret.
-func (ts *SSOLogoutTestSuite) TestCodeExchange_NoDeviceSecretOnSSOReuse() {
+// TestCodeExchange_ReturnsDeviceSecretOnSSOReuse verifies that a sign-in that reuses the session returns that
+// session, as a new one would, so its code returns a device secret for the same session.
+func (ts *SSOLogoutTestSuite) TestCodeExchange_ReturnsDeviceSecretOnSSOReuse() {
 	client := ts.newSessionClient()
-	first, _ := ts.loginDeviceSecret(client, deviceSSOScope, "device_reuse_state_1", true)
-	ts.Require().NotEmpty(first.DeviceSecret)
+	_, started := ts.loginDeviceSecret(client, deviceSSOScope, "device_reuse_state_1", true)
+	ts.Require().Len(started, 1, "the first sign-in started one session")
+	cookies := ts.ssoCookies(client)
 
 	authID, executionID := ts.authorize(client, deviceSSOScope, "device_reuse_state_2")
 	step := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
 	ts.Require().Equal("COMPLETE", step.FlowStatus, "the second authorize should skip authentication via SSO")
-	ts.Empty(step.SessionData, "a reused session starts no new one")
+	ts.Require().Len(step.SessionData, 1, "a reused session is returned")
+	reused := []testutils.FlowSessionData{step.SessionData[0].FlowSessionData}
+	ts.Equal(started, reused, "the reused session is the one the first sign-in started")
 
-	second := ts.completeAndExchange(client, authID, step.Assertion, nil)
+	second := ts.completeAndExchange(client, authID, step.Assertion, reused)
 
-	ts.Empty(second.DeviceSecret)
+	ts.Equal(started, ts.deviceSecretClaims(second.DeviceSecret))
+	ts.Equal(cookies, ts.ssoCookies(client), "the per-flow cookie still names the same session")
+}
+
+// TestCodeExchange_ReturnsDeviceSecretOnPromptNone verifies that a prompt=none sign-in, which the server completes
+// on the session with no gate, keeps that session with its code too.
+func (ts *SSOLogoutTestSuite) TestCodeExchange_ReturnsDeviceSecretOnPromptNone() {
+	client := ts.newSessionClient()
+	_, started := ts.loginDeviceSecret(client, deviceSSOScope, "device_prompt_none_1", true)
+	ts.Require().Len(started, 1, "the first sign-in started one session")
+
+	resp := ts.authorizeRaw(client, deviceSSOScope, "device_prompt_none_2", map[string]string{"prompt": "none"})
+	defer resp.Body.Close()
+	code := ts.redirectQuery(resp).Get("code")
+	ts.Require().NotEmpty(code, "prompt=none should redirect straight back with a code")
+
+	token := ts.exchangeCode(client, code)
+
+	ts.Equal(started, ts.deviceSecretClaims(token.DeviceSecret))
+}
+
+// TestCodeExchange_ReturnsDeviceSecretOnReauthentication verifies that a sign-in made to authenticate again over a
+// live session, by prompt=login or max_age=0, joins that session and returns it, so its code returns a device secret
+// for the same session and the per-flow cookie is left as it was.
+func (ts *SSOLogoutTestSuite) TestCodeExchange_ReturnsDeviceSecretOnReauthentication() {
+	cases := []struct {
+		name         string
+		param, value string
+		firstState   string
+		secondState  string
+	}{
+		{"prompt=login", "prompt", "login", "device_prompt_login_1", "device_prompt_login_2"},
+		{"max_age=0", "max_age", "0", "device_max_age_zero_1", "device_max_age_zero_2"},
+	}
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			client := ts.newSessionClient()
+			_, started := ts.loginDeviceSecret(client, deviceSSOScope, tc.firstState, true)
+			ts.Require().Len(started, 1, "the first sign-in started one session")
+			cookies := ts.ssoCookies(client)
+
+			resp := ts.authorizeRaw(client, deviceSSOScope, tc.secondState, map[string]string{tc.param: tc.value})
+			defer resp.Body.Close()
+			ts.Require().Equal(http.StatusFound, resp.StatusCode, "authorize should redirect to the gate")
+			authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+			ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
+			step, joined := ts.runCredentialLogin(client, executionID, ssoReuseUsername)
+			ts.Equal(started, joined, "authenticating again joins the session the first sign-in started")
+
+			token := ts.completeAndExchange(client, authID, step.Assertion, joined)
+
+			ts.Equal(started, ts.deviceSecretClaims(token.DeviceSecret))
+			ts.Equal(cookies, ts.ssoCookies(client), "the per-flow cookie still names the same session")
+		})
+	}
+}
+
+// TestCodeExchange_DeviceSecretExpiresWithItsSession verifies that the expiresIn posted with the callback sets
+// when the device secret ends: the time the session has left, counted from the callback.
+func (ts *SSOLogoutTestSuite) TestCodeExchange_DeviceSecretExpiresWithItsSession() {
+	client := ts.newSessionClient()
+	authID, executionID := ts.authorize(client, deviceSSOScope, "device_secret_exp_left")
+	step, collected := ts.runCredentialLogin(client, executionID, ssoReuseUsername)
+	ts.Require().Len(collected, 1, "the sign-in started one session")
+	posted := collected[0]
+	posted.ExpiresIn = 600
+
+	before := time.Now().Unix()
+	token := ts.completeAndExchange(client, authID, step.Assertion, []testutils.FlowSessionData{posted})
+	after := time.Now().Unix()
+
+	claims, err := testutils.DecodeJWT(token.DeviceSecret)
+	ts.Require().NoError(err, "the code exchange should return a device secret")
+	ts.GreaterOrEqual(int64(claims.Exp), before+600-1, "the device secret ends 600 seconds after the callback")
+	ts.LessOrEqual(int64(claims.Exp), after+600+1, "the device secret ends 600 seconds after the callback")
+}
+
+// TestCodeExchange_ReturnsDeviceSecretToAnotherApp verifies the case the issue reports: a session one application
+// started is reused, with device_sso, by a second public client on the same sign-in flow, and that client's code
+// returns a device secret for the session.
+func (ts *SSOLogoutTestSuite) TestCodeExchange_ReturnsDeviceSecretToAnotherApp() {
+	appID := ts.createTokenExchangeApp(otherAppClientID, ts.authFlowID, true)
+	defer ts.deleteAppByID(appID)
+	client := ts.newSessionClient()
+	_, started := ts.loginDeviceSecret(client, deviceSSOScope, "device_other_app_1", true)
+	ts.Require().Len(started, 1, "the first application's sign-in started one session")
+	verifier, err := testutils.GenerateCodeVerifier()
+	ts.Require().NoError(err)
+	params := url.Values{}
+	params.Set("client_id", otherAppClientID)
+	params.Set("redirect_uri", redirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", deviceSSOScope)
+	params.Set("state", "device_other_app_2")
+	params.Set("code_challenge", testutils.GenerateCodeChallenge(verifier))
+	params.Set("code_challenge_method", "S256")
+
+	authID, executionID, err := testutils.StartAuthorizationWithSession(client, params)
+	ts.Require().NoError(err, "authorize request failed")
+	step := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "the second application signs in through the session")
+	ts.Require().Len(step.SessionData, 1, "the reused session is returned")
+	reused := []testutils.FlowSessionData{step.SessionData[0].FlowSessionData}
+	authzResponse, err := testutils.CompleteAuthorizationWithSessionData(client, authID, step.Assertion, reused)
+	ts.Require().NoError(err, "auth callback failed")
+	code, err := testutils.ExtractAuthorizationCode(authzResponse.RedirectURI)
+	ts.Require().NoError(err, "failed to extract authorization code")
+	result, err := testutils.RequestTokenWithPKCE(otherAppClientID, "", code, redirectURI, "authorization_code",
+		verifier)
+	ts.Require().NoError(err, "token request failed")
+	ts.Require().Equal(http.StatusOK, result.StatusCode, string(result.Body))
+
+	ts.Equal(started, ts.deviceSecretClaims(result.Token.DeviceSecret),
+		"the second application's device secret carries the first application's session")
 }
 
 // loginDeviceSecret drives a first-time login as a gate would: it collects the sessions every flow

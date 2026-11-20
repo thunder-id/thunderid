@@ -3,7 +3,7 @@
 
 import {describe, expect, it} from 'vitest';
 import type {ValueReference} from '../../models/deploy';
-import {fieldLabel, valuesByResource} from '../valueLabels';
+import {fieldLabel, parseValueName, valuesByResource} from '../valueLabels';
 
 const t = ((key: string, options?: string | {defaultValue?: string}) =>
   typeof options === 'string' ? options : (options?.defaultValue ?? key)) as unknown as Parameters<
@@ -63,5 +63,23 @@ describe('valuesByResource', () => {
     expect(group.values).toEqual([
       {kind: 'variable', name: 'APP_ONE_REDIRECT_URIS', field: 'redirectUris', list: true},
     ]);
+  });
+});
+
+describe('parseValueName', () => {
+  it('reads the type, the field and the resource ID back from a derived name', () => {
+    expect(parseValueName('APPLICATION__01A1B036A68C7CD2BDAAADE42462071C__CLIENT_ID')).toEqual({
+      resourceType: 'application',
+      field: 'CLIENT_ID',
+      resourceId: '01a1b036-a68c-7cd2-bdaa-ade42462071c',
+    });
+  });
+
+  it('gives no ID for a name that holds a hash of it, and nothing for a chosen name', () => {
+    expect(parseValueName('CONNECTION__H0123456789ABCDEF0123456789ABCDEF__CLIENT_SECRET')).toEqual({
+      resourceType: 'connection',
+      field: 'CLIENT_SECRET',
+    });
+    expect(parseValueName('SHOP_BASE_URL')).toBeNull();
   });
 });

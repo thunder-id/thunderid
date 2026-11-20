@@ -6,6 +6,7 @@ package variablestore
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -47,20 +48,29 @@ func (_m *secretStoreInterfaceMock) EXPECT() *secretStoreInterfaceMock_Expecter 
 }
 
 // DeleteSecret provides a mock function for the type secretStoreInterfaceMock
-func (_mock *secretStoreInterfaceMock) DeleteSecret(ctx context.Context, name string) error {
+func (_mock *secretStoreInterfaceMock) DeleteSecret(ctx context.Context, name string) (bool, error) {
 	ret := _mock.Called(ctx, name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteSecret")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
 		r0 = returnFunc(ctx, name)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(bool)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // secretStoreInterfaceMock_DeleteSecret_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSecret'
@@ -93,12 +103,86 @@ func (_c *secretStoreInterfaceMock_DeleteSecret_Call) Run(run func(ctx context.C
 	return _c
 }
 
-func (_c *secretStoreInterfaceMock_DeleteSecret_Call) Return(err error) *secretStoreInterfaceMock_DeleteSecret_Call {
-	_c.Call.Return(err)
+func (_c *secretStoreInterfaceMock_DeleteSecret_Call) Return(b bool, err error) *secretStoreInterfaceMock_DeleteSecret_Call {
+	_c.Call.Return(b, err)
 	return _c
 }
 
-func (_c *secretStoreInterfaceMock_DeleteSecret_Call) RunAndReturn(run func(ctx context.Context, name string) error) *secretStoreInterfaceMock_DeleteSecret_Call {
+func (_c *secretStoreInterfaceMock_DeleteSecret_Call) RunAndReturn(run func(ctx context.Context, name string) (bool, error)) *secretStoreInterfaceMock_DeleteSecret_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteSecrets provides a mock function for the type secretStoreInterfaceMock
+func (_mock *secretStoreInterfaceMock) DeleteSecrets(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, error) {
+	ret := _mock.Called(ctx, names, unchangedFor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSecrets")
+	}
+
+	var r0 []string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, time.Duration) ([]string, error)); ok {
+		return returnFunc(ctx, names, unchangedFor)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, time.Duration) []string); ok {
+		r0 = returnFunc(ctx, names, unchangedFor)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string, time.Duration) error); ok {
+		r1 = returnFunc(ctx, names, unchangedFor)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// secretStoreInterfaceMock_DeleteSecrets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSecrets'
+type secretStoreInterfaceMock_DeleteSecrets_Call struct {
+	*mock.Call
+}
+
+// DeleteSecrets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - names []string
+//   - unchangedFor time.Duration
+func (_e *secretStoreInterfaceMock_Expecter) DeleteSecrets(ctx any, names any, unchangedFor any) *secretStoreInterfaceMock_DeleteSecrets_Call {
+	return &secretStoreInterfaceMock_DeleteSecrets_Call{Call: _e.mock.On("DeleteSecrets", ctx, names, unchangedFor)}
+}
+
+func (_c *secretStoreInterfaceMock_DeleteSecrets_Call) Run(run func(ctx context.Context, names []string, unchangedFor time.Duration)) *secretStoreInterfaceMock_DeleteSecrets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		var arg2 time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *secretStoreInterfaceMock_DeleteSecrets_Call) Return(strings []string, err error) *secretStoreInterfaceMock_DeleteSecrets_Call {
+	_c.Call.Return(strings, err)
+	return _c
+}
+
+func (_c *secretStoreInterfaceMock_DeleteSecrets_Call) RunAndReturn(run func(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, error)) *secretStoreInterfaceMock_DeleteSecrets_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -25,7 +25,6 @@ const agentOnboardingFlowHandle = "default-agent-onboarding-flow"
 const (
 	agentNameInput          = "name"
 	agentModelProviderInput = "modelProvider"
-	agentModelInput         = "model"
 	agentOwnerInput         = "owner"
 	agentDelegatedInput     = "delegated"
 	agentRedirectURIsInput  = "redirectUris"
@@ -190,65 +189,17 @@ func inputIdentifiers(step common.FlowStep) []string {
 	return identifiers
 }
 
-// detailsSelectOptions reads the choices the shipped flow's details prompt carries on its select
-// components, keyed by the attribute each one collects. The prompt precedes provisioning, so nothing
-// is forwarded to it and the choices live on the components themselves.
-func detailsSelectOptions(ts *suite.Suite, flowID string) map[string][]interface{} {
-	ts.T().Helper()
-
-	token, err := testutils.GetAccessToken()
-	ts.Require().NoError(err, "Failed to obtain admin access token")
-
-	req, err := http.NewRequest(http.MethodGet, testServerURL+"/flows/"+flowID, nil)
-	ts.Require().NoError(err)
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := testutils.GetRawHTTPClient().Do(req)
-	ts.Require().NoError(err, "Failed to read the shipped agent onboarding flow")
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
-	ts.Require().Equal(http.StatusOK, resp.StatusCode, "Reading the flow failed: %s", string(body))
-
-	var flow struct {
-		Nodes []struct {
-			ID   string                 `json:"id"`
-			Meta map[string]interface{} `json:"meta"`
-		} `json:"nodes"`
+// inputOptions reads the choices a step offers on its inputs, keyed by attribute.
+func inputOptions(step common.FlowStep) map[string][]string {
+	options := make(map[string][]string, len(step.Data.Inputs))
+	for _, input := range step.Data.Inputs {
+		options[input.Identifier] = input.Options
 	}
-	ts.Require().NoError(json.Unmarshal(body, &flow))
-
-	options := map[string][]interface{}{}
-	var collect func(components []interface{})
-	collect = func(components []interface{}) {
-		for _, raw := range components {
-			component, ok := raw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if component["type"] == "SELECT" {
-				ref, _ := component["ref"].(string)
-				options[ref], _ = component["options"].([]interface{})
-			}
-			if children, ok := component["components"].([]interface{}); ok {
-				collect(children)
-			}
-		}
-	}
-	for _, node := range flow.Nodes {
-		if node.ID == "prompt_agent_details" {
-			components, _ := node.Meta["components"].([]interface{})
-			collect(components)
-		}
-	}
-
 	return options
 }
 
-// A value the agent type rejects at creation sends the run back to the details prompt, which asks
-// for the enumerated attribute again so the administrator can pick again.
-func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueReturnsToDetailsWithChoices() {
+// A value the agent type rejects ends the run with the error.
+func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueEndsTheRunWithTheError() {
 	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
@@ -258,9 +209,8 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueRet
 		agentModelProviderInput: "not-in-the-enum",
 	})
 
-	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the run returns to the details prompt: %s", string(body))
+	ts.Require().Equal("ERROR", step.FlowStatus, "the run ends rather than returning to the prompt: %s", string(body))
 	ts.Require().NotNil(step.Error, "the rejection is reported")
-	ts.Contains(inputIdentifiers(step), agentModelProviderInput, "the details prompt asks for the model provider again")
 }
 
 // Running the shipped flow to completion exercises the whole chain in one execution: the
@@ -283,20 +233,16 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_CompletesAndRetu
 	// The detail prompt is driven by the agent type schema, so its inputs prove the executor
 	// resolved the agent type without a resolver node ahead of it. The name is one of them.
 	ts.Contains(inputIdentifiers(step), agentNameInput, "the details prompt asks for the name")
-	ts.Contains(inputIdentifiers(step), agentModelInput, "the details prompt offers the schema attributes")
+	ts.Contains(inputIdentifiers(step), agentModelProviderInput, "the details prompt offers the schema attributes")
 
 	// A select the schema restricts to a fixed set must carry its choices, or the Console has nothing
-	// to render. The details prompt runs before provisioning, so the choices are written on the
-	// select components in the flow rather than forwarded to the prompt.
-	options := detailsSelectOptions(&ts.Suite, ts.flowID)
-	ts.NotEmpty(options[agentModelProviderInput], "the model provider select carries its choices")
-	ts.NotEmpty(options["function"], "the function select carries its choices")
+	// to render.
+	ts.NotEmpty(inputOptions(step)[agentModelProviderInput], "the model provider select carries its choices")
 
 	agentName := common.GenerateUniqueUsername("integration_agent")
 	status, step, body = ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{
 		agentNameInput:          agentName,
 		agentModelProviderInput: "anthropic",
-		agentModelInput:         common.GenerateUniqueUsername("model"),
 	})
 	ts.Require().Equal(http.StatusOK, status, "Details step failed: %s", string(body))
 	ts.Require().Equal("COMPLETE", step.FlowStatus, "The flow should complete: %s", string(body))
@@ -363,9 +309,9 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DuplicateNameRet
 
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus,
 		"the run continues so the name can be corrected: %s", string(body))
-	ts.Contains(inputIdentifiers(step), agentNameInput,
+	// Only the conflicting value is asked for again.
+	ts.Equal([]string{agentNameInput}, inputIdentifiers(step),
 		"the name is asked again on the details prompt rather than the run ending: %s", string(body))
-	ts.Contains(inputIdentifiers(step), agentModelInput, "the run is back on the details prompt: %s", string(body))
 
 	// Correcting it completes without repeating the earlier steps.
 	_, step, body = ts.step(second, step.ChallengeToken, agentDetailsAction,
@@ -640,8 +586,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 	ts.ElementsMatch([]string{first, second}, agent.InboundAuthConfig[0].Config.RedirectURIs)
 }
 
-// A login flow that does not exist is refused by the agent service. The run stays open and reports
-// the error instead of ending.
+// A login flow that does not exist is refused, and the run ends with that error.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnUnknownLoginFlow() {
 	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
@@ -654,7 +599,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnUnknown
 		agentUserTypesInput:    seededUserTypeName,
 	})
 
-	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the run continues: %s", string(body))
+	ts.Require().Equal("ERROR", step.FlowStatus, "the run ends: %s", string(body))
 	ts.Require().NotNil(step.Error, "the rejection is reported: %s", string(body))
 	ts.Equal("AGT-1028", step.Error.Code)
 }

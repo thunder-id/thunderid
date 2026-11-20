@@ -37,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
-	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -247,7 +246,6 @@ type ExecutorDependencies struct {
 	OpenID4VPVerifierSvc   openid4vp.OpenID4VPServiceInterface
 	SessionService         session.Service
 	ResourceService        providers.ResourceServerProvider
-	UserService            user.UserServiceInterface
 	CriteriaRevoker        revocation.CriteriaRevoker
 	ResourceMgtService     resource.ResourceServiceInterface
 	HTTPConnectionProvider httpconnection.HTTPConnectionProvider
@@ -399,12 +397,9 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider,
 				newAccessGuard(deps.IdentityGovernance)))
 		},
-		ExecutorNamePreDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePreDelete,
-				newPreDeleteExecutor(deps.FlowFactory, deps.UserService))
-		},
-		ExecutorNamePreCredentialUpdate: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePreCredentialUpdate, newPreCredentialUpdateExecutor(deps.FlowFactory))
+		ExecutorNamePreRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreRevocation,
+				newPreRevocationExecutor(deps.FlowFactory, deps.ArtifactLifetime, deps.EntityProvider))
 		},
 		ExecutorNameCriteriaRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCriteriaRevocation,
@@ -450,10 +445,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameApplicationActionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameApplicationActionValidator,
 				newApplicationActionValidator(deps.FlowFactory))
-		},
-		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameClientSecret,
-				newClientSecretExecutor(deps.FlowFactory))
 		},
 		ExecutorNameExtension: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameExtension,
@@ -553,10 +544,6 @@ func registerBuiltInExecutor(
 type applicationAdminProvider interface {
 	ValidateDeleteApplication(ctx context.Context, appID string) (
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	ValidateCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
-		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
-		string, *tidcommon.ServiceError)
 }
 
 // roleAdminProvider is the role seam the access change validator and the role executor consume.

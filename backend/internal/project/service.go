@@ -37,6 +37,7 @@ type ProjectServiceInterface interface {
 	GetProjectList(ctx context.Context, limit, offset int) (*ProjectListResponse, *tidcommon.ServiceError)
 	UpdateProject(ctx context.Context, id string, request ProjectRequest) (*Project, *tidcommon.ServiceError)
 	DeleteProject(ctx context.Context, id string) *tidcommon.ServiceError
+	CheckProjectDeletion(ctx context.Context, id string) *tidcommon.ServiceError
 	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	ProjectNames(ctx context.Context) (map[string]string, *tidcommon.ServiceError)
@@ -247,8 +248,50 @@ func (s *projectService) DeleteProject(ctx context.Context, id string) *tidcommo
 	return svcErr
 }
 
+// CheckProjectDeletion reports, without deleting anything, whether DeleteProject would delete the
+// project: it returns nil when it would, and the error DeleteProject would return when it would not.
+// A project that does not exist is ErrorProjectNotFound.
+func (s *projectService) CheckProjectDeletion(ctx context.Context, id string) *tidcommon.ServiceError {
+	if _, svcErr := s.GetProject(ctx, id); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.checkDeletable(ctx, id); svcErr != nil {
+		return svcErr
+	}
+	return s.checkEntities(ctx, id)
+}
+
 // deleteProject deletes a project without publishing its audit event.
 func (s *projectService) deleteProject(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := s.checkDeletable(ctx, id); svcErr != nil {
+		return svcErr
+	}
+
+	var capturedSvcErr *tidcommon.ServiceError
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if svcErr := s.checkEntities(txCtx, id); svcErr != nil {
+			capturedSvcErr = svcErr
+			return errors.New("project cannot be deleted")
+		}
+		err := s.store.DeleteProject(txCtx, id)
+		if errors.Is(err, errProjectNotFound) {
+			capturedSvcErr = errProjectNotFoundNoop
+		}
+		return err
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to delete project", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// checkDeletable refuses deleting a project a control plane deployed, or one a registered resource
+// check finds resources in. The application and agent check is left to the caller.
+func (s *projectService) checkDeletable(ctx context.Context, id string) *tidcommon.ServiceError {
 	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
@@ -262,29 +305,19 @@ func (s *projectService) deleteProject(ctx context.Context, id string) *tidcommo
 			return &ErrorProjectNotEmpty
 		}
 	}
+	return nil
+}
 
-	var capturedSvcErr *tidcommon.ServiceError
-	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		hasEntities, err := s.entities.ProjectHasEntities(txCtx, id)
-		if err != nil {
-			return err
-		}
-		if hasEntities {
-			capturedSvcErr = &ErrorProjectNotEmpty
-			return errors.New("project is not empty")
-		}
-		err = s.store.DeleteProject(txCtx, id)
-		if errors.Is(err, errProjectNotFound) {
-			capturedSvcErr = errProjectNotFoundNoop
-		}
-		return err
-	})
-	if capturedSvcErr != nil {
-		return capturedSvcErr
-	}
+// checkEntities refuses deleting a project an application or agent is still in.
+func (s *projectService) checkEntities(ctx context.Context, id string) *tidcommon.ServiceError {
+	hasEntities, err := s.entities.ProjectHasEntities(ctx, id)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to delete project", log.Error(err))
+		s.logger.Error(ctx, "Failed to check the entities of a project", log.String("projectID", id),
+			log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if hasEntities {
+		return &ErrorProjectNotEmpty
 	}
 	return nil
 }

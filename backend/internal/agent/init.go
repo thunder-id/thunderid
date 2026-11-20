@@ -166,6 +166,34 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 			w.WriteHeader(http.StatusNoContent)
 		}, itemOpts))
 
+	secretOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("POST /agents/{id}/client-secret/regenerate",
+		h.HandleClientSecretRegenerateRequest, secretOpts))
+	// Without its own preflight route this action falls to OPTIONS /agents/, which does not allow POST,
+	// and the browser blocks the request.
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /agents/{id}/client-secret/regenerate",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, secretOpts))
+
+	credentialsOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("POST /agents/{id}/update-credentials",
+		h.HandleAgentCredentialUpdateRequest, credentialsOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /agents/{id}/update-credentials",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, credentialsOpts))
+
 	groupsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
@@ -199,6 +227,8 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 	mux.HandleFunc(middleware.WithCORS("PUT /users/me/agents/{id}", h.HandleOwnedAgentPutRequest, ownedItemOpts))
 	mux.HandleFunc(middleware.WithCORS("DELETE /users/me/agents/{id}",
 		h.HandleOwnedAgentDeleteRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("POST /users/me/agents/{id}/update-credentials",
+		h.HandleOwnedAgentCredentialUpdateRequest, ownedItemOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/agents/",
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

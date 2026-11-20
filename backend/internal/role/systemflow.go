@@ -11,10 +11,12 @@ import (
 )
 
 // The system flow that follows every change whose pre flow revokes up to a cutoff, moving the cutoff past
-// the write, and the input naming the role the flows act on.
+// the write, the input naming the role the flows act on, and the input listing, as a JSON array, the
+// entities whose assignments a role deletion removed.
 const (
-	systemFlowRevocationPost = "system-revocation-post"
-	systemFlowInputRole      = "targetRoleId"
+	systemFlowRevocationPost      = "system-revocation-post"
+	systemFlowInputRole           = "targetRoleId"
+	systemFlowInputRemovedHolders = "removedHolderIds"
 )
 
 // systemFlowProvider runs a system flow to completion. The flow engine implements it.

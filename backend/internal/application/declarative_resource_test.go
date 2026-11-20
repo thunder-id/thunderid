@@ -20,6 +20,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 
 	"gopkg.in/yaml.v3"
@@ -30,6 +31,7 @@ type ApplicationExporterTestSuite struct {
 	suite.Suite
 	mockService *applicationmock.ApplicationServiceInterfaceMock
 	sharingMock *sharingmock.SharingServiceInterfaceMock
+	entityMock  *entitymock.EntityServiceInterfaceMock
 	exporter    declarativeresource.ResourceExporter
 	logger      *log.Logger
 }
@@ -41,8 +43,14 @@ func TestApplicationExporterTestSuite(t *testing.T) {
 func (s *ApplicationExporterTestSuite) SetupTest() {
 	s.mockService = applicationmock.NewApplicationServiceInterfaceMock(s.T())
 	s.sharingMock = sharingmock.NewSharingServiceInterfaceMock(s.T())
-	s.exporter = application.NewApplicationExporterForTest(s.mockService, s.sharingMock)
+	s.entityMock = entitymock.NewEntityServiceInterfaceMock(s.T())
+	s.exporter = application.NewApplicationExporterForTest(s.mockService, s.entityMock, s.sharingMock)
 	s.logger = log.GetLogger()
+}
+
+// expectNoFlowSecretHeld answers, once, that the application holds no Flow Secret.
+func (s *ApplicationExporterTestSuite) expectNoFlowSecretHeld(appID string) {
+	s.entityMock.EXPECT().GetCredentialsByType(mock.Anything, appID, "flowSecret").Return(nil, nil).Once()
 }
 
 func (s *ApplicationExporterTestSuite) TestNewApplicationExporter() {
@@ -111,6 +119,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
 	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(expectedApp, nil)
 	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
 		Return(nil, nil)
+	s.expectNoFlowSecretHeld("app1")
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "app1")
 
@@ -125,6 +134,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_ExportsProject() {
 		&providers.Application{ID: "app1", Name: "Test App", ProjectID: "project-1"}, nil)
 	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
 		Return(nil, nil)
+	s.expectNoFlowSecretHeld("app1")
 
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "app1")
 	s.Require().Nil(err)

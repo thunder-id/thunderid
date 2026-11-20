@@ -90,12 +90,18 @@ interface RecordedRequest {
   data?: unknown;
 }
 
+// Two types, so the type is chosen from the select. A single type is used without asking.
 const agentTypes = {
-  totalResults: 1,
+  totalResults: 2,
   startIndex: 1,
-  count: 1,
-  types: [{id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-root'}],
+  count: 2,
+  types: [
+    {id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-root'},
+    {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-root'},
+  ],
 };
+
+const soleAgentType = {...agentTypes, totalResults: 1, count: 1, types: [agentTypes.types[0]]};
 
 const users = {
   totalResults: 1,
@@ -138,23 +144,39 @@ function requests(): RecordedRequest[] {
   return h.http.request.mock.calls.map(([config]) => config as RecordedRequest);
 }
 
-// The agent type select comes first in the form and the owner select second.
+// The agent type select comes first on the first step and the owner select second. The type select
+// appears only once the types have loaded, so it is found by its ID rather than by its position then.
 async function chooseOption(user: ReturnType<typeof userEvent.setup>, index: number, label: string): Promise<void> {
-  await user.click((await screen.findAllByRole('combobox'))[index]);
+  const selectId = index === 0 ? 'agent-type' : 'agent-owner-select';
+  await waitFor(() => expect(document.getElementById(selectId)).not.toBeNull());
+  await user.click(document.getElementById(selectId)!);
   await user.click(within(await screen.findByRole('listbox')).getByText(label));
 }
 
-// The first step: the agent type and the organization unit.
+// Continue turns on once the step in view has what it asks for, and opens the next step.
+async function clickContinue(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  const next = await screen.findByRole('button', {name: 'common:actions.continue'});
+  await waitFor(() => expect(next).toBeEnabled());
+  await user.click(next);
+}
+
+// The first step's agent type and organization unit, with the step left in view.
 async function fillSetup(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await chooseOption(user, 0, 'Default');
   await user.click(await screen.findByTestId('ou-picker'));
 }
 
-// The first step's Continue turns on once the type's schema has loaded, and opens the attributes step.
+// The last step, with the type's attributes, from whichever step is in view.
 async function continueToAttributes(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  const next = await screen.findByRole('button', {name: 'common:actions.continue'});
-  await waitFor(() => expect(next).toBeEnabled());
-  await user.click(next);
+  while (!screen.queryByRole('button', {name: 'agents:addForm.submit'})) {
+    await clickContinue(user);
+  }
+}
+
+// The first step again, from its breadcrumb.
+async function backToTypeStep(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByText('agents:addAgent', {selector: 'button, a, [role="button"]'}));
+  await screen.findByRole('heading', {name: 'agents:addForm.steps.setup.title'});
 }
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -163,7 +185,7 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>): Promise<v
   await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
 }
 
-// The second step's required attributes, once the first step is done.
+// The last step's required attributes, once the steps before it are done.
 async function fillAttributes(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await continueToAttributes(user);
   await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
@@ -218,8 +240,8 @@ describe('AgentAddFormPage', () => {
 
     await fillSetup(user);
     expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-root', 'ou-root');
-    await user.type(screen.getByRole('textbox', {name: 'agents:addForm.description'}), 'Exposes calendar tools');
     await fillAttributes(user);
+    await user.type(screen.getByRole('textbox', {name: 'agents:addForm.description'}), 'Exposes calendar tools');
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
@@ -388,12 +410,20 @@ describe('AgentAddFormPage', () => {
       await fillInProject(user);
 
       const picker = await screen.findByTestId('ou-picker');
-      await waitFor(() => {
-        expect(requests().some((request) => request.url.includes('/agent-types/type-1'))).toBe(true);
-      });
       expect(continueButton()).toBeDisabled();
       await user.click(picker);
       await waitFor(() => expect(continueButton()).toBeEnabled());
+    });
+
+    it('offers every placement in the project for a type that names no organization unit', async () => {
+      agentTypes.types[0].ouId = '';
+      h.projectOuCount.current = 1;
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      const picker = await screen.findByTestId('ou-picker');
+      expect(picker).toHaveAttribute('data-project-id', 'project-1');
+      expect(picker).not.toHaveAttribute('data-within');
     });
 
     it('creates the agent in the picked project organization unit', async () => {
@@ -636,6 +666,7 @@ describe('AgentAddFormPage', () => {
     render(<AgentAddFormPage />);
 
     await fillSetup(user);
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
     await user.click(await screen.findByRole('button', {name: 'common:actions.refresh'}));
 
     // Only the agent type select is left until the owners load, then the owner select is back.
@@ -679,8 +710,8 @@ describe('AgentAddFormPage', () => {
     render(<AgentAddFormPage />);
 
     await fillSetup(user);
-    await user.click(screen.getByRole('switch', {name: 'agents:addForm.issueCredentials'}));
     await fillAttributes(user);
+    await user.click(screen.getByRole('switch', {name: 'agents:addForm.issueCredentials'}));
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
@@ -725,7 +756,7 @@ describe('AgentAddFormPage', () => {
       ...agentTypes,
       totalResults: 2,
       count: 2,
-      types: [...agentTypes.types, {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-root'}],
+      types: [agentTypes.types[0], {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-root'}],
     };
     const assistantType = {...defaultType, id: 'type-2', handle: 'assistant', displayName: 'Assistant'};
     h.http.request.mockImplementation((config: unknown) => {
@@ -745,7 +776,7 @@ describe('AgentAddFormPage', () => {
       await user.click(await screen.findByTestId('ou-picker'));
       await continueToAttributes(user);
     };
-    const back = (): Promise<void> => user.click(screen.getByRole('button', {name: 'common:actions.back'}));
+    const back = (): Promise<void> => backToTypeStep(user);
     await screen.findAllByRole('combobox');
     await choose('Default');
     await screen.findByRole('textbox', {name: /environment/});
@@ -778,7 +809,7 @@ describe('AgentAddFormPage', () => {
       ...agentTypes,
       totalResults: 2,
       count: 2,
-      types: [...agentTypes.types, {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-other'}],
+      types: [agentTypes.types[0], {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-other'}],
     };
     const assistantType = {
       ...defaultType,
@@ -813,7 +844,7 @@ describe('AgentAddFormPage', () => {
 
     await chooseOption(user, 0, 'Default');
 
-    expect(await screen.findByText('agents:addForm.organizationUnitHint')).toBeInTheDocument();
+    expect(await screen.findByText('agents:addForm.organizationUnitHint')).toBeVisible();
   });
 
   it('should explain an organization unit outside the agent type when the server refuses it', async () => {
@@ -851,32 +882,78 @@ describe('AgentAddFormPage', () => {
     await waitFor(() => expect(next).toBeEnabled());
   });
 
-  it('asks for the type and placement first, and the schema attributes on the next step', async () => {
+  it('asks for the type, organization unit and owner first, then the details', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    const heading = (step: string): HTMLElement =>
+      screen.getByRole('heading', {name: `agents:addForm.steps.${step}.title`});
+    const crumb = (step: string): HTMLElement | null => screen.queryByText(`agents:addForm.steps.${step}.breadcrumb`);
+
+    // The first step holds the type and the owner, and the trail only the steps reached.
+    await screen.findAllByRole('combobox');
+    expect(heading('setup')).toBeInTheDocument();
+    expect(screen.getByText('agents:addForm.steps.setup.subtitleWithOrganizationUnit')).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: 'agents:owner.kind.internal'})).toBeInTheDocument();
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'common:actions.back'})).not.toBeInTheDocument();
+    expect(crumb('setup')).toBeInTheDocument();
+    expect(crumb('details')).not.toBeInTheDocument();
+
+    // The organization unit is asked for on the same step, once the type says where the agent can go.
+    await fillSetup(user);
+    expect(screen.getByTestId('ou-picker')).toBeVisible();
+    // The type's schema has loaded, but its attributes wait for the next step.
+    expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', {name: 'agents:addForm.description'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', {name: 'agents:addForm.issueCredentials'})).not.toBeInTheDocument();
+
+    await continueToAttributes(user);
+    expect(heading('details')).toBeInTheDocument();
+    expect(crumb('details')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /^name/})).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /llmModel/})).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /environment/})).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: 'agents:addForm.description'})).toBeInTheDocument();
+    expect(screen.getByRole('switch', {name: 'agents:addForm.issueCredentials'})).toBeInTheDocument();
+    // What the first step asked for is out of view.
+    expect(screen.getByTestId('ou-picker')).not.toBeVisible();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'common:actions.continue'})).not.toBeInTheDocument();
+  });
+
+  it('returns to the first step from its own breadcrumb too', async () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
     await fillSetup(user);
-    // The type's schema has loaded, but its attributes wait for the next step.
-    await waitFor(() => expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeEnabled());
-    expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox', {name: /llmModel/})).not.toBeInTheDocument();
-    expect(screen.queryByText('agents:addForm.attributesStep.breadcrumb')).not.toBeInTheDocument();
-
     await continueToAttributes(user);
+    await user.click(
+      screen.getByText('agents:addForm.steps.setup.breadcrumb', {selector: 'button, a, [role="button"]'}),
+    );
 
-    expect(screen.getByRole('heading', {name: 'agents:addForm.attributesStep.title'})).toBeInTheDocument();
-    expect(screen.getByText('agents:addForm.attributesStep.breadcrumb')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', {name: /^name/})).toBeInTheDocument();
-    expect(screen.getByRole('textbox', {name: /llmModel/})).toBeInTheDocument();
-    expect(screen.getByRole('textbox', {name: /environment/})).toBeInTheDocument();
-    // What the first step asked for is out of view.
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox', {name: 'agents:addForm.description'})).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch', {name: 'agents:addForm.issueCredentials'})).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'common:actions.continue'})).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', {name: 'agents:addForm.steps.setup.title'})).toBeInTheDocument();
+    expect(screen.queryByText('agents:addForm.steps.details.breadcrumb')).not.toBeInTheDocument();
   });
 
-  it('keeps what was entered on both steps when going back and forth', async () => {
+  it('asks for the type alone on the first step in a project that has no organization units', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AgentAddFormPage />
+      </ProjectScopeProvider>,
+    );
+
+    await chooseOption(user, 0, 'Default');
+    expect(await screen.findByText('agents:addForm.steps.setup.subtitle')).toBeInTheDocument();
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    await clickContinue(user);
+
+    expect(await screen.findByRole('heading', {name: 'agents:addForm.steps.details.title'})).toBeInTheDocument();
+  });
+
+  it('keeps what was entered on each step when going back and forth', async () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
@@ -941,7 +1018,7 @@ describe('AgentAddFormPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it("asks for the attributes in the agent type's order: display attribute, required, optional, credentials", async () => {
+  it("asks for the attributes in the agent type's order: required, optional, credentials, each by name", async () => {
     const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
     h.http.request.mockImplementation((config: unknown) =>
       (config as RecordedRequest).url.includes('/agent-types/type-1')
@@ -969,10 +1046,10 @@ describe('AgentAddFormPage', () => {
     // The credential is a password input, with no textbox role, so every input of the form is read.
     const fields = document.querySelectorAll<HTMLInputElement>('#agent-attributes-form input[id]');
     expect(Array.from(fields, (element) => element.id)).toEqual([
-      'label',
       'environment',
-      'model',
+      'label',
       'function',
+      'model',
       'apiKey',
     ]);
   });
@@ -983,7 +1060,7 @@ describe('AgentAddFormPage', () => {
 
     await fillSetup(user);
     await continueToAttributes(user);
-    await user.click(screen.getByText('agents:addAgent', {selector: 'button, a, [role="button"]'}));
+    await backToTypeStep(user);
 
     expect(await screen.findByRole('button', {name: 'common:actions.continue'})).toBeEnabled();
     expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
@@ -1042,6 +1119,99 @@ describe('AgentAddFormPage', () => {
     expect(await screen.findByText('agents:addForm.agentTypeSchemaError')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeDisabled();
+  });
+
+  it('reads the attributes of the chosen agent type again on retry, and then lets the step continue', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    let fails = true;
+    h.http.request.mockImplementation((config: unknown) =>
+      fails && (config as RecordedRequest).url.includes('/agent-types/type-1')
+        ? Promise.reject(new Error('network down'))
+        : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await chooseOption(user, 0, 'Default');
+    expect(await screen.findByText('agents:addForm.agentTypeSchemaError')).toBeInTheDocument();
+
+    fails = false;
+    await user.click(screen.getByRole('button', {name: 'common:actions.refresh'}));
+    await user.click(await screen.findByTestId('ou-picker'));
+
+    await waitFor(() => expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeEnabled());
+    expect(screen.queryByText('agents:addForm.agentTypeSchemaError')).not.toBeInTheDocument();
+  });
+
+  it('names a type without a display name by its handle, and roots its picker at no organization unit', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    const unnamed = {
+      ...agentTypes,
+      types: [{id: 'type-1', handle: 'default', displayName: '', ouId: ''}, agentTypes.types[1]],
+    };
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types?') ? Promise.resolve({data: unnamed}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await chooseOption(user, 0, 'default');
+
+    expect(await screen.findByTestId('ou-picker')).not.toHaveAttribute('data-root');
+  });
+
+  it('uses the only agent type without offering the choice', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types?') ? Promise.resolve({data: soleAgentType}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    // The type's organization unit is offered straight away, and the owner's is the only select left.
+    const picker = await screen.findByTestId('ou-picker');
+    expect(picker).toHaveAttribute('data-root', 'ou-root');
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    expect(screen.queryByText('agents:addForm.agentType')).not.toBeInTheDocument();
+
+    await user.click(picker);
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+        ouId: 'ou-child',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
+    });
+  });
+
+  it('uses the only agent type inside a project', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types?') ? Promise.resolve({data: soleAgentType}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AgentAddFormPage />
+      </ProjectScopeProvider>,
+    );
+
+    await fillAttributes(user);
+    expect(screen.queryByText('agents:addForm.agentType')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+        projectId: 'project-1',
+        type: 'default',
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        inboundAuthConfig: [ISSUED_CREDENTIALS],
+      });
+    });
   });
 
   it('says so when no agent types exist', async () => {

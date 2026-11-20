@@ -8,7 +8,7 @@ import {errorReasonOf} from '../apiError';
 import {aboutOwner, aboutValues, type MissingField} from '../missingValues';
 import runnersOf from '../runners';
 import {parseValueName} from '../valueLabels';
-import valueRowsOf, {withoutHiddenResources} from '../valueRows';
+import valueRowsOf, {maskHiddenResources, withoutHiddenResources} from '../valueRows';
 
 describe('valueRowsOf', () => {
   it('lists every name of a kind the target holds or the version uses, unset first, then by name', () => {
@@ -71,14 +71,16 @@ describe('valueRowsOf with the current configuration', () => {
 });
 
 describe('parseValueName', () => {
-  it('reads the resource type and field back from a name the server derived', () => {
+  it('reads the resource type, field and resource ID back from a name the server derived', () => {
     expect(parseValueName('APPLICATION__019000000000700080000000000000F1__CLIENT_ID')).toEqual({
       resourceType: 'application',
       field: 'CLIENT_ID',
+      resourceId: '01900000-0000-7000-8000-0000000000f1',
     });
     expect(parseValueName('RESOURCE_SERVER__01900000000070008000000000000020__IDENTIFIER')).toEqual({
       resourceType: 'resource_server',
       field: 'IDENTIFIER',
+      resourceId: '01900000-0000-7000-8000-000000000020',
     });
     expect(parseValueName('USER__H0123456789ABCDEF0123456789ABCDEF__PASSWORD')).toEqual({
       resourceType: 'user',
@@ -201,5 +203,27 @@ describe('withoutHiddenResources', () => {
     const rows = valueRowsOf('variable', [{name: 'A', value: 'a'}], [ref('A', 'app-hidden')]);
 
     expect(withoutHiddenResources(rows, () => false)).toEqual(rows);
+  });
+
+  it('with maskHiddenResources keeps every row, marking one only hidden resources use', () => {
+    const rows = valueRowsOf(
+      'variable',
+      [
+        {name: 'HIDDEN_ONLY', value: 'h'},
+        {name: 'SHARED', value: 's'},
+        {name: 'UNUSED', value: 'u'},
+      ],
+      [ref('HIDDEN_ONLY', 'app-hidden'), ref('SHARED', 'app-hidden'), ref('SHARED', 'app-shown')],
+    );
+
+    const masked = maskHiddenResources(rows, isHidden);
+
+    expect(masked.map((row) => [row.name, row.hiddenUse ?? false])).toEqual([
+      ['HIDDEN_ONLY', true],
+      ['SHARED', false],
+      ['UNUSED', false],
+    ]);
+    expect(masked[0].references).toEqual([]);
+    expect(masked[1].references.map((reference) => reference.resourceId)).toEqual(['app-shown']);
   });
 });

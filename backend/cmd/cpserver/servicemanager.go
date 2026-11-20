@@ -85,6 +85,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -104,7 +105,7 @@ var changeCapture = gateway.NewChangeCapture()
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface,
-	*mcpsdk.Server) {
+	*mcpsdk.Server, gateway.StopperInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -258,7 +259,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Identity governance derives the status management reads report. The Control Plane sends no lock
 	// email.
 	governanceService, _, err := identitygovernance.Initialize(dbprovider.GetDBProvider(), entityService,
-		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc)
+		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
@@ -324,7 +325,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// notification-sender management services.
 	connectionExporter, ouDependencyProvider, httpConnectionWriter, err := connection.Initialize(
 		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
-		valueCapture, sharingService, ouAuthzService)
+		valueCapture, sharingService, ouAuthzService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
@@ -394,6 +395,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		projectService, auditBus, nil, nil, agent.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+	// The application and agent services decide whether an entity's client secret may be regenerated.
+	entityService.RegisterClientSecretHolder(providers.EntityCategoryApp, applicationService)
+	entityService.RegisterClientSecretHolder(providers.EntityCategoryAgent, agentService)
 	// The control plane creates agents directly. The data plane creates them through its agent
 	// onboarding flow instead, which onboard_agents runs, so only this plane registers onboard_agent.
 	agent.RegisterOnboardAgentTool(mcpServer, agentService, entityService, entityTypeService, flowMgtService)
@@ -433,8 +437,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters, changeCapture,
-		serverConfigService, projectService, auditBus)
+	gatewayService, gatewayStopper, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters,
+		changeCapture, serverConfigService, projectService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -478,7 +482,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService, mcpServer
+	return jwtService, runtimeCryptoSvc, importService, mcpServer, gatewayStopper
 }
 
 // initializeFlowValidation builds the flow services needed to validate a flow definition, without

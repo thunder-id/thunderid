@@ -60,7 +60,6 @@ function selectCategory(label: string): void {
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

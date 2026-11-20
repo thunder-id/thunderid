@@ -28,15 +28,26 @@ export interface ResourceValues {
 
 // A name the server derives for a value: the resource type, the resource ID and the field, in upper case,
 // joined by double underscores. No part holds a double underscore, so the parts read back exactly.
-const VALUE_NAME = /^([A-Z][A-Z0-9_]*?)__H?[0-9A-F]{32}__([A-Z0-9_]+)$/;
+const VALUE_NAME = /^([A-Z][A-Z0-9_]*?)__(H?)([0-9A-F]{32})__([A-Z0-9_]+)$/;
 
 /**
  * Reads the resource type and field back from a value's name when the server derived it, as in
  * `APPLICATION__019000000000700080000000000000F1__CLIENT_ID`. A name someone chose does not read back.
+ * The resource's ID is read back too when the name holds it whole, as a UUID with its dashes taken
+ * out; a name that holds a hash of the ID gives none.
  */
-export function parseValueName(name: string): {resourceType: string; field: string} | null {
+export function parseValueName(name: string): {resourceType: string; field: string; resourceId?: string} | null {
   const match = VALUE_NAME.exec(name);
-  return match ? {resourceType: match[1].toLowerCase(), field: match[2]} : null;
+  if (!match) return null;
+  const [, type, hashed, id, field] = match;
+  const parsed: {resourceType: string; field: string; resourceId?: string} = {resourceType: type.toLowerCase(), field};
+  if (!hashed) {
+    const hex = id.toLowerCase();
+    parsed.resourceId = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join(
+      '-',
+    );
+  }
+  return parsed;
 }
 
 /** What a field is called for a person: `clientSecret` reads "Client secret". */

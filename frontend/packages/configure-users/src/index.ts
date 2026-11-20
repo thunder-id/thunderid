@@ -15,8 +15,6 @@ export * from './api/useUpdateUser';
 // Components
 export {default as ArrayFieldInput} from './components/ArrayFieldInput';
 export * from './components/ArrayFieldInput';
-export {default as CredentialFieldInput} from './components/CredentialFieldInput';
-export * from './components/CredentialFieldInput';
 export {default as UserDeleteDialog} from './components/UserDeleteDialog';
 export * from './components/UserDeleteDialog';
 export {default as UsersList} from './components/UsersList';

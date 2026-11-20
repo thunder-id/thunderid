@@ -30,8 +30,7 @@ type DeviceAuthRequestStoreInterface interface {
 	GetByUserCode(ctx context.Context, userCode string) (*DeviceAuthRequest, error)
 	GetByRequestID(ctx context.Context, requestID string) (*DeviceAuthRequest, error)
 	MarkRedeeming(ctx context.Context, requestID string) (bool, error)
-	MarkApproved(ctx context.Context, requestID, userID, authorizedScopes, attributeCacheID,
-		completedACR, sessionID string, authTime time.Time) error
+	MarkApproved(ctx context.Context, requestID string, approval *DeviceApproval) error
 	MarkFailed(ctx context.Context, requestID string, state DeviceRequestState) error
 	UpdatePolling(ctx context.Context, requestID string, polledAt time.Time, interval int64) error
 	UpdateState(ctx context.Context, requestID string, state DeviceRequestState) error
@@ -224,8 +223,7 @@ func (s *deviceAuthStore) MarkRedeeming(ctx context.Context, requestID string) (
 }
 
 // MarkApproved atomically completes a redeeming request and stores the authenticated user details.
-func (s *deviceAuthStore) MarkApproved(ctx context.Context, requestID, userID, authorizedScopes,
-	attributeCacheID, completedACR, sessionID string, authTime time.Time) error {
+func (s *deviceAuthStore) MarkApproved(ctx context.Context, requestID string, approval *DeviceApproval) error {
 	record, err := s.GetByRequestID(ctx, requestID)
 	if err != nil {
 		return err
@@ -235,12 +233,14 @@ func (s *deviceAuthStore) MarkApproved(ctx context.Context, requestID, userID, a
 	}
 
 	record.State = DeviceStateApproved
-	record.UserID = userID
-	record.AuthorizedScopes = authorizedScopes
-	record.AttributeCacheID = attributeCacheID
-	record.CompletedACR = completedACR
-	record.SessionID = sessionID
-	record.AuthTime = authTime
+	record.UserID = approval.UserID
+	record.SubjectID = approval.SubjectID
+	record.AuthorizedScopes = approval.AuthorizedScopes
+	record.AttributeCacheID = approval.AttributeCacheID
+	record.CompletedACR = approval.CompletedACR
+	record.SessionID = approval.SessionID
+	record.AuthTime = approval.AuthTime
+	record.SessionData = approval.SessionData
 
 	swapped, err := s.compareAndSwapStateBeforeExpiry(ctx, record, DeviceStateRedeeming, nil)
 	if err != nil {
@@ -305,7 +305,8 @@ func (s *deviceAuthStore) UpdateState(
 	return s.compareAndSwapState(ctx, record, expected)
 }
 
-// MarkConsumed atomically transitions an approved request to consumed.
+// MarkConsumed atomically transitions an approved request to consumed. The consumed request no longer keeps
+// the SSO sessions its device secret was built from.
 func (s *deviceAuthStore) MarkConsumed(ctx context.Context, requestID string) (bool, error) {
 	record, err := s.GetByRequestID(ctx, requestID)
 	if errors.Is(err, ErrDeviceAuthRequestNotFound) {
@@ -319,6 +320,7 @@ func (s *deviceAuthStore) MarkConsumed(ctx context.Context, requestID string) (b
 	}
 
 	record.State = DeviceStateConsumed
+	record.SessionData = nil
 	data, err := json.Marshal(record)
 	if err != nil {
 		return false, fmt.Errorf("failed to marshal device authorization request: %w", err)

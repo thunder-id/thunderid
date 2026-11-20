@@ -23,6 +23,16 @@ describe('TextInputAdapter', () => {
     expect(screen.getByText('Username')).toBeTruthy();
   });
 
+  it('focuses the username input when it mounts', () => {
+    const {container} = renderWithProviders(<TextInputAdapter {...baseProps} />);
+    expect(document.activeElement).toBe(container.querySelector('input[name="username"]'));
+  });
+
+  it('leaves focus alone when autofocus is disabled', () => {
+    const {container} = renderWithProviders(<TextInputAdapter {...baseProps} isAutoFocusDisabled />);
+    expect(document.activeElement).not.toBe(container.querySelector('input[name="username"]'));
+  });
+
   it('renders a text input', () => {
     renderWithProviders(<TextInputAdapter {...baseProps} />);
     const input = document.querySelector('input[name="username"]');

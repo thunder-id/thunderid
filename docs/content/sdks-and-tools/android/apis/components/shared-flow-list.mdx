@@ -1,0 +1,97 @@
+---
+displayed_sidebar: null
+title: SharedFlowList
+docType: reference
+description: Jetpack Compose list of the flows shared with an organization unit, the flows it owns, or both, which reports the chosen flow so your app decides what to open.
+---
+
+# `SharedFlowList`
+
+The `SharedFlowList` composable lists the flows shared with an organization unit, the flows it owns, or both. Choosing a flow calls `onSelect`, so your app decides what to open, for example [`FlowVariablesForm`](../flow-variables-form) for that flow.
+
+`SharedFlowList` must be called within `ThunderIDProvider`. The signed-in user's access token needs the permissions the server requires to list flows.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.management.FlowVariablesForm
+import dev.thunderid.compose.components.management.SharedFlowList
+
+@Composable
+fun DelegatedAdmin(ouId: String) {
+    var selectedFlowId by remember(ouId) { mutableStateOf<String?>(null) }
+
+    Column {
+        SharedFlowList(
+            ouId = ouId,
+            selectedFlowId = selectedFlowId,
+            onSelect = { selectedFlowId = it.id },
+        )
+        selectedFlowId?.let { flowId ->
+            key(flowId) { FlowVariablesForm(flowId = flowId, ouId = ouId) }
+        }
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `ouId` | `String` | ✅ | | The organization unit to list the flows of. |
+| `modifier` | `Modifier` | ❌ | `Modifier` | Modifier for the root element. |
+| `ownership` | `SharedFlowOwnership` | ❌ | `SHARED` | Which flows to list: `SHARED` for the ones shared with the unit, `OWNED` for the ones it owns, or `ALL` for both. |
+| `flowType` | `String?` | ❌ | `null` | Restricts the list to one flow type, for example `AUTHENTICATION`. |
+| `limit` | `Int` | ❌ | `20` | Page size. |
+| `onSelect` | `((ManagedFlow) -> Unit)?` | ❌ | | Called when a flow is chosen. Rows are selectable only when set. |
+| `selectedFlowId` | `String?` | ❌ | | Identifier of the flow to highlight. |
+| `title` | `String?` | ❌ | | Heading of the list. Pass an empty string to hide it. |
+| `description` | `String?` | ❌ | | Text under the heading. |
+| `actions` | `@Composable RowScope.() -> Unit` | ❌ | | Controls rendered next to the title. |
+| `content` | `@Composable (AdminListState<ManagedFlow>) -> Unit` | ❌ | | Renders custom UI in place of the default list. |
+
+### Ownership and Paging
+
+The server cannot filter a flow list by ownership. For `SHARED` and `OWNED`, the composable reads the unit's flows, up to 100, and filters on each flow's `isOwnedByOU` value on the device, then pages through the matches. A flow whose ownership the server did not report is left out. A unit with more than 100 flows therefore lists matches from the first 100 flows only. For `ALL`, the composable pages on the server and has no such limit.
+
+## `BaseSharedFlowList`
+
+`BaseSharedFlowList` is the presentational list. It holds no data of its own: pass the page of flows and handle selection and pagination. The list shows each flow's name, handle, and type. Pair it with `rememberGetFlows(ouId = ...)` or any other source.
+
+```kotlin
+@Composable
+fun Flows(ouId: String) {
+    val flows = rememberGetFlows(ouId = ouId, limit = 20)
+    BaseSharedFlowList(
+        flows = flows.data?.flows.orEmpty(),
+        totalResults = flows.data?.totalResults,
+        isLoading = flows.isLoading,
+        onSelect = { flow -> open(flow) },
+    )
+}
+```
+
+### `BaseSharedFlowList` Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `flows` | `List<ManagedFlow>` | ✅ | | The page of flows to show. |
+| `modifier` | `Modifier` | ❌ | `Modifier` | Modifier for the root element. |
+| `totalResults` | `Int?` | ❌ | `flows.size` | Total number of flows, used for pagination. |
+| `isLoading` | `Boolean` | ❌ | `false` | Shows a loading state. |
+| `error` | `String?` | ❌ | `null` | A translated message to show in place of the rows. |
+| `limit` | `Int` | ❌ | `20` | Page size. |
+| `offset` | `Int` | ❌ | `0` | Offset of the current page. |
+| `onPageChange` | `((Int) -> Unit)?` | ❌ | | Called with the offset of the page to show. Pagination is hidden when `null`. |
+| `onSelect` | `((ManagedFlow) -> Unit)?` | ❌ | | Called when a flow is chosen. Rows are selectable only when set. |
+| `selectedFlowId` | `String?` | ❌ | | Identifier of the flow to highlight. |
+| `title` | `String?` | ❌ | | Heading of the list. Pass an empty string to hide it. |
+| `description` | `String?` | ❌ | | Text under the heading. |
+| `actions` | `@Composable RowScope.() -> Unit` | ❌ | | Controls rendered next to the title. |
+| `content` | `@Composable (AdminListState<ManagedFlow>) -> Unit` | ❌ | | Renders custom UI in place of the default list. |
+
+The `content` lambda receives an `AdminListState<ManagedFlow>` with the `rows`, the `isLoading` and `error` state, `limit`, `offset`, `totalResults`, `selectedId`, `onPageChange`, and `onSelect`.
+
+## Internationalization
+
+The column headings, empty message, and error message come from the `admin.flows.list` keys in the SDK's translations, available in all nine locales.

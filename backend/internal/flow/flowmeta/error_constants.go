@@ -19,7 +19,7 @@ var ErrorInvalidType = tidcommon.ServiceError{
 	},
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowmetaservice.invalid_type_description",
-		DefaultValue: "The 'type' parameter must be either 'APP' or 'OU'",
+		DefaultValue: "The 'type' parameter must be one of 'APP', 'REF' or 'OU'",
 	},
 }
 

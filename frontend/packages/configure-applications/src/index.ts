@@ -51,9 +51,23 @@ export {default as ApplicationCreateProvider} from './contexts/ApplicationCreate
 // Routes
 export {default as useApplicationRoutes, defaultApplicationRoutePaths} from './hooks/useApplicationRoutes';
 export type {ApplicationRoutePaths} from './hooks/useApplicationRoutes';
+export {default as useResourceEnvironments} from './hooks/useResourceEnvironments';
+export type {ResourceEnvironments, ResourceEnvironmentsOptions} from './hooks/useResourceEnvironments';
 
 // Components shared with other configure-* packages
 export {default as BackchannelLogoutUriField} from './components/common/BackchannelLogoutUriField';
+export {default as EnvironmentChoice} from './components/environments/EnvironmentChoice';
+export type {EnvironmentChoiceProps} from './components/environments/EnvironmentChoice';
+export {default as EnvironmentNotDeployedNotice} from './components/environments/EnvironmentNotDeployedNotice';
+export type {EnvironmentNotDeployedNoticeProps} from './components/environments/EnvironmentNotDeployedNotice';
+export {default as EnvironmentBar} from './components/edit-application/integration-guides/EnvironmentBar';
+export type {EnvironmentBarProps} from './components/edit-application/integration-guides/EnvironmentBar';
+export {default as QuickstartGuide} from './components/edit-application/integration-guides/QuickstartGuide';
+export type {
+  QuickstartGuideProps,
+  QuickstartGuideSource,
+} from './components/edit-application/integration-guides/QuickstartGuide';
+export {default as EnvironmentClientIdField} from './components/edit-application/integration-guides/EnvironmentClientIdField';
 export {default as CopyableField} from './components/common/CopyableField';
 export type {CopyableFieldProps} from './components/common/CopyableField';
 export {default as SettingsLockNotice} from './components/common/SettingsLockNotice';

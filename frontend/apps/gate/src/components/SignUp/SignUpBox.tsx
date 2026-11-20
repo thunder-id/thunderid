@@ -152,6 +152,7 @@ export default function SignUpBox(): JSX.Element {
           flowExpiryRedirect,
           isLoading,
           components,
+          additionalData,
         }: any) => {
           if (isFlowExpired) {
             return (
@@ -235,6 +236,7 @@ export default function SignUpBox(): JSX.Element {
                       fieldErrors={mergedErrors}
                       isLoading={isLoading as boolean}
                       resolve={resolve}
+                      additionalData={additionalData as Record<string, unknown> | undefined}
                       onInputChange={wrappedInputChange}
                       onSubmit={(action, inputs) => {
                         const isTrigger =

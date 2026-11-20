@@ -309,16 +309,16 @@ func (_c *DeviceAuthRequestStoreInterfaceMock_GetByUserCode_Call) RunAndReturn(r
 }
 
 // MarkApproved provides a mock function for the type DeviceAuthRequestStoreInterfaceMock
-func (_mock *DeviceAuthRequestStoreInterfaceMock) MarkApproved(ctx context.Context, requestID string, userID string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time) error {
-	ret := _mock.Called(ctx, requestID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)
+func (_mock *DeviceAuthRequestStoreInterfaceMock) MarkApproved(ctx context.Context, requestID string, approval *DeviceApproval) error {
+	ret := _mock.Called(ctx, requestID, approval)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkApproved")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string, time.Time) error); ok {
-		r0 = returnFunc(ctx, requestID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *DeviceApproval) error); ok {
+		r0 = returnFunc(ctx, requestID, approval)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -333,17 +333,12 @@ type DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call struct {
 // MarkApproved is a helper method to define mock.On call
 //   - ctx context.Context
 //   - requestID string
-//   - userID string
-//   - authorizedScopes string
-//   - attributeCacheID string
-//   - completedACR string
-//   - sessionID string
-//   - authTime time.Time
-func (_e *DeviceAuthRequestStoreInterfaceMock_Expecter) MarkApproved(ctx any, requestID any, userID any, authorizedScopes any, attributeCacheID any, completedACR any, sessionID any, authTime any) *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call {
-	return &DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call{Call: _e.mock.On("MarkApproved", ctx, requestID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)}
+//   - approval *DeviceApproval
+func (_e *DeviceAuthRequestStoreInterfaceMock_Expecter) MarkApproved(ctx any, requestID any, approval any) *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call {
+	return &DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call{Call: _e.mock.On("MarkApproved", ctx, requestID, approval)}
 }
 
-func (_c *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call) Run(run func(ctx context.Context, requestID string, userID string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time)) *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call {
+func (_c *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call) Run(run func(ctx context.Context, requestID string, approval *DeviceApproval)) *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -353,39 +348,14 @@ func (_c *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call) Run(run func(ct
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 string
+		var arg2 *DeviceApproval
 		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		var arg3 string
-		if args[3] != nil {
-			arg3 = args[3].(string)
-		}
-		var arg4 string
-		if args[4] != nil {
-			arg4 = args[4].(string)
-		}
-		var arg5 string
-		if args[5] != nil {
-			arg5 = args[5].(string)
-		}
-		var arg6 string
-		if args[6] != nil {
-			arg6 = args[6].(string)
-		}
-		var arg7 time.Time
-		if args[7] != nil {
-			arg7 = args[7].(time.Time)
+			arg2 = args[2].(*DeviceApproval)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
-			arg3,
-			arg4,
-			arg5,
-			arg6,
-			arg7,
 		)
 	})
 	return _c
@@ -396,7 +366,7 @@ func (_c *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call) Return(err erro
 	return _c
 }
 
-func (_c *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call) RunAndReturn(run func(ctx context.Context, requestID string, userID string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time) error) *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call {
+func (_c *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call) RunAndReturn(run func(ctx context.Context, requestID string, approval *DeviceApproval) error) *DeviceAuthRequestStoreInterfaceMock_MarkApproved_Call {
 	_c.Call.Return(run)
 	return _c
 }

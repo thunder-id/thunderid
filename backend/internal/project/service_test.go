@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/managedresourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
@@ -454,6 +456,66 @@ func (suite *ProjectServiceTestSuite) TestDeleteProject() {
 		suite.mockStore.On("DeleteProject", mock.Anything, testProjectID).Return(errors.New("db"))
 
 		suite.Equal(tidcommon.InternalServerError, *suite.service.DeleteProject(context.Background(), testProjectID))
+	})
+}
+
+func (suite *ProjectServiceTestSuite) TestCheckProjectDeletion() {
+	suite.Run("deletable", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)
+
+		suite.Nil(suite.service.CheckProjectDeletion(context.Background(), testProjectID))
+		suite.mockStore.AssertNotCalled(suite.T(), "DeleteProject", mock.Anything, mock.Anything)
+	})
+	suite.Run("refused while applications or agents are in the project", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil)
+
+		suite.Equal(ErrorProjectNotEmpty, *suite.service.CheckProjectDeletion(context.Background(), testProjectID))
+		suite.mockStore.AssertNotCalled(suite.T(), "DeleteProject", mock.Anything, mock.Anything)
+	})
+	suite.Run("refused while a resource check finds resources", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+		suite.service.AddResourceCheck(func(context.Context, string) (bool, *tidcommon.ServiceError) {
+			return true, nil
+		})
+
+		suite.Equal(ErrorProjectNotEmpty, *suite.service.CheckProjectDeletion(context.Background(), testProjectID))
+		suite.mockEntities.AssertNotCalled(suite.T(), "ProjectHasEntities", mock.Anything, mock.Anything)
+	})
+	suite.Run("refused for a project a control plane deployed", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+		managed := managedresourcemock.NewStoreInterfaceMock(suite.T())
+		managed.EXPECT().IsManaged(mock.Anything, testProjectID, managedresource.TypeProject).Return(true, nil)
+		suite.service.managed = managed
+
+		suite.Equal(ErrorManagedProject, *suite.service.CheckProjectDeletion(context.Background(), testProjectID))
+		suite.mockEntities.AssertNotCalled(suite.T(), "ProjectHasEntities", mock.Anything, mock.Anything)
+	})
+	suite.Run("project not found", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(Project{}, errProjectNotFound)
+
+		suite.Equal(ErrorProjectNotFound, *suite.service.CheckProjectDeletion(context.Background(), testProjectID))
+	})
+	suite.Run("store failure", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(Project{}, errors.New("db"))
+
+		suite.Equal(tidcommon.InternalServerError,
+			*suite.service.CheckProjectDeletion(context.Background(), testProjectID))
+	})
+	suite.Run("entity check fails", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, errors.New("db"))
+
+		suite.Equal(tidcommon.InternalServerError,
+			*suite.service.CheckProjectDeletion(context.Background(), testProjectID))
 	})
 }
 

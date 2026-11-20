@@ -413,6 +413,54 @@ func (suite *ApplicationToolsTestSuite) TestUpdateApplication_Error() {
 	mockService.AssertExpectations(suite.T())
 }
 
+// The notice says whether the tokens the old secret issued were revoked, as it happened.
+func (suite *ApplicationToolsTestSuite) TestRegenerateApplicationSecret_Success() {
+	cases := map[string]struct {
+		response *model.ClientSecretResponse
+		says     string
+	}{
+		"revoked": {&model.ClientSecretResponse{ClientSecret: "new-secret", Revoked: true},
+			"the tokens it issued are revoked"},
+		"revocation incomplete": {&model.ClientSecretResponse{ClientSecret: "new-secret", RevocationIncomplete: true},
+			"revoking the tokens issued while it was replaced failed"},
+		"nothing revoked": {&model.ClientSecretResponse{ClientSecret: "new-secret"},
+			"were not revoked"},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			tools := &applicationTools{appService: mockService}
+			mockService.On("RegenerateClientSecret", mock.Anything, "app123").Return(tc.response, nil).Once()
+
+			result, output, err := tools.regenerateApplicationSecret(context.Background(), &mcp.CallToolRequest{},
+				tool.IDInput{ID: "app123"})
+
+			assert.NoError(suite.T(), err)
+			assert.Nil(suite.T(), result)
+			suite.Require().NotNil(output)
+			assert.Equal(suite.T(), "new-secret", output.ClientSecret)
+			assert.Equal(suite.T(), tc.response.RevocationIncomplete, output.RevocationIncomplete)
+			assert.Contains(suite.T(), output.Notice, tc.says)
+			assert.Contains(suite.T(), output.Notice, clientSecretNotice)
+		})
+	}
+}
+
+func (suite *ApplicationToolsTestSuite) TestRegenerateApplicationSecret_Error() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	tools := &applicationTools{appService: mockService}
+	mockService.On("RegenerateClientSecret", mock.Anything, "app123").Return(nil, &ErrorApplicationHasNoClientSecret).
+		Once()
+
+	result, output, err := tools.regenerateApplicationSecret(context.Background(), &mcp.CallToolRequest{},
+		tool.IDInput{ID: "app123"})
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Nil(suite.T(), output)
+	assert.Contains(suite.T(), err.Error(), "failed to regenerate application secret")
+}
+
 func (suite *ApplicationToolsTestSuite) TestGetApplicationTemplates_Success() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	tools := &applicationTools{appService: mockService}

@@ -53,6 +53,7 @@ export type {GatewaysOverviewProps} from './components/GatewaysOverview';
 export {default as AutoApplySwitch} from './components/AutoApplySwitch';
 export {default as PipelineSteps} from './components/PipelineSteps';
 export type {PipelineStepsProps} from './components/PipelineSteps';
+export {default as RuntimeEnvironmentsProvider} from './components/RuntimeEnvironmentsProvider';
 export {default as ActorName} from './components/ActorName';
 export {default as useActorName} from './hooks/useActorName';
 
@@ -87,7 +88,14 @@ export {
   useRevert,
   useRunningReferences,
 } from './api/useGatewayVersions';
-export {useStoredValues, useSetStoredValue, useDeleteStoredValue} from './api/useStoredValues';
+export {
+  useStoredValuesPage,
+  useStoredValueCount,
+  useStoredValuesNamed,
+  useSetStoredValue,
+  useDeleteStoredValue,
+  usePendingValueWrites,
+} from './api/useStoredValues';
 export {default as DeployQueryKeys} from './constants/query-keys';
 export {shortHash, versionLabel} from './utils/format';
 export {default as formatTimestamp} from './utils/formatTimestamp';

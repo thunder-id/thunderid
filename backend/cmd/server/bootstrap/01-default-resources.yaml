@@ -26,42 +26,66 @@ schema:
   username:
     type: string
     displayName: Username
+    display:
+      order: 0
     required: true
     unique: true
   email:
     type: email
     displayName: Email
+    display:
+      order: 1
     required: true
     unique: true
     regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
   given_name:
     type: string
     displayName: First Name
+    display:
+      order: 2
     required: false
   family_name:
     type: string
     displayName: Last Name
+    display:
+      order: 3
     required: false
   mobile_number:
     type: mobile
     displayName: Mobile Number
+    display:
+      order: 4
     required: false
     regex: "^\\+[1-9]\\d{1,14}$"
   sub:
     type: string
     displayName: Subject
+    display:
+      order: 8
+      onCreate:
+        hidden: true
     required: false
   name:
     type: string
     displayName: Full Name
+    display:
+      order: 6
+      onCreate:
+        hidden: true
     required: false
   picture:
     type: string
     displayName: Picture
+    display:
+      order: 7
+      onCreate:
+        hidden: true
     required: false
   password:
     type: string
     displayName: Password
+    display:
+      order: 5
     required: false
     credential: true
 ---
@@ -88,23 +112,11 @@ schema:
       - gemini
       - mistral
       - custom
-  model:
+  password:
     type: string
-    displayName: Model
+    displayName: Password
     required: false
-  function:
-    type: string
-    displayName: Function
-    required: false
-    enum:
-      - task-automation
-      - rag-retrieval
-      - code-gen
-      - data-analysis
-      - orchestrator
-      - sub-agent
-      - assistant
-      - custom
+    credential: true
 ---
 resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020
@@ -2625,101 +2637,6 @@ nodes:
       y: 637
 ---
 resource_type: flow
-id: 01900000-0000-7000-8000-00000000007a
-ouHandle: default
-projectId: 01900000-0000-7000-8000-000000000002
-name: Default Secret Regeneration Flow
-handle: default-secret-regeneration-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system:app:update
-    - org
-  executor:
-    name: PermissionValidator
-  onSuccess: validate_secret_regeneration
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: validate_secret_regeneration
-  type: TASK_EXECUTION
-  executor:
-    name: ApplicationActionValidator
-    mode: revoke_before_action
-  onSuccess: revoke_tokens
-  layout:
-    size:
-      width: 250
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_tokens
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: regenerate_secret
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 920
-      y: 175
-- id: regenerate_secret
-  type: TASK_EXECUTION
-  executor:
-    name: ClientSecretExecutor
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 250
-      height: 113
-    position:
-      x: 1200
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1490
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1810
-      y: 200
----
-resource_type: flow
 id: 01900000-0000-7000-8000-00000000007b
 ouHandle: default
 projectId: 01900000-0000-7000-8000-000000000002
@@ -2873,7 +2790,7 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: OwnerResolver
-  onSuccess: prompt_agent_details
+  onSuccess: provisioning
   onIncomplete: prompt_owner
   layout:
     size:
@@ -2943,77 +2860,24 @@ nodes:
     - type: BLOCK
       id: block_agent_details
       components:
-      - id: input_agent_name
-        ref: name
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.name.label) }}'
-        required: true
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.name.placeholder) }}'
-      - id: input_agent_model_provider
-        ref: modelProvider
-        type: SELECT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
-        required: false
-        options:
-        - openai
-        - anthropic
-        - gemini
-        - mistral
-        - custom
-      - id: input_agent_model
-        ref: model
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}'
-        required: false
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}'
-      - id: input_agent_function
-        ref: function
-        type: SELECT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
-        required: false
-        options:
-        - task-automation
-        - rag-retrieval
-        - code-gen
-        - data-analysis
-        - orchestrator
-        - sub-agent
-        - assistant
-        - custom
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs_agent_details
       - type: ACTION
         id: action_agent_details
         label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
   prompts:
-  - inputs:
-    - ref: input_agent_name
-      identifier: name
-      type: TEXT_INPUT
-      required: true
-    - ref: input_agent_model_provider
-      identifier: modelProvider
-      type: SELECT
-      required: false
-    - ref: input_agent_model
-      identifier: model
-      type: TEXT_INPUT
-      required: false
-    - ref: input_agent_function
-      identifier: function
-      type: SELECT
-      required: false
+  - inputs: []
     action:
       ref: action_agent_details
       nextNode: agent_attribute_uniqueness
   layout:
     size:
       width: 350
-      height: 954
+      height: 724
     position:
-      x: 3070
+      x: 3580
       y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
@@ -3026,7 +2890,7 @@ nodes:
       width: 312
       height: 117
     position:
-      x: 3580
+      x: 4052
       y: 1089
 - id: provisioning
   type: TASK_EXECUTION
@@ -3037,13 +2901,12 @@ nodes:
     name: ProvisioningExecutor
   onSuccess: agent_credentials
   onIncomplete: prompt_agent_details
-  onFailure: prompt_agent_details
   layout:
     size:
       width: 216
       height: 117
     position:
-      x: 4052
+      x: 3070
       y: 1089
 - id: agent_credentials
   type: PROMPT
@@ -6334,15 +6197,11 @@ translations:
     forms.missing_inputs.subtitle: These details are still needed before the agent can be created.
     forms.missing_inputs.actions.next.label: Continue
     forms.agent_details.title: Agent Details
-    forms.agent_details.subtitle: Name the agent and describe the model it runs on and what it does.
+    forms.agent_details.subtitle: Fill in the details of the agent.
     forms.agent_details.fields.name.label: Name
     forms.agent_details.fields.name.placeholder: Enter a name for the agent
     forms.agent_details.fields.model_provider.label: Model Provider
     forms.agent_details.fields.model_provider.placeholder: Select a model provider
-    forms.agent_details.fields.model.label: Model
-    forms.agent_details.fields.model.placeholder: Enter the model name
-    forms.agent_details.fields.function.label: Function
-    forms.agent_details.fields.function.placeholder: Select a function
     forms.agent_details.actions.submit.label: Create Agent
     forms.credentials.title: Agent Created Successfully
     forms.credentials.message: Copy the client secret now. It is shown only once and cannot be retrieved later.

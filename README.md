@@ -3,6 +3,7 @@
 ###
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![LFX Health Score](https://insights.linuxfoundation.org/api/badge/health-score?project=thunderid)](https://insights.linuxfoundation.org/project/thunderid)
 [![GitHub last commit](https://img.shields.io/github/last-commit/thunder-id/thunderid.svg)](https://github.com/thunder-id/thunderid/commits/main)
 [![GitHub issues](https://img.shields.io/github/issues/thunder-id/thunderid.svg)](https://github.com/thunder-id/thunderid/issues)
 [![codecov.io](https://codecov.io/github/thunder-id/thunderid/coverage.svg?branch=main)](https://codecov.io/github/thunder-id/thunderid?branch=main)

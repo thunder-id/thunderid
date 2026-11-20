@@ -19,6 +19,7 @@ import (
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -282,7 +283,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesRedeemingRequest() {
 	jwtService.EXPECT().VerifyJWT(mock.Anything, assertion, "application-1", "").Return(nil)
 	service := newDeviceAuthService(store, nil, jwtService, testhelpers.OAuthConfig(), nil)
 
-	s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion))
+	s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion, nil))
 	stored, err := store.GetByRequestID(context.Background(), "request-1")
 	s.Require().NoError(err)
 	s.Require().Equal(DeviceStateApproved, stored.State)
@@ -291,6 +292,41 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesRedeemingRequest() {
 	s.Require().Equal("cache-1", stored.AttributeCacheID)
 	s.Require().Equal("urn:acr:pwd", stored.CompletedACR)
 	s.Require().Equal("session-1", stored.SessionID)
+}
+
+func (s *DeviceAuthTestSuite) TestHandleCallbackKeepsPostedSessionsForDeviceSSO() {
+	posted := []oauth2model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}
+	cases := []struct {
+		name   string
+		scopes string
+		want   []oauth2model.SessionData
+	}{
+		{"device_sso was granted", "openid device_sso", posted},
+		{"device_sso was not granted", "openid", nil},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			store := newTestDeviceAuthStore(inmemory.Initialize("test-deployment"))
+			s.Require().NoError(store.Add(context.Background(), &DeviceAuthRequest{RequestID: "request-1",
+				ApplicationID: "application-1", DeviceCodeHash: hashDeviceCode("device-code"),
+				UserCode: "BCDF-GHJK", StandardScopes: tc.scopes, State: DeviceStateRedeeming,
+				ExpiryTime: time.Now().Add(2 * time.Minute)}))
+			assertion := buildDeviceAssertion(s.T(), map[string]interface{}{
+				"sub": "user-1", oauth2const.ClaimSubjectID: "entity-1", "authorization_request_id": "request-1",
+			})
+			jwtService := jwtmock.NewJWTServiceInterfaceMock(s.T())
+			jwtService.EXPECT().VerifyJWT(mock.Anything, assertion, "application-1", "").Return(nil)
+			service := newDeviceAuthService(store, nil, jwtService, testhelpers.OAuthConfig(), nil)
+
+			s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion, posted))
+
+			stored, err := store.GetByRequestID(context.Background(), "request-1")
+			s.Require().NoError(err)
+			s.Equal(DeviceStateApproved, stored.State)
+			s.Equal("entity-1", stored.SubjectID)
+			s.Equal(tc.want, stored.SessionData)
+		})
+	}
 }
 
 func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesWithoutConsentClaims() {
@@ -307,7 +343,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesWithoutConsentClaims() {
 	jwtService.EXPECT().VerifyJWT(mock.Anything, assertion, "application-1", "").Return(nil)
 	service := newDeviceAuthService(store, nil, jwtService, testhelpers.OAuthConfig(), nil)
 
-	s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion))
+	s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion, nil))
 	stored, getErr := store.GetByRequestID(context.Background(), "request-1")
 	s.Require().NoError(getErr)
 	s.Require().Equal(DeviceStateApproved, stored.State)
@@ -327,7 +363,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackDeniesRedeemingRequest() {
 	jwtService.EXPECT().VerifyJWT(mock.Anything, assertion, "application-1", "").Return(nil)
 	service := newDeviceAuthService(store, nil, jwtService, testhelpers.OAuthConfig(), nil)
 
-	s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion))
+	s.Require().Nil(service.HandleCallback(context.Background(), "request-1", assertion, nil))
 	stored, err := store.GetByRequestID(context.Background(), "request-1")
 	s.Require().NoError(err)
 	s.Require().Equal(DeviceStateDenied, stored.State)
@@ -347,7 +383,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackRejectsInvalidAssertionSignature
 		Return(&tidcommon.ServiceError{Code: "JWT-ERROR"})
 	service := newDeviceAuthService(store, nil, jwtService, testhelpers.OAuthConfig(), nil)
 
-	err := service.HandleCallback(context.Background(), "request-1", assertion)
+	err := service.HandleCallback(context.Background(), "request-1", assertion, nil)
 
 	s.Require().NotNil(err)
 	s.Equal(oauth2const.ErrorInvalidRequest, err.Code)
@@ -370,7 +406,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackRejectsMismatchedAuthorizationRe
 	jwtService.EXPECT().VerifyJWT(mock.Anything, assertion, "application-1", "").Return(nil)
 	service := newDeviceAuthService(store, nil, jwtService, testhelpers.OAuthConfig(), nil)
 
-	err := service.HandleCallback(context.Background(), "request-1", assertion)
+	err := service.HandleCallback(context.Background(), "request-1", assertion, nil)
 
 	s.Require().NotNil(err)
 	s.Equal(oauth2const.ErrorAccessDenied, err.Code)
@@ -400,7 +436,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackRejectsExpiredOrNonRedeemingRequ
 			}, nil)
 			service := newDeviceAuthService(store, nil, nil, testhelpers.OAuthConfig(), nil)
 
-			err := service.HandleCallback(context.Background(), "request-1", "assertion")
+			err := service.HandleCallback(context.Background(), "request-1", "assertion", nil)
 
 			s.Require().NotNil(err)
 			s.Equal(testCase.wantCode, err.Code)

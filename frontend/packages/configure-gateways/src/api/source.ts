@@ -11,6 +11,8 @@ import type {
   Master,
   ResourceHistory,
   StoredValue,
+  StoredValuePage,
+  StoredValueQuery,
   ValueKind,
   ValueReference,
   Version,
@@ -75,8 +77,11 @@ export interface DeploySource {
    * it in the project's pipeline, or from the latest version when there is none.
    */
   projectStatus(targetId: string, project: string, from?: string): Promise<ProjectStatus>;
-  /** Every variable or every secret a target holds. A secret's value is never read back. */
-  values(targetId: string, kind: ValueKind): Promise<StoredValue[]>;
+  /**
+   * One page of the variables or the secrets a target holds, in name order, narrowed to a name prefix or
+   * to given names when the query says so, with how many match in all. A secret's value is never read back.
+   */
+  listValues(targetId: string, kind: ValueKind, query?: StoredValueQuery): Promise<StoredValuePage>;
   /** Sets a variable or a secret on a target, creating it when the target does not hold it. */
   setValue(targetId: string, kind: ValueKind, name: string, input: StoredValueInput): Promise<StoredValue>;
   /** Removes a variable or a secret from a target. */

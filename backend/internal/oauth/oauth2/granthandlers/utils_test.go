@@ -16,9 +16,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 )
 
 const (
@@ -27,6 +30,7 @@ const (
 	testGrantAttributeCacheID = "cache-1"
 	testGrantAudience         = "https://api.example.com"
 	testGrantCompletedACR     = "urn:acr:pwd"
+	testGrantSubjectID        = "user-entity-id"
 )
 
 // denyListLookup answers like the criteria deny list: boundary rows match artifacts established by their cutoff.
@@ -310,6 +314,47 @@ func (s *GrantHandlerUtilsTestSuite) TestCompactPermissionScopes() {
 			server := &providers.ResourceServer{HierarchicalPermissions: tc.hierarchy, Delimiter: tc.delimiter}
 			s.Equal(tc.want, compactPermissionScopes(tc.scopes, tc.oidc, server))
 			s.Equal(original, tc.scopes)
+		})
+	}
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestBuildDeviceSecret() {
+	sessions := []model.SessionData{
+		{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
+		{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+	}
+	oauthApp := &providers.OAuthClient{ClientID: testGrantClientID}
+	cases := []struct {
+		name      string
+		validity  time.Duration
+		sessions  []model.SessionData
+		built     *model.TokenDTO
+		buildErr  error
+		wantToken string
+	}{
+		{"carries the grant's sessions for its subject", time.Hour, sessions,
+			&model.TokenDTO{Token: "device-secret"}, nil, "device-secret"},
+		{"a part second counts as a whole one", time.Hour - 500*time.Millisecond, sessions,
+			&model.TokenDTO{Token: "device-secret"}, nil, "device-secret"},
+		{"none when the grant kept no session", time.Hour, nil, nil, nil, ""},
+		{"none without a session lifetime", 0, sessions, nil, nil, ""},
+		{"a build failure is not fatal", time.Hour, sessions, nil, errors.New("signing failed"), ""},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			tokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(s.T())
+			if tc.built != nil || tc.buildErr != nil {
+				tokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
+					mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
+						return c.OAuthApp == oauthApp && c.SubjectID == testGrantSubjectID &&
+							slices.Equal(c.SessionData, sessions) && c.ValidityPeriod == 3600
+					})).Return(tc.built, tc.buildErr)
+			}
+
+			got := buildDeviceSecret(context.Background(), tokenBuilder, tc.validity, oauthApp, testGrantSubjectID,
+				tc.sessions, log.GetLogger())
+
+			s.Equal(tc.wantToken, got.Token)
 		})
 	}
 }

@@ -47,6 +47,8 @@ Controls the <ProductName /> server's network settings and identity.
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
 | `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `import.timeout_seconds`, whichever is longer, since a tool can deploy or import. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
+| `gateway.unused_value_grace_seconds` | `3600` | A variable or secret the control plane named for a resource is removed from a gateway when it was last set longer ago than this many seconds, and nothing refers to it. After each apply, the control plane removes from that gateway's store the values with such a name that no resource that still exists, no version this deployment keeps and no master the gateway keeps refers to, and that were last set longer ago than this. The time counts from when the value was last set, so an old value goes at the first removal after its resource is deleted. A resource that exists keeps its values however long its deploy waits, so this only covers a value set for a resource while a removal runs. A value you named yourself is never removed. The gateway measures the age on its own clock when it removes a value, so a value below `1`, such as `0`, is raised to `1` with a warning at startup; a negative number turns the removal off. A gateway too old to remove values by age has nothing removed. See [Unused Values Are Removed](../guides/declarative-configurations/configuration-versions.mdx#unused-values-are-removed). |
+| `gateway.unused_value_sweep_interval_seconds` | `300` | The least number of seconds between two removals of unused values from the same gateway by one control plane node. Each removal reads the whole configuration, so applies in quick succession run one and skip the rest until this has passed; the next apply after it removes what the skipped ones would have. The time is kept in each node's memory, so with several nodes each removes on its own schedule, and a restart starts afresh. `0` removes after every apply. |
 | `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `gateway.apply_timeout_seconds`, whichever is longer. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 | `notification.template.store` | `composite` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
@@ -553,7 +555,6 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.revocation.token_family.on_explicit_revoke` | `true` | If `true`, revoking a token through `/oauth2/revoke` also revokes every other token of the same authorization grant |
 | `oauth.revocation.token_family.on_refresh_replay` | `true` | If `true`, presenting a refresh token that has already been rotated out revokes every token of that grant. Requires `oauth.refresh_token.renew_on_grant`, since a refresh token can only be replayed once it has been rotated |
 | `oauth.revocation.token_family.on_code_replay` | `true` | If `true`, redeeming an authorization code a second time revokes every token issued from that code |
-| `oauth.token_exchange.token_family` | `none` | Whether an exchanged token joins the subject token's authorization grant. `none` issues an independent token; `inherit` copies the subject token's token family, so revoking the grant also revokes the exchanged token |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
@@ -579,6 +580,10 @@ Set `oauth.client_assertion.max_lifetime` and `oauth.client_assertion.max_iat_ag
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
 :::
 
+:::warning
+If you are upgrading from an earlier release, remove the `oauth.token_exchange` block from `deployment.yaml`. The server does not start while `deployment.yaml` has it. Tokens exchanged before the upgrade under the earlier default, `none`, carry no token family, so revoking the grant they came from does not revoke them. See [Where `tfid` Comes From](../../guides/protocols/oauth-oidc/token-revocation#where-tfid-comes-from).
+:::
+
 ## Flow Configuration
 
 Authentication and registration flow settings.
@@ -587,7 +592,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `PreCredentialUpdateExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `CriteriaRevocationExecutor`, `PreRevocationExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -606,7 +611,7 @@ flow:
 
 **Register a subset:**
 
-List only the executor names you need, together with the six the system flows need. Built-in executors not in the list are excluded:
+List only the executor names you need, together with the four the system flows need. Built-in executors not in the list are excluded:
 
 ```yaml
 flow:
@@ -614,10 +619,8 @@ flow:
     - CredentialsAuthExecutor
     - InviteExecutor
     - AccessChangeValidator
-    - ApplicationActionValidator
     - CriteriaRevocationExecutor
-    - PreCredentialUpdateExecutor
-    - PreDeleteExecutor
+    - PreRevocationExecutor
     - SessionRevocationExecutor
 ```
 
@@ -857,7 +860,7 @@ Exports events as OpenTelemetry spans to an OTLP-compatible backend such as Jaeg
 | `observability.output.opentelemetry.enabled` | `false` | If `true`, exports observability events as OpenTelemetry spans |
 | `observability.output.opentelemetry.exporter_type` | `otlp` | Exporter type: `otlp` (gRPC, for production) or `stdout` (for debugging) |
 | `observability.output.opentelemetry.otlp_endpoint` | `""` | OTLP gRPC endpoint, for example `localhost:4317`. Required when `exporter_type` is `otlp`. |
-| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans, for example `thunderid-iam` |
+| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans. When empty, it is derived from `server.product_name`: lowercased, with each run of characters other than letters and digits replaced by a hyphen, and an `-iam` suffix. For example, `Acme Identity` gives `acme-identity-iam`. |
 | `observability.output.opentelemetry.service_version` | `""` | Service version included in span resource attributes, for example `1.0.0` |
 | `observability.output.opentelemetry.environment` | `""` | Deployment environment included in span resource attributes, for example `production` |
 | `observability.output.opentelemetry.sample_rate` | `1.0` | Fraction of traces to sample. `1.0` samples all traces; `0.5` samples half. |
@@ -1137,7 +1140,7 @@ base-uri 'none';
 form-action 'self'
 ```
 
-A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On HTML responses, <ProductName /> Gate gets a fresh per-request nonce to the `script-src` and `style-src-elem` directives so its own inline scripts and styles load.
+A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On every Console and Gate response, <ProductName /> appends a fresh per-request nonce to `script-src`, and to `style-src-elem` when the policy sets that directive, so the UIs' own inline scripts and styles load. A directive that allows `'unsafe-inline'` gets no nonce, since browsers ignore `'unsafe-inline'` in a directive that has one.
 
 :::warning Overrides replace, not extend
 Listing a directive replaces its baseline value completely. Include `'self'` in your list when you still need same-origin resources. For example, `img-src: ["https://cdn.example.com"]` blocks same-origin images until you add `'self'`.
@@ -1145,8 +1148,9 @@ Listing a directive replaces its baseline value completely. Include `'self'` in 
 
 ### Configure the Policy
 
-Set the policy in either of these ways:
+Set the policy in any of these ways:
 
+- **Console** - go to **Settings** and open the **Content security policy** tab. Turn **Report only** on or off, and edit the sources of any directive, pressing Enter after each new source. **Shared** holds the top-level `directives`, which apply to both the Console and Gate. Each path already in the policy, such as `/console/`, has its own section listing every directive that applies to it, including the baseline. To add a path, use the declarative or runtime method below. Changing a directive overrides its default value, and **Reset to default** removes the override. Each section ends with a preview of the header it sends, without the per-request nonce described in [Deny-First Baseline](#deny-first-baseline). Select **Save changes** to apply the policy immediately.
 - **Declarative** - create `config/resources/server_configs/csp.yaml`, then restart.
   ```yaml
   name: csp
@@ -1183,7 +1187,7 @@ Set the policy in either of these ways:
 
 Directives at the top level of `directives` apply to every CSP path, while a `paths` entry applies only to requests under its `location` and overrides the top-level value for that directive.
 
-A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. <ProductName /> then merges that layer with the declarative `csp.yaml` per directive and path, and any directive you configure in neither layer stays at the deny-first baseline.
+A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. <ProductName /> then merges that layer with the declarative `csp.yaml` per directive, including within each `paths` entry: a runtime directive replaces only the declarative directive of the same name for the same `location`. Any directive you configure in neither layer stays at the deny-first baseline.
 
 :::note
 Directive names must match the pattern `^[a-z][a-z0-9-]*$`, and no source may contain whitespace, a semicolon, or a comma. An invalid value is rejected with `SCF-1003` ("Invalid server configuration value").
@@ -1219,7 +1223,7 @@ A declarative default takes precedence and locks the setting: while `defaultReso
 
 ## Flow Defaults
 
-Controls server-wide default flows and context expiry times for each flow type. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
+Controls server-wide default flows, context expiry times for each flow type, and where the sign-in page sends the user when it has no flow to continue. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
 
 Flow configuration uses the following fields. `selfFlow` uses only `expirySeconds`.
 
@@ -1227,8 +1231,9 @@ Flow configuration uses the following fields. `selfFlow` uses only `expirySecond
 |-------|-------------|
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
+| `defaultReturnUrl` | Where the sign-in page sends the user when it has no flow to continue and no application URL to return to, such as a bookmarked sign-in page. Must be an absolute `http` or `https` URL without credentials, otherwise the update is rejected with `SCF-1003`. It can't be the sign-in page itself, which ignores such a URL to avoid a redirect loop. When no value is in effect, the page asks the user to return to the application. A writable value overrides the one in `flow.yaml`, so clearing the writable value keeps a `flow.yaml` value in effect. |
 
-Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `secretRegenerationFlow`, `agentOnboardingFlow`, and `adminAttributeVerificationFlow`.
+Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `agentOnboardingFlow`, and `adminAttributeVerificationFlow`.
 
 `selfFlow` sets the execution expiry of every `SELF` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF` flow. A start without a `handle`, or with one that names no `SELF` flow, is refused before any node runs.
 
@@ -1238,7 +1243,7 @@ Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingF
 
 `agentOnboardingFlow.defaultHandle` selects the Administration flow used when creating an agent in the Console. Bootstrap sets it to `default-agent-onboarding-flow`, which creates agents using their own identity. Set it to any saved agent onboarding Administration flow, including a custom flow, using the runtime API described below. For OBO creation, that flow collects delegation inputs and sets `delegated` through the Provisioning node or an administrator's selection. This Console action reads the server setting directly; it does not use the application and organization-unit fallback below. Direct `POST /agents` requests do not run the onboarding flow. See [Configure agent onboarding](../../guides/agents/manage-agents#configure-agent-onboarding).
 
-The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Each names an administration flow run against an existing identity. An administrator starts it with `POST /flow/execute` and the flow's ID, so the resolution order below does not apply to it. User and action deletion are different: their revocation runs as a built-in system flow that no request starts and no server configuration key names. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows), [User Deletion](../../guides/protocols/oauth-oidc/token-revocation#user-deletion), and [Action Deletion](../../guides/protocols/oauth-oidc/token-revocation#action-deletion).
+The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Each names an administration flow run against an existing identity. An administrator starts it with `POST /flow/execute` and the flow's ID, so the resolution order below does not apply to it. Deleting a user, an agent, an application, or an action, and replacing a credential or a client secret, are different: their revocation runs as built-in system flows that no request starts and no server configuration key names. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows), [Deletion](../../guides/protocols/oauth-oidc/token-revocation#deletion), and [Action Deletion](../../guides/protocols/oauth-oidc/token-revocation#action-deletion).
 
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 

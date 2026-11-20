@@ -55,7 +55,7 @@ func (s *ServiceTestSuite) TestReportsWhatTheBoundaryAllows() {
 		resp.Resources[security.ResourceTypeApplication])
 	s.True(resp.Resources[security.ResourceTypeProject]["view"])
 	s.Equal(map[string]bool{"view": false, "update": false}, resp.Resources[security.ResourceTypeServerConfig])
-	s.Equal(rootCapabilities{}, resp.Root)
+	s.Equal(map[string]bool{"create": false, "delete": false}, resp.Resources[resourceImport])
 }
 
 func (s *ServiceTestSuite) TestAnActionNeedsEveryDependency() {
@@ -97,7 +97,7 @@ func (s *ServiceTestSuite) TestEvaluatesEachActionOnce() {
 	s.Equal(1, evaluated[security.ActionReadOU])
 }
 
-func (s *ServiceTestSuite) TestRootComesFromTheSystemPermission() {
+func (s *ServiceTestSuite) TestRoutesFollowTheAPIPermissionMap() {
 	s.allow()
 	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 	ctx := security.WithSecurityContextTest(context.Background(),
@@ -106,8 +106,42 @@ func (s *ServiceTestSuite) TestRootComesFromTheSystemPermission() {
 	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(ctx)
 
 	s.Require().Nil(svcErr)
-	s.Equal(rootCapabilities{Manage: true}, resp.Root)
+	for resource, routes := range requiredRoutes {
+		for name := range routes {
+			s.True(resp.Resources[resource][name], "%s:%s", resource, name)
+		}
+	}
 	s.Equal(capabilityScope{Type: sysauthz.BoundaryTypeDeployment}, resp.Scope)
+}
+
+func (s *ServiceTestSuite) TestATokenNamingNoUnitMayDoNothingOnTheDataPlane() {
+	security.InitDataPlanePermissions("")
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU})
+	noUnit := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin", "", "token", []string{"org"}, nil))
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(noUnit)
+
+	s.Require().Nil(svcErr)
+	for resource, actions := range resp.Resources {
+		for action, can := range actions {
+			s.False(can, "%s %s", resource, action)
+		}
+	}
+	s.authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestRoutesNeedTheirPermission() {
+	s.allow()
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin", "ou-1", "token", []string{"system:app", "system:gateway"}, nil))
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(ctx)
+
+	s.Require().Nil(svcErr)
+	s.False(resp.Resources[resourceExport]["create"])
+	s.False(resp.Resources[resourceGatewaySecret]["view"])
 }
 
 func (s *ServiceTestSuite) TestReturnsTheAuthorizationError() {

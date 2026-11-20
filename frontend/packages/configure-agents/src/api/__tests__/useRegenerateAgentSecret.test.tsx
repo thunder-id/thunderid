@@ -4,7 +4,6 @@
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import AgentQueryKeys from '../../constants/agent-query-keys';
-import type {Agent} from '../../models/agent';
 import useRegenerateAgentSecret from '../useRegenerateAgentSecret';
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
@@ -17,46 +16,21 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {
     ...actual,
     useConfig: vi.fn(),
-    useToast: vi.fn().mockReturnValue({showToast: vi.fn()}),
+    useToast: vi.fn(),
   };
 });
 
 const {useThunderID} = await import('@thunderid/react');
-const {useConfig} = await import('@thunderid/contexts');
+const {useConfig, useToast} = await import('@thunderid/contexts');
 
 describe('useRegenerateAgentSecret', () => {
   let mockHttpRequest: ReturnType<typeof vi.fn>;
+  let mockShowToast: ReturnType<typeof vi.fn>;
   const agentId = '550e8400-e29b-41d4-a716-446655440000';
-
-  const mockAgentWithOAuth: Agent = {
-    id: agentId,
-    ouId: '111e8400-e29b-41d4-a716-446655440000',
-    type: 'default',
-    display: 'Billing Service',
-    inboundAuthConfig: [
-      {
-        type: 'oauth2',
-        config: {
-          clientId: 'agent-billing',
-          clientSecret: 'old-secret',
-          grantTypes: ['client_credentials'],
-          tokenEndpointAuthMethod: 'client_secret_basic',
-          responseTypes: [],
-        },
-      },
-    ],
-  };
-
-  const mockAgentWithoutOAuth: Agent = {
-    id: agentId,
-    ouId: '111e8400-e29b-41d4-a716-446655440000',
-    type: 'default',
-    display: 'Entity-only agent',
-    inboundAuthConfig: [],
-  };
 
   beforeEach(() => {
     mockHttpRequest = vi.fn();
+    mockShowToast = vi.fn();
 
     vi.mocked(useThunderID).mockReturnValue({
       http: {request: mockHttpRequest},
@@ -65,14 +39,16 @@ describe('useRegenerateAgentSecret', () => {
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'https://api.test.com',
     } as ReturnType<typeof useConfig>);
+
+    vi.mocked(useToast).mockReturnValue({showToast: mockShowToast} as unknown as ReturnType<typeof useToast>);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should fetch the agent then PUT with a freshly generated client secret', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockAgentWithOAuth}).mockResolvedValueOnce({data: mockAgentWithOAuth});
+  it('asks the server to regenerate the secret and returns the one it generated', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: {clientSecret: 'server-generated'}});
 
     const {result} = renderHook(() => useRegenerateAgentSecret());
     result.current.mutate({agentId});
@@ -81,55 +57,33 @@ describe('useRegenerateAgentSecret', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
-    expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      1,
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: `https://api.test.com/agents/${agentId}`,
-        method: 'GET',
+        url: `https://api.test.com/agents/${agentId}/client-secret/regenerate`,
+        method: 'POST',
       }),
     );
-
-    const putCall = mockHttpRequest.mock.calls[1][0] as {
-      url: string;
-      method: string;
-      data: Agent;
-    };
-    expect(putCall.url).toBe(`https://api.test.com/agents/${agentId}`);
-    expect(putCall.method).toBe('PUT');
-    const oauthCfg = putCall.data.inboundAuthConfig?.[0]?.config;
-    expect(oauthCfg?.clientSecret).toBeTruthy();
-    expect(oauthCfg?.clientSecret).not.toBe('old-secret');
-    // Base64url with no padding — 32 bytes encodes to 43 chars
-    expect(oauthCfg?.clientSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
-
-    // The server does not store the delegated flag, so the PUT says whether the agent has it.
-    expect((putCall.data as {delegated?: boolean}).delegated).toBe(false);
-
-    // Stripped server-generated fields are not echoed back on PUT.
-    expect((putCall.data as {id?: string}).id).toBeUndefined();
-    expect((putCall.data as {clientId?: string}).clientId).toBeUndefined();
-
-    expect(result.current.data?.clientSecret).toBe(oauthCfg?.clientSecret);
+    expect(result.current.data).toEqual({clientSecret: 'server-generated'});
+    expect(mockShowToast).toHaveBeenCalledWith('Client secret regenerated successfully', 'success');
   });
 
-  it('should reject when the agent has no OAuth2 configuration', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockAgentWithoutOAuth});
+  it('warns when the tokens issued under the old secret may not be revoked', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: {clientSecret: 'server-generated', revocationIncomplete: true}});
 
     const {result} = renderHook(() => useRegenerateAgentSecret());
     result.current.mutate({agentId});
 
     await waitFor(() => {
-      expect(result.current.isError).toBe(true);
+      expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(result.current.error?.message).toContain('OAuth2');
-    // Only the GET fired; no PUT.
-    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    expect(result.current.data?.revocationIncomplete).toBe(true);
+    expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Regenerate it again'), 'warning');
   });
 
-  it('should propagate GET errors', async () => {
-    const apiError = new Error('Agent not found');
+  it('propagates a refusal', async () => {
+    const apiError = new Error('Agent has no client secret');
     mockHttpRequest.mockRejectedValueOnce(apiError);
 
     const {result} = renderHook(() => useRegenerateAgentSecret());
@@ -140,10 +94,11 @@ describe('useRegenerateAgentSecret', () => {
     });
 
     expect(result.current.error).toEqual(apiError);
+    expect(mockShowToast).not.toHaveBeenCalled();
   });
 
-  it('should invalidate single agent and list queries on success', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockAgentWithOAuth}).mockResolvedValueOnce({data: mockAgentWithOAuth});
+  it('invalidates the agent and the agent list on success', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: {clientSecret: 'server-generated'}});
 
     const {result, queryClient} = renderHook(() => useRegenerateAgentSecret());
     const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');

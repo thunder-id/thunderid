@@ -320,6 +320,33 @@ func (s *ProjectScopeTestSuite) TestAPromotionScopedToAProjectSendsWhatTheSource
 	s.Equal(enUS, s.f.client.last().Content)
 }
 
+// A project's promotion leaves out what the target holds back unless the caller names it: a change named
+// in the selection is sent and no longer held back.
+func (s *ProjectScopeTestSuite) TestAPromotionSendsAHeldBackChangeItIsGiven() {
+	s.captureDocs(docs(flow("flow-1"))...)
+	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	s.Require().Nil(svcErr)
+	_, svcErr = s.f.svc.Apply(context.Background(), scopeTarget, ApplyRequest{
+		Selection: &[]string{"translation/en-US"}, LeaveOut: []string{"application/app-shop"}})
+	s.Require().Nil(svcErr)
+
+	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
+		TargetGatewayID: scopeTarget, Project: "shop"})
+	s.Require().Nil(svcErr)
+	s.NotContains(s.f.client.last().Content, "id: app-shop", "a held-back change was promoted unasked")
+
+	own := []string{"application/app-shop", "organization_unit/ou-team", "organization_unit/ou-shop", "flow/flow-1"}
+	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
+		TargetGatewayID: scopeTarget, Project: "shop", Selection: &own})
+	s.Require().Nil(svcErr)
+	s.Contains(s.f.client.last().Content, "id: app-shop", "a held-back change the caller named was left out")
+	diff, svcErr := s.f.svc.Diff(context.Background(), scopeTarget, "", "")
+	s.Require().Nil(svcErr)
+	for _, change := range diff.Changes {
+		s.False(change.HeldBack, "%s stayed held back", change.Key)
+	}
+}
+
 // Ownership is read from the documents: a project's own document, and a resource that names a project.
 // Units, users and groups name none, and a later document decides for a resource both sets have.
 func TestOwnersAreReadFromTheDocuments(t *testing.T) {

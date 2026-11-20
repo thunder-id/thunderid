@@ -7,7 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
-import {UserTypeConstraints} from '@thunderid/configure-user-types';
+import {convertPropertiesToSchema, UserTypeConstraints} from '@thunderid/configure-user-types';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {getContactTypesMissingRegex, getErrorMessage} from '@thunderid/utils';
@@ -26,7 +26,6 @@ import useAgentTypeRoutes from '../hooks/useAgentTypeRoutes';
 import {AgentTypeCreateFlowStep} from '../models/agent-type-create-flow';
 import type {SchemaPropertyInput} from '../models/property-definition';
 import type {CreateAgentTypeRequest} from '../models/requests';
-import convertPropertiesToSchema from '../utils/convertPropertiesToSchema';
 
 /**
  * Full-screen wizard that creates an agent type: its organization unit (when there is more than
@@ -283,6 +282,17 @@ export default function CreateAgentTypePage(): JSX.Element {
         t('agentTypes:validationErrors.duplicateProperties', {
           duplicates: [...new Set(duplicates)].join(', '),
           defaultValue: 'Duplicate property names found: {{duplicates}}',
+        }),
+      );
+      return;
+    }
+
+    const emptyEnums = validProperties.filter((p) => p.name.trim() && p.type === 'enum' && p.enum.length === 0);
+    if (emptyEnums.length > 0) {
+      setError(
+        t('agentTypes:validationErrors.enumValuesRequired', {
+          properties: emptyEnums.map((p) => p.name.trim()).join(', '),
+          defaultValue: 'Add at least one allowed value to: {{properties}}',
         }),
       );
       return;

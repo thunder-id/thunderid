@@ -1021,9 +1021,10 @@ describe('DeployPage: apply safety', () => {
     await userEvent.click(within(panel).getByRole('combobox', {name: 'Gateway'}));
     await userEvent.click(await screen.findByRole('option', {name: 'Prod'}));
     const changed = await within(panel).findByTestId('changed-values');
-    expect(within(changed).getByText('Values set since the last deploy')).toBeInTheDocument();
+    expect(within(changed).getByText(/^Values set since the last deploy/)).toBeInTheDocument();
+    expect(within(changed).getByText('Orders · Client secret')).toBeInTheDocument();
     expect(within(changed).getByText('APP_ORDERS_CLIENT_SECRET')).toBeInTheDocument();
-    expect(within(changed).getByText('used by Orders')).toBeInTheDocument();
+    expect(within(changed).queryByText(/used by/)).not.toBeInTheDocument();
 
     await userEvent.click(within(panel).getByRole('button', {name: 'Deploy'}));
     const warning = await within(panel).findByTestId('deploy-confirm-removals');

@@ -69,7 +69,6 @@ const types: AuthorizationDetailType[] = [
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 

@@ -358,6 +358,31 @@ You should see the sign-in form. Enter your test user credentials and tap **Subm
 
 </Stepper>
 
+## Run the Sample App
+
+The [Flutter sample](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fflutter&expanded=true) and open its folder.
+2. Create `.env` in the sample's folder with your application's values:
+
+   ```dotenv title=".env"
+   THUNDERID_BASE_URL=https://localhost:8090
+   THUNDERID_APP_ID=<your-application-id>
+   ```
+
+3. On the Android emulator, forward the server's port so the app reaches the server on your machine:
+
+   ```bash
+   adb reverse tcp:8090 tcp:8090
+   ```
+
+4. Install the dependencies and run the app:
+
+   ```bash
+   flutter pub get
+   flutter run
+   ```
+
 ## What's Next
 
 <NextSteps>

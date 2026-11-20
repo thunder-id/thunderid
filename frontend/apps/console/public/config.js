@@ -12,6 +12,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   documentation: {
     baseUrl: 'https://thunderid.dev/docs/v1.0.x',
     releasesUrl: 'https://thunderid.dev/data/releases.json',
+    ecosystemReleasesUrl: 'https://thunderid.dev/data/ecosystem-releases.json',
     links: {
       users: '',
       applications: '',

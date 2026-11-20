@@ -1,54 +1,84 @@
 {
   "events": [
     {
+      "id": "community-day-colombo-2026",
+      "title": "{{ProductName}} Agentic AI Community Day Colombo 2026",
+      "type": "hosted",
+      "startDate": "2026-12-10",
+      "endDate": "2026-12-10",
+      "city": "Colombo",
+      "country": "Sri Lanka",
+      "online": false,
+      "summary": "An evening of talks and live demos on building, securing, and running AI agents and MCP servers with open source.",
+      "url": "/events/community-day-colombo-2026/"
+    },
+    {
       "id": "react-nexus-2026",
-      "name": "React Nexus 2026",
+      "title": "React Nexus 2026",
+      "type": "talk",
       "startDate": "2026-07-02",
       "endDate": "2026-07-03",
       "city": "Bangalore",
-      "location": "Bangalore, India",
-      "tags": ["Conference", "React"],
-      "link": "https://reactnexus.com/"
+      "country": "India",
+      "online": false,
+      "summary": "The {{ProductName}} team at India's React conference.",
+      "url": "https://reactnexus.com/"
     },
     {
       "id": "kubecon-india-2026",
-      "name": "KubeCon India",
+      "title": "KubeCon + CloudNativeCon India 2026",
+      "type": "talk",
       "startDate": "2026-06-18",
       "endDate": "2026-06-19",
       "city": "Mumbai",
-      "location": "Mumbai, India",
-      "tags": [],
-      "link": "https://events.linuxfoundation.org/kubecon-cloudnativecon-india/"
+      "country": "India",
+      "online": false,
+      "summary": "The {{ProductName}} team at the cloud native community's flagship event in India.",
+      "url": "https://events.linuxfoundation.org/kubecon-cloudnativecon-india/"
     },
     {
       "id": "oss-india-2026",
-      "name": "Open Source Summit India",
+      "title": "Open Source Summit India 2026",
+      "type": "talk",
       "startDate": "2026-06-17",
       "endDate": "2026-06-17",
       "city": "Mumbai",
-      "location": "Jio World Convention Centre, Mumbai",
-      "tags": [],
-      "link": "https://events.linuxfoundation.org/open-source-summit-india/"
+      "country": "India",
+      "online": false,
+      "summary": "The {{ProductName}} team at the Linux Foundation's Open Source Summit, Jio World Convention Centre.",
+      "url": "https://events.linuxfoundation.org/open-source-summit-india/"
     },
     {
       "id": "mcp-dev-summit-mumbai-2026",
-      "name": "MCP Dev Summit",
+      "title": "MCP Dev Summit Mumbai 2026",
+      "type": "talk",
       "startDate": "2026-06-14",
       "endDate": "2026-06-15",
       "city": "Mumbai",
-      "location": "Mumbai, India",
-      "tags": [],
-      "link": "https://events.linuxfoundation.org/mcp-dev-summit-mumbai/"
+      "country": "India",
+      "online": false,
+      "summary": "{{ProductName}} team talks on identity and authorization for MCP.",
+      "talks": [
+        {
+          "title": "Your AI Chatbot Just Exposed Your CEO's Salary to an Intern",
+          "speakers": []
+        }
+      ],
+      "url": "https://events.linuxfoundation.org/mcp-dev-summit-mumbai/",
+      "recapUrl": "/blog/mcp-dev-summit-identity-gap/"
     },
     {
       "id": "mcp-dev-summit-bangalore-2026",
-      "name": "MCP Dev Summit",
+      "title": "MCP Dev Summit Bengaluru 2026",
+      "type": "talk",
       "startDate": "2026-06-09",
       "endDate": "2026-06-10",
       "city": "Bangalore",
-      "location": "Bangalore, India",
-      "tags": [],
-      "link": "https://events.linuxfoundation.org/mcp-dev-summit-bengaluru/"
+      "country": "India",
+      "online": false,
+      "summary": "{{ProductName}} team talks on identity and authorization for MCP, including Ayesha Dissanayaka.",
+      "url": "https://events.linuxfoundation.org/mcp-dev-summit-bengaluru/",
+      "recapUrl": "/blog/mcp-dev-summit-identity-gap/"
     }
   ]
 }

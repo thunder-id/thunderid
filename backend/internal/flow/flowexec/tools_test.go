@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/flowconfigmock"
 )
 
 const (
@@ -30,7 +31,7 @@ type FlowToolsTestSuite struct {
 	suite.Suite
 	service      *FlowExecServiceInterfaceMock
 	flows        *FlowProviderMock
-	serverConfig *serverConfigProviderMock
+	serverConfig *flowconfigmock.ServerConfigReaderMock
 	session      *mcp.ClientSession
 }
 
@@ -51,7 +52,7 @@ func (s *FlowToolsTestSuite) SetupTest() {
 func (s *FlowToolsTestSuite) connect(cfg flowconfig.FlowSectionConfig) {
 	s.service = NewFlowExecServiceInterfaceMock(s.T())
 	s.flows = NewFlowProviderMock(s.T())
-	s.serverConfig = newServerConfigProviderMock(s.T())
+	s.serverConfig = flowconfigmock.NewServerConfigReaderMock(s.T())
 	s.serverConfig.On("GetMergedConfig", mock.Anything, "flow").
 		Return(cfg, (*tidcommon.ServiceError)(nil)).Maybe()
 	// The configured flow is read with the server's authority, since a caller who may onboard needn't hold

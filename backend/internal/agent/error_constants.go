@@ -853,6 +853,34 @@ var (
 				"Both must point to the same {{param(flowType)}} flow.",
 		},
 	}
+
+	// ErrorCredentialUpdateNotAllowed is returned when an update carries a credential attribute.
+	ErrorCredentialUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1068",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.credential_update_not_allowed",
+			DefaultValue: "Credential update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.credential_update_not_allowed_description",
+			DefaultValue: "The credential updates through this endpoint are not allowed",
+		},
+	}
+
+	// ErrorPersonalAgentCredentialsNotUpdatable is returned when an administrator sets a personal agent's credentials.
+	ErrorPersonalAgentCredentialsNotUpdatable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1069",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_credentials_not_updatable",
+			DefaultValue: "Credentials cannot be updated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_credentials_not_updatable_description",
+			DefaultValue: "A personal agent's credentials can only be set by its owner",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

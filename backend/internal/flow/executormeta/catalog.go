@@ -21,7 +21,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION", "REGISTRATION"},
 	},
 	ExecutorNameApplicationActionValidator: {
-		SupportedModes:     []string{ExecutorModeRevokeBeforeAction, ExecutorModeRevokeBeforeRemoval},
+		SupportedModes:     []string{ExecutorModeRevokeBeforeRemoval},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
 	},
 	ExecutorNameAttributeCollect:             {},
@@ -37,9 +37,6 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameAuthorization: {},
 	ExecutorNameAuthorizationDetail: {
 		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION"},
-	},
-	ExecutorNameClientSecret: {
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
 	ExecutorNameConsent: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
@@ -181,14 +178,9 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "requiredScopes"},
 		},
 	},
-	ExecutorNamePreDelete: {
-		DefaultMode:        "revoke_all",
-		SupportedModes:     []string{"revoke_all"},
-		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
-	},
-	ExecutorNamePreCredentialUpdate: {
-		DefaultMode:        ExecutorModeRevokeBeforeAction,
-		SupportedModes:     []string{ExecutorModeRevokeBeforeAction},
+	ExecutorNamePreRevocation: {
+		SupportedModes: []string{ExecutorModeClientRemoval, ExecutorModeClientSecretRotation,
+			ExecutorModeCredentialUpdate, ExecutorModeIdentityDeletion},
 		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
 	},
 	ExecutorNamePreSuspend: {

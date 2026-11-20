@@ -32,6 +32,9 @@ const (
 
 	// quietPeriod is how long a suite waits for an audit line that must not be written.
 	quietPeriod = 2 * time.Second
+
+	// idCap is how many characters of an ID a line keeps.
+	idCap = 128
 )
 
 var (
@@ -306,7 +309,6 @@ func (ts *AuditLogTestSuite) TestEveryCreateAndUpdatePathRecordsItsOutcome() {
 // request from the loopback peer has no client, so a long user agent it sends is not recorded at all;
 // the 256 character cap on a public peer's user agent is covered by the client middleware unit tests.
 func (ts *AuditLogTestSuite) TestATargetIDIsCutToItsCapAndALoopbackUserAgentIsNotRecorded() {
-	const idCap = 128
 	longID := strings.Repeat("0123456789", 20)
 	longUserAgent := strings.Repeat("ü", 512)
 	cases := []struct {
