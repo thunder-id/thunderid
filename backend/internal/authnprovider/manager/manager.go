@@ -104,8 +104,12 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 	requestedAttributes *providers.RequestedAttributes,
 	metadata *providers.AuthnMetadata,
 	authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
+	// The credentials map is handed to the provider, which may change it, so the method is classified first.
+	method, audited := signInMethod(ctx, credentials)
 	authUser, authResult, outcome, svcErr := m.authenticateUser(ctx, identifiers, credentials, metadata, authUser)
-	m.publishAuthentication(ctx, credentials, authResult, outcome)
+	if audited {
+		m.publishAuthentication(ctx, method, authResult, outcome)
+	}
 	if svcErr != nil {
 		return authUser, nil, svcErr
 	}
@@ -667,15 +671,21 @@ func (m *authnProviderManager) authenticateUser(ctx context.Context, identifiers
 	return authUser, authResult, audit.OutcomeSucceeded, nil
 }
 
-// publishAuthentication publishes the audit event of a credential check that is a sign-in. The actor is set
-// here, never read from the request, since the sign-in endpoints are public.
-func (m *authnProviderManager) publishAuthentication(ctx context.Context, credentials map[string]interface{},
-	authResult *providers.AuthnResult, outcome audit.Outcome) {
+// signInMethod returns the method a credential check is made with, and whether the check is a sign-in that
+// audit records. A check on a provisioned entity, with a system credential or as the proof of a contact is not.
+func signInMethod(ctx context.Context, credentials map[string]interface{}) (providers.AuthenticationMethod, bool) {
 	method := authnprovidercm.AuthenticationMethodOf(credentials)
 	_, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]
 	if provisioned || method == providers.AuthenticationMethodSystemCredential || authnprovidercm.IsContactProof(ctx) {
-		return
+		return method, false
 	}
+	return method, true
+}
+
+// publishAuthentication publishes the audit event of a credential check that is a sign-in with method. The
+// actor is set here, never read from the request, since the sign-in endpoints are public.
+func (m *authnProviderManager) publishAuthentication(ctx context.Context, method providers.AuthenticationMethod,
+	authResult *providers.AuthnResult, outcome audit.Outcome) {
 	target := audit.Ref{Type: audit.TargetTypeUser}
 	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
 	var entity *providers.EntityReference

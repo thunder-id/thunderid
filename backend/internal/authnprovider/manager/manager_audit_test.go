@@ -411,6 +411,22 @@ func (s *ManagerAuditTestSuite) TestAuthenticateUser_PublishesOneEventPerCheck()
 	}
 }
 
+// The credentials are handed to the provider, which may change the map, so the method is classified before the
+// call and a sign-in is still recorded when the provider has emptied the map by the time it returns.
+func (s *ManagerAuditTestSuite) TestAuthenticateUser_ClassifiesTheMethodBeforeTheProviderChangesTheCredentials() {
+	bus, published := newRecordingBus(s.T())
+	s.provider.On("Authenticate", mock.Anything, typedIdentifiers(), mock.Anything,
+		(*providers.AuthnMetadata)(nil)).Run(func(args mock.Arguments) {
+		clear(args.Get(2).(map[string]interface{}))
+	}).Return(authenticatedEntity(providers.EntityCategoryUser), (*tidcommon.ServiceError)(nil)).Once()
+
+	_, _, svcErr := s.manager(bus).AuthenticateUser(context.Background(), typedIdentifiers(), passwordCredentials(),
+		nil, nil, providers.AuthUser{})
+
+	s.Nil(svcErr)
+	s.requireOnlyAuthentication(published(), "credential")
+}
+
 func (s *ManagerAuditTestSuite) TestAuthenticateUser_TheActorFollowsTheEntityCategory() {
 	cases := []struct {
 		category providers.EntityCategory

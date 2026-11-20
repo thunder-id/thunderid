@@ -255,7 +255,7 @@ func (ts *AuditLogTestSuite) TestATwoFactorSignInSharesOneFlowRefAcrossItsReques
 		ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome)
 		ts.Equal(map[string]string{"id": appID}, line.Application)
 		ts.Equal(map[string]string{"id": ouID}, line.OU)
-		ts.NotContains(line.Raw, code, "the passcode is never recorded")
+		ts.requireNoStringValue(line, code, "the passcode is never recorded")
 		ts.NotContains(line.Raw, executionID, "the execution ID is never recorded")
 	}
 	ts.NotEmpty(first.FlowRef)
@@ -263,6 +263,31 @@ func (ts *AuditLogTestSuite) TestATwoFactorSignInSharesOneFlowRefAcrossItsReques
 	ts.Equal(first.FlowRef, session.FlowRef, "the session belongs to the same login")
 	ts.NotEqual(first.TraceID, second.TraceID, "the two checks were made by different requests")
 	ts.NotEqual(executionID, first.FlowRef, "the flow reference is not the execution ID")
+}
+
+// requireNoStringValue checks that no field of the line, at any depth, holds value as a complete string. A
+// numeric value such as a passcode is not looked for inside the line's text, where it can match the digits of a
+// timestamp or an identifier without having been recorded.
+func (ts *AuditLogTestSuite) requireNoStringValue(line testutils.AuditLine, value, message string) {
+	ts.T().Helper()
+	var decoded interface{}
+	ts.Require().NoError(json.Unmarshal([]byte(line.Raw), &decoded))
+	var walk func(node interface{})
+	walk = func(node interface{}) {
+		switch typed := node.(type) {
+		case string:
+			ts.NotEqual(value, typed, message)
+		case map[string]interface{}:
+			for _, child := range typed {
+				walk(child)
+			}
+		case []interface{}:
+			for _, child := range typed {
+				walk(child)
+			}
+		}
+	}
+	walk(decoded)
 }
 
 func (ts *AuditLogTestSuite) TestAMachineCredentialWritesNoAuthenticateLine() {

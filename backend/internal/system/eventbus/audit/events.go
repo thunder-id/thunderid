@@ -340,7 +340,8 @@ var principalActorTypes = map[string]ActorType{
 	string(providers.EntityCategoryAgent): ActorTypeAgent,
 }
 
-// DetailAuthenticationMethod is the detail key of the method a credential was checked with.
+// DetailAuthenticationMethod is the detail key of the authentication method: the method a credential was
+// checked with, or the one a lock holds.
 const DetailAuthenticationMethod = "authentication_method"
 
 // DetailGrantType is the detail key of the grant type a token was requested with.
@@ -351,9 +352,6 @@ const DetailEndReason = "end_reason"
 
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
-
-// DetailAuthenticationMethod is the detail key of the authentication method a lock holds.
-const DetailAuthenticationMethod = "authentication_method"
 
 // DetailAppliedBy is the detail key of who placed or lifted a suspension: organization, owner or cascade.
 const DetailAppliedBy = "applied_by"
