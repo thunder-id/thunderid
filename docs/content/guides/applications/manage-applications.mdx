@@ -91,10 +91,10 @@ This step varies based on your application type and sign-in options. Backend Ser
 
 **Mobile app**: enter a **Deep Link or Universal Link** that <ProductName /> redirects users back to after authentication (for example, `com.example.app://auth/callback` or `https://yourapp.example.com/auth/callback`).
 
-If you selected **Passkey** as a sign-in option, this step also shows **Passkey Settings**. Configure the **Relying party ID** (your application's domain, for example `yourapp.example.com`) and **Relying party name** (a label shown to users during passkey prompts).
+If you selected **Passkey** as a sign-in option, this step also shows **Passkey Settings**. Configure the **Relying party name** (a label shown to users during passkey prompts) and, optionally, the **Relying party ID** (the domain passkeys are valid for, for example `yourapp.example.com`). Leave the relying party ID empty to use the host of the <ProductName /> sign-in page.
 
 :::note
-If you chose the **Embedded** sign-in approach in Step 5, this step only appears when Passkey is selected.
+If you chose the **Embedded** sign-in approach in Step 5, this step only appears when Passkey is selected. Users then create and use passkeys on your application's own pages, so the **Relying party ID** is required: enter your application's domain.
 :::
 
 ### Step 7: Create Application

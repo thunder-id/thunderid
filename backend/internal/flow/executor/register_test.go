@@ -279,6 +279,18 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_LeewayAndLifet
 	assert.Equal(suite.T(), time.Hour, preSuspend.artifactLifetime(&providers.OAuthClient{}))
 }
 
+func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_GateHostnameReachesThePasskeyExecutor() {
+	reg, err := Initialize(suite.depsForBuiltInRegistration(), flowconfig.Config{
+		Flow:         engineconfig.FlowConfig{Executors: []string{ExecutorNamePasskeyAuth}},
+		GateHostname: "signin.example.org",
+	})
+	require.NoError(suite.T(), err)
+
+	ex, err := reg.GetExecutor(ExecutorNamePasskeyAuth)
+	require.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "signin.example.org", ex.(*passkeyAuthExecutor).gateHostname)
+}
+
 func (suite *BuiltInExecutorRegistrationTestSuite) TestSetActorProvider_ReachesThePreSuspendExecutor() {
 	reg, err := Initialize(suite.depsForBuiltInRegistration(), flowconfig.Config{
 		Flow: engineconfig.FlowConfig{Executors: []string{ExecutorNamePreSuspend, ExecutorNameInviteExecutor}},

@@ -151,8 +151,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 
 	// Initialize flow core services.
 	flowConfig := flowconfig.Config{
-		Flow:        engineCtx.flowConfig,
-		TokenLeeway: time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
+		Flow:         engineCtx.flowConfig,
+		TokenLeeway:  time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
+		GateHostname: engineCtx.gateClientConfig.Hostname,
 	}
 	flowFactory, graphCache := core.Initialize(engineCtx.cacheManager)
 	engineCtx.flowFactory = flowFactory

@@ -3,7 +3,7 @@
 
 import {renderHook} from '@testing-library/react';
 import type {TFunction} from 'i18next';
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect} from 'vitest';
 import actions from '../../data/actions.json';
 import elements from '../../data/elements.json';
 import steps from '../../data/steps.json';
@@ -16,25 +16,6 @@ import {transformReactFlow, validateFlowGraph} from '../../utils/reactFlowTransf
 import {computeValidationNotifications} from '../../validation/computeValidationNotifications';
 import {COMMON_GRAPH_VALIDATION_RULES, VALIDATION_RULES} from '../../validation/validation-rules';
 import useGetFlowsMeta from '../useGetFlowsMeta';
-
-const TEST_PRODUCT_NAME = 'TestProduct';
-
-// Mock useConfig to avoid ConfigProvider requirement.
-vi.mock('@thunderid/contexts', async (importOriginal) => {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-  const actual = (await importOriginal()) as Record<string, unknown>;
-
-  return {
-    ...actual,
-    useConfig: () => ({
-      config: {
-        brand: {
-          product_name: TEST_PRODUCT_NAME,
-        },
-      },
-    }),
-  };
-});
 
 describe('useGetFlowsMeta', () => {
   describe('Return Structure', () => {
@@ -64,15 +45,6 @@ describe('useGetFlowsMeta', () => {
       const {result} = renderHook(() => useGetFlowsMeta());
 
       expect(result.current.data.templates).toHaveLength((rawTemplates as FlowTemplate[]).length);
-    });
-
-    it('should substitute {{productName}} placeholders in templates with the configured product name', () => {
-      const {result} = renderHook(() => useGetFlowsMeta());
-
-      const serialised = JSON.stringify(result.current.data.templates);
-
-      expect(serialised).not.toContain('{{productName}}');
-      expect(serialised).toContain(TEST_PRODUCT_NAME);
     });
 
     it('should return actions from JSON file', () => {

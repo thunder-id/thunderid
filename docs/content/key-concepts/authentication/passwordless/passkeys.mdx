@@ -192,6 +192,8 @@ On success, the API returns an authentication response compatible with other <Pr
 
 Passkeys also work through the flow engine (`POST /flow/execute`), which returns dynamic prompts and additional data.
 
+A passkey step that sets no `relyingPartyId` uses the host of the <ProductName /> sign-in page. When your application calls `POST /flow/execute` and runs the WebAuthn ceremony on its own pages, set `relyingPartyId` on the flow's passkey steps to your application's domain, since the browser rejects a relying party ID that does not match the page.
+
 :::note
 Applications configured with the `authorization_code` grant type cannot start flows directly through `POST /flow/execute`. They must initiate authentication through the Authorization endpoint (`GET /oauth2/authorize`). See [Integration Models](../../integration-models#app-native).
 :::

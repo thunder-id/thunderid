@@ -29,6 +29,8 @@ type Config struct {
 	Session flowsession.Config
 	// TokenLeeway is how long past exp a token is still accepted, from the deployment's JWT leeway.
 	TokenLeeway time.Duration
+	// GateHostname is the host of the gate that serves the sign-in pages.
+	GateHostname string
 }
 
 // FlowTypeConfig holds the server-level defaults for one flow type.
@@ -74,6 +76,7 @@ func FromServerRuntime() Config {
 		Flow:          runtime.Config.Flow,
 		SecureCookies: secureCookies(runtime.Config.Server),
 		TokenLeeway:   time.Duration(runtime.Config.JWT.Leeway) * time.Second,
+		GateHostname:  runtime.Config.GateClient.Hostname,
 	}
 }
 
