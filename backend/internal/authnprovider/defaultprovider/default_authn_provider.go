@@ -350,7 +350,7 @@ func (p *defaultAuthnProvider) enrollWithPasskey(
 func (p *defaultAuthnProvider) resolveLinkedEntities(ctx context.Context,
 	token map[string]interface{}) ([]string, *tidcommon.ServiceError) {
 	idpID, _ := token[authnprovidercm.UserAttributeFederatedIdpID].(string)
-	sub, _ := token[authnprovidercm.UserAttributeSub].(string)
+	sub, _ := token[authnprovidercm.ClaimSub].(string)
 
 	linkedIDs, err := p.entitySvc.ResolveLinkedAccounts(ctx, idpID, sub)
 	if err != nil {

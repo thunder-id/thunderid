@@ -701,7 +701,7 @@ func withFederatedIdentity(runtime map[string]string) map[string]string {
 		runtime = map[string]string{}
 	}
 	runtime[common.RuntimeKeyExternalIdentity] = externalIdentityEntry(linkingIdpID, linkingSub,
-		map[string]interface{}{userAttributeSub: linkingSub})
+		map[string]interface{}{claimSub: linkingSub})
 	return runtime
 }
 
@@ -837,7 +837,7 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_RestoresCheckpointBefo
 	runtime[userAttributeUserID] = linkingCandidateID
 	runtime[common.RuntimeKeySelectedAuthClass] = "password"
 	runtime[common.RuntimeKeyExternalIdentity] = externalIdentityEntry("idp-verifier", "sub-verifier",
-		map[string]interface{}{userAttributeSub: "sub-verifier"})
+		map[string]interface{}{claimSub: "sub-verifier"})
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-1",
 		FlowType:    providers.FlowTypeAuthentication,

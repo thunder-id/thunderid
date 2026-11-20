@@ -956,7 +956,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultKeepsVerifi
 	result, svcErr := suite.service.BuildFederatedAuthResult(
 		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "victim@example.com"})
 	suite.Nil(svcErr)
-	suite.Equal(testSub, result.AuthenticatedClaims[authnprovidercm.UserAttributeSub])
+	suite.Equal(testSub, result.AuthenticatedClaims[authnprovidercm.ClaimSub])
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultNilClaimsCarrySub() {
@@ -964,7 +964,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultNilClaimsCa
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub, nil)
 	suite.Nil(svcErr)
-	suite.Equal(testSub, result.AuthenticatedClaims[authnprovidercm.UserAttributeSub])
+	suite.Equal(testSub, result.AuthenticatedClaims[authnprovidercm.ClaimSub])
 }
 
 // The token names the identity rather than an entity. Resolving it is the authn provider's job, so
@@ -977,7 +977,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultNamesTheIde
 		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
 	suite.Nil(svcErr)
 	suite.Equal(testIDPID, result.Token[authnprovidercm.UserAttributeFederatedIdpID])
-	suite.Equal(testSub, result.Token[authnprovidercm.UserAttributeSub])
+	suite.Equal(testSub, result.Token[authnprovidercm.ClaimSub])
 	suite.NotContains(result.Token, common.UserAttributeUserID)
 }
 
@@ -1053,7 +1053,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultLinkingCann
 	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub,
 		map[string]interface{}{"userID": "victim-id", "email": "user@example.com"})
 	suite.Nil(svcErr)
-	suite.Equal(testSub, result.Token[authnprovidercm.UserAttributeSub])
+	suite.Equal(testSub, result.Token[authnprovidercm.ClaimSub])
 	suite.Equal(testIDPID, result.Token[authnprovidercm.UserAttributeFederatedIdpID])
 	suite.NotContains(result.Token, authnprovidercm.UserAttributeUserID)
 	suite.NotContains(result.Token, authnprovidercm.AccountLinkingFiltersKey)

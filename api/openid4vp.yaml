@@ -237,6 +237,9 @@ components:
           description: >-
             Requires the credential issuer's x5c certificate chain to verify against one of the
             definition's trusted authorities. Requires at least one trusted authority.
+        subjectClaim:
+          type: string
+          description: Mandatory claim that identifies the holder at sign-in. Empty uses the credential sub.
     VPTrustedAuthority:
       type: object
       required: [name]

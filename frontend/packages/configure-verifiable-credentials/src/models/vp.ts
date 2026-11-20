@@ -34,6 +34,11 @@ export interface VerifiablePresentation {
    * The certificates themselves are never returned.
    */
   trustedAuthorities?: string[];
+  /**
+   * The mandatory claim that identifies the holder at sign-in. Omitted means the
+   * credential `sub` identifies the holder.
+   */
+  subjectClaim?: string;
 }
 
 /**

@@ -272,7 +272,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	// Keep the connection id with the subject: the idpId runtime entry is overwritten by any later node
 	// with its own connection, so only this pairing tells linking and provisioning which connection
 	// asserted the subject.
-	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
+	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[claimSub])
 	if err := setExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
 		return err
 	}

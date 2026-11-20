@@ -175,8 +175,11 @@ func (e *openid4vpVerifier) authenticate(
 	}
 	credentials := map[string]interface{}{
 		authnprovidercm.CredentialTypeOpenID4VP: &authncommon.OpenID4VPCredential{
-			Subject: rs.Result.Subject,
-			Claims:  rs.Result.Claims,
+			DefinitionID:  rs.Result.DefinitionID,
+			Issuer:        rs.Result.Issuer,
+			IssuerTrusted: rs.Result.IssuerTrusted,
+			Subject:       rs.Result.Subject,
+			Claims:        rs.Result.Claims,
 		},
 	}
 
@@ -194,7 +197,14 @@ func (e *openid4vpVerifier) authenticate(
 		return nil
 	}
 
-	if err := setExternalIdentity(execResp, "", "", authenticatedClaims); err != nil {
+	// Only a verified issuer's subject is recorded as a link: anyone can mint another issuer's iss and sub
+	// from an unenforced definition, and a recorded link would then resolve the real holder to the minter.
+	connectionID, linkSubject := "", ""
+	if rs.Result.IssuerTrusted && rs.Result.DefinitionID != "" {
+		connectionID = openid4vp.LinkedConnectionID(rs.Result.DefinitionID, rs.Result.Issuer)
+		linkSubject = rs.Result.Subject
+	}
+	if err := setExternalIdentity(execResp, connectionID, linkSubject, authenticatedClaims); err != nil {
 		return err
 	}
 

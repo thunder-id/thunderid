@@ -9,10 +9,10 @@ import "strings"
 const (
 	// UserAttributeUserID is the attribute key used to identify the user ID.
 	UserAttributeUserID = "userID"
-	// UserAttributeSub is the attribute key used to identify the subject (sub) claim in authentication results.
-	UserAttributeSub = "sub"
+	// ClaimSub is the key carrying the identity provider's subject (sub) claim in authentication results.
+	ClaimSub = "sub"
 	// UserAttributeFederatedIdpID is the token key carrying the identity provider connection a
-	// federated authentication ran against. Paired with UserAttributeSub it names a federated
+	// federated authentication ran against. Paired with ClaimSub it names a federated
 	// identity; neither key is a credential type and nothing dispatches on them.
 	UserAttributeFederatedIdpID = "federatedIdpId"
 	// AccountLinkingFiltersKey is the federated token key carrying the connection's account-linking
@@ -29,7 +29,7 @@ func IsFederatedToken(token any) bool {
 		return false
 	}
 	idpID, _ := parsed[UserAttributeFederatedIdpID].(string)
-	sub, _ := parsed[UserAttributeSub].(string)
+	sub, _ := parsed[ClaimSub].(string)
 	return idpID != "" && sub != ""
 }
 

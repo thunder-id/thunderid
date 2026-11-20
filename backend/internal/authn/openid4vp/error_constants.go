@@ -66,6 +66,37 @@ var (
 			DefaultValue: "No presentation definition is registered for the supplied id",
 		},
 	}
+
+	// ErrorNoHolderIdentifier indicates the presentation carries nothing that identifies the holder, so
+	// no user can be resolved or provisioned for it.
+	ErrorNoHolderIdentifier = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "EUDI-1005",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.eudi.no_holder_identifier",
+			DefaultValue: "Holder not identifiable",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.eudi.no_holder_identifier_description",
+			DefaultValue: "The credential does not carry a stable identifier for the holder",
+		},
+	}
+
+	// ErrorUntrustedHolderIssuer indicates the credential's issuer was not verified, so its subject cannot
+	// identify a user at sign-in.
+	ErrorUntrustedHolderIssuer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "EUDI-1006",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.eudi.untrusted_holder_issuer",
+			DefaultValue: "Credential issuer not trusted for sign-in",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.eudi.untrusted_holder_issuer_description",
+			DefaultValue: "Sign-in requires a presentation definition that enforces trusted issuers " +
+				"and a credential whose issuer matches its certificate",
+		},
+	}
 )
 
 // Sentinel errors returned by the verifier. HTTP-facing service errors live in error_constants.go.

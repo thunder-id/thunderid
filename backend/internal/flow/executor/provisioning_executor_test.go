@@ -5364,9 +5364,9 @@ const (
 // federatedTestClaims are the claims the federated connection in these cases asserts.
 func federatedTestClaims() map[string]interface{} {
 	return map[string]interface{}{
-		userAttributeSub: testFederatedSub,
-		"username":       "github-login",
-		attributeEmail:   "user@example.com",
+		claimSub:       testFederatedSub,
+		"username":     "github-login",
+		attributeEmail: "user@example.com",
 	}
 }
 
@@ -5765,9 +5765,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_NoFederatedIdentifiers_U
 	ctx.RuntimeData[common.RuntimeKeyExternalIdentity] = externalIdentityEntry("", "", federatedTestClaims())
 
 	suite.expectNoExistingUserFor(map[string]interface{}{
-		"username":       "github-login",
-		attributeEmail:   "user@example.com",
-		userAttributeSub: testFederatedSub,
+		"username":     "github-login",
+		attributeEmail: "user@example.com",
+		claimSub:       testFederatedSub,
 	})
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool { return u.LinkedAccount == nil })).
