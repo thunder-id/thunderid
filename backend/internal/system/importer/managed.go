@@ -5,19 +5,22 @@ package importer
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // withManagedImport marks the context of a managed import, whose writes may change what a control plane
-// deployed and which every service otherwise refuses.
+// deployed and which every service otherwise refuses. The control plane has already recorded each of those
+// changes, so the services' audit events are suppressed and the import records the request alone.
 func withManagedImport(ctx context.Context, request *ImportRequest) context.Context {
 	if request.Managed {
-		return managedresource.WithManagedImport(ctx)
+		return audit.WithSuppressed(managedresource.WithManagedImport(ctx))
 	}
 	return ctx
 }
@@ -250,4 +253,28 @@ func keysNotIn(keys []string, set map[string]struct{}) []string {
 		}
 	}
 	return absent
+}
+
+// failedItemDetails returns the audit details that name the failed items of a managed import: how many,
+// and their types and IDs as a list of "<type>:<id>" entries, cut at the last whole entry that fits a detail
+// value. It returns nothing when no item failed.
+func failedItemDetails(results []ImportItemOutcome) map[string]string {
+	var entries []string
+	for _, outcome := range results {
+		if outcome.Status != statusFailed {
+			continue
+		}
+		if outcome.ResourceID == "" {
+			entries = append(entries, audit.ListEntry(outcome.ResourceType))
+			continue
+		}
+		entries = append(entries, audit.ListEntry(outcome.ResourceType, outcome.ResourceID))
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	return map[string]string{
+		audit.DetailFailedCount: strconv.Itoa(len(entries)),
+		audit.DetailFailedItems: audit.JoinList(entries),
+	}
 }

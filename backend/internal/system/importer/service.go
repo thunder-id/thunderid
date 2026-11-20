@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -445,8 +446,11 @@ func (s *importService) ImportResources(
 	response, svcErr := s.importResources(ctx, request)
 	itemFailed := response != nil && response.Summary != nil && response.Summary.Failed > 0
 	dryRun := request != nil && request.DryRun
-	s.publishConfigurationEvent(ctx, audit.EventConfigurationImport, audit.ActionImport, svcErr, itemFailed,
-		map[string]string{audit.DetailDryRun: strconv.FormatBool(dryRun)})
+	details := map[string]string{audit.DetailDryRun: strconv.FormatBool(dryRun)}
+	if request != nil && request.Managed && response != nil {
+		maps.Copy(details, failedItemDetails(response.Results))
+	}
+	s.publishConfigurationEvent(ctx, audit.EventConfigurationImport, audit.ActionImport, svcErr, itemFailed, details)
 	return response, svcErr
 }
 

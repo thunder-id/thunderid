@@ -26,10 +26,14 @@ type validatingSink struct {
 	sink Sink
 }
 
-// Handle passes a valid event on and refuses any other, so it is never written.
+// Handle passes a valid event on and refuses any other, so it is never written. A valid event built on a
+// suppressed context is dropped without an error.
 func (s validatingSink) Handle(ctx context.Context, env eventbus.Envelope, payload Payload) error {
 	if err := payload.validate(env.Name); err != nil {
 		return err
+	}
+	if payload.suppressed {
+		return nil
 	}
 	return s.sink.Handle(ctx, env, payload)
 }

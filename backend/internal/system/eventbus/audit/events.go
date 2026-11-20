@@ -331,6 +331,14 @@ const DetailGrantType = "grant_type"
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
 
+// DetailFailedCount records how many items of a managed import failed.
+const DetailFailedCount = "failed_count"
+
+// DetailFailedItems records the failed items of a managed import as a comma separated list of
+// "<type>:<id>", with the separators in an ID escaped by a backslash, cut at the last whole entry that fits a
+// detail value.
+const DetailFailedItems = "failed_items"
+
 // DetailAuthenticationMethod is the detail key of the authentication method a lock holds.
 const DetailAuthenticationMethod = "authentication_method"
 
@@ -417,7 +425,7 @@ var auditedEvents = map[string][]string{
 	EventResourceServerActionUpdate:   nil,
 	EventResourceServerActionDelete:   nil,
 
-	EventConfigurationImport: {DetailDryRun},
+	EventConfigurationImport: {DetailDryRun, DetailFailedCount, DetailFailedItems},
 	EventConfigurationDelete: nil,
 	EventConfigurationExport: nil,
 
