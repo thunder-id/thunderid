@@ -44,6 +44,20 @@ const agentConfig = {
   agentSecret: process.env.AGENT_SECRET || "",
 };
 
+// Fail closed before initializing the model or starting the server.
+const hasAgentCredentials = Boolean(
+  agentConfig.agentID || agentConfig.agentSecret,
+);
+
+if (
+  hasAgentCredentials &&
+  (!__thunderBaseUrl || !agentConfig.agentID || !agentConfig.agentSecret)
+) {
+  throw new Error(
+    "[ai-agent] Incomplete authentication configuration: set THUNDERID_BASE_URL, AGENT_ID, and AGENT_SECRET together.",
+  );
+}
+
 // Separate CIBA-only credentials for the upgrade scheduler.
 // Uses wayfinder-ciba-email-flow; kept separate from the main agent because
 // auth_flow_handle is shared between authorization_code and CIBA — they need
