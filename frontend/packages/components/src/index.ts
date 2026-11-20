@@ -17,6 +17,10 @@ export {default as DiscardChangesDialog} from './DiscardChangesDialog/DiscardCha
 export type {DiscardChangesDialogProps} from './DiscardChangesDialog/DiscardChangesDialog';
 export {default as DocumentTitle} from './DocumentTitle/DocumentTitle';
 export type {DocumentTitleProps} from './DocumentTitle/DocumentTitle';
+export {default as DurationField} from './DurationField/DurationField';
+export type {DurationFieldProps} from './DurationField/DurationField';
+export {DurationUnitSeconds, toDurationParts, toSeconds} from './DurationField/duration';
+export type {DurationParts, DurationUnit} from './DurationField/duration';
 export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export type {ExternalLinkConfirmDialogProps} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export {default as useExternalLinkConfirmation} from './ExternalLinkConfirm/useExternalLinkConfirmation';

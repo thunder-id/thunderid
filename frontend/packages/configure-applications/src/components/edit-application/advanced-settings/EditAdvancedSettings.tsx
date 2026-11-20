@@ -10,7 +10,7 @@ import MetadataSection from './MetadataSection';
 import OAuth2ConfigSection from './OAuth2ConfigSection';
 import PasskeysSection from './PasskeysSection';
 import useValidationReport from '../../../hooks/useValidationReport';
-import type {Application} from '../../../models/application';
+import type {Application, LoginConsentConfig} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {OAuth2Config, OAuth2Token} from '../../../models/oauth';
@@ -128,6 +128,10 @@ export default function EditAdvancedSettings({
 
   const currentPasskeyOrigins = editedApp.passkeyAllowedOrigins ?? application.passkeyAllowedOrigins ?? [];
 
+  const handleLoginConsentChange = (loginConsent: LoginConsentConfig): void => {
+    onFieldChange('loginConsent', loginConsent);
+  };
+
   const handleTokenConfigChange = (tokenUpdates: Partial<OAuth2Token>, oauth2Updates: Partial<OAuth2Config> = {}) => {
     const currentInboundAuth: InboundAuthConfig[] = editedApp.inboundAuthConfig ?? application.inboundAuthConfig ?? [];
     const updatedInboundAuth = currentInboundAuth.map((auth) =>
@@ -155,7 +159,7 @@ export default function EditAdvancedSettings({
     <>
       <Stack spacing={3}>
         <OAuth2ConfigSection
-          key={sectionResetKey}
+          key={`oauth2-config-${sectionResetKey}`}
           oauth2Config={oauth2Config}
           oauth2Constraints={oauth2Constraints}
           onOAuth2ConfigChange={handleOAuth2ConfigChange}
@@ -163,6 +167,8 @@ export default function EditAdvancedSettings({
           allowedGrantTypes={allowedGrantTypes}
           showRedirectUris={showRedirectUris}
           onValidationChange={setRedirectUrisInvalid}
+          loginConsent={editedApp.loginConsent ?? application.loginConsent}
+          onLoginConsentChange={application.isReadOnly ? undefined : handleLoginConsentChange}
         />
         {oauth2Config && (
           <IdentityAssertionsSection

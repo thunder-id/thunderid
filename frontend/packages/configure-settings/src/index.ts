@@ -18,8 +18,6 @@ export {default as AccountLockCard} from './components/accountSecurity/AccountLo
 export type {AccountLockCardProps} from './components/accountSecurity/AccountLockCard';
 export {default as AccountSecuritySection} from './components/accountSecurity/AccountSecuritySection';
 export {default as AccountSuspensionSection} from './components/accountSecurity/AccountSuspensionSection';
-export {default as DurationField} from './components/accountSecurity/DurationField';
-export type {DurationFieldProps} from './components/accountSecurity/DurationField';
 export {default as LockLadderRows} from './components/accountSecurity/LockLadderRows';
 export type {LockLadderRowsProps} from './components/accountSecurity/LockLadderRows';
 export {default as AllowedOriginRow} from './components/cors/AllowedOriginRow';
@@ -54,8 +52,6 @@ export {default as SettingsPage} from './pages/SettingsPage';
 export {buildAccountLockPayload, isSameAccountLockForm, toAccountLockForm} from './utils/accountLockPayload';
 export type {AccountLockForm} from './utils/accountLockPayload';
 export {default as describePolicy, formatDurationShort} from './utils/describePolicy';
-export {DurationUnitSeconds, toDurationParts, toSeconds} from './utils/duration';
-export type {DurationParts, DurationUnit} from './utils/duration';
 export {
   createRow,
   createRowId,

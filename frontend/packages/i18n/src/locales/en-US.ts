@@ -304,6 +304,17 @@ const translations = {
     'discardChanges.keepEditing': 'Keep editing',
     'discardChanges.confirm': 'Discard changes',
 
+    // Duration units (used by the duration field)
+    'units.label': 'Unit',
+    'units.seconds': 'Seconds',
+    'units.minutes': 'Minutes',
+    'units.hours': 'Hours',
+    'units.days': 'Days',
+    'units.second': 'Second',
+    'units.minute': 'Minute',
+    'units.hour': 'Hour',
+    'units.day': 'Day',
+
     // Content Security Policy hints shown next to fields that load external resources.
     'csp.hint.image':
       "This image loads from {{origin}}. Add {{origin}} to the img-src directive of your server's Content Security Policy so it is not blocked.",
@@ -3592,6 +3603,12 @@ const translations = {
     'edit.advanced.passkeys.allowedOrigins.addOrigin': 'Add origin',
     'edit.advanced.passkeys.allowedOrigins.error.empty': 'Origin cannot be empty',
     'edit.advanced.passkeys.allowedOrigins.error.invalid': 'Enter a valid URL',
+
+    /* Login consent section */
+    'edit.advanced.loginConsent.validityPeriod.label': 'Consent validity period',
+    'edit.advanced.loginConsent.validityPeriod.hint':
+      'How long consent is remembered before the user is asked again. A client that asks for consent every time ignores it. Choose No expiry for consent that does not expire.',
+    'edit.advanced.loginConsent.validityPeriod.noExpiry': 'No expiry',
 
     /* -------------------- Edit page -------------------- */
     // Common
@@ -8089,15 +8106,6 @@ const translations = {
       'Require administrator intervention when the number of consecutive failed authentication attempts reaches this limit.',
     'accountLock.ceiling.ariaLabel': 'Consecutive failure limit',
 
-    'accountLock.units.label': 'Unit',
-    'accountLock.units.seconds': 'Seconds',
-    'accountLock.units.minutes': 'Minutes',
-    'accountLock.units.hours': 'Hours',
-    'accountLock.units.days': 'Days',
-    'accountLock.units.second': 'Second',
-    'accountLock.units.minute': 'Minute',
-    'accountLock.units.hour': 'Hour',
-    'accountLock.units.day': 'Day',
     'accountLock.units.short.second': '{{count}} second',
     'accountLock.units.short.seconds': '{{count}} seconds',
     'accountLock.units.short.minute': '{{count}} minute',

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, within} from '@testing-library/react';
+import {fireEvent, render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {OAuth2Config} from '@thunderid/configure-applications';
 import {describe, it, expect, vi} from 'vitest';
@@ -592,6 +592,85 @@ describe('OperationModesSection', () => {
           }) as Record<string, unknown>,
         }),
       );
+    });
+  });
+
+  describe('Consent validity period', () => {
+    const fieldName = 'Consent validity period';
+    const stored = {validityPeriod: 3600};
+
+    it('shows the field after the client authentication method, in the same card', () => {
+      render(
+        <OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} loginConsent={stored} />,
+      );
+
+      const authMethod = document.getElementById('agent_token_endpoint_auth_method')!;
+      const field = screen.getByRole('spinbutton', {name: fieldName});
+      const pkce = screen.getByLabelText('Require PKCE');
+      const card = screen.getByText('OAuth 2 configuration').closest('[class*="MuiPaper"]');
+
+      expect(authMethod.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(field.compareDocumentPosition(pkce) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(card).toContainElement(authMethod);
+      expect(card).toContainElement(field);
+    });
+
+    it('hides the field when the agent has no user-facing grant', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={autonomousOnlyConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          loginConsent={stored}
+        />,
+      );
+
+      expect(screen.queryByRole('spinbutton', {name: fieldName})).not.toBeInTheDocument();
+    });
+
+    it('shows the stored validity period in the largest unit that divides it exactly', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          loginConsent={stored}
+          onLoginConsentChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('spinbutton', {name: fieldName})).toHaveValue(1);
+      expect(within(screen.getByTestId('login-consent-validity-period-unit')).getByRole('combobox')).toHaveTextContent(
+        'Hour',
+      );
+    });
+
+    it('commits the typed number in the chosen unit as seconds', () => {
+      const onLoginConsentChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          loginConsent={stored}
+          onLoginConsentChange={onLoginConsentChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByRole('spinbutton', {name: fieldName}), {target: {value: '2'}});
+
+      expect(onLoginConsentChange).toHaveBeenCalledWith({validityPeriod: 7200});
+    });
+
+    it('disables the field when the section is disabled', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          loginConsent={stored}
+          onLoginConsentChange={vi.fn()}
+          disabled
+        />,
+      );
+
+      expect(screen.getByRole('spinbutton', {name: fieldName})).toBeDisabled();
     });
   });
 });
