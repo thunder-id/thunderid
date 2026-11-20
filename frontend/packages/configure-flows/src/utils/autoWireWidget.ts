@@ -37,9 +37,9 @@ export interface AutoWireMeta {
   /** Internal node + exit handle that connects onward to the downstream node. */
   exit?: AutoWireStepRef & {handle: AutoWireHandle};
   /**
-   * Ordered upstream candidates. The first one present in the flow has its success edge
-   * redirected into the widget entry. If none match, the entry is left unconnected for the
-   * user to wire manually.
+   * Ordered upstream candidates. The first one present in the flow whose success edge is free
+   * (missing, or going straight to a `spliceBefore` candidate) has that edge redirected into the
+   * widget entry. If none match, the entry is left unconnected for the user to wire manually.
    */
   spliceAfter?: AutoWireAnchorCandidate[];
   /**
@@ -204,9 +204,48 @@ const autoWireWidget = (
       }
     }
 
-    // Upstream: redirect the first present upstream candidate's success edge into the widget entry
+    // An upstream node is free when its success edge is missing or goes straight to a downstream
+    // candidate. Otherwise a widget already sits after it, and redirecting it would orphan that widget.
+    const isFreeAnchor = (node: Node): boolean => {
+      if (!downstream) {
+        return true;
+      }
+
+      const successHandle: string = handleId(node.id, 'success');
+
+      return edges
+        .filter((edge: Edge) => edge.source === node.id && edge.sourceHandle === successHandle)
+        .every((edge: Edge) => {
+          const target: Node | undefined = resultNodes.find((n: Node) => n.id === edge.target);
+
+          return (
+            target !== undefined &&
+            (autoWire.spliceBefore ?? []).some((candidate) => matchesCandidate(target, candidate))
+          );
+        });
+    };
+
+    const findFreeAnchor = (): Node | undefined => {
+      for (const candidate of autoWire.spliceAfter ?? []) {
+        const match: Node | undefined = resultNodes.find(
+          (node: Node) =>
+            !clusterIds.has(node.id) &&
+            !nodesToDrop.has(node.id) &&
+            matchesCandidate(node, candidate) &&
+            isFreeAnchor(node),
+        );
+
+        if (match) {
+          return match;
+        }
+      }
+
+      return undefined;
+    };
+
+    // Upstream: redirect the first free upstream candidate's success edge into the widget entry
     // (inserting the widget right after it). If it has no success edge yet, add one.
-    const upstream: Node | undefined = findPresent(autoWire.spliceAfter);
+    const upstream: Node | undefined = findFreeAnchor();
 
     if (upstream) {
       const successHandle: string = handleId(upstream.id, 'success');

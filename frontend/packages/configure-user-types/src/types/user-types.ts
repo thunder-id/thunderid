@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {ApiPaginationLink} from '@thunderid/types';
+import type {AttributeDisplay} from '@thunderid/utils';
 
 /**
  * TypeScript types and interfaces for User Types feature
@@ -15,6 +16,8 @@ interface BasePropertyDefinition {
   required?: boolean;
   unique?: boolean;
   displayName?: string;
+  /** How a top-level attribute is ordered and whether it is hidden when an account is created. */
+  display?: AttributeDisplay;
 }
 
 /**
@@ -199,6 +202,8 @@ export interface SchemaPropertyInput {
   enum: string[];
   regex: string;
   primary?: boolean;
+  /** Whether the optional attribute is hidden when an account is created. */
+  hiddenOnCreate?: boolean;
   /** Preserved array item definition for round-trip fidelity. */
   items?: ArrayItemDefinition;
   /** Preserved nested object properties for round-trip fidelity. */

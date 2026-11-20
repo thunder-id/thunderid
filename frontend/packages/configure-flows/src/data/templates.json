@@ -222,7 +222,7 @@
             }
           },
           "onIncomplete": "prompt_owner",
-          "onSuccess": "prompt_agent_details",
+          "onSuccess": "provisioning",
           "type": "TASK_EXECUTION"
         },
         {
@@ -294,9 +294,9 @@
         {
           "id": "prompt_agent_details",
           "layout": {
-            "position": {"x": 3070, "y": 711},
+            "position": {"x": 3580, "y": 711},
             "size": {
-              "height": 954,
+              "height": 724,
               "width": 350
             }
           },
@@ -319,47 +319,8 @@
               {
                 "components": [
                   {
-                    "id": "input_agent_name",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.name.label) }}",
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.name.placeholder) }}",
-                    "ref": "name",
-                    "required": true,
-                    "type": "TEXT_INPUT"
-                  },
-                  {
-                    "id": "input_agent_model_provider",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}",
-                    "options": ["openai", "anthropic", "gemini", "mistral", "custom"],
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}",
-                    "ref": "modelProvider",
-                    "required": false,
-                    "type": "SELECT"
-                  },
-                  {
-                    "id": "input_agent_model",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}",
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}",
-                    "ref": "model",
-                    "required": false,
-                    "type": "TEXT_INPUT"
-                  },
-                  {
-                    "id": "input_agent_function",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
-                    "options": [
-                      "task-automation",
-                      "rag-retrieval",
-                      "code-gen",
-                      "data-analysis",
-                      "orchestrator",
-                      "sub-agent",
-                      "assistant",
-                      "custom"
-                    ],
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
-                    "ref": "function",
-                    "required": false,
-                    "type": "SELECT"
+                    "id": "dynamic_inputs_agent_details",
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER"
                   },
                   {
                     "eventType": "SUBMIT",
@@ -380,32 +341,7 @@
                 "nextNode": "agent_attribute_uniqueness",
                 "ref": "action_agent_details"
               },
-              "inputs": [
-                {
-                  "identifier": "name",
-                  "ref": "input_agent_name",
-                  "required": true,
-                  "type": "TEXT_INPUT"
-                },
-                {
-                  "identifier": "modelProvider",
-                  "ref": "input_agent_model_provider",
-                  "required": false,
-                  "type": "SELECT"
-                },
-                {
-                  "identifier": "model",
-                  "ref": "input_agent_model",
-                  "required": false,
-                  "type": "TEXT_INPUT"
-                },
-                {
-                  "identifier": "function",
-                  "ref": "input_agent_function",
-                  "required": false,
-                  "type": "SELECT"
-                }
-              ]
+              "inputs": []
             }
           ],
           "type": "PROMPT"
@@ -416,7 +352,7 @@
           },
           "id": "agent_attribute_uniqueness",
           "layout": {
-            "position": {"x": 3580, "y": 1089},
+            "position": {"x": 4052, "y": 1089},
             "size": {
               "height": 117,
               "width": 312
@@ -432,13 +368,12 @@
           },
           "id": "provisioning",
           "layout": {
-            "position": {"x": 4052, "y": 1089},
+            "position": {"x": 3070, "y": 1089},
             "size": {
               "height": 117,
               "width": 216
             }
           },
-          "onFailure": "prompt_agent_details",
           "onIncomplete": "prompt_agent_details",
           "onSuccess": "agent_credentials",
           "properties": {
@@ -946,32 +881,6 @@
                     "type": "SELECT"
                   },
                   {
-                    "id": "input_agent_model",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}",
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}",
-                    "ref": "model",
-                    "required": false,
-                    "type": "TEXT_INPUT"
-                  },
-                  {
-                    "id": "input_agent_function",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
-                    "options": [
-                      "task-automation",
-                      "rag-retrieval",
-                      "code-gen",
-                      "data-analysis",
-                      "orchestrator",
-                      "sub-agent",
-                      "assistant",
-                      "custom"
-                    ],
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
-                    "ref": "function",
-                    "required": false,
-                    "type": "SELECT"
-                  },
-                  {
                     "eventType": "SUBMIT",
                     "id": "action_agent_details",
                     "label": "{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}",
@@ -1000,18 +909,6 @@
                 {
                   "identifier": "modelProvider",
                   "ref": "input_agent_model_provider",
-                  "required": false,
-                  "type": "SELECT"
-                },
-                {
-                  "identifier": "model",
-                  "ref": "input_agent_model",
-                  "required": false,
-                  "type": "TEXT_INPUT"
-                },
-                {
-                  "identifier": "function",
-                  "ref": "input_agent_function",
                   "required": false,
                   "type": "SELECT"
                 }
@@ -1624,32 +1521,6 @@
                     "type": "SELECT"
                   },
                   {
-                    "id": "input_agent_model",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}",
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}",
-                    "ref": "model",
-                    "required": false,
-                    "type": "TEXT_INPUT"
-                  },
-                  {
-                    "id": "input_agent_function",
-                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
-                    "options": [
-                      "task-automation",
-                      "rag-retrieval",
-                      "code-gen",
-                      "data-analysis",
-                      "orchestrator",
-                      "sub-agent",
-                      "assistant",
-                      "custom"
-                    ],
-                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
-                    "ref": "function",
-                    "required": false,
-                    "type": "SELECT"
-                  },
-                  {
                     "eventType": "SUBMIT",
                     "id": "action_agent_details",
                     "label": "{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}",
@@ -1678,18 +1549,6 @@
                 {
                   "identifier": "modelProvider",
                   "ref": "input_agent_model_provider",
-                  "required": false,
-                  "type": "SELECT"
-                },
-                {
-                  "identifier": "model",
-                  "ref": "input_agent_model",
-                  "required": false,
-                  "type": "TEXT_INPUT"
-                },
-                {
-                  "identifier": "function",
-                  "ref": "input_agent_function",
                   "required": false,
                   "type": "SELECT"
                 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -32,34 +33,7 @@ func (ts *AgentLockTestSuite) SetupSuite() {
 	t := ts.T()
 	applyPolicy(t, agentLockPolicy())
 
-	snapshot, err := testutils.SnapshotAgentType()
-	ts.Require().NoError(err, "failed to snapshot the default agent type")
-	ts.agentTypeSnapshot = snapshot
-	t.Cleanup(func() {
-		if err := testutils.RestoreAgentType(snapshot); err != nil {
-			t.Errorf("teardown: failed to restore the default agent type: %v", err)
-		}
-	})
-
-	schema := maps.Clone(snapshot.Schema)
-	if schema == nil {
-		schema = map[string]interface{}{}
-	}
-	schema["agent_username"] = map[string]interface{}{"type": "string", "unique": true}
-	schema["password"] = map[string]interface{}{"type": "string", "credential": true}
-	// The update replaces the whole type, so every field but the schema is carried over.
-	widened := testutils.UserType{
-		DisplayName:           snapshot.DisplayName,
-		OUID:                  snapshot.OUID,
-		AllowSelfRegistration: snapshot.AllowSelfRegistration,
-		Schema:                schema,
-	}
-	if display, ok := snapshot.SystemAttributes["display"].(string); ok {
-		widened.SystemAttributes = &testutils.UserTypeSystemAttributes{Display: display}
-	}
-	_, err = testutils.CreateAgentType(widened)
-	ts.Require().NoError(err, "failed to give the default agent type a password")
-
+	ts.agentTypeSnapshot = widenDefaultAgentType(t)
 	ts.suffix = uniqueSuffix()
 }
 
@@ -172,20 +146,59 @@ func (ts *AgentLockTestSuite) lockPassword(agentID, username string) {
 // it when the test ends.
 func (ts *AgentLockTestSuite) newAgent(name string) (agentID, username, password string) {
 	ts.T().Helper()
+	return newPasswordAgent(ts.T(), ts.agentTypeSnapshot.OUID, name, ts.suffix)
+}
 
-	username = fmt.Sprintf("governance_agent_%s_%s", name, ts.suffix)
+// widenDefaultAgentType gives the shared `default` agent type a username and a password and restores the
+// type when t ends. It returns the snapshot taken before the change.
+func widenDefaultAgentType(t *testing.T) *testutils.AgentTypeSnapshot {
+	t.Helper()
+
+	snapshot, err := testutils.SnapshotAgentType()
+	require.NoError(t, err, "failed to snapshot the default agent type")
+	t.Cleanup(func() {
+		if err := testutils.RestoreAgentType(snapshot); err != nil {
+			t.Errorf("teardown: failed to restore the default agent type: %v", err)
+		}
+	})
+
+	schema := maps.Clone(snapshot.Schema)
+	if schema == nil {
+		schema = map[string]interface{}{}
+	}
+	schema["agent_username"] = map[string]interface{}{"type": "string", "unique": true}
+	schema["password"] = map[string]interface{}{"type": "string", "credential": true}
+	// The update replaces the whole type, so every field but the schema is carried over.
+	widened := testutils.UserType{
+		DisplayName:           snapshot.DisplayName,
+		OUID:                  snapshot.OUID,
+		AllowSelfRegistration: snapshot.AllowSelfRegistration,
+		Schema:                schema,
+	}
+	if display, ok := snapshot.SystemAttributes["display"].(string); ok {
+		widened.SystemAttributes = &testutils.UserTypeSystemAttributes{Display: display}
+	}
+	_, err = testutils.CreateAgentType(widened)
+	require.NoError(t, err, "failed to give the default agent type a password")
+	return snapshot
+}
+
+// newPasswordAgent creates one agent of the widened default type in the OU, and deletes it when t ends.
+func newPasswordAgent(t *testing.T, ouID, name, suffix string) (agentID, username, password string) {
+	t.Helper()
+
+	username = fmt.Sprintf("governance_agent_%s_%s", name, suffix)
 	password = "Agent-Password-" + name + "1!"
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		OUID: ts.agentTypeSnapshot.OUID,
+		OUID: ouID,
 		Type: "default",
 		Attributes: map[string]interface{}{
-			"name":           fmt.Sprintf("governance-lock-%s-%s", name, ts.suffix),
+			"name":           fmt.Sprintf("governance-lock-%s-%s", name, suffix),
 			"agent_username": username,
 			"password":       password,
 		},
 	})
-	ts.Require().NoError(err, "failed to create the test agent")
-	t := ts.T()
+	require.NoError(t, err, "failed to create the test agent")
 	t.Cleanup(func() {
 		if err := testutils.DeleteAgent(agentID); err != nil {
 			t.Logf("teardown: failed to delete agent %s: %v", agentID, err)

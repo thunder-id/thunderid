@@ -76,7 +76,7 @@ not change resources already written. Import the configuration again to apply a 
 ## Where a Secret May Stand
 
 A `sec:` reference is accepted only in a field that holds a credential: an application's or agent's
-`clientSecret`, a connection's secret such as `clientSecret`, `authToken`, `apiSecret` or an outbound
+`clientSecret`, an application's `flowSecret`, a connection's secret such as `clientSecret`, `authToken`, `apiSecret` or an outbound
 authentication password, an [authorization details type's](../intents.mdx) processor credential, such as a bearer `token` or a basic `password`, and a user's or agent's `credentials`. These are the fields an export writes
 a `sec:` placeholder into, and the fields whose stored value is never returned. A user's stored
 credential is a hash, so an export of it carries no value: an import that updates a user and resolves
@@ -128,8 +128,8 @@ control plane never looks up such an owner, and returns it with the references a
 A control plane writes the values its references name to its first gateway as you
 create and change resources, so the gateway holds them when a configuration version is applied to it. Each
 value is stored under the name the export refers to it by: a client ID, an agent's owner, or a
-resource server's identifier among the gateway's variables, a client secret or a password among its
-secrets. A list,
+resource server's identifier among the gateway's variables, a client secret, a Flow Secret, or a
+password among its secrets. A list,
 such as an application's redirect URIs, is stored among the variables as the JSON list of its items,
 which is what its reference expands from.
 
@@ -145,8 +145,8 @@ The control plane captures values when you write these resources:
 | Authorization details type (processor credential) | create, update |
 
 A captured value comes from the write itself, while the control plane still holds it in plain text.
-This is the only point at which a generated client secret can be captured, because the control plane
-stores only its hash.
+This is the only point at which a generated client secret or Flow Secret can be captured, because the
+control plane stores only its hash.
 
 Capture follows these rules:
 
@@ -171,6 +171,10 @@ Capture follows these rules:
   and when an update changes the owner. An update that leaves the owner as it was captures none, so
   an owner set on the first gateway for that agent stays until the owner is changed on the control
   plane.
+- **An application's Flow Secret only when the write sets it.** The Flow Secret is captured when an
+  application is created, and when an update sets a new one, as regenerating it does. An update that
+  leaves it as it was captures none, so the value the first gateway holds stays. An application
+  exports a reference to its Flow Secret only when it holds one.
 - **Values, never references.** A value that is itself a reference, or a list holding one among its
   items, is not captured. The export keeps those as they are, so the gateway holds nothing under the
   name, and a reference stored as a value would never resolve.
@@ -197,6 +201,18 @@ fills the first gateway as above. Every other gateway still lacks the owner valu
 written before the upgrade, so the next version applied to it is refused until they are set. The dry
 run, and the console's deploy dialog, list each one. An older data plane cannot read an owner resolved
 from references, so upgrade data planes before their control plane.
+
+#### Upgrading to Flow Secret References
+
+A control plane that exports an application's Flow Secret as a `sec:` reference, after upgrading from
+one that did not, cannot fill any gateway with it: a Flow Secret set before the upgrade was never
+captured, and the control plane holds only its hash. The next version applied that sends such an
+application is refused until the gateway holds its Flow Secret, and the dry run, and the console's
+deploy dialog, list each one. For each, regenerate the Flow Secret on the control plane, which
+captures the new value to the first gateway, or set the value on the gateway yourself. Set it on
+every other gateway yourself, and give the new Flow Secret to the application's backend. A data plane
+on an earlier release refuses such an application as a misplaced secret (`IMP-1007`), so upgrade data
+planes before their control plane.
 
 ### Limits
 

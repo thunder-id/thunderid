@@ -818,22 +818,39 @@ func (s *importService) withDeclaredCredentials(
 func (s *importService) declaredCredentials(
 	ctx context.Context, category entitytype.TypeCategory, handle string,
 ) map[string]bool {
-	if s.entityTypeService == nil || handle == "" {
-		return nil
+	declared, _ := s.readDeclaredCredentials(ctx, category, handle)
+	return declared
+}
+
+// readDeclaredCredentials names the credentials a type declares, and reports whether that answer can be relied on.
+// It cannot when reading the type failed, because an unread type could hide a credential, and a caller that must
+// not proceed on a guess checks the second value. A type that is not named, or does not exist, declares none: the
+// create refuses it with an error of its own.
+func (s *importService) readDeclaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, handle string,
+) (map[string]bool, bool) {
+	if handle == "" {
+		return nil, true
+	}
+	if s.entityTypeService == nil {
+		return nil, false
 	}
 	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, category, handle)
-	if svcErr != nil || entityType == nil {
-		return nil
+	if svcErr != nil {
+		return nil, svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code
+	}
+	if entityType == nil {
+		return nil, false
 	}
 	schema, err := entitytypemodel.CompileSchema(entityType.Schema)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	declared := make(map[string]bool)
 	for _, attribute := range schema.GetAttributes(entitytypemodel.AttributeFilter{AllowCredential: true}) {
 		declared[attribute.Attribute] = true
 	}
-	return declared
+	return declared, true
 }
 
 // credentialRollbackError reports a resource whose credentials could not be written after it was
@@ -1481,9 +1498,8 @@ func (s *importService) importAgent(
 
 	normalizeAgentOAuthConfigForImport(ctx, &req)
 
-	// Credentials are written after the agent, as a user's are, so a document's credentials are held
-	// to the ones the agent's type declares.
-	credentialsJSON, err := json.Marshal(req.Credentials)
+	// An update leaves a credential with no value as the agent has it, as for a user. A create refuses an empty one.
+	credentialsToKeep, err := credentialsToWrite(req.Credentials, true)
 	if err != nil {
 		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
@@ -1550,42 +1566,13 @@ func (s *importService) importAgent(
 	ctx = agent.WithLifespanRestore(ctx)
 
 	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
-			}
-		}
-
-		return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
+		return s.dryRunAgent(ctx, &req, options, credentialsToKeep)
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
+		existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
 		if svcErr == nil {
-			updated, updateErr := s.agentService.UpdateAgent(ctx, req.ID, updateReq)
-			if updateErr != nil {
-				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, updateErr)
-			}
-			if len(req.Credentials) > 0 {
-				if credErr := s.agentService.UpdateAgentCredentials(ctx, req.ID, credentialsJSON); credErr != nil {
-					// The profile is already committed, so this is a partial failure.
-					return ImportItemOutcome{
-						ResourceType: resourceTypeAgent,
-						ResourceID:   req.ID,
-						Operation:    operationUpdate,
-						Status:       statusFailed,
-						Code:         credErr.Code,
-						Message: "agent profile updated but credential update failed: " +
-							credErr.Error.DefaultValue,
-					}
-				}
-			}
-			return successOutcome(resourceTypeAgent, updated.ID, "", operationUpdate)
+			return s.updateExistingAgent(ctx, existing, req.ID, updateReq, credentialsToKeep)
 		}
 
 		if !isNotFoundServiceError(svcErr) {
@@ -1593,6 +1580,9 @@ func (s *importService) importAgent(
 		}
 	}
 
+	if svcErr := s.refusePersonalAgentCredentials(ctx, &req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+	}
 	createAttributes, createCredentials := s.withDeclaredCredentials(
 		ctx, entitytype.TypeCategoryAgent, req.Type, req.Attributes, req.Credentials)
 	if len(createCredentials) < len(req.Credentials) {
@@ -1603,7 +1593,8 @@ func (s *importService) importAgent(
 		}
 		createReq.Attributes = raw
 	}
-	if credentialsJSON, err = json.Marshal(createCredentials); err != nil {
+	credentialsJSON, err := credentialsToWrite(createCredentials, false)
+	if err != nil {
 		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
 	}
@@ -1611,7 +1602,7 @@ func (s *importService) importAgent(
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 	}
-	if len(createCredentials) > 0 {
+	if credentialsJSON != nil {
 		if credErr := s.agentService.UpdateAgentCredentials(ctx, created.ID, credentialsJSON); credErr != nil {
 			if rollbackErr := s.agentService.DeleteAgent(ctx, created.ID); rollbackErr != nil {
 				return serviceErrorOutcome(resourceTypeAgent, created.ID, "", operationCreate,
@@ -1621,6 +1612,31 @@ func (s *importService) importAgent(
 		}
 	}
 	return successOutcome(resourceTypeAgent, created.ID, "", operationCreate)
+}
+
+// dryRunAgent predicts the outcome of importing an agent, refusing what the import refuses about a personal agent's
+// credentials so that a dry run does not report success for a document the real import would reject.
+func (s *importService) dryRunAgent(
+	ctx context.Context, req *agentmodel.AgentRequestWithID, options *ImportOptions, credentials json.RawMessage,
+) ImportItemOutcome {
+	if options.IsUpsertEnabled() && req.ID != "" {
+		existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
+		if svcErr == nil {
+			if refused := refusePersonalAgentCredentialUpdate(existing, credentials); refused != nil {
+				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, refused)
+			}
+			return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
+		}
+
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
+		}
+	}
+
+	if svcErr := s.refusePersonalAgentCredentials(ctx, req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
 }
 
 func getAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) *providers.OAuthConfigWithSecret {
@@ -1715,6 +1731,69 @@ func decodeErrorOutcome(resourceType, id, name string, err error) ImportItemOutc
 		Code:         ErrorInvalidYAMLContent.Code,
 		Message:      fmt.Sprintf("failed to decode %s document: %v", resourceType, err),
 	}
+}
+
+// refusePersonalAgentCredentialUpdate refuses a document that carries credentials for an existing personal agent,
+// since only its owner sets them.
+func refusePersonalAgentCredentialUpdate(
+	existing *agentmodel.AgentGetResponse, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	if credentials != nil && existing.Kind == providers.AgentKindPersonalAssistant {
+		return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+	}
+	return nil
+}
+
+// refusePersonalAgentCredentials refuses a personal agent document that sets a credential, either under credentials
+// or as an attribute its type declares as one, since only the owner sets a personal agent's credentials. When
+// reading the type fails the document could still hide a credential, so it is refused too rather than created. A
+// type that does not exist is left to the create, which reports it.
+func (s *importService) refusePersonalAgentCredentials(
+	ctx context.Context, req *agentmodel.AgentRequestWithID,
+) *tidcommon.ServiceError {
+	if req.Kind != providers.AgentKindPersonalAssistant {
+		return nil
+	}
+	if len(req.Credentials) > 0 {
+		return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+	}
+	declared, readable := s.readDeclaredCredentials(ctx, entitytype.TypeCategoryAgent, req.Type)
+	if !readable {
+		return &tidcommon.InternalServerError
+	}
+	for name := range req.Attributes {
+		if declared[name] {
+			return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+		}
+	}
+	return nil
+}
+
+// updateExistingAgent updates an agent the import found, then its credentials. Only the owner sets a personal
+// agent's credentials, so a document that carries one is refused before the profile is written.
+func (s *importService) updateExistingAgent(ctx context.Context, existing *agentmodel.AgentGetResponse, id string,
+	updateReq *agentmodel.UpdateAgentRequest, credentials json.RawMessage) ImportItemOutcome {
+	if refused := refusePersonalAgentCredentialUpdate(existing, credentials); refused != nil {
+		return serviceErrorOutcome(resourceTypeAgent, id, "", operationUpdate, refused)
+	}
+	updated, updateErr := s.agentService.UpdateAgent(ctx, id, updateReq)
+	if updateErr != nil {
+		return serviceErrorOutcome(resourceTypeAgent, id, "", operationUpdate, updateErr)
+	}
+	if credentials != nil {
+		if credErr := s.agentService.UpdateAgentCredentials(ctx, id, credentials); credErr != nil {
+			// The profile is already committed, so this is a partial failure.
+			return ImportItemOutcome{
+				ResourceType: resourceTypeAgent,
+				ResourceID:   id,
+				Operation:    operationUpdate,
+				Status:       statusFailed,
+				Code:         credErr.Code,
+				Message:      "agent profile updated but credential update failed: " + credErr.Error.DefaultValue,
+			}
+		}
+	}
+	return successOutcome(resourceTypeAgent, updated.ID, "", operationUpdate)
 }
 
 func serviceErrorOutcome(

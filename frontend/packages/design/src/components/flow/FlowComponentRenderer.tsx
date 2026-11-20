@@ -73,6 +73,7 @@ export default function FlowComponentRenderer({
   renderField,
   isSubmitDisabled,
   rendersInputsWithoutSubmit,
+  isAutoFocusDisabled,
 }: FlowComponentRendererProps): JSX.Element | null {
   const comp = component as FlowComponent;
 
@@ -113,6 +114,7 @@ export default function FlowComponentRenderer({
         renderField={renderField}
         isSubmitDisabled={isSubmitDisabled}
         rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+        isAutoFocusDisabled={isAutoFocusDisabled}
       />
     );
   }
@@ -173,6 +175,7 @@ export default function FlowComponentRenderer({
             renderField={renderField}
             isSubmitDisabled={isSubmitDisabled}
             rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+            isAutoFocusDisabled={isAutoFocusDisabled}
           />
         </>
       );
@@ -195,6 +198,7 @@ export default function FlowComponentRenderer({
         renderField={renderField}
         isSubmitDisabled={isSubmitDisabled}
         rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+        isAutoFocusDisabled={isAutoFocusDisabled}
       />
     );
   }

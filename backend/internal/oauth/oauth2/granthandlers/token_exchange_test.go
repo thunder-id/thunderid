@@ -28,7 +28,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -4599,25 +4598,50 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_LifespanE
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
 }
 
-func (suite *TokenExchangeGrantHandlerTestSuite) TestExchangedTokenFamilyID() {
-	subjectClaims := &tokenservice.SubjectTokenClaims{TokenFamilyID: "tfid-subject"}
+// An exchanged token always joins the subject token's token family, whether or not the request names an
+// actor, so revoking the grant it came from revokes it too. A subject token with no family gives none.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InheritsSubjectTokenFamily() {
 	cases := []struct {
-		name string
-		mode string
-		want string
+		name          string
+		subjectFamily string
 	}{
-		{"inherit joins the subject token's family", constants.TokenExchangeTokenFamilyInherit, "tfid-subject"},
-		{"none issues an independent token", constants.TokenExchangeTokenFamilyNone, ""},
-		{"an empty mode is none", "", ""},
-		{"an unrecognized mode is treated as none", "unknown", ""},
+		{"subject token with a family", "tfid-subject"},
+		{"subject token without a family", ""},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
-			suite.handler.cfg.OAuth.TokenExchange.TokenFamily = tc.mode
+			suite.SetupTest()
+			now := time.Now().Unix()
+			subjectToken := suite.createTestJWT(map[string]interface{}{
+				"sub": "user123", "iss": testCustomIssuer,
+				"exp": float64(now + 3600), "nbf": float64(now - 60), "scope": "read write",
+			})
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+				Return(&tokenservice.SubjectTokenClaims{
+					Sub:            testUserID,
+					Iss:            testCustomIssuer,
+					Scopes:         []string{"read", "write"},
+					UserAttributes: map[string]interface{}{},
+					TokenFamilyID:  tc.subjectFamily,
+				}, nil)
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+					return ctx.TokenFamilyID == tc.subjectFamily
+				})).Return(&model.TokenDTO{
+				Token:     testTokenExchangeJWT,
+				TokenType: constants.TokenTypeBearer,
+				IssuedAt:  now,
+				ExpiresIn: 7200,
+				Scopes:    []string{"read", "write"},
+				ClientID:  testClientID,
+			}, nil)
 
-			got := suite.handler.exchangedTokenFamilyID(context.Background(), subjectClaims, log.GetLogger())
+			result, errResp := suite.handler.HandleGrant(context.Background(),
+				suite.createBasicTokenRequest(subjectToken), suite.oauthApp)
 
-			suite.Equal(tc.want, got)
+			suite.Nil(errResp)
+			suite.Require().NotNil(result)
+			suite.Empty(result.RefreshToken.Token, "token exchange issues no refresh token")
 		})
 	}
 }

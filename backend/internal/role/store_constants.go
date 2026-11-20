@@ -118,10 +118,12 @@ var (
 			`AND SHARING_POLICY_ID = '' AND DEPLOYMENT_ID = $5`,
 	}
 
-	// queryDeleteAllRoleAssignments deletes all assignments for a role (used for cascade delete).
+	// queryDeleteAllRoleAssignments deletes all assignments for a role (used for cascade delete) and returns
+	// the rows it removed.
 	queryDeleteAllRoleAssignments = dbmodel.DBQuery{
-		ID:    "RLQ-ROLE_MGT-19",
-		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2`,
+		ID: "RLQ-ROLE_MGT-19",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2 ` +
+			`RETURNING ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID`,
 	}
 
 	// queryDeleteRoleAssignmentsByAssignee deletes all assignments for a given assignee across roles

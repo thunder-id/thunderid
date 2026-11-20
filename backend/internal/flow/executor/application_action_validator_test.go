@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -91,17 +90,6 @@ func (s *ApplicationActionValidatorTestSuite) TestPreApplicationDelete_UncodedRe
 	s.Equal(providers.ExecFailure, resp.Status)
 	s.Equal(ErrApplicationDeletionNotAllowed.Code, resp.Error.Code)
 	s.Empty(resp.SharedRuntimeData[common.RuntimeKeyRevocationPlan])
-}
-
-// A server-side validation failure is an execution error, not a flow failure the caller can act on.
-func (s *ApplicationActionValidatorTestSuite) TestPreSecretRegeneration_ServerErrorFailsExecution() {
-	s.apps.EXPECT().ValidateCredentialAction(mock.Anything, "app-1", appmodel.CredentialActionRegenerate).Return(
-		nil, &tidcommon.InternalServerError)
-
-	_, err := s.validator().Execute(
-		s.modeContext(ExecutorModeRevokeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
-
-	s.Require().Error(err)
 }
 
 // The target is a declared required input, so omitting it asks for it rather than acting on nothing.

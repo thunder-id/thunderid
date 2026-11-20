@@ -84,7 +84,7 @@ var testFlowExecCfg = flowconfig.Config{
 	Flow: testFlowConfig,
 }
 
-// stubServerConfig is a test implementation of serverConfigProvider that returns
+// stubServerConfig is a test implementation of flowconfig.ServerConfigReader that returns
 // a pre-configured FlowSectionConfig for the "flow" section.
 type stubServerConfig struct {
 	cfg flowconfig.FlowSectionConfig

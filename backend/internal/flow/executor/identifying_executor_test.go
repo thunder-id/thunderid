@@ -352,6 +352,140 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_UserNotFound() {
 	assert.Equal(suite.T(), ErrEntityNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
+// cibaLoginHintContext returns a node context that identifies by email from the login hint, in a CIBA request
+// when callbackType names the CIBA grant.
+func cibaLoginHintContext(callbackType string, inputs map[string]string) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		NodeProperties: map[string]interface{}{propertyKeyLoginHintAttribute: userAttributeEmail},
+		UserInputs:     inputs,
+		RuntimeData:    map[string]string{common.RuntimeKeyCallbackType: callbackType},
+	}
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_IdentifiesByTheAttribute() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&userID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
+}
+
+// A CALLed flow reads the CIBA request from the data shared across frames.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_ReadsTheSharedCallbackType() {
+	ctx := cibaLoginHintContext("", map[string]string{userInputLoginHint: "a@example.com"})
+	ctx.RuntimeData = nil
+	ctx.SharedRuntimeData = map[string]string{common.RuntimeKeyCallbackType: string(providers.GrantTypeCIBA)}
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&userID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_RequiresTheHint() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal([]providers.Input{{Identifier: userInputLoginHint, Required: true}}, resp.Inputs)
+}
+
+// No one is there to enter the identifier again, so an unknown user fails the step.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_UnknownUserFails() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	emptyID := ""
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&emptyID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+}
+
+// In resolve mode the login hint is matched against the attribute, and is not itself a search filter.
+func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_CIBALoginHint_ResolvesByTheAttribute() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	ctx.ExecutorMode = ExecutorModeResolve
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).
+		Return([]*providers.Entity{{ID: testUserID, Type: "Person"}}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_CIBALoginHint_UnknownUserFails() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	ctx.ExecutorMode = ExecutorModeResolve
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return([]*providers.Entity{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+	suite.Empty(resp.Inputs)
+}
+
+// Outside a CIBA request the login hint attribute is ignored: the step identifies from its own inputs and asks
+// again when no user matches.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_LoginHintAttributeIgnoredOutsideCIBA() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeAuthorizationCode),
+		map[string]string{"username": "nonexistent", userInputLoginHint: "a@example.com"})
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: "username", Type: "string", Required: true},
+	})
+	emptyID := ""
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{"username": "nonexistent"}).Return(&emptyID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+	suite.Equal([]providers.Input{{Identifier: "username", Type: "string", Required: true}}, resp.Inputs)
+}
+
+// Outside a CIBA request, resolve mode searches on the step's inputs and leaves the login hint out of the filters.
+func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_LoginHintIgnoredOutsideCIBA() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeAuthorizationCode),
+		map[string]string{"username": "testuser", userInputLoginHint: "a@example.com"})
+	ctx.ExecutorMode = ExecutorModeResolve
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: "username", Type: "string", Required: true},
+	})
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, map[string]interface{}{"username": "testuser"}).
+		Return([]*providers.Entity{{ID: testUserID, Type: "Person"}}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
+}
+
 // TestExecute_Success_WithVariousAttributes tests successful user identification with different attributes.
 func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_WithVariousAttributes() {
 	testCases := []struct {
@@ -1497,6 +1631,7 @@ func (suite *IdentifyingExecutorTestSuite) identifyRecoveryTarget(decision provi
 	if hintAttr != "" {
 		ctx.NodeProperties = map[string]interface{}{propertyKeyLoginHintAttribute: hintAttr}
 		ctx.UserInputs = map[string]string{userInputLoginHint: "testuser"}
+		ctx.RuntimeData = map[string]string{common.RuntimeKeyCallbackType: string(providers.GrantTypeCIBA)}
 		return suite.executor.Execute(ctx)
 	}
 	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)

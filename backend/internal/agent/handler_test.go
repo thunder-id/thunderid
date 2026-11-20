@@ -64,8 +64,14 @@ func (s *InlineStubAgentService) GetAgentListByOwner(context.Context, string, in
 	return &model.AgentListResponse{}, nil
 }
 
-func (s *InlineStubAgentService) RegenerateAgentSecret(context.Context, string) (string, *tidcommon.ServiceError) {
-	return "", nil
+func (s *InlineStubAgentService) RegenerateAgentSecret(context.Context, string) (
+	*model.ClientSecretResponse, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
+func (s *InlineStubAgentService) ValidateClientSecretRegeneration(context.Context,
+	string) *tidcommon.ServiceError {
+	return nil
 }
 
 func (s *InlineStubAgentService) CreateAgent(
@@ -78,6 +84,12 @@ func (s *InlineStubAgentService) CreateAgent(
 
 func (s *InlineStubAgentService) UpdateAgentCredentials(
 	context.Context, string, json.RawMessage,
+) *tidcommon.ServiceError {
+	return nil
+}
+
+func (s *InlineStubAgentService) UpdateOwnedAgentCredentials(
+	context.Context, string, string, providers.AgentKind, json.RawMessage,
 ) *tidcommon.ServiceError {
 	return nil
 }
@@ -507,6 +519,221 @@ func TestHandleAgentDeleteRequest_MissingID(t *testing.T) {
 
 	handler.HandleAgentDeleteRequest(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// The new secret is returned once, and the response is never cached.
+func TestHandleClientSecretRegenerateRequest_ReturnsTheSecret(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().RegenerateAgentSecret(mock.Anything, "agent-123").
+		Return(&model.ClientSecretResponse{ClientSecret: "fresh", RevocationIncomplete: true}, nil).Once()
+	handler := newAgentHandler(service)
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/client-secret/regenerate", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	assert.JSONEq(t, `{"clientSecret":"fresh","revocationIncomplete":true}`, w.Body.String())
+}
+
+// A refusal is reported with the service's status, and no secret.
+func TestHandleClientSecretRegenerateRequest_ReportsARefusal(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().RegenerateAgentSecret(mock.Anything, "agent-123").
+		Return(nil, &ErrorClientSecretNotUsed).Once()
+	handler := newAgentHandler(service)
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/client-secret/regenerate", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorClientSecretNotUsed.Code)
+	assert.NotContains(t, w.Body.String(), "clientSecret")
+}
+
+func TestHandleClientSecretRegenerateRequest_MissingID(t *testing.T) {
+	handler := newAgentHandler(&InlineStubAgentService{})
+	req := httptest.NewRequest(http.MethodPost, "/agents//client-secret/regenerate", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAgentCredentialUpdateRequest_UpdatesTheCredentials(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateAgentCredentials(mock.Anything, "agent-123", json.RawMessage(`{"password":"s3cret"}`)).
+		Return(nil).Once()
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/update-credentials",
+		strings.NewReader(`{"credentials":{"password":"s3cret"}}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.String())
+}
+
+// A body without credentials is passed on, and the service refuses it.
+func TestHandleAgentCredentialUpdateRequest_ReportsARefusal(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateAgentCredentials(mock.Anything, "agent-123", json.RawMessage(nil)).
+		Return(&ErrorInvalidRequestFormat).Once()
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/update-credentials", strings.NewReader(`{}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
+// An administrator's request for a personal agent is refused.
+func TestHandleAgentCredentialUpdateRequest_RefusesAPersonalAgent(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateAgentCredentials(mock.Anything, "agent-123", mock.Anything).
+		Return(&ErrorPersonalAgentCredentialsNotUpdatable).Once()
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/update-credentials",
+		strings.NewReader(`{"credentials":{"password":"s3cret"}}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorPersonalAgentCredentialsNotUpdatable.Code)
+}
+
+func TestHandleAgentCredentialUpdateRequest_ReportsAServiceError(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateAgentCredentials(mock.Anything, "agent-123", mock.Anything).
+		Return(&ErrorAgentNotFound).Once()
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/update-credentials",
+		strings.NewReader(`{"credentials":{"password":"s3cret"}}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
+}
+
+func TestHandleAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/update-credentials", strings.NewReader(`{`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
+func TestHandleAgentCredentialUpdateRequest_MissingID(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	req := httptest.NewRequest(http.MethodPost, "/agents//update-credentials",
+		strings.NewReader(`{"credentials":{"password":"s3cret"}}`))
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleOwnedAgentCredentialUpdateRequest_UpdatesTheCredentials(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateOwnedAgentCredentials(mock.Anything, "user-1", "agent-123",
+		providers.AgentKindPersonalAssistant, json.RawMessage(`{"password":"s3cret"}`)).Return(nil).Once()
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+		`{"attributes":{"password":"s3cret"}}`, "user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.String())
+}
+
+// A body without credentials is passed on, and the service refuses it.
+func TestHandleOwnedAgentCredentialUpdateRequest_ReportsARefusal(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateOwnedAgentCredentials(mock.Anything, "user-1", "agent-123",
+		providers.AgentKindPersonalAssistant, json.RawMessage(nil)).Return(&ErrorInvalidRequestFormat).Once()
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials", `{}`,
+		"user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
+// An agent that is not the caller's personal agent is not found.
+func TestHandleOwnedAgentCredentialUpdateRequest_ReportsAServiceError(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateOwnedAgentCredentials(mock.Anything, "user-1", "agent-123",
+		providers.AgentKindPersonalAssistant, mock.Anything).Return(&ErrorAgentNotFound).Once()
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+		`{"attributes":{"password":"s3cret"}}`, "user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
+}
+
+func TestHandleOwnedAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials", `{`, "user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
+// No token is 401 and a delegated token is 403, and neither reaches the service.
+func TestHandleOwnedAgentCredentialUpdateRequest_CallerGuards(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	cases := []struct {
+		name      string
+		subject   string
+		delegated bool
+		want      int
+	}{
+		{name: "no token", want: http.StatusUnauthorized},
+		{name: "delegated token", subject: "user-1", delegated: true, want: http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+				`{"attributes":{"password":"s3cret"}}`, tc.subject, tc.delegated)
+			req.SetPathValue("id", "agent-123")
+			w := httptest.NewRecorder()
+
+			handler.HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+			assert.Equal(t, tc.want, w.Code)
+		})
+	}
 }
 
 func TestHandleAgentListRequest_Success(t *testing.T) {

@@ -19,6 +19,8 @@ export interface DeployRoutePaths {
     gateway: (gatewayId: string, projectId?: string) => string;
     /** A project's home, which a project's gateway page returns to. */
     project?: (projectId: string) => string;
+    /** The pipeline of the project in scope, where it is deployed and promoted; none outside a project. */
+    pipeline?: () => string;
     /** Where a resource is edited in the console, for the kinds the console edits on a page of their own. */
     resource?: (resourceType: string, id: string) => string | undefined;
   };

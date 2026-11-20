@@ -118,8 +118,8 @@ func Initialize(
 
 	// Register MCP tools
 	if mcpServer != nil {
-		reactsdk.RegisterTools(mcpServer)
-		nextjssdk.RegisterTools(mcpServer)
+		reactsdk.RegisterTools(mcpServer, cfg.ProductName)
+		nextjssdk.RegisterTools(mcpServer, cfg.ProductName)
 	}
 
 	return authnService, directAuthGuard

@@ -40,6 +40,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowmgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -103,7 +104,8 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 
 	// Create exporters
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
+		application.NewApplicationExporterForTest(suite.appServiceMock, entitiesWithNoFlowSecrets(suite.T()),
+			sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService, sharingWithNoPolicies(suite.T())),
@@ -1312,7 +1314,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 
 	// Create exporters with the test services
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
+		application.NewApplicationExporterForTest(suite.appServiceMock, entitiesWithNoFlowSecrets(suite.T()),
+			sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
@@ -2885,6 +2888,16 @@ func sharingWithNoPolicies(t interface {
 	m := sharingmock.NewSharingServiceInterfaceMock(t)
 	m.EXPECT().ExportPolicies(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	m.EXPECT().ListOverlayValues(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	return m
+}
+
+// entitiesWithNoFlowSecrets answers that no application holds a Flow Secret.
+func entitiesWithNoFlowSecrets(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *entitymock.EntityServiceInterfaceMock {
+	m := entitymock.NewEntityServiceInterfaceMock(t)
+	m.EXPECT().GetCredentialsByType(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	return m
 }
 

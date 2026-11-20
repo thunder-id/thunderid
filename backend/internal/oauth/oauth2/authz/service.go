@@ -627,6 +627,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	queryParams := make(map[string]string)
 	queryParams[oauth2const.AuthID] = identifier
 	queryParams[oauth2const.AppID] = app.ID
+	if ref := utils.EncodeURLSafeID(app.ID); ref != "" {
+		queryParams[oauth2const.Ref] = ref
+	}
 	queryParams[oauth2const.ExecutionID] = executionID
 	if oauthParams.UILocales != "" {
 		queryParams[oauth2const.RequestParamUILocales] = oauthParams.UILocales
@@ -857,7 +860,8 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 			"User authentication is required")
 	}
 
-	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion, nil)
+	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion,
+		fromFlowSessionData(step.SessionData))
 	if authErr != nil {
 		// The callback may reject the assertion before consuming the request.
 		if err := as.authReqStore.ClearRequest(ctx, authID); err != nil {
@@ -981,23 +985,17 @@ func toFlowSessionData(sessionData []oauth2model.SessionData) []flowexec.Session
 	return converted
 }
 
-// bindDeviceSession keeps on the code the SSO sessions the caller posted, when the client requested the
-// device_sso scope, so the code exchange can return them in the device secret. An entry with a missing or
-// over-long field is ignored rather than failing the sign-in, which does not need it. They are not looked
-// up here: the token exchange that presents them runs the flow on them and checks they are the subject's.
-func bindDeviceSession(authzCode *AuthorizationCode, sessionData []oauth2model.SessionData) {
-	if !slices.Contains(tokenservice.ParseScopes(authzCode.Scopes), oauth2const.ScopeDeviceSSO) {
-		return
+// fromFlowSessionData converts the sessions a flow step returned to the form the callback keeps.
+func fromFlowSessionData(issued []flowexec.IssuedSessionData) []oauth2model.SessionData {
+	converted := make([]oauth2model.SessionData, 0, len(issued))
+	for _, entry := range issued {
+		converted = append(converted, oauth2model.SessionData{
+			FlowIdentifier: entry.FlowIdentifier,
+			SessionHandle:  entry.SessionHandle,
+			ExpiresIn:      new(entry.ExpiresIn),
+		})
 	}
-	for _, entry := range sessionData {
-		if len(authzCode.SessionData) == maxDeviceSessions {
-			return
-		}
-		fieldLengths := []int{len(entry.FlowIdentifier), len(entry.SessionHandle)}
-		if slices.Min(fieldLengths) > 0 && slices.Max(fieldLengths) <= maxDeviceSessionFieldLength {
-			authzCode.SessionData = append(authzCode.SessionData, entry)
-		}
-	}
+	return converted
 }
 
 // clearAuthRequest drops an authorization request no caller can resume.
@@ -1077,7 +1075,7 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			authErr = mintAuthErr
 			return err
 		}
-		bindDeviceSession(&authzCode, sessionData)
+		authzCode.SessionData = oauth2utils.KeepDeviceSessions(tokenservice.ParseScopes(authzCode.Scopes), sessionData)
 		// The code is delivered to the client's redirect URI, so it needs one.
 		if authzCode.RedirectURI == "" {
 			authErr = &AuthorizationError{
@@ -1367,6 +1365,7 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	claims := assertionClaims{
 		userID:           base.UserID,
+		subjectID:        base.SubjectID,
 		attributeCacheID: base.AttributeCacheID,
 		completedACR:     base.CompletedACR,
 	}
@@ -1393,10 +1392,6 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload[oauth2const.ClaimCorrelationID].(string); ok {
 		claims.correlationID = v
-	}
-
-	if v, ok := payload[oauth2const.ClaimSubjectID].(string); ok {
-		claims.subjectID = v
 	}
 
 	if v, ok := payload[oauth2const.ClaimSubjectType].(string); ok {

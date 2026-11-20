@@ -6,8 +6,10 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -78,4 +80,24 @@ func GenerateUUIDv7() (string, error) {
 // IsValidUUID checks if the input string is a valid UUID.
 func IsValidUUID(input string) bool {
 	return uuidRegex.MatchString(input)
+}
+
+// uuidBytes returns the 16 bytes a UUID string holds. It returns false when the input is not a valid UUID.
+func uuidBytes(input string) ([]byte, bool) {
+	if !IsValidUUID(input) {
+		return nil, false
+	}
+	raw, err := hex.DecodeString(strings.ReplaceAll(input, "-", ""))
+	if err != nil {
+		return nil, false
+	}
+	return raw, true
+}
+
+// uuidFromBytes returns the lowercase UUID string for 16 bytes. It returns false for any other length.
+func uuidFromBytes(raw []byte) (string, bool) {
+	if len(raw) != 16 {
+		return "", false
+	}
+	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:]), true
 }

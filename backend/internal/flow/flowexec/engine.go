@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 	"time"
 
@@ -930,13 +931,22 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 		return nil, false, &tidcommon.InternalServerError
 	}
 
-	// Carry any SSO handle minted by this node onto the flow step so the transport layer can emit
-	// it. The Session node emits the handle on the engine-only EngineData channel (never returned to
-	// the client and off the engine contract). Stamped here (not only at completion) so it survives
-	// an immediately following prompt step that returns the flow as incomplete.
+	// Carry any SSO handle this node minted or reused onto the flow step, with its session's end. The
+	// Session node emits them on the engine-only EngineData channel (off the engine contract). Stamped
+	// here (not only at completion) so they survive an immediately following prompt step that returns the
+	// flow as incomplete. The handle the request presented is marked reused.
 	if handle := nodeResp.EngineData[common.RuntimeKeySSOSessionHandle]; handle != "" {
 		flowStep.SSOHandleOut = handle
 		flowStep.SSOFlowID = ssoFlowID(ctx)
+		flowStep.SSOHandleReused = handle == ctx.SSOHandleIn
+		flowStep.SSOHandleExpiresAt = time.Time{}
+		if raw := nodeResp.EngineData[common.RuntimeKeySSOSessionExpiresAt]; raw != "" {
+			if seconds, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				flowStep.SSOHandleExpiresAt = time.Unix(seconds, 0)
+			} else {
+				logger.Debug(ctx.Context, "Ignoring an unreadable SSO session end", log.String("value", raw))
+			}
+		}
 	}
 
 	// Carry a session-termination signal onto the flow step so the transport layer clears the
@@ -999,13 +1009,15 @@ func isSignInBoundaryRefusal(err *tidcommon.ServiceError) bool {
 		(err.Code == executor.ErrOrganizationNotResolved.Code || err.Code == executor.ErrNoAccessToApplication.Code)
 }
 
-// dropRefusedSignIn drops the user, assertion and new session handle of a refused sign-in, so none of them
+// dropRefusedSignIn drops the user, assertion and session handle of a refused sign-in, so none of them
 // reaches the client or a calling flow.
 func dropRefusedSignIn(ctx *EngineContext, flowStep *FlowStep) {
 	ctx.AuthUser = providers.AuthUser{}
 	ctx.Assertion = ""
 	flowStep.SSOHandleOut = ""
 	flowStep.SSOFlowID = ""
+	flowStep.SSOHandleReused = false
+	flowStep.SSOHandleExpiresAt = time.Time{}
 }
 
 // isDisplayOnlyPromptNode checks if the current node is a display-only prompt node.

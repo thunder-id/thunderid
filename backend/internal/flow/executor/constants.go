@@ -55,12 +55,10 @@ const (
 	ExecutorNameSession                      = executormeta.ExecutorNameSession
 	ExecutorNameSessionSignOut               = executormeta.ExecutorNameSessionSignOut
 	ExecutorNameOTPExecutor                  = executormeta.ExecutorNameOTPExecutor
-	ExecutorNamePreDelete                    = executormeta.ExecutorNamePreDelete
-	ExecutorNamePreCredentialUpdate          = executormeta.ExecutorNamePreCredentialUpdate
+	ExecutorNamePreRevocation                = executormeta.ExecutorNamePreRevocation
 	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
 	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
-	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
 	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
 	ExecutorNameRole                         = executormeta.ExecutorNameRole
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
@@ -93,8 +91,12 @@ const (
 
 	ExecutorModeRevoke              = executormeta.ExecutorModeRevoke
 	ExecutorModeAdvanceCutoff       = executormeta.ExecutorModeAdvanceCutoff
-	ExecutorModeRevokeBeforeAction  = executormeta.ExecutorModeRevokeBeforeAction
 	ExecutorModeRevokeBeforeRemoval = executormeta.ExecutorModeRevokeBeforeRemoval
+
+	ExecutorModeIdentityDeletion     = executormeta.ExecutorModeIdentityDeletion
+	ExecutorModeClientRemoval        = executormeta.ExecutorModeClientRemoval
+	ExecutorModeClientSecretRotation = executormeta.ExecutorModeClientSecretRotation
+	ExecutorModeCredentialUpdate     = executormeta.ExecutorModeCredentialUpdate
 
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
@@ -139,6 +141,7 @@ const (
 	userInputConsentDecisions  = "consent_decisions"
 	userInputLoginHint         = "login_hint"
 	revocationInputSubject     = "subject"
+	revocationInputEntity      = "targetEntityId"
 	revocationInputApplication = "targetApplicationId"
 
 	revocationInputRole           = "targetRoleId"
@@ -150,6 +153,9 @@ const (
 	revocationInputResourceServer = "targetResourceServerId"
 	revocationInputResource       = "targetResourceId"
 	revocationInputAction         = "targetActionId"
+	// revocationInputRemovedHolders lists, as a JSON array, the entities whose access the committed change
+	// removed. Only a system post flow reads it.
+	revocationInputRemovedHolders = "removedHolderIds"
 
 	governanceInputOperatorNote = "operatorNote"
 

@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -80,6 +81,10 @@ type revocationPlan struct {
 	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
 	// Zero leaves the revocation service on its configured default.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+	// HolderScopes are the scopes every holder of the target loses. A plan records them when holders can
+	// be added between the plan and the change, so the post flow can extend the plan to the holders the
+	// change removed that the plan did not see.
+	HolderScopes []revocation.AudienceScope `json:"holderScopes,omitempty"`
 	// NothingToRevoke records that the preparatory node established there is no artifact to revoke, which
 	// is how an empty criteria list is distinguished from a missing one. Only a node that verified the
 	// absence sets it; without it an empty list stays an error, so a plan can never be silently skipped.
@@ -128,15 +133,6 @@ func revocationPlanFor(data map[string]string, want revocation.Reason) (revocati
 		return revocationPlan{}, errors.New("trusted revocation plan has no target")
 	}
 	return plan, nil
-}
-
-// applicationTargetFromPlan returns the application the trusted plan acts on.
-func applicationTargetFromPlan(data map[string]string, want revocation.Reason) (string, error) {
-	plan, err := revocationPlanFor(data, want)
-	if err != nil {
-		return "", err
-	}
-	return plan.TargetID, nil
 }
 
 // getAuthnServiceName returns the authn service name for an executor.
@@ -648,4 +644,53 @@ func pinnedVerificationEvidence(ctx *providers.NodeContext) (*verificationEviden
 	}
 
 	return &proof, nil
+}
+
+// entityScopeCriterion revokes, for one entity, what a scope grants: the scope itself, or, for a scope of
+// a hierarchical resource server, the subtree of permissions below it.
+func entityScopeCriterion(entityID string, scope revocation.AudienceScope) revocation.Criterion {
+	if scope.SubtreeDelimiter != "" {
+		return revocation.Criterion{Type: revocation.CriterionTypeEntityScopeSubtree,
+			Value: revocation.EntityScopeSubtreeCriterionValue(entityID, scope.Audience, scope.Scope,
+				scope.SubtreeDelimiter)}
+	}
+	return revocation.Criterion{Type: revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope)}
+}
+
+// isClientDeletionPlan reports whether the plan removes a client, the only case that detaches session
+// participation: an inbound client's deletion, or an application deletion an administration flow plans. A secret
+// rotation does not: the session is still legitimately the user's.
+func isClientDeletionPlan(plan revocationPlan) bool {
+	return plan.TargetID != "" &&
+		(plan.Reason == revocation.ReasonClientRemoved || plan.Reason == revocation.ReasonApplicationRemoved)
+}
+
+// orderByDisplayOrder moves the inputs whose attribute sets a display order to the front, lowest
+// first and by attribute name for the same order, and keeps the others after them in their order.
+func orderByDisplayOrder(inputs []providers.Input, attrs []entitytype.AttributeInfo) {
+	order := make(map[string]int, len(attrs))
+	for _, attr := range attrs {
+		if attr.DisplayOrder != nil {
+			order[attr.Attribute] = *attr.DisplayOrder
+		}
+	}
+	if len(order) == 0 {
+		return
+	}
+
+	slices.SortStableFunc(inputs, func(a, b providers.Input) int {
+		orderA, hasA := order[a.Identifier]
+		orderB, hasB := order[b.Identifier]
+		switch {
+		case hasA && hasB:
+			return cmp.Or(cmp.Compare(orderA, orderB), cmp.Compare(a.Identifier, b.Identifier))
+		case hasA:
+			return -1
+		case hasB:
+			return 1
+		default:
+			return 0
+		}
+	})
 }

@@ -18,8 +18,6 @@ value:
     expirySeconds: 1800
   adminInitiatedFlow:
     expirySeconds: 86400
-  secretRegenerationFlow:
-    defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
   adminAttributeVerificationFlow:

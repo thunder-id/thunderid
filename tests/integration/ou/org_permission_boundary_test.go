@@ -156,9 +156,6 @@ func (ts *OrgPermissionBoundaryTestSuite) TestCapabilitiesReportEachRootsReach()
 			ts.Require().Equal(http.StatusOK, status, raw)
 			var resp struct {
 				Resources map[string]map[string]bool `json:"resources"`
-				Root      struct {
-					Manage bool `json:"manage"`
-				} `json:"root"`
 			}
 			ts.Require().NoError(json.Unmarshal([]byte(raw), &resp))
 
@@ -166,7 +163,7 @@ func (ts *OrgPermissionBoundaryTestSuite) TestCapabilitiesReportEachRootsReach()
 				ts.True(resp.Resources[page]["view"], "%s view", page)
 			}
 			ts.Equal(tc.serverConfig, resp.Resources["serverconfig"]["view"], "serverconfig view")
-			ts.Equal(tc.serverConfig, resp.Root.Manage, "root manage")
+			ts.Equal(tc.serverConfig, resp.Resources["export"]["create"], "export create")
 		})
 	}
 }

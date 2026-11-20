@@ -161,7 +161,7 @@ func newTestService(t *testing.T, store storeInterface) ServiceInterface {
 	t.Helper()
 	cmodels.SetConfigCryptoProvider(reversingCrypto{})
 	t.Cleanup(func() { cmodels.SetConfigCryptoProvider(nil) })
-	return newService(store, newPipeline())
+	return newService(store, newPipeline(), discardingBus{})
 }
 
 func TestRegisterRecordsTheGateway(t *testing.T) {
@@ -413,7 +413,7 @@ func TestRegisterRefusesAnAddressAlreadyRegistered(t *testing.T) {
 	store := &fakeStore{gateways: []Gateway{
 		{ID: "gw-1", Name: "production", BaseURL: "https://dp.example.test"},
 	}}
-	svc := newService(store, newPipeline())
+	svc := newService(store, newPipeline(), discardingBus{})
 
 	_, svcErr := svc.Register(context.Background(), RegisterRequest{
 		Name:    "production-again",
@@ -437,7 +437,7 @@ func TestRegisterRequiresWhatItTakesToReachTheGateway(t *testing.T) {
 		"no base url": {Name: "dev"},
 		"no name":     {BaseURL: "https://dp"},
 	} {
-		svc := newService(&fakeStore{}, newPipeline())
+		svc := newService(&fakeStore{}, newPipeline(), discardingBus{})
 		if _, svcErr := svc.Register(context.Background(), req); svcErr == nil {
 			t.Fatalf("%s: expected the registration to be refused", name)
 		}
@@ -450,7 +450,7 @@ func TestAReadNeverReturnsTheKey(t *testing.T) {
 	store := &fakeStore{gateways: []Gateway{
 		{ID: "gw-1", Name: "dev"},
 	}}
-	svc := newService(store, newPipeline())
+	svc := newService(store, newPipeline(), discardingBus{})
 
 	gw, svcErr := svc.Get(context.Background(), "gw-1")
 	if svcErr != nil {
@@ -635,7 +635,7 @@ func TestAStoreFailureIsAnInternalError(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			svc := newService(&fakeStore{err: errors.New("database is down")}, newPipeline())
+			svc := newService(&fakeStore{err: errors.New("database is down")}, newPipeline(), discardingBus{})
 
 			svcErr := call(svc)
 
@@ -651,7 +651,7 @@ func TestAStoreFailureIsAnInternalError(t *testing.T) {
 
 // An id that is not one is refused before the store is asked.
 func TestAnEmptyIDIsRefused(t *testing.T) {
-	svc := newService(&fakeStore{}, newPipeline())
+	svc := newService(&fakeStore{}, newPipeline(), discardingBus{})
 
 	if _, svcErr := svc.Get(context.Background(), "   "); svcErr == nil {
 		t.Fatal("expected a blank id to be refused by Get")
@@ -663,7 +663,7 @@ func TestAnEmptyIDIsRefused(t *testing.T) {
 
 // Deleting one that is not registered says so rather than reporting success.
 func TestDeletingAGatewayThatIsNotRegistered(t *testing.T) {
-	svc := newService(&fakeStore{}, newPipeline())
+	svc := newService(&fakeStore{}, newPipeline(), discardingBus{})
 
 	svcErr := svc.Delete(context.Background(), "absent")
 
@@ -680,7 +680,7 @@ func TestNothingIsStoredWhenTheKeyCannotBeSealed(t *testing.T) {
 	cmodels.SetConfigCryptoProvider(nil)
 
 	store := &fakeStore{}
-	_, svcErr := newService(store, newPipeline()).Register(context.Background(), validRequest("dev"))
+	_, svcErr := newService(store, newPipeline(), discardingBus{}).Register(context.Background(), validRequest("dev"))
 
 	if svcErr == nil {
 		t.Fatal("expected registration to fail when the credential cannot be sealed")
@@ -776,7 +776,7 @@ func TestUpdateWithoutAKeyLeavesItAlone(t *testing.T) {
 	t.Cleanup(func() { cmodels.SetConfigCryptoProvider(nil) })
 
 	store := &fakeStore{}
-	svc := newService(store, newPipeline())
+	svc := newService(store, newPipeline(), discardingBus{})
 	ctx := context.Background()
 
 	registered, svcErr := svc.Register(ctx, RegisterRequest{
@@ -805,7 +805,7 @@ func TestUpdateWithAKeyReplacesIt(t *testing.T) {
 	t.Cleanup(func() { cmodels.SetConfigCryptoProvider(nil) })
 
 	store := &fakeStore{}
-	svc := newService(store, newPipeline())
+	svc := newService(store, newPipeline(), discardingBus{})
 	ctx := context.Background()
 
 	registered, svcErr := svc.Register(ctx, RegisterRequest{

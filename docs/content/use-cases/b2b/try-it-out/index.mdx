@@ -69,13 +69,18 @@ cd wayfinder-enterprise
 
 The fastest way to create the resources the walkthroughs need. First, [get <ProductName /> running](../../../getting-started/get-thunderid); then import two files through the Console, in this order:
 
-1. Sign in to the Control Plane console at `https://localhost:8095/console`.
-2. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
+1. Generate a client secret for each of the two applications, for example with `openssl rand -base64 32`, and set them
+   as `WAYFINDER_ENTERPRISE_CLIENT_SECRET` and `WAYFINDER_ENTERPRISE_BACKEND_CLIENT_SECRET` in
+   `thunderid-config/thunderid.env`. The file ships without them, and the Console does not import it until both are
+   set. Keep the values for the app's `.env.local`.
+2. Sign in to the Control Plane console at `https://localhost:8095/console`.
+3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
    file. It needs no environment file. Choose **Continue**, and once the import test passes, choose
    **Import configuration**.
-3. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
+4. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
    configuration file and `thunderid-config/thunderid.env` as the environment variables file, to provide the variables
-   the YAML references. Choose **Continue**, then **Import configuration**.
+   the YAML references. Choose **Continue**, then **Import configuration**. A secret you left empty can be entered in
+   the **Environment variables** editor before you import.
 
 The Console tests each import before it runs it, and that test only finds an organization unit that already exists. The
 second file places every resource in the organization unit the first one creates, so import the first one on its own.
@@ -95,8 +100,7 @@ second file places every resource in the organization unit the first one creates
 | Application | Wayfinder Enterprise | The app's confidential client, with the organization and role claims in its tokens. Shared with every company. |
 | Application and role | Wayfinder Enterprise Backend | A `client_credentials` client for the app's admin route, shared with every company |
 
-The defaults in `thunderid.env` work as they are for a local setup. Change a client secret there before you import,
-and set the same value in the app's environment.
+The other defaults in `thunderid.env` work as they are for a local setup.
 
 ## Configure the Sample
 
@@ -106,8 +110,9 @@ Copy the environment template:
 cp .env.example .env.local
 ```
 
-The defaults match the import. Set `THUNDERID_SECRET` in `.env.local` to a long random string; the SDK encrypts the
-session cookie with it. Generate one with:
+The other defaults match the import. In `.env.local`, set `THUNDERID_CLIENT_SECRET` and
+`WAYFINDER_BACKEND_CLIENT_SECRET` to the client secrets you set in `thunderid.env`, and `THUNDERID_SECRET` to a long
+random string; the SDK encrypts the session cookie with it. Generate one with:
 
 ```bash
 openssl rand -base64 32

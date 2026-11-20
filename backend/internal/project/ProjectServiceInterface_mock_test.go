@@ -87,6 +87,65 @@ func (_c *ProjectServiceInterfaceMock_AddResourceCheck_Call) RunAndReturn(run fu
 	return _c
 }
 
+// CheckProjectDeletion provides a mock function for the type ProjectServiceInterfaceMock
+func (_mock *ProjectServiceInterfaceMock) CheckProjectDeletion(ctx context.Context, id string) *common.ServiceError {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckProjectDeletion")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ProjectServiceInterfaceMock_CheckProjectDeletion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckProjectDeletion'
+type ProjectServiceInterfaceMock_CheckProjectDeletion_Call struct {
+	*mock.Call
+}
+
+// CheckProjectDeletion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *ProjectServiceInterfaceMock_Expecter) CheckProjectDeletion(ctx any, id any) *ProjectServiceInterfaceMock_CheckProjectDeletion_Call {
+	return &ProjectServiceInterfaceMock_CheckProjectDeletion_Call{Call: _e.mock.On("CheckProjectDeletion", ctx, id)}
+}
+
+func (_c *ProjectServiceInterfaceMock_CheckProjectDeletion_Call) Run(run func(ctx context.Context, id string)) *ProjectServiceInterfaceMock_CheckProjectDeletion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ProjectServiceInterfaceMock_CheckProjectDeletion_Call) Return(serviceError *common.ServiceError) *ProjectServiceInterfaceMock_CheckProjectDeletion_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ProjectServiceInterfaceMock_CheckProjectDeletion_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *ProjectServiceInterfaceMock_CheckProjectDeletion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateProject provides a mock function for the type ProjectServiceInterfaceMock
 func (_mock *ProjectServiceInterfaceMock) CreateProject(ctx context.Context, request ProjectRequest) (*Project, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)

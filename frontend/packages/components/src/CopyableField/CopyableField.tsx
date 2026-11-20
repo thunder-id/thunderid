@@ -78,12 +78,17 @@ export default function CopyableField({label, value, copyLabel = undefined}: Cop
         <Typography
           variant="caption"
           title={value}
+          // A value longer than the field scrolls sideways, with the mouse or the arrow keys, so all of
+          // it can be read in place.
+          role="group"
+          tabIndex={0}
+          aria-label={label}
           sx={{
             flex: 1,
             fontFamily: 'monospace',
             fontSize: '0.75rem',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
             whiteSpace: 'nowrap',
             minWidth: 0,
           }}

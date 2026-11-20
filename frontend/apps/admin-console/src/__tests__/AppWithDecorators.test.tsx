@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
+import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AppWithDecorators from '../AppWithDecorators';
 
 // Mock HOCs as pass-through so tests focus on composition
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/components')>()),
+  ServerCapabilitiesProvider: ({children}: {children: ReactNode}) => children,
+}));
+
 vi.mock('../hocs/withConfig', () => ({
   default: (Component: React.ComponentType) => Component,
 }));

@@ -1,0 +1,42 @@
+# Build a B2B React Application with {{productName}} Organizations
+
+## Context
+I have a React application for a business-to-business (B2B) product, and I want to integrate {{productName}} organizations using the ThunderID React SDK with {{productName}}-hosted login pages. Each customer company signs up as an organization.
+
+## Requirements
+- Use @thunderid/react 1.22.1 or later with {{productName}}-hosted sign-in pages
+- Sign in and sign out with prebuilt components. Companies register from the hosted sign-in page, so the app has no sign-up page
+- Show the current company, the user's roles there, and the access token's `ouName`, `ouHandle`, `roles` and `scope`
+- Switch between the user's companies without leaving the page
+- Let a company admin add the company's OpenID Connect identity provider and select it for enterprise SSO
+
+## Configuration
+- **Base URL**: {{baseUrl}}
+- **Client ID**: {{clientId}}
+- **Resource**: https://localhost:8090/mcp (the System resource server, which holds the `org` permission)
+- **Sign-in flow ID**: 019f0b10-0000-7000-8000-000000000021
+- **App URL**: http://localhost:5173 (the only redirect URI, so keep this port and plain http)
+
+## IMPORTANT Configuration Rules
+- Pass each setting as its own prop on <ThunderIDProvider>, not a config object: `clientId`, `baseUrl`, `scopes={['openid', 'profile', 'email', 'roles', 'ou', 'org', 'device_sso']}`, `signInOptions={{ resource }}` and `preferences={{ user: { fetchUserProfile: false } }}`
+- Switch with `<OrganizationUnitSwitcher scope="siblings" switchOptions={{ resource }} />`
+- Show the admin section only when `useGrantedPermissions().can('org')`. It loads once per session, so key the signed-in view by `currentOrganizationUnit?.id`
+- Decode the claims from `getAccessToken()`, and again when `currentOrganizationUnit?.id` changes
+- Add the identity provider with `createConnection({ ...useManagementRequestConfig('connections'), type: 'oidc', payload })`. The payload has `name`, `clientId`, `clientSecret`, `issuer`, `authorizationEndpoint`, `tokenEndpoint`, `userInfoEndpoint`, `jwksEndpoint`, `ouId` (the current company), `redirectUri: ${baseUrl}/gate/callback` and `scopes: ['openid', 'profile', 'email']`. Show the admin that callback URL
+- Select it with `<FlowVariablesForm flowId ouId ouName showScopeNotice onCreateConnection />`. `onCreateConnection` opens the add-connection form. Change the form's `key` after a connection is added, so it lists the new one
+- The SDK sends these calls with the admin's own token. Never put a secret in browser code
+
+## Implementation Steps
+1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/react-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these in the Control Plane console, and do not do them yourself:
+   - Import the resources: Import / Export, then Import, uploading `thunderid-config.yaml` and `thunderid.env`
+   - Add http://localhost:5173 as an allowed CORS origin: Configurations, then CORS
+   - For a local instance with a self-signed certificate, open https://localhost:8090 in the browser once and accept the certificate, or the app's calls to it fail
+2. Create the app: `npm create vite@latest react-b2b -- --template react`, then `cd react-b2b` and `npm install`
+3. Install the SDK: `npm install @thunderid/react`
+4. Create `.env` with VITE_THUNDERID_BASE_URL, VITE_THUNDERID_CLIENT_ID, VITE_THUNDERID_RESOURCE and VITE_THUNDERID_SIGN_IN_FLOW_ID
+5. Wrap the app in <ThunderIDProvider> in `src/main.jsx`
+6. Create `src/components/TokenClaims.jsx` and `src/components/EnterpriseSso.jsx`
+7. Replace `src/App.jsx`: <SignedOut> shows <SignInButton>, and <SignedIn> shows the switcher, the company view and <SignOutButton>
+8. Run `npm run dev` and open http://localhost:5173. To try it, choose Sign in, then Register your company
+
+Please provide complete, working code for a B2B React application with {{productName}} organizations, using the ThunderID React SDK.

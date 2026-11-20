@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent} from '@thunderid/test-utils';
 import {describe, expect, it, vi} from 'vitest';
 import StageCard, {type StageCardProps} from '../StageCard';
@@ -31,6 +32,30 @@ describe('StageCard refused resources', () => {
     expect(refused).toHaveTextContent('2 refused, not running');
     await userEvent.hover(refused);
     expect(await screen.findByText('Billing, f-9')).toBeInTheDocument();
+  });
+
+  it("offers to configure the gateway's values to an admin who can view them", () => {
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource, action = 'view') =>
+            action === 'view' && (resource === 'gatewayvariable' || resource === 'gatewaysecret'),
+          isLoading: false,
+        }}
+      >
+        <StageCard name="Staging" version={{number: 3, hash: 'abc123'}} onExplore={vi.fn()} onConfigure={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+    expect(screen.getByRole('button', {name: 'Configure'})).toBeInTheDocument();
+  });
+
+  it("hides Configure from an admin who cannot view the gateway's secrets", () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'gatewaysecret', isLoading: false}}>
+        <StageCard name="Staging" version={{number: 3, hash: 'abc123'}} onExplore={vi.fn()} onConfigure={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+    expect(screen.queryByRole('button', {name: 'Configure'})).not.toBeInTheDocument();
   });
 
   it('says nothing of refusals when there are none', () => {

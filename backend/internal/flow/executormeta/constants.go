@@ -43,12 +43,10 @@ const (
 	ExecutorNameSession                      = "SessionExecutor"
 	ExecutorNameSessionSignOut               = "SessionSignOutExecutor"
 	ExecutorNameOTPExecutor                  = "OTPExecutor"
-	ExecutorNamePreDelete                    = "PreDeleteExecutor"
-	ExecutorNamePreCredentialUpdate          = "PreCredentialUpdateExecutor" //nolint:gosec // executor name
+	ExecutorNamePreRevocation                = "PreRevocationExecutor"
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
-	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 	ExecutorNameAccessChangeValidator        = "AccessChangeValidator"
 	ExecutorNameRole                         = "RoleExecutor"
 	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
@@ -79,8 +77,12 @@ const (
 
 	ExecutorModeRevoke              = "revoke"
 	ExecutorModeAdvanceCutoff       = "advance_cutoff"
-	ExecutorModeRevokeBeforeAction  = "revoke_before_action"
 	ExecutorModeRevokeBeforeRemoval = "revoke_before_removal"
+
+	ExecutorModeIdentityDeletion     = "identity_deletion"
+	ExecutorModeClientRemoval        = "client_removal"
+	ExecutorModeClientSecretRotation = "client_secret_rotation"
+	ExecutorModeCredentialUpdate     = "credential_update" //nolint:gosec // executor mode
 
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"

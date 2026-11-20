@@ -439,7 +439,8 @@ paths:
         description: |
           A gateway to compare against, by its id: what promoting it to this gateway would send,
           which is the version it runs as far as it holds it. Refused with `400` when it is this
-          gateway (`GTW-1036`) or runs nothing (`GTW-1037`). Without it, `version` is compared.
+          gateway (`GTW-1036`). A gateway that runs nothing yet has nothing to promote, so nothing is
+          counted as waiting. Without it, `version` is compared.
       - name: version
         in: query
         required: false
@@ -1387,6 +1388,12 @@ components:
             required:
               type: integer
               description: The changes the project's resources need that the gateway lacks or refused.
+            heldBack:
+              type: integer
+              description: |
+                The project's own changes, and what they need, that the gateway holds back because an
+                earlier deploy left them out. They are not counted as pending, and a deploy brings them
+                only when they are selected.
             deployedAt:
               type: string
               format: date-time
@@ -1431,6 +1438,9 @@ components:
               description: |
                 The shared changes a deploy of the project could take with it. A change only another
                 project's resources need is that project's, and is not counted here.
+            heldBack:
+              type: integer
+              description: The shared changes the gateway holds back, which a deploy brings only when selected.
             byType:
               type: array
               items:
@@ -1662,8 +1672,10 @@ components:
         missing:
           type: object
           description: |
-            Only on a dry run: the variables and secrets the version refers to that the gateway does
-            not hold. An apply in that state is refused instead.
+            Only on a dry run: the variables and secrets the gateway does not hold that a change the
+            version offers refers to, a change the gateway holds back included, with `references`
+            naming the resources that use each, so a caller can ask for the values its selection needs.
+            An apply checks only what it sends and is refused while any of those is missing.
           properties:
             variables:
               type: array

@@ -15,6 +15,7 @@ import {
   type Label,
   type LaneSummary,
 } from '../../explorer/model';
+import useGatewayValueAccess from '../../hooks/useGatewayValueAccess';
 import type {MasterEntry, ResourceHistoryEntry, ValueReference} from '../../models/deploy';
 import type {Gateway} from '../../models/gateway';
 import {shortHash} from '../../utils/format';
@@ -178,6 +179,7 @@ export default function ExplorerPanel({
   onDiscard,
 }: ExplorerPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {canSetValues} = useGatewayValueAccess();
   const frame = {
     width: 360,
     flexShrink: 0,
@@ -373,7 +375,7 @@ export default function ExplorerPanel({
                             minRows={reference.list ? 2 : undefined}
                             value={value}
                             onChange={(event) => onDraft(reference.name, event.target.value)}
-                            disabled={isSaving}
+                            disabled={!canSetValues || isSaving}
                             sx={EDITABLE}
                             slotProps={{input: {sx: {fontFamily: 'monospace', fontSize: 13}}}}
                             helperText={reference.list ? t('explorer.panel.listHint', 'One per line.') : undefined}
@@ -425,7 +427,7 @@ export default function ExplorerPanel({
                             placeholder={t('explorer.panel.secretPlaceholder', 'Enter a new value to replace')}
                             value={drafts.get(reference.name) ?? ''}
                             onChange={(event) => onDraft(reference.name, event.target.value)}
-                            disabled={isSaving}
+                            disabled={!canSetValues || isSaving}
                             slotProps={{
                               input: {
                                 endAdornment: (
@@ -522,7 +524,7 @@ export default function ExplorerPanel({
           </Box>
         )}
       </Stack>
-      {own.length > 0 && (
+      {canSetValues && own.length > 0 && (
         <Stack
           direction="row"
           spacing={1}

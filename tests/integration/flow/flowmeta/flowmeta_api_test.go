@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -16,6 +17,10 @@ import (
 
 const (
 	flowMetaEndpoint = "/flow/meta"
+
+	refTestClientID     = "flowmeta_ref_test_client"
+	refTestClientSecret = "flowmeta_ref_test_secret"
+	refTestRedirectURI  = "https://localhost:8095/ref-callback"
 )
 
 var testServerURL = testutils.TestServerURL
@@ -492,4 +497,104 @@ func (suite *FlowMetaAPITestSuite) TestGetFlowMetadataCaseSensitiveType() {
 	suite.Require().NoError(err)
 
 	suite.Equal("FM-1001", errorResp.Code)
+}
+
+// TestGetFlowMetadataWithRefFromAuthorizeRedirect follows the ref the authorize endpoint adds to the
+// sign-in page URL back to the application through GET /flow/meta?type=REF.
+func (suite *FlowMetaAPITestSuite) TestGetFlowMetadataWithRefFromAuthorizeRedirect() {
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:        "FlowMeta Ref Test Application",
+		Description: "Application the sign-in page reference names",
+		OUID:        suite.ouID,
+		AuthFlowID:  suite.isolatedAuthFlowID,
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId": refTestClientID, "clientSecret": refTestClientSecret,
+			"redirectUris": []string{refTestRedirectURI}, "grantTypes": []string{"authorization_code"},
+			"responseTypes": []string{"code"}, "tokenEndpointAuthMethod": "client_secret_basic",
+		}}},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	resp, err := testutils.InitiateAuthorizationFlow(refTestClientID, refTestRedirectURI, "code", "openid", "s1")
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusFound, resp.StatusCode)
+
+	ref := testutils.ExtractQueryParam(resp.Header.Get("Location"), "ref")
+	suite.Require().NotEmpty(ref, "the sign-in page URL carries ref")
+	suite.NotContains(ref, appID, "ref does not show the application ID")
+
+	status, body := suite.getFlowMetadata(url.Values{"type": {"REF"}, "id": {ref}})
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var metadata FlowMetadataResponse
+	suite.Require().NoError(json.Unmarshal(body, &metadata))
+	suite.Require().NotNil(metadata.Application)
+	suite.Equal(appID, metadata.Application.ID)
+	suite.Equal("FlowMeta Ref Test Application", metadata.Application.Name)
+}
+
+// TestGetFlowMetadataWithInvalidRef tests that a ref that names no application returns 404.
+func (suite *FlowMetaAPITestSuite) TestGetFlowMetadataWithInvalidRef() {
+	for _, ref := range []string{"not*a*ref", "AZAAAAAAcACAAAAAAAAAAA", "~bm9uLWV4aXN0ZW50"} {
+		status, body := suite.getFlowMetadata(url.Values{"type": {"REF"}, "id": {ref}})
+		suite.Equal(http.StatusNotFound, status, "ref %q: %s", ref, body)
+
+		var errorResp ErrorResponse
+		suite.Require().NoError(json.Unmarshal(body, &errorResp))
+		suite.Equal("FM-1002", errorResp.Code)
+	}
+}
+
+// TestGetFlowMetadataDefaultReturnURL tests that the flow section's defaultReturnUrl is returned with
+// and without a type.
+func (suite *FlowMetaAPITestSuite) TestGetFlowMetadataDefaultReturnURL() {
+	original, err := testutils.GetWritableServerConfig("flow")
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.PutWritableServerConfig("flow", original)) }()
+
+	section := map[string]interface{}{}
+	suite.Require().NoError(json.Unmarshal(original, &section))
+	section["defaultReturnUrl"] = "https://home.example.com"
+	payload, err := json.Marshal(section)
+	suite.Require().NoError(err)
+	suite.Require().NoError(testutils.PutWritableServerConfig("flow", payload))
+
+	for name, query := range map[string]url.Values{
+		"no type":  {},
+		"app type": {"type": {"APP"}, "id": {suite.appID}},
+	} {
+		suite.Run(name, func() {
+			status, body := suite.getFlowMetadata(query)
+			suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+			var metadata FlowMetadataResponse
+			suite.Require().NoError(json.Unmarshal(body, &metadata))
+			suite.Equal("https://home.example.com", metadata.DefaultReturnURL)
+		})
+	}
+}
+
+// TestGetFlowMetadataDeclarativeDefaultReturnURL tests that a defaultReturnUrl seeded in the declarative
+// flow section is returned while the writable layer sets none.
+func (suite *FlowMetaAPITestSuite) TestGetFlowMetadataDeclarativeDefaultReturnURL() {
+	status, body := suite.getFlowMetadata(url.Values{})
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var metadata FlowMetadataResponse
+	suite.Require().NoError(json.Unmarshal(body, &metadata))
+	suite.Equal(declarativeDefaultReturnURL, metadata.DefaultReturnURL)
+}
+
+// getFlowMetadata calls GET /flow/meta with the given query and returns the status and body.
+func (suite *FlowMetaAPITestSuite) getFlowMetadata(query url.Values) (int, []byte) {
+	resp, err := testutils.GetHTTPClient().Get(
+		fmt.Sprintf("%s%s?%s", testServerURL, flowMetaEndpoint, query.Encode()))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	return resp.StatusCode, body
 }

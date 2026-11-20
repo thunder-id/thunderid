@@ -689,6 +689,24 @@ describe('flowToCanvasTransformer', () => {
         expect(components?.[1]?.['inputType']).toBe('number');
       });
 
+      it('should derive a datetime-local input type for a date-time input', () => {
+        const flowData = createBaseFlowData([
+          {
+            id: 'prompt-node',
+            type: 'PROMPT',
+            meta: {
+              components: [{id: 'valid-until-input', type: 'DATE_TIME_INPUT', ref: 'validUntil'}],
+            },
+            layout: {position: {x: 0, y: 0}, size: {width: 300, height: 200}},
+          },
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        const components = result.nodes[0].data.components as Record<string, unknown>[] | undefined;
+        expect(components?.[0]?.['inputType']).toBe('datetime-local');
+      });
+
       it('should handle nested components (forms)', () => {
         const flowData = createBaseFlowData([
           {

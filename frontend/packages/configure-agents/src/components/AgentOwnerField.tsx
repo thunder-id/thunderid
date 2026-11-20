@@ -31,6 +31,7 @@ interface AgentOwnerFieldProps {
   onExternalChange: (owner: AgentOwner | undefined) => void;
   disabled?: boolean;
   required?: boolean;
+  /** Left unset, every control takes the theme's own size, so the inputs match the ones around them. */
   size?: 'small' | 'medium';
 }
 
@@ -48,7 +49,7 @@ export default function AgentOwnerField({
   onExternalChange,
   disabled = false,
   required = false,
-  size = 'medium',
+  size = undefined,
 }: AgentOwnerFieldProps): JSX.Element {
   const {t} = useTranslation();
   const startsExternal = initialOwner?.isLocal === false;
@@ -157,6 +158,9 @@ export default function AgentOwnerField({
               placeholder={placeholders[idType]}
               disabled={disabled}
               error={showError}
+              // The theme pads a select's value more than a text input's, which leaves the two side by
+              // side at different heights. The input takes the select's padding so their edges line up.
+              sx={{'& .MuiOutlinedInput-input': {py: 1.25}}}
               helperText={idHelperText}
               onBlur={() => setTouched(true)}
               onChange={(event) => {

@@ -6,19 +6,23 @@
   "quickstarts": [
     {
       "label": "Next.js",
-      "docsUrl": "{{applications.templates.nextjs.docs}}"
+      "docsUrl": "{{applications.templates.nextjs.docs}}",
+      "promptUrl": "{{applications.templates.nextjs.llmPrompt.redirectBased}}"
     },
     {
       "label": "Nuxt",
-      "docsUrl": "{{applications.templates.nuxt.docs}}"
+      "docsUrl": "{{applications.templates.nuxt.docs}}",
+      "promptUrl": "{{applications.templates.nuxt.llmPrompt.redirectBased}}"
     },
     {
       "label": "Express",
-      "docsUrl": "{{applications.templates.express.docs}}"
+      "docsUrl": "{{applications.templates.express.docs}}",
+      "promptUrl": "{{applications.templates.express.llmPrompt.redirectBased}}"
     },
     {
       "label": "Node.js",
-      "docsUrl": "{{applications.templates.node.docs}}"
+      "docsUrl": "{{applications.templates.node.docs}}",
+      "promptUrl": "{{applications.templates.node.llmPrompt.redirectBased}}"
     }
   ],
   "playgrounds": [

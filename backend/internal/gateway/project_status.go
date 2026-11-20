@@ -41,6 +41,10 @@ type ProjectState struct {
 	Pending int `json:"pending"`
 	// Required counts the changes the project's resources need that the gateway lacks or refused.
 	Required int `json:"required"`
+	// HeldBack counts the project's own changes, and what they need, that the gateway holds back: an
+	// earlier deploy left them out for the deploys after it, so a deploy brings them only when they are
+	// selected. They are not pending, but they are still to be deployed.
+	HeldBack int `json:"heldBack"`
 	// DeployedAt and DeployedBy are when the project's own resources on the gateway were last written,
 	// and by whose apply. A gateway holding none of them has neither.
 	DeployedAt *time.Time `json:"deployedAt,omitempty"`
@@ -85,8 +89,10 @@ type ProjectVersion struct {
 
 // SharedState is what belongs to no project that a deploy could share with the gateway.
 type SharedState struct {
-	Pending int         `json:"pending"`
-	ByType  []TypeCount `json:"byType"`
+	Pending int `json:"pending"`
+	// HeldBack counts the shared changes the gateway holds back, which a deploy brings only when selected.
+	HeldBack int         `json:"heldBack"`
+	ByType   []TypeCount `json:"byType"`
 }
 
 // TypeCount counts changes of one resource type.
@@ -127,7 +133,8 @@ func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID
 	}
 	var promotable map[string]bool
 	if sourceMaster != nil {
-		promotable = toSet(promoteSelection(sourceMaster, target, diff))
+		// What the target holds back but the source runs is counted as held back, not dropped.
+		promotable = toSet(sourceRuns(sourceMaster, target, diff, true))
 	}
 	status := countSections(diff, promotable, projectID, soleNeeders(parseBundle(target.Resources)))
 	status.Project.Versions = s.projectVersions(ctx, projectID, master)
@@ -275,7 +282,9 @@ func (s *versionService) latestProjectMaster(ctx context.Context, gatewayID, pro
 }
 
 // statusTarget is the version a project's status is read against: what a promotion from the source
-// gateway would send, with what the source holds, or the version named.
+// gateway would send, with what the source holds, or the version named. A source that runs nothing yet
+// has nothing to promote: the status is read against the version named with an empty source master, so
+// nothing is counted as waiting, rather than refused as a promotion from it would be.
 func (s *versionService) statusTarget(ctx context.Context, gatewayID, sourceGatewayID,
 	ref string) (*Version, *Master, *tidcommon.ServiceError) {
 	if sourceGatewayID == "" {
@@ -290,7 +299,8 @@ func (s *versionService) statusTarget(ctx context.Context, gatewayID, sourceGate
 		return nil, nil, svcErr
 	}
 	if source.Applied == "" {
-		return nil, nil, &ErrorSourceRunsNothing
+		target, svcErr := s.resolve(ctx, ref)
+		return target, &Master{}, svcErr
 	}
 	master, svcErr := s.GetMaster(ctx, sourceGatewayID)
 	if svcErr != nil {
@@ -303,33 +313,38 @@ func (s *versionService) statusTarget(ctx context.Context, gatewayID, sourceGate
 	return target, master, nil
 }
 
-// countSections counts a scoped diff's changes by section, leaving out what is unchanged, held back, or,
-// for a promotion, what the source does not hold as the version has it. What only this project's
-// resources need counts as the project's own pending change; what only another project's need is that
-// project's, and is not counted as shared here.
+// countSections counts a scoped diff's changes by section, leaving out what is unchanged or, for a
+// promotion, what the source does not hold as the version has it. What the gateway holds back is counted
+// apart, as held back rather than pending. What only this project's resources need counts as the
+// project's own change; what only another project's need is that project's, and is not counted as
+// shared here.
 func countSections(diff *Diff, promotable map[string]bool, projectID string, sole map[string]string) *ProjectStatus {
 	status := &ProjectStatus{Project: ProjectState{Versions: []ProjectVersion{}},
 		Shared: SharedState{ByType: []TypeCount{}}}
 	byType := map[string]int{}
 	for _, change := range diff.Changes {
-		if change.Change == ChangeUnchanged || change.HeldBack || (promotable != nil && !promotable[change.Key]) {
+		if change.Change == ChangeUnchanged || (promotable != nil && !promotable[change.Key]) {
 			continue
 		}
 		neededBy := sole[change.Key]
 		switch change.Section {
 		case sectionProject:
-			status.Project.Pending++
+			countChange(&status.Project.Pending, &status.Project.HeldBack, change.HeldBack)
 		case sectionNeeded:
 			switch {
 			case change.Required:
-				status.Project.Required++
+				countChange(&status.Project.Required, &status.Project.HeldBack, change.HeldBack)
 			case neededBy == projectID:
-				status.Project.Pending++
-			default:
+				countChange(&status.Project.Pending, &status.Project.HeldBack, change.HeldBack)
+			case !change.HeldBack:
 				status.Needed.Differing++
 			}
 		case sectionShared:
 			if neededBy != "" && neededBy != projectID {
+				continue
+			}
+			if change.HeldBack {
+				status.Shared.HeldBack++
 				continue
 			}
 			status.Shared.Pending++
@@ -377,4 +392,13 @@ func (s *versionService) projectVersions(ctx context.Context, projectID string, 
 		return versions[i].Hash < versions[j].Hash
 	})
 	return versions
+}
+
+// countChange counts a change as waiting, or as held back when the gateway holds it back.
+func countChange(waiting, heldBack *int, held bool) {
+	if held {
+		*heldBack++
+		return
+	}
+	*waiting++
 }

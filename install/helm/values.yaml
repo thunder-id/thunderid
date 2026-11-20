@@ -230,11 +230,27 @@ configuration:
   # productName: Display name shown in the browser tab and UI.
   # favicon: Path or URL to the favicon icons. Use an object with `light` and `dark`
   #          keys for color-scheme-aware icons (both keys are required).
+  # slogan: Content shown beside the Gate sign-in card when no application design applies
+  #         (for example a direct visit to the Gate page). Empty keeps the built-in ThunderID
+  #         items. A string is a single title, a map is a single item and a list is several
+  #         items. An item has `title`, an optional `description` and an optional `icon`, a
+  #         path under the Gate base path such as `assets/images/icon.svg`. The icon files
+  #         themselves must be present in the Gate assets of the image.
   brand:
     productName: "ThunderID"
     favicon:
       light: "assets/images/favicon.ico"
       dark: "assets/images/favicon-inverted.ico"
+    slogan: []
+    # slogan: "Sign in to Acme"
+    # slogan:
+    #   title: "Title"
+    #   description: "Description."
+    #   icon: "assets/images/icon.svg"
+    # slogan:
+    #   - title: "Title"
+    #     description: "Description."
+    #     icon: "assets/images/icon.svg"
 
   # Console client configuration
   consoleClient:
@@ -552,8 +568,15 @@ configuration:
   # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
   # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
   # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  # unusedValueGraceSeconds: after each apply, the values this plane named for a resource that nothing
+  # refers to any more are removed from the gateway's store once last set longer ago than this. Below 1
+  # it is raised to 1; a negative number turns the removal off.
+  # unusedValueSweepIntervalSeconds is the least time between two such removals from the same gateway;
+  # 0 removes after every apply.
   gateway:
     applyTimeoutSeconds: 300
+    unusedValueGraceSeconds: 3600
+    unusedValueSweepIntervalSeconds: 300
 
   # Flow configuration
   flow:

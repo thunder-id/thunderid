@@ -206,6 +206,30 @@ The script authenticates once, prints the scope it received, then calls `getStoc
 
 </Stepper>
 
+## Run the Sample App
+
+The [Node.js sample](https://github.com/thunder-id/samples/tree/main/quickstarts/node) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fnode&expanded=true) and open its folder.
+2. Create `.env` in the sample's folder with your application's values:
+
+   ```dotenv title=".env"
+   THUNDERID_BASE_URL=https://localhost:8090
+   THUNDERID_CLIENT_ID=<your-client-id>
+   THUNDERID_CLIENT_SECRET=<your-client-secret>
+   # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+   NODE_TLS_REJECT_UNAUTHORIZED=0
+   ```
+
+3. Install the dependencies and start the app:
+
+   ```bash
+   npm install
+   npm start
+   ```
+
+4. The sample gets an access token for itself with the client credentials grant, reads the inventory with it, prints the result, and exits.
+
 ## What's Next
 
 <NextSteps>

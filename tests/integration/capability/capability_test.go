@@ -50,7 +50,7 @@ func (ts *CapabilityAPITestSuite) TestRootAdminGetsEveryActionButImportOnlyWrite
 
 	ts.Equal("ou", body.Scope.Type)
 	ts.NotEmpty(body.Scope.OUID)
-	ts.True(body.Root.Manage)
+	ts.True(body.Resources["export"]["create"])
 	ts.NotEmpty(body.Resources)
 	for resource, actions := range body.Resources {
 		ts.NotEmpty(actions, resource)

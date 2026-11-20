@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"strings"
 
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -29,11 +29,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
-// serverConfigProvider is the minimal subset of serverconfig.ServerConfigService consumed by flowmgt.
-type serverConfigProvider interface {
-	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
-}
-
 // Initialize initializes the flow management service and registers HTTP routes. withSystemFlows loads
 // the system flows, for a server that executes flows. bus is required: the service publishes the audit
 // event of every flow it creates, updates, deletes or restores on it. projectValidator is nil on a
@@ -46,7 +41,7 @@ func Initialize(
 	executorRegistry core.ExecutorMetadataProvider,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	graphBuilder graphbuilder.GraphBuilderInterface,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	ouSvc ouProvider,
 	templateResolver notificationTemplateProvider,
 	connectionProvider httpConnectionProvider,

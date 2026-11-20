@@ -290,6 +290,7 @@ export function projectRouteConfig(handle: string): RouteConfig {
   );
   const config = {...RouteConfig, ...scoped} as RouteConfig;
   config.deploy.project = () => prefix;
+  config.deploy.pipeline = () => `${prefix}/pipeline`;
   return config;
 }
 

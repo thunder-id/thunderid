@@ -20,6 +20,7 @@ import (
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -35,7 +36,8 @@ type DeviceAuthServiceInterface interface {
 	InitiateDeviceAuthorization(
 		ctx context.Context, request *DeviceAuthorizationRequest, oauthApp *providers.OAuthClient,
 	) (*DeviceAuthorizationResponse, error)
-	HandleCallback(ctx context.Context, requestID, assertion string) *DeviceAuthError
+	HandleCallback(ctx context.Context, requestID, assertion string,
+		sessionData []oauth2model.SessionData) *DeviceAuthError
 	GetByDeviceCode(ctx context.Context, deviceCode string) (*DeviceAuthRequest, error)
 	UpdatePolling(ctx context.Context, requestID string, polledAt time.Time, interval int64) error
 	UpdateState(ctx context.Context, requestID string, state DeviceRequestState) error
@@ -278,8 +280,10 @@ func requiredOptionalAttributes(scopes []string, app *providers.OAuthClient) str
 	return strings.Join(selected, " ")
 }
 
-// HandleCallback verifies a terminal flow assertion and applies its outcome to the Device Grant request.
-func (s *deviceAuthService) HandleCallback(ctx context.Context, requestID, assertion string) *DeviceAuthError {
+// HandleCallback verifies a terminal flow assertion and applies its outcome to the Device Grant request. An
+// approval keeps the SSO sessions the caller posted when device_sso was granted, for the device secret.
+func (s *deviceAuthService) HandleCallback(ctx context.Context, requestID, assertion string,
+	sessionData []oauth2model.SessionData) *DeviceAuthError {
 	record, callbackErr := s.loadRequestForCallback(ctx, requestID, assertion)
 	if callbackErr != nil {
 		return callbackErr
@@ -313,11 +317,18 @@ func (s *deviceAuthService) HandleCallback(ctx context.Context, requestID, asser
 	if authTime.IsZero() {
 		authTime = time.Now()
 	}
-	authorizedScopes := utils.StringifyStringArray(append(
-		utils.ParseStringArray(record.StandardScopes, " "),
-		utils.ParseStringArray(claims.authorizedPermissions, " ")...), " ")
-	if err := s.store.MarkApproved(ctx, record.RequestID, claims.userID, authorizedScopes,
-		claims.attributeCacheID, claims.completedACR, claims.sessionID, authTime); err != nil {
+	scopes := append(utils.ParseStringArray(record.StandardScopes, " "),
+		utils.ParseStringArray(claims.authorizedPermissions, " ")...)
+	if err := s.store.MarkApproved(ctx, record.RequestID, &DeviceApproval{
+		UserID:           claims.userID,
+		SubjectID:        claims.subjectID,
+		AuthorizedScopes: utils.StringifyStringArray(scopes, " "),
+		AttributeCacheID: claims.attributeCacheID,
+		CompletedACR:     claims.completedACR,
+		SessionID:        claims.sessionID,
+		AuthTime:         authTime,
+		SessionData:      oauth2utils.KeepDeviceSessions(scopes, sessionData),
+	}); err != nil {
 		s.logger.Error(ctx, "Failed to approve Device Grant request", log.Error(err))
 		return deviceCallbackServerError()
 	}
@@ -365,7 +376,7 @@ func decodeDeviceAssertion(assertion string) (assertionClaims, time.Time, error)
 	if err != nil {
 		return assertionClaims{}, time.Time{}, err
 	}
-	claims := assertionClaims{userID: base.UserID, attributeCacheID: base.AttributeCacheID,
+	claims := assertionClaims{userID: base.UserID, subjectID: base.SubjectID, attributeCacheID: base.AttributeCacheID,
 		completedACR: base.CompletedACR}
 	if value, ok := payload[oauth2const.ClaimAuthorizationRequestID].(string); ok {
 		claims.requestID = value

@@ -17,6 +17,7 @@ type FlowMetadataResponse struct {
 	OU                        *OUMetadata                        `json:"ou,omitempty"`
 	Design                    DesignMetadata                     `json:"design"`
 	I18n                      I18nMetadata                       `json:"i18n"`
+	DefaultReturnURL          string                             `json:"defaultReturnUrl,omitempty"`
 }
 
 // OUMetadata represents organization unit metadata.

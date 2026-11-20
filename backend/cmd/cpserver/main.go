@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -97,7 +98,8 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager, auditBus)
+	jwtService, runtimeCryptoSvc, importService, mcpServer, gatewayStopper := registerServices(mux, cacheManager,
+		auditBus)
 
 	// When invoked as the bootstrap one-shot (`cpserver bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -148,13 +150,13 @@ func main() {
 
 	serverURL := config.GetServerURL(&cfg.Server)
 	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
-	logger.Info(ctx, "ThunderID Control Plane URL", log.String("url", serverURL))
-	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
+	logger.Info(ctx, cfg.Server.ProductName+" Control Plane URL", log.String("url", serverURL))
+	logger.Info(ctx, cfg.Server.ProductName+" Console URL", log.String("url", consoleURL))
 
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info(ctx, "ThunderID Control Plane started",
+		logger.Info(ctx, cfg.Server.ProductName+" Control Plane started",
 			log.String("mode", string(config.GetServerMode())), log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
@@ -164,7 +166,7 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, auditStopper)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, gatewayStopper, auditStopper)
 }
 
 // initSystemPermissions activates the Control Plane's permissions: the system root and its children.
@@ -205,7 +207,7 @@ func initRevocationCache(ctx context.Context, logger *log.Logger,
 func getThunderHome(ctx context.Context, logger *log.Logger) string {
 	// Parse project directory from command line arguments.
 	projectHome := ""
-	projectHomeFlag := flag.String("serverHome", "", "Path to ThunderID home directory")
+	projectHomeFlag := flag.String("serverHome", "", "Path to the server home directory")
 	flag.Parse()
 
 	if *projectHomeFlag != "" {
@@ -358,6 +360,7 @@ func gracefulShutdown(
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
+	gatewayStopper gateway.StopperInterface,
 	auditStopper eventbus.StopperInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
@@ -376,6 +379,11 @@ func gracefulShutdown(
 
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()
+
+	// Stop the sweeps of gateways' stores that applies started, before the database closes under them.
+	if gatewayStopper != nil {
+		gatewayStopper.Stop()
+	}
 
 	// Stop audit once the HTTP server has stopped, so the last requests are still written.
 	auditStopper.Stop()

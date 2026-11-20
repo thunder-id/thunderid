@@ -53,6 +53,12 @@ func registerRoutes(mux *http.ServeMux, h *projectHandler) {
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
+	checkOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
 
 	mux.HandleFunc(middleware.WithCORS("POST "+projectsPath,
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleProjectPostRequest)).ServeHTTP, collectionOpts))
@@ -65,8 +71,14 @@ func registerRoutes(mux *http.ServeMux, h *projectHandler) {
 	mux.HandleFunc(middleware.WithCORS("DELETE "+projectsPath+"/{id}",
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleProjectDeleteRequest)).ServeHTTP, resourceOpts))
 
+	mux.HandleFunc(middleware.WithCORS("GET "+projectsPath+"/{id}/deletion-check",
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleProjectDeletionCheckRequest)).ServeHTTP,
+		checkOpts))
+
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+projectsPath,
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, collectionOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+projectsPath+"/{id}",
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, resourceOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+projectsPath+"/{id}/deletion-check",
+		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, checkOpts))
 }

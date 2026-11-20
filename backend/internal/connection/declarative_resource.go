@@ -407,6 +407,11 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 			model.TokenExchangeEnabled = &enabled
 		}
 	}
+	if raw, ok := values[idp.PropIDJagEnabled]; ok {
+		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
+			model.IDJagEnabled = &enabled
+		}
+	}
 	return model, nil
 }
 
@@ -546,7 +551,8 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			UserInfoEndpoint: model.UserInfoEndpoint, JwksEndpoint: model.JwksEndpoint,
 			Issuer: model.Issuer, Scopes: model.Scopes,
 			Prompt: model.Prompt, TokenExchangeEnabled: model.TokenExchangeEnabled,
-			TrustedTokenAudience: model.TrustedTokenAudience, AttributeConfiguration: model.AttributeConfiguration,
+			TrustedTokenAudience: model.TrustedTokenAudience, IDJagEnabled: model.IDJagEnabled,
+			AttributeConfiguration: model.AttributeConfiguration,
 		})
 		if err != nil {
 			return nil, nil, err

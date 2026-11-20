@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -70,7 +71,48 @@ func (e *criteriaRevocationExecutor) advanceCutoff(ctx *providers.NodeContext) (
 	if plan.Mode != revocation.ModeBeforeAction {
 		return &providers.ExecutorResponse{Status: providers.ExecComplete}, nil
 	}
+	removed, err := e.removedHolderCriteria(ctx, plan)
+	if err != nil {
+		return nil, err
+	}
+	plan.Criteria = append(plan.Criteria, removed...)
 	return e.write(ctx, plan, time.Now().UTC())
+}
+
+// removedHolderCriteria returns the criteria for the holders the committed change removed that the plan
+// does not cover, such as a holder added after the plan was made. Only a system flow, whose inputs come
+// from the service that made the change, may name them, and only for a plan recording its holder scopes.
+func (e *criteriaRevocationExecutor) removedHolderCriteria(ctx *providers.NodeContext,
+	plan revocationPlan) ([]revocation.Criterion, error) {
+	if ctx.FlowType != providers.FlowTypeSystem || len(plan.HolderScopes) == 0 {
+		return nil, nil
+	}
+	encoded, _ := ctx.ConsumeInput(revocationInputRemovedHolders)
+	if encoded == "" {
+		return nil, nil
+	}
+	var holders []string
+	if err := json.Unmarshal([]byte(encoded), &holders); err != nil {
+		return nil, fmt.Errorf("failed to decode the removed holders: %w", err)
+	}
+	// Each holder loses what the plan revokes from the others, built the same way, so a holder the plan
+	// already covers, by its type and value alike, gets nothing written twice.
+	covered := make(map[revocation.Criterion]struct{}, len(plan.Criteria))
+	for _, criterion := range plan.Criteria {
+		covered[criterion] = struct{}{}
+	}
+	var criteria []revocation.Criterion
+	for _, entityID := range holders {
+		for _, scope := range plan.HolderScopes {
+			criterion := entityScopeCriterion(entityID, scope)
+			if _, ok := covered[criterion]; ok {
+				continue
+			}
+			covered[criterion] = struct{}{}
+			criteria = append(criteria, criterion)
+		}
+	}
+	return criteria, nil
 }
 
 // write records every criterion of the plan with the given cutoff.

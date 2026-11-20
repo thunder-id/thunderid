@@ -110,8 +110,6 @@ const (
 	// DataOTPNumericOnly reports whether the OTP minted by the OTP executor in generate mode contains
 	// digits only, surfaced so the client restricts input to the characters the user has to type.
 	DataOTPNumericOnly = "otpNumericOnly"
-	// DataClientSecret carries a regenerated client secret back to the caller.
-	DataClientSecret = "clientSecret" // #nosec G101 -- response field name, not a secret
 	// DataLinkingPromptDetails holds the matched account-linking attribute values for the linking
 	// prompt, as a JSON array of {"label","value"} objects.
 	DataLinkingPromptDetails = "linkingPromptDetails"
@@ -364,9 +362,9 @@ const (
 	RuntimeKeyAuthTime = "ssoAuthTime"
 	// RuntimeKeySSOSessionHandle is the SSO session handle key. It is used both as the RuntimeData key
 	// that carries the run's session handle across nodes (resolved on reuse, minted on a fresh login)
-	// and as the ExecutorResponse EngineData key the Session node uses to hand a freshly minted handle
-	// to the transport layer for the per-flow cookie. Using the generic EngineData channel keeps SSO
-	// concepts out of the reusable engine contract.
+	// and as the ExecutorResponse EngineData key the Session node uses to hand the session's handle
+	// to the transport layer. Using the generic EngineData channel keeps SSO concepts out of the reusable
+	// engine contract.
 	RuntimeKeySSOSessionHandle = "ssoSessionHandle"
 	// RuntimeKeySSOSessionID carries the SSO session's id across nodes so the auth assertion can stamp
 	// it as the OIDC sid claim. It is the session id, not the handle: the handle is a bearer credential
@@ -374,6 +372,10 @@ const (
 	// accepts it. Like RuntimeKeyTokenFamilyID it is excluded from the session snapshot, because a
 	// value replayed from a snapshot could name a session other than the one now in force.
 	RuntimeKeySSOSessionID = "ssoSessionId"
+	// RuntimeKeySSOSessionExpiresAt carries the Unix time (seconds) the SSO session ends, with its handle on
+	// the EngineData channel. It is also kept in RuntimeData for a re-executed join to emit again, and is
+	// excluded from the session snapshot.
+	RuntimeKeySSOSessionExpiresAt = "ssoSessionExpiresAt"
 	// RuntimeKeySSOSessionCleared is the ExecutorResponse EngineData signal the session sign-out node
 	// raises once it has terminated the session, telling the transport layer to clear the per-flow
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO

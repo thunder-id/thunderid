@@ -23,8 +23,7 @@ const (
 	// passkey.allowed_origins accepts.
 	passkeyRelyingPartyID = "localhost"
 
-	secretRegenerationFlowHandle = "default-secret-regeneration-flow"
-	userSuspendFlowHandle        = "default-user-suspend-flow"
+	userSuspendFlowHandle = "default-user-suspend-flow"
 )
 
 func (ts *AuditLogTestSuite) TestEveryUserCredentialUpdateRecordsItsOutcome() {
@@ -288,7 +287,7 @@ func (ts *AuditLogTestSuite) TestEveryPasskeyRegistrationRecordsItsOutcome() {
 	}
 }
 
-// The flow refuses an application it cannot rotate before the rotating node, so that refusal writes no line.
+// A regeneration of a missing application is refused, and the refusal is recorded as a failed update.
 func (ts *AuditLogTestSuite) TestASecretRegenerationIsRecorded() {
 	ouID := ts.createOrganizationUnit("cred-secret")
 	clientID := ts.prefix + "cred-secret-client"
@@ -300,20 +299,19 @@ func (ts *AuditLogTestSuite) TestASecretRegenerationIsRecorded() {
 	ts.Require().NoError(err, "failed to create the application whose secret is regenerated")
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
 
-	rotated, body := ts.runAdministrationFlow(secretRegenerationFlowHandle,
-		map[string]string{"targetApplicationId": appID})
+	rotated, body := ts.post(testutils.GetHTTPClient(), "/applications/"+appID+"/client-secret/regenerate", nil, nil)
 	ts.Require().Equal(http.StatusOK, rotated.StatusCode, string(body))
-	var step struct {
-		Data struct {
-			AdditionalData map[string]string `json:"additionalData"`
-		} `json:"data"`
+	var regenerated struct {
+		ClientSecret string `json:"clientSecret"`
 	}
-	ts.Require().NoError(json.Unmarshal(body, &step))
-	newSecret := step.Data.AdditionalData["clientSecret"]
-	ts.Require().NotEmpty(newSecret, "the flow must return the new secret: %s", string(body))
-	refused, body := ts.runAdministrationFlow(secretRegenerationFlowHandle,
-		map[string]string{"targetApplicationId": unusedID()})
-	ts.Require().NotContains(string(body), `"COMPLETE"`, "a rotation of a missing application must not complete")
+	ts.Require().NoError(json.Unmarshal(body, &regenerated))
+	newSecret := regenerated.ClientSecret
+	ts.Require().NotEmpty(newSecret, "the response must carry the new secret: %s", string(body))
+	missing := unusedID()
+	refused, body := ts.post(testutils.GetHTTPClient(), "/applications/"+missing+"/client-secret/regenerate", nil,
+		nil)
+	ts.Require().Equal(http.StatusNotFound, refused.StatusCode, "a missing application must not be regenerated: %s",
+		string(body))
 
 	perCall := ts.linesPerCall(rotated, refused)
 	line := ts.onlyLineOf(perCall[0], "application.update", "a regenerated secret")
@@ -324,8 +322,9 @@ func (ts *AuditLogTestSuite) TestASecretRegenerationIsRecorded() {
 	ts.Equal(appRef, line.Subject)
 	ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome)
 	ts.Nil(line.Client, "a loopback peer is not recorded")
-	ts.Zero(countEvent(perCall[1], "application.update"),
-		"a rotation refused before the rotating node writes no line of its event")
+	refusal := ts.onlyLineOf(perCall[1], "application.update", "a refused regeneration")
+	ts.Equal(testutils.AuditRef{Type: "application", ID: missing}, refusal.Target)
+	ts.Equal(map[string]string{"result": "failed", "reason": "app_1001"}, refusal.Outcome)
 	for _, written := range perCall {
 		for _, other := range written {
 			ts.NotContains(other.Raw, newSecret, "the new client secret is never recorded")

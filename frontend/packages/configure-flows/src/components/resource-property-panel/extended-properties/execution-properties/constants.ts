@@ -60,21 +60,6 @@ export const PROVISIONING_OU_RESOLVED = 'resolved';
 export const PROVISIONING_OU_USER_TYPE = 'userType';
 
 /**
- * Available revocation modes for the Administrative Flow Pre executor.
- *
- * Must stay in step with the executor's SupportedModes in the backend
- * (backend/internal/flow/executor/administrative_flow_pre_executor.go). Offering a mode the backend
- * does not support would let the builder save a flow that fails validation.
- */
-export const REVOCATION_MODES = [
-  {
-    value: 'revoke_all',
-    translationKey: 'flows:core.executions.preDelete.mode.revokeAll',
-    displayLabel: 'Validate and Plan Full Revocation',
-  },
-] as const;
-
-/**
  * Available modes for the Access Change Validator executor. Must match its SupportedModes in the backend, less
  * the ones only a system flow runs.
  */
@@ -257,7 +242,6 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.SSOCheck,
   ExecutionTypes.Session,
   ExecutionTypes.SessionSignOut,
-  ExecutionTypes.PreDelete,
   ExecutionTypes.CriteriaRevocation,
   ExecutionTypes.AccessChangeValidator,
   ExecutionTypes.RoleExecutor,

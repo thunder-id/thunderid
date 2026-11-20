@@ -124,7 +124,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	if errResp != nil {
 		return nil, errResp
 	}
-	tokenResponse.DeviceSecret = h.buildDeviceSecret(ctx, authCode, oauthApp, logger)
+	tokenResponse.DeviceSecret = h.deviceSecret(ctx, authCode, oauthApp, logger)
 
 	return tokenResponse, nil
 }
@@ -287,26 +287,17 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 	return tokenResponse, nil
 }
 
-// buildDeviceSecret returns the device secret carrying the SSO sessions kept with the code. It returns an
-// empty token when the code keeps none, and a failure to build it is logged rather than failing the
-// exchange, since the code has already been spent.
-func (h *authorizationCodeGrantHandler) buildDeviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
+// deviceSecret returns the device secret carrying the SSO sessions kept with the code, lasting until the last
+// of them ends, or none when every one has ended.
+func (h *authorizationCodeGrantHandler) deviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
 	oauthApp *providers.OAuthClient, logger *log.Logger) model.TokenDTO {
-	if h.deviceSecretValidity == 0 || len(authCode.SessionData) == 0 {
+	// The sessions were posted in the request that minted the code.
+	validity, alive := h.deviceSecretLifetime(authCode.SessionData, authCode.TimeCreated, time.Now())
+	if !alive {
 		return model.TokenDTO{}
 	}
-	token, err := h.tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
-		OAuthApp:    oauthApp,
-		SubjectID:   authCode.SubjectID,
-		SessionData: authCode.SessionData,
-		// Each session's own deadline is checked when it is exchanged.
-		ValidityPeriod: int64(h.deviceSecretValidity.Seconds()),
-	})
-	if err != nil {
-		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
-		return model.TokenDTO{}
-	}
-	return *token
+	return buildDeviceSecret(ctx, h.tokenBuilder, validity, oauthApp, authCode.SubjectID, authCode.SessionData,
+		logger)
 }
 
 func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
@@ -349,6 +340,36 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 		}
 	}
 	return authCode, nil
+}
+
+// deviceSecretLifetime returns how long from now a device secret carrying sessions posted at postedAt lasts:
+// until the last of them ends, as each one's expiresIn said, and never longer than the device secret
+// validity. A session that did not say, or an unknown postedAt, gives the full validity; a session that
+// said zero or less has ended. It reports false when every session has ended.
+func (h *authorizationCodeGrantHandler) deviceSecretLifetime(sessionData []model.SessionData,
+	postedAt, now time.Time) (time.Duration, bool) {
+	if postedAt.IsZero() {
+		return h.deviceSecretValidity, true
+	}
+	var lastEnd time.Time
+	for _, entry := range sessionData {
+		if entry.ExpiresIn == nil {
+			return h.deviceSecretValidity, true
+		}
+		if *entry.ExpiresIn <= 0 {
+			continue
+		}
+		// Clamped to the validity before it becomes a duration, so no posted value can overflow it.
+		left := time.Duration(min(*entry.ExpiresIn, int64(h.deviceSecretValidity/time.Second))) * time.Second
+		if end := postedAt.Add(left); end.After(lastEnd) {
+			lastEnd = end
+		}
+	}
+	remaining := lastEnd.Sub(now)
+	if lastEnd.IsZero() || remaining <= 0 {
+		return 0, false
+	}
+	return min(remaining, h.deviceSecretValidity), true
 }
 
 // validateAuthorizationCode validates the authorization code against the token request.

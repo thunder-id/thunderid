@@ -1854,7 +1854,6 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 		PAR:                      engineconfig.PARConfig{ExpiresIn: 600, RequirePAR: true},
 		DPoP:                     engineconfig.DPoPConfig{Required: true, AllowedAlgs: []string{"ES256"}},
 		CIBA:                     engineconfig.CIBAConfig{IDTokenHintMaxAgeDays: 30},
-		TokenExchange:            engineconfig.TokenExchangeConfig{TokenFamily: "inherit"},
 		IDJAG:                    idJAG,
 		AllowWildcardRedirectURI: true,
 		AllowedGrantTypes:        []string{"authorization_code"},
@@ -1872,7 +1871,6 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 	assert.Equal(suite.T(), src.PAR, dst.PAR)
 	assert.Equal(suite.T(), src.DPoP, dst.DPoP)
 	assert.Equal(suite.T(), src.CIBA, dst.CIBA)
-	assert.Equal(suite.T(), src.TokenExchange, dst.TokenExchange)
 	assert.Equal(suite.T(), src.IDJAG, dst.IDJAG)
 	assert.Equal(suite.T(), src.AllowWildcardRedirectURI, dst.AllowWildcardRedirectURI)
 	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)
@@ -1926,6 +1924,31 @@ allowed_subject_types:
 	assert.Empty(suite.T(), dst.AllowedClaims)
 	assert.Empty(suite.T(), dst.DefaultScopeClaimsMapping)
 	assert.Empty(suite.T(), dst.AllowedSubjectTypes)
+}
+
+// oauth.token_exchange.token_family was removed: exchanged tokens always inherit the subject token's
+// token family. A deployment that still sets it fails to load rather than silently losing its choice.
+func (suite *ConfigTestSuite) TestLoadConfigRefusesTheRemovedTokenExchangeSection() {
+	const valid = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	tempDir := suite.T().TempDir()
+	_, err := LoadConfig(suite.createTempFile(tempDir, "valid*.yaml", valid), "", tempDir)
+	suite.Require().NoError(err)
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "token-exchange*.yaml",
+		valid+"oauth:\n  token_exchange:\n    token_family: none\n"), "", tempDir)
+
+	suite.Nil(cfg)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "token_exchange")
 }
 
 // A deployment that sets max_gateways to zero means it administers none, and the merge has to keep
@@ -2043,6 +2066,52 @@ func TestApplyAndImportTimeoutsAreSeconds(t *testing.T) {
 	if (GatewayConfig{ApplyTimeoutSeconds: math.MaxInt}).ApplyTimeout() != 0 ||
 		(ImportConfig{TimeoutSeconds: 9223372037}).Timeout() != 0 {
 		t.Error("a timeout too large for a duration should be zero rather than wrap around")
+	}
+}
+
+// An unused value's grace is an hour unset, an explicit zero is raised to the one-second minimum and
+// reported as raised, and a negative one turns the removal off.
+func TestUnusedValueGraceDefaultsToAnHour(t *testing.T) {
+	if grace, on := (GatewayConfig{}).UnusedValueGrace(); !on || grace != time.Hour {
+		t.Errorf("unset: got %v, %v", grace, on)
+	}
+	if (GatewayConfig{}).UnusedValueGraceRaised() {
+		t.Error("an unset grace is not raised")
+	}
+	zero, one, negative := 0, 1, -1
+	zeroGrace := GatewayConfig{UnusedValueGraceSeconds: &zero}
+	if grace, on := zeroGrace.UnusedValueGrace(); !on || grace != time.Second {
+		t.Errorf("zero: got %v, %v", grace, on)
+	}
+	if !zeroGrace.UnusedValueGraceRaised() {
+		t.Error("a zero grace should be reported as raised")
+	}
+	oneGrace := GatewayConfig{UnusedValueGraceSeconds: &one}
+	if grace, on := oneGrace.UnusedValueGrace(); !on || grace != time.Second || oneGrace.UnusedValueGraceRaised() {
+		t.Errorf("one: got %v, %v", grace, on)
+	}
+	off := GatewayConfig{UnusedValueGraceSeconds: &negative}
+	if _, on := off.UnusedValueGrace(); on || off.UnusedValueGraceRaised() {
+		t.Error("a negative grace should turn the removal off and is not raised")
+	}
+}
+
+// The least time between two sweeps of a gateway is five minutes unset, and zero or a negative number
+// sweeps after every apply.
+func TestUnusedValueSweepIntervalDefaultsToFiveMinutes(t *testing.T) {
+	if interval := (GatewayConfig{}).UnusedValueSweepInterval(); interval != 5*time.Minute {
+		t.Errorf("unset: got %v", interval)
+	}
+	zero, negative, minute := 0, -1, 60
+	cases := []struct {
+		seconds *int
+		want    time.Duration
+	}{{&zero, 0}, {&negative, 0}, {&minute, time.Minute}}
+	for _, tc := range cases {
+		got := (GatewayConfig{UnusedValueSweepIntervalSeconds: tc.seconds}).UnusedValueSweepInterval()
+		if got != tc.want {
+			t.Errorf("%d: got %v, want %v", *tc.seconds, got, tc.want)
+		}
 	}
 }
 

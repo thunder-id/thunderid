@@ -245,7 +245,7 @@ func (c *compositeGroupStore) GetGroupMembers(
 		c.dbStore.GetGroupMemberCount, c.fileStore.GetGroupMemberCount,
 		c.dbStore.GetGroupMembers, c.fileStore.GetGroupMembers,
 		mergeMembers,
-		limit, offset,
+		limit, offset, refuseStoreOverLimit,
 	)
 }
 
@@ -337,9 +337,20 @@ func (c *compositeGroupStore) GetGroupsByOrganizationUnit(
 		c.dbStore.GetGroupsByOrganizationUnitCount, c.fileStore.GetGroupsByOrganizationUnitCount,
 		c.dbStore.GetGroupsByOrganizationUnit, c.fileStore.GetGroupsByOrganizationUnit,
 		mergeGroupBasicDAOs,
-		limit, offset,
+		limit, offset, clampStoreCounts,
 	)
 }
+
+// storeCountMode says how compositeMergeByID treats a store whose count alone exceeds the composite limit.
+type storeCountMode bool
+
+const (
+	// clampStoreCounts reads such a store as its first records, for listings that page.
+	clampStoreCounts storeCountMode = true
+	// refuseStoreOverLimit refuses the read, for reads that must be complete, such as the members a
+	// revocation is planned from.
+	refuseStoreOverLimit storeCountMode = false
+)
 
 // compositeMergeByID runs a paginated merge across the db and file stores keyed by a single ID.
 func compositeMergeByID[T any](
@@ -347,13 +358,13 @@ func compositeMergeByID[T any](
 	dbCount, fileCount func(context.Context, string) (int, error),
 	dbList, fileList func(context.Context, string, int, int) ([]T, error),
 	merge func([]T, []T) []T,
-	limit, offset int,
+	limit, offset int, countMode storeCountMode,
 ) ([]T, error) {
 	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
 		return func() (int, error) {
 			count, err := fn(ctx, id)
-			if err != nil {
-				return 0, err
+			if err != nil || countMode == refuseStoreOverLimit {
+				return count, err
 			}
 			return min(count, serverconst.MaxCompositeStoreRecords), nil
 		}

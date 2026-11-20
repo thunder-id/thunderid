@@ -37,7 +37,7 @@ flowchart LR
 
 The flow checks administrator permissions, then resolves the agent type, organization unit, and owner. **Agent Details** collects schema attributes, including `name`, before the uniqueness check and any delegation settings. Provisioning creates the agent and its credentials, which appear on the completion screen.
 
-In the supplied flows, a duplicate attribute value returns the administrator to **Agent Details**. Provisioning failures also return there so the administrator can review the submitted values and the error.
+In the supplied flows, a duplicate attribute value returns the administrator to **Agent Details**. In the Own Identity flow, the screen asks again for the duplicate attribute only, and a provisioning failure ends the run with the error. The other supplied flows return provisioning failures to **Agent Details** so the administrator can review the submitted values and the error.
 
 ### Select a flow template
 
@@ -56,7 +56,11 @@ Select a template, or customize an existing agent onboarding Administration flow
 4. Enter a flow name. Create the flow, then review its steps in the builder.
 5. Save the flow and copy its handle.
 
-For custom attributes, update the [Agent Schema](../agent-schema) first. Add the fields to the flow's attribute form, or connect Provisioning's incomplete output to a dynamic input prompt that submits back to Provisioning. The executor requests missing required attributes and, with `includeOptional: true`, optional attributes.
+For custom attributes, update the [Agent Schema](../agent-schema) first. Add the fields to the flow's attribute form, or connect Provisioning's incomplete output to a dynamic input prompt that submits back to Provisioning. The executor requests missing required attributes and, with `includeOptional: true`, optional attributes that have **Ask when created** selected.
+
+The templates follow the default agent schema. If your schema differs, update the attributes a template names to match it before you use it.
+
+To ask for the agent's end date during onboarding, add a field for `validUntil` to **Agent Details**. See [Set a lifespan during onboarding](../agent-lifespan#set-a-lifespan-during-onboarding).
 
 For node properties and connections, see [Build an agent onboarding flow](../../flows/build-a-flow#build-an-agent-onboarding-flow).
 
@@ -88,9 +92,9 @@ To let the administrator select the mode for each agent, use **Choose Agent Mode
 
 All three delegation fields are required when delegated mode is selected. **Login flow** selects an existing authentication flow for users who later sign in through the agent.
 
-### Assign groups and roles during onboarding
+### Grant birthright permissions to agents at creation
 
-Configure these assignments when every agent created by the flow needs the same access:
+Birthright permissions are the baseline access granted to an agent at creation through group and role assignments. Configure these assignments when every agent created by the flow needs the same access:
 
 1. Create the required [groups](../../users/manage-groups) and [roles](../../users/manage-roles).
 2. Open the flow's **Provisioning** node. Select the groups in **Assign group** (`assignGroup`) and the roles in **Assign role** (`assignRole`). Both fields list the existing groups and roles by name.
@@ -145,7 +149,7 @@ Use the built-in `default-agent-onboarding-flow`, or create a flow from **Agent 
 1. Navigate to **Agents**. Click **Add agent**.
 2. Select the organization unit when prompted. The template resolves the `default` agent type before this step.
 3. Confirm the owner. The selection defaults to you when your account is a user on the deployment you add the agent on; choose another user to change it. The owner is the person accountable for the agent.
-4. In **Agent Details**, fill in the schema attributes, including **Name**. The default schema requires a unique name; model provider, model, and function are optional.
+4. In **Agent Details**, fill in the schema attributes, including **Name**. The default schema requires a unique name; model provider is optional.
 5. Click **Create Agent**. If you use the Choose Mode template, leave **Act on behalf of a signed-in user** unchecked on the next screen and click **Continue**.
 6. Copy the **Agent ID**, **Client ID**, and **Client Secret** from the completion screen. Store the secret before closing the flow; it is shown only once.
 
@@ -249,7 +253,7 @@ The agent schema decides which attributes an agent carries, and each agent holds
 
 ### Groups and roles
 
-The onboarding flow can [assign groups and roles during creation](#assign-groups-and-roles-during-onboarding). Use the following options to review or change access afterward.
+The onboarding flow can [assign groups and roles during creation](#grant-birthright-permissions-to-agents-at-creation). Use the following options to review or change access afterward.
 
 An agent should reach only the resources its task needs. What its tokens are allowed to carry comes from the groups and roles assigned to it, so the agent's reach is controlled separately from its credential, and changing what an agent can do never rotates its secret.
 
@@ -293,7 +297,7 @@ The custom attributes an agent carries come from its agent type's schema. Each a
 
 ## Set a lifespan
 
-Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab or through the API. Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
+Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab, through the API, or in a [customized onboarding flow](../agent-lifespan#set-a-lifespan-during-onboarding). Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
 
 ## Suspend or unlock an agent
 
@@ -312,7 +316,7 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 - **API:** call `DELETE /agents/<AGENT_ID>`. See the [Agents API Reference](../../../apis#tag/agents) for details.
 
 :::warning
-Deletion is permanent and revokes the agent's credentials. Tokens the agent was already issued stay valid until they expire, so keep agent token lifetimes short.
+Deletion is permanent. It revokes the agent's credentials and ends its sessions. When token revocation is on (`oauth.token_revocation.enabled`, the default), it also revokes the tokens issued to the agent, including user tokens issued through its OAuth client; with it off, those tokens stay valid until they expire. See [Token Revocation](../../protocols/oauth-oidc/token-revocation#deletion). A resource server that validates tokens locally, without introspection or the revocation list, still accepts them until they expire, so keep agent token lifetimes short.
 :::
 
 ## Scope agents to a project

@@ -936,8 +936,18 @@ describe('CreateUserTypePage', () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           schema: {
-            workMail: {type: 'email', required: false, regex: '^[^\\s@]+@[^\\s@]+$'},
-            phone: {type: 'mobile', required: false, regex: '^\\+[1-9]\\d{1,14}$'},
+            workMail: {
+              type: 'email',
+              required: false,
+              display: {order: 0},
+              regex: '^[^\\s@]+@[^\\s@]+$',
+            },
+            phone: {
+              type: 'mobile',
+              required: false,
+              display: {order: 1},
+              regex: '^\\+[1-9]\\d{1,14}$',
+            },
           },
           systemAttributes: expect.objectContaining({primaryEmail: 'workMail', primaryMobile: 'phone'}) as unknown,
         }),
@@ -1074,7 +1084,11 @@ describe('CreateUserTypePage', () => {
         ouId: 'root-ou',
         schema: {
           username: {type: 'string', required: true, unique: true},
-          altMail: {type: 'email', required: false, regex: '^[^\\s@]+@[^\\s@]+$'},
+          altMail: {
+            type: 'email',
+            required: false,
+            regex: '^[^\\s@]+@[^\\s@]+$',
+          },
         },
         systemAttributes: {display: 'username', primaryEmail: 'altMail'},
       });

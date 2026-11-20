@@ -129,7 +129,9 @@ export function useProjectChanges(): Record<string, number> {
 
 /**
  * How many changes each of the projects has that a gateway does not run yet, and how many of the
- * resources no project owns, each project read against the latest version.
+ * resources no project owns, each project read against the latest version. A project's count is its own
+ * changes and what they need that the gateway lacks, as its gateway card counts it, since a deploy of the
+ * project sends both.
  */
 export function useProjectsPending(
   targetId: string,
@@ -151,7 +153,10 @@ export function useProjectsPending(
   return useMemo(
     () => ({
       byProject: Object.fromEntries(
-        projects.map((project: string, index: number) => [project, results[index]?.data?.project.pending ?? 0]),
+        projects.map((project: string, index: number) => {
+          const state = results[index]?.data?.project;
+          return [project, (state?.pending ?? 0) + (state?.required ?? 0)];
+        }),
       ),
       shared: Math.max(0, ...results.map((result) => result.data?.shared.pending ?? 0)),
       // While any project is still being read, or once one could not be, the counts above fall short.

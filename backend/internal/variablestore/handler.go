@@ -111,6 +111,27 @@ func (h *handler) HandleVariableDeleteRequest(w http.ResponseWriter, r *http.Req
 	logger.Debug(ctx, "Deleted variable", log.String("name", name))
 }
 
+// HandleVariableBulkDeleteRequest removes the variables named by names= and answers with those it
+// removed. With unchangedFor= only those last set longer ago than that many seconds are removed.
+func (h *handler) HandleVariableBulkDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	query, svcErr := parseDeleteQuery(r.URL.RawQuery)
+	if svcErr != nil {
+		h.handleError(ctx, w, svcErr)
+		return
+	}
+	deleted, svcErr := h.service.DeleteVariables(ctx, query.names, query.unchangedFor)
+	if svcErr != nil {
+		h.handleError(ctx, w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, deleteResponse(deleted))
+	logger.Debug(ctx, "Deleted variables", log.Int("requested", len(query.names)), log.Int("deleted", len(deleted)))
+}
+
 // HandleSecretListRequest lists the secrets held, by name.
 func (h *handler) HandleSecretListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -197,6 +218,36 @@ func (h *handler) HandleSecretDeleteRequest(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusNoContent)
 	logger.Debug(ctx, "Deleted secret", log.String("name", name))
+}
+
+// HandleSecretBulkDeleteRequest removes the secrets named by names= and answers with those it removed,
+// bounded by unchangedFor= as variables are.
+func (h *handler) HandleSecretBulkDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	query, svcErr := parseDeleteQuery(r.URL.RawQuery)
+	if svcErr != nil {
+		h.handleError(ctx, w, svcErr)
+		return
+	}
+	deleted, svcErr := h.service.DeleteSecrets(ctx, query.names, query.unchangedFor)
+	if svcErr != nil {
+		h.handleError(ctx, w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, deleteResponse(deleted))
+	logger.Debug(ctx, "Deleted secrets", log.Int("requested", len(query.names)), log.Int("deleted", len(deleted)))
+}
+
+// deleteResponse answers a delete of many names, with an empty list rather than null when none was
+// held.
+func deleteResponse(deleted []string) DeleteResponse {
+	if deleted == nil {
+		deleted = []string{}
+	}
+	return DeleteResponse{Deleted: deleted}
 }
 
 // statusFor reports the status a create-or-replace should answer with.

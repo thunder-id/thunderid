@@ -21,6 +21,12 @@ export interface PipelineVersionsProps {
   runners: Record<string, VersionRunner[]>;
   /** The version the first gateway runs, if any: newer ones can be deployed. */
   firstRuns?: string;
+  /**
+   * Whether the first gateway holds all of the version it runs. While it holds only part, as a deploy that
+   * left changes out leaves it (in a project, while any of the project's changes wait there or are held
+   * back), that version can be deployed again to bring the rest.
+   */
+  firstHoldsAll?: boolean;
   /** The first gateway, which a deploy enters at. */
   firstName?: string;
   /** Opens a deploy of a version to the first gateway. */
@@ -40,6 +46,7 @@ export default function PipelineVersions({
   isLoading = false,
   runners,
   firstRuns = undefined,
+  firstHoldsAll = true,
   firstName = undefined,
   onDeploy,
   deploying = undefined,
@@ -108,8 +115,8 @@ export default function PipelineVersions({
             ))}
           </Stack>
         )}
-        {/* A version the first gateway runs already shows its tag in place of a deploy. */}
-        {deployable && version.version !== firstRuns && (
+        {/* A version the first gateway runs whole already shows its tag in place of a deploy. */}
+        {deployable && (version.version !== firstRuns || !firstHoldsAll) && (
           <Button
             size="small"
             variant={index === 0 ? 'contained' : 'outlined'}

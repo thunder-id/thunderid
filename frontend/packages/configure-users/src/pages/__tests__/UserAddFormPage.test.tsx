@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {ProjectScopeProvider} from '@thunderid/contexts';
-import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
+import {fireEvent, render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import type {JSX} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import UserAddFormPage from '../UserAddFormPage';
@@ -86,12 +86,18 @@ interface RecordedRequest {
   data?: unknown;
 }
 
+// Two types, so the type is chosen from the select. A single type is used without asking.
 const userTypes = {
-  totalResults: 1,
+  totalResults: 2,
   startIndex: 1,
-  count: 1,
-  types: [{id: 'type-1', handle: 'customer', displayName: 'Customer', ouId: 'ou-root'}],
+  count: 2,
+  types: [
+    {id: 'type-1', handle: 'customer', displayName: 'Customer', ouId: 'ou-root'},
+    {id: 'type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-root'},
+  ],
 };
+
+const soleUserType = {...userTypes, totalResults: 1, count: 1, types: [userTypes.types[0]]};
 
 const customerType = {
   id: 'type-1',
@@ -120,6 +126,10 @@ describe('UserAddFormPage', () => {
       }
       if (config.url.includes('/user-types')) {
         return Promise.resolve({data: userTypes});
+      }
+      // A project has no roles unless a test serves some.
+      if (config.method === 'GET' && config.url.includes('/roles?')) {
+        return Promise.resolve({data: {totalResults: 0, count: 0, roles: []}});
       }
       return Promise.reject(new Error(`unexpected request: ${config.url}`));
     });
@@ -162,7 +172,7 @@ describe('UserAddFormPage', () => {
       ...userTypes,
       totalResults: 2,
       count: 2,
-      types: [...userTypes.types, {id: 'type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-root'}],
+      types: [userTypes.types[0], {id: 'type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-root'}],
     };
     const employeeType = {...customerType, id: 'type-2', handle: 'employee', displayName: 'Employee'};
     mockHttpRequest.mockImplementation((config: RecordedRequest) => {
@@ -211,6 +221,17 @@ describe('UserAddFormPage', () => {
     await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
     await screen.findByRole('textbox', {name: /username/i});
     expect(submit).toBeEnabled();
+  });
+
+  it('creates nothing when the form is submitted before a type is chosen', async () => {
+    render(<UserAddFormPage />);
+
+    const submit = await screen.findByRole('button', {name: 'users:addForm.submit'});
+    fireEvent.submit(submit.closest('form')!);
+
+    // The form's own validation settles before it would post.
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(requests().filter((request) => request.method === 'POST')).toEqual([]);
   });
 
   it('does not look up project organization units outside a project', () => {
@@ -401,6 +422,141 @@ describe('UserAddFormPage', () => {
       });
       return requests().find((request) => request.method === 'POST')?.data;
     }
+
+    describe('with roles in the project', () => {
+      const projectRoles = [
+        {id: 'role-editor', name: 'Editor', ouId: 'ou-root', projectId: 'project-1'},
+        {id: 'role-viewer', name: 'Viewer', ouId: 'ou-root', projectId: 'project-1'},
+      ];
+
+      function serveRoles(failing: string[] = []): void {
+        const fallback = mockHttpRequest.getMockImplementation()!;
+        mockHttpRequest.mockImplementation((config: RecordedRequest) => {
+          if (config.method === 'GET' && config.url.includes('/roles?')) {
+            return Promise.resolve({data: {totalResults: 2, count: 2, roles: projectRoles}});
+          }
+          if (config.url.includes('/assignments/add')) {
+            return failing.some((roleId) => config.url.includes(`/roles/${roleId}/`))
+              ? Promise.reject(new Error('forbidden'))
+              : Promise.resolve({data: undefined});
+          }
+          const named = projectRoles.find((role) => config.url.endsWith(`/roles/${role.id}`));
+          return named ? Promise.resolve({data: named}) : fallback(config);
+        });
+      }
+
+      async function pickRole(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+        await user.click(await screen.findByRole('combobox', {name: 'users:addForm.roles'}));
+        await user.click(within(await screen.findByRole('listbox')).getByText(name));
+      }
+
+      function assigned(): RecordedRequest[] {
+        return requests().filter((request) => request.url.includes('/assignments/add'));
+      }
+
+      it("offers the project's roles and gives the user the picked ones once created", async () => {
+        mockLookups(0, 1);
+        serveRoles();
+        const user = userEvent.setup();
+        await fillInProject(user);
+
+        expect(
+          requests().some((request) => request.url.includes('/roles?') && request.url.includes('projectId=project-1')),
+        ).toBe(true);
+        await pickRole(user, 'Editor');
+        await pickRole(user, 'Viewer');
+        await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+        await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/users'));
+        expect(assigned().map((request) => request.url)).toEqual([
+          expect.stringContaining('/roles/role-editor/assignments/add'),
+          expect.stringContaining('/roles/role-viewer/assignments/add'),
+        ]);
+        expect(assigned()[0].data).toEqual({assignments: [{id: 'user-1', type: 'user'}]});
+      });
+
+      it('creates the user with no role when none is picked', async () => {
+        mockLookups(0, 1);
+        serveRoles();
+        const user = userEvent.setup();
+        await fillInProject(user);
+
+        await screen.findByRole('combobox', {name: 'users:addForm.roles'});
+        await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+        await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/users'));
+        expect(assigned()).toEqual([]);
+      });
+
+      it('names the roles it could not give, stays, and cannot create the user again', async () => {
+        mockLookups(0, 1);
+        serveRoles(['role-viewer']);
+        const user = userEvent.setup();
+        await fillInProject(user);
+
+        await pickRole(user, 'Editor');
+        await pickRole(user, 'Viewer');
+        await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+        expect(await screen.findByTestId('administrator-roles-error')).toHaveTextContent(
+          'users:addForm.rolesError Viewer',
+        );
+        expect(mockNavigate).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+      });
+    });
+
+    it('offers no roles when the project has none', async () => {
+      mockLookups(0, 1);
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      await waitFor(() => {
+        expect(requests().some((request) => request.url.includes('/roles?'))).toBe(true);
+      });
+      expect(screen.queryByRole('combobox', {name: 'users:addForm.roles'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it("says so when the project's roles cannot be loaded, still lets the user be created, and retries the read", async () => {
+      mockLookups(0, 1);
+      const respond = mockHttpRequest.getMockImplementation()!;
+      mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+        config.url.includes('/roles?') ? Promise.reject(new Error('unavailable')) : respond(config),
+      );
+      const user = userEvent.setup();
+      await fillInProject(user);
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('users:addForm.rolesLoadError');
+      expect(screen.queryByRole('combobox', {name: 'users:addForm.roles'})).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeEnabled();
+
+      // A failure the server gives a code for is named by that code.
+      mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+        config.url.includes('/roles?')
+          ? Promise.reject(Object.assign(new Error('refused'), {response: {data: {code: 'ROL-5000'}}}))
+          : respond(config),
+      );
+      await user.click(within(alert).getByRole('button'));
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('users:errors.ROL-5000'));
+
+      mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+        config.url.includes('/roles?')
+          ? Promise.resolve({
+              data: {
+                totalResults: 1,
+                count: 1,
+                roles: [{id: 'role-editor', name: 'Editor', ouId: 'ou-root', projectId: 'project-1'}],
+              },
+            })
+          : respond(config),
+      );
+      await user.click(within(screen.getByRole('alert')).getByRole('button'));
+
+      expect(await screen.findByRole('combobox', {name: 'users:addForm.roles'})).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
 
     it('creates the user in the selected project, without an organization unit to pick when the project has none', async () => {
       mockLookups(0, 1);
@@ -600,6 +756,99 @@ describe('UserAddFormPage', () => {
 
     await screen.findByText(/username is required/i);
     expect(requests().some((request) => request.method === 'POST')).toBe(false);
+  });
+
+  describe('with a single user type', () => {
+    beforeEach(() => {
+      const base = mockHttpRequest.getMockImplementation()!;
+      mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+        config.url.includes('/user-types?') ? Promise.resolve({data: soleUserType}) : base(config),
+      );
+    });
+
+    it('uses it without offering the choice, with its organization unit preselected', async () => {
+      const user = userEvent.setup();
+      render(<UserAddFormPage />);
+
+      expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-value', 'ou-root');
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+      expect(screen.queryByText('users:addForm.userType')).not.toBeInTheDocument();
+
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'frank');
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+          ouId: 'ou-root',
+          type: 'customer',
+          attributes: {username: 'frank'},
+        });
+      });
+    });
+
+    it('posts the organization unit picked in place of the preselected one', async () => {
+      const user = userEvent.setup();
+      render(<UserAddFormPage />);
+
+      await user.click(await screen.findByTestId('ou-picker'));
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'frank');
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+          ouId: 'ou-child',
+          type: 'customer',
+          attributes: {username: 'frank'},
+        });
+      });
+    });
+
+    it('uses it inside a project, where the picker chooses the placement', async () => {
+      mockUseGetOrganizationUnits.mockImplementation((params: {placement?: boolean}) =>
+        params.placement
+          ? {data: {totalResults: 2}, isLoading: false}
+          : {data: {totalResults: 1, organizationUnits: []}, isLoading: false},
+      );
+      const user = userEvent.setup();
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserAddFormPage />
+        </ProjectScopeProvider>,
+      );
+
+      const picker = await screen.findByTestId('ou-picker');
+      expect(picker).toHaveAttribute('data-value', '');
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+      await user.type(await screen.findByRole('textbox', {name: /username/i}), 'frank');
+      expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
+
+      await user.click(picker);
+      await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+          projectId: 'project-1',
+          ouId: 'ou-child',
+          type: 'customer',
+          attributes: {username: 'frank'},
+        });
+      });
+    });
+  });
+
+  it('names a type without a display name by its handle', async () => {
+    const base = mockHttpRequest.getMockImplementation()!;
+    const unnamed = {...userTypes, types: [{...userTypes.types[0], displayName: ''}, userTypes.types[1]]};
+    mockHttpRequest.mockImplementation((config: RecordedRequest) =>
+      config.url.includes('/user-types?') ? Promise.resolve({data: unnamed}) : base(config),
+    );
+    const user = userEvent.setup();
+    render(<UserAddFormPage />);
+
+    await user.click(await screen.findByRole('combobox'));
+    const listbox = await screen.findByRole('listbox');
+    expect(within(listbox).getByText('customer')).toBeInTheDocument();
+    expect(within(listbox).getByText('Employee')).toBeInTheDocument();
   });
 
   it('says so when no user types exist', async () => {

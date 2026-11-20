@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,6 +108,38 @@ func TestTheStoreClientListsWithTheQueryGiven(t *testing.T) {
 	assert.Empty(t, (*calls)[1].query)
 }
 
+// A removal of many names reaches the collection with them in names=, and an age, when given, as whole
+// seconds rounded up in unchangedFor=; it answers with the names the gateway removed.
+func TestTheStoreClientRemovesManyNamesInOneCall(t *testing.T) {
+	ctx, client := context.Background(), newGatewayClient()
+	gw, calls := storeGateway(t, http.StatusOK, `{"deleted":["A"]}`)
+
+	deleted, err := client.DeleteVariables(ctx, gw, "the-key", []string{"A", "B"}, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A"}, deleted)
+	deleted, err = client.DeleteSecrets(ctx, gw, "the-key", []string{"S"}, time.Hour+time.Millisecond)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A"}, deleted)
+
+	assert.Equal(t, []storeCall{
+		{method: http.MethodDelete, path: "/variables", query: "names=A%2CB", key: "the-key"},
+		{method: http.MethodDelete, path: "/secrets", query: "names=S&unchangedFor=3601",
+			key: "the-key"},
+	}, *calls)
+}
+
+// A gateway too old to remove many names at once refuses with its status, which the caller reads as no
+// way to remove values by age.
+func TestTheStoreClientReportsARefusedRemovalOfManyNames(t *testing.T) {
+	gw, _ := storeGateway(t, http.StatusMethodNotAllowed, ``)
+
+	_, err := newGatewayClient().DeleteVariables(context.Background(), gw, "k", []string{"A"}, time.Second)
+
+	var refusal *StoreRefusal
+	require.ErrorAs(t, err, &refusal)
+	assert.Equal(t, http.StatusMethodNotAllowed, refusal.Status)
+}
+
 // A name is escaped on its way to the gateway, so it cannot reach past the store.
 func TestTheStoreClientEscapesTheName(t *testing.T) {
 	gw, calls := storeGateway(t, http.StatusNotFound, `{"code":"VAR-1004"}`)
@@ -182,4 +217,41 @@ func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 func isRefusal(err error) bool {
 	var refusal *StoreRefusal
 	return errors.As(err, &refusal)
+}
+
+// A batch holds at most maxNamesPerLookup names, and no more than fit in maxNamesQueryBytes as sent,
+// so long names make smaller batches; every name is in exactly one batch, in order.
+func TestNameBatchesBoundTheCountAndTheSize(t *testing.T) {
+	short := make([]string, 250)
+	for i := range short {
+		short[i] = fmt.Sprintf("N%03d", i)
+	}
+	long := make([]string, 100)
+	for i := range long {
+		long[i] = fmt.Sprintf("%03d", i) + strings.Repeat("L", 252)
+	}
+	cases := map[string]struct {
+		names []string
+		sizes []int
+	}{
+		"none":  {nil, nil},
+		"short": {short, []int{100, 100, 50}},
+		// 255 characters and a %2C each: 23 fit in 6 KB.
+		"long": {long, []int{23, 23, 23, 23, 8}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			batches := nameBatches(tc.names)
+			var sizes []int
+			var all []string
+			for _, batch := range batches {
+				sizes = append(sizes, len(batch))
+				all = append(all, batch...)
+				sent := url.Values{"names": {strings.Join(batch, ",")}}.Encode()
+				assert.LessOrEqual(t, len(sent)-len("names="), maxNamesQueryBytes)
+			}
+			assert.Equal(t, tc.sizes, sizes)
+			assert.Equal(t, tc.names, all)
+		})
+	}
 }

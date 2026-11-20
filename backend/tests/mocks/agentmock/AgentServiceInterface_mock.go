@@ -1231,22 +1231,24 @@ func (_c *AgentServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(r
 }
 
 // RegenerateAgentSecret provides a mock function for the type AgentServiceInterfaceMock
-func (_mock *AgentServiceInterfaceMock) RegenerateAgentSecret(ctx context.Context, agentID string) (string, *common.ServiceError) {
+func (_mock *AgentServiceInterfaceMock) RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agentID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RegenerateAgentSecret")
 	}
 
-	var r0 string
+	var r0 *model.ClientSecretResponse
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.ClientSecretResponse, *common.ServiceError)); ok {
 		return returnFunc(ctx, agentID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.ClientSecretResponse); ok {
 		r0 = returnFunc(ctx, agentID)
 	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ClientSecretResponse)
+		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
 		r1 = returnFunc(ctx, agentID)
@@ -1288,12 +1290,12 @@ func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Return(s string, serviceError *common.ServiceError) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
-	_c.Call.Return(s, serviceError)
+func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Return(clientSecretResponse *model.ClientSecretResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
+	_c.Call.Return(clientSecretResponse, serviceError)
 	return _c
 }
 
-func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) RunAndReturn(run func(ctx context.Context, agentID string) (string, *common.ServiceError)) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
+func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*model.ClientSecretResponse, *common.ServiceError)) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1783,6 +1785,83 @@ func (_c *AgentServiceInterfaceMock_UpdateOwnedAgent_Call) RunAndReturn(run func
 	return _c
 }
 
+// UpdateOwnedAgentCredentials provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) UpdateOwnedAgentCredentials(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, credentials json.RawMessage) *common.ServiceError {
+	ret := _mock.Called(ctx, ownerID, agentID, kind, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateOwnedAgentCredentials")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind, json.RawMessage) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, ownerID, agentID, kind, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateOwnedAgentCredentials'
+type AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call struct {
+	*mock.Call
+}
+
+// UpdateOwnedAgentCredentials is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - agentID string
+//   - kind providers.AgentKind
+//   - credentials json.RawMessage
+func (_e *AgentServiceInterfaceMock_Expecter) UpdateOwnedAgentCredentials(ctx any, ownerID any, agentID any, kind any, credentials any) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	return &AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call{Call: _e.mock.On("UpdateOwnedAgentCredentials", ctx, ownerID, agentID, kind, credentials)}
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call) Run(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, credentials json.RawMessage)) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 providers.AgentKind
+		if args[3] != nil {
+			arg3 = args[3].(providers.AgentKind)
+		}
+		var arg4 json.RawMessage
+		if args[4] != nil {
+			arg4 = args[4].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call) RunAndReturn(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, credentials json.RawMessage) *common.ServiceError) *AgentServiceInterfaceMock_UpdateOwnedAgentCredentials_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateAgent provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) ValidateAgent(ctx context.Context, agent *providers.Agent, excludeID string) (string, string, model0.InboundClient, *common.ServiceError) {
 	ret := _mock.Called(ctx, agent, excludeID)
@@ -1865,6 +1944,65 @@ func (_c *AgentServiceInterfaceMock_ValidateAgent_Call) Return(clientID string, 
 }
 
 func (_c *AgentServiceInterfaceMock_ValidateAgent_Call) RunAndReturn(run func(ctx context.Context, agent *providers.Agent, excludeID string) (string, string, model0.InboundClient, *common.ServiceError)) *AgentServiceInterfaceMock_ValidateAgent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateClientSecretRegeneration provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) ValidateClientSecretRegeneration(ctx context.Context, agentID string) *common.ServiceError {
+	ret := _mock.Called(ctx, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateClientSecretRegeneration")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateClientSecretRegeneration'
+type AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call struct {
+	*mock.Call
+}
+
+// ValidateClientSecretRegeneration is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) ValidateClientSecretRegeneration(ctx any, agentID any) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	return &AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call{Call: _e.mock.On("ValidateClientSecretRegeneration", ctx, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Run(run func(ctx context.Context, agentID string)) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, agentID string) *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
 	_c.Call.Return(run)
 	return _c
 }

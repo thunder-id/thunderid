@@ -24,6 +24,7 @@ package varname
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -40,6 +41,29 @@ const (
 	// hashedIDBytes is how many bytes of the hash a hashed ID segment keeps.
 	hashedIDBytes = 16
 )
+
+// derivedSegment is a sanitized part of a name: upper-case letters and digits, with single
+// underscores between them and none at either end.
+const derivedSegment = `[A-Z0-9]+(?:_[A-Z0-9]+)*`
+
+// derivedNameParts reads a name DeriveVariableName wrote for a resource with a type, a field and an
+// ID, with its ID segment as the one group: an optional leading underscore, the type, the ID as 32
+// upper-case hex digits or as a hashed segment, and the field, joined by the separator. A name chosen
+// by hand, such as "HOST" or "DATA_PLANE_URL", does not match, since it carries no ID segment.
+var derivedNameParts = regexp.MustCompile(`^_?(?:` + derivedSegment + segmentSeparator + `)?` +
+	`([0-9A-F]{32}|` + hashedIDPrefix + `[0-9A-F]{32})` + segmentSeparator + derivedSegment + `$`)
+
+// IDSegmentOf is the ID segment of a name DeriveVariableName wrote, and whether the name is one. It
+// reads the name with the layout DeriveVariableName writes, so a reader that asks whether a name was
+// generated, or which resource it belongs to by comparing it with IDSegment of the resource's ID,
+// follows any change to it.
+func IDSegmentOf(name string) (string, bool) {
+	match := derivedNameParts.FindStringSubmatch(name)
+	if match == nil {
+		return "", false
+	}
+	return match[1], true
+}
 
 // DeriveVariableName derives the declarative template variable name for a resource field, and is the
 // single source of truth for those names so that every caller derives the same one.
@@ -59,7 +83,7 @@ func DeriveVariableName(resourceType, resourceID, fieldName string) string {
 	if resourceType != "" {
 		segments = append(segments, sanitizeSegment(toSnakeCaseUpper(strings.ReplaceAll(resourceType, " ", "_"))))
 	}
-	segments = append(segments, idSegment(resourceID), sanitizeSegment(toSnakeCaseUpper(fieldName)))
+	segments = append(segments, IDSegment(resourceID), sanitizeSegment(toSnakeCaseUpper(fieldName)))
 
 	name := strings.Join(segments, segmentSeparator)
 	// A name must not start with a digit.
@@ -69,11 +93,12 @@ func DeriveVariableName(resourceType, resourceID, fieldName string) string {
 	return name
 }
 
-// idSegment spells a resource ID so that two IDs never share a spelling. A lower-case UUID, which
+// IDSegment spells a resource ID as every name DeriveVariableName writes for the resource spells it,
+// so that two IDs never share a spelling. A lower-case UUID, which
 // is what the server generates, is written as its hex digits in upper case. Any other ID, such as one
 // a declarative file names, is hashed, because upper-casing and sanitizing would let "my-app" and
 // "my_app" read the same.
-func idSegment(resourceID string) string {
+func IDSegment(resourceID string) string {
 	if utils.IsValidUUID(resourceID) && resourceID == strings.ToLower(resourceID) {
 		return strings.ToUpper(strings.ReplaceAll(resourceID, "-", ""))
 	}
