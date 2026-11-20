@@ -27,6 +27,8 @@ export type {AllowedOriginRowProps} from './components/cors/AllowedOriginRow';
 export {default as CorsSection} from './components/cors/CorsSection';
 export {default as CspDirectiveRow} from './components/csp/CspDirectiveRow';
 export type {CspDirectiveRowAction, CspDirectiveRowProps} from './components/csp/CspDirectiveRow';
+export {default as CspScopeCard} from './components/csp/CspScopeCard';
+export type {CspScopeCardProps} from './components/csp/CspScopeCard';
 export {default as CspSection} from './components/csp/CspSection';
 
 // Hooks

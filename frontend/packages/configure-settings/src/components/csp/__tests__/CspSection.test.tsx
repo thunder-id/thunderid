@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {screen, waitFor} from '@testing-library/react';
+import {act, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
@@ -45,13 +45,10 @@ const viewOnly = {
   isLoading: false,
 };
 
-const sourcesField = (directive: string): HTMLElement =>
-  screen.getByRole('combobox', {name: `Sources for ${directive}`});
+const scopeCard = (name: string) => within(screen.getByRole('region', {name}));
 
-async function selectScope(user: ReturnType<typeof userEvent.setup>, scope: string): Promise<void> {
-  await user.click(screen.getByRole('combobox', {name: 'Applies to'}));
-  await user.click(screen.getByRole('option', {name: scope}));
-}
+const sourcesField = (card: ReturnType<typeof scopeCard>, directive: string): HTMLElement =>
+  card.getByRole('combobox', {name: `Sources for ${directive}`});
 
 describe('CspSection', () => {
   beforeEach(() => {
@@ -84,38 +81,23 @@ describe('CspSection', () => {
     expect(mockRefetch).toHaveBeenCalled();
   });
 
-  it('shows the baseline directives and the saved ones for All pages', () => {
+  it('shows the Shared card and a card for each path, each with its own header', () => {
     loaded();
     renderWithProviders(<CspSection />);
 
     expect(screen.getByRole('switch', {name: 'Toggle Report only'})).not.toBeChecked();
-    expect(screen.getByRole('combobox', {name: 'Applies to'})).toHaveTextContent('All pages');
-    expect(sourcesField('default-src')).toBeInTheDocument();
-    expect(sourcesField('img-src')).toBeInTheDocument();
-    expect(sourcesField('frame-src')).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Remove directive'})).toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Reset to default'})).toBeNull();
-  });
 
-  it('removes a read-only source on a path, saving the rest of the directive', async () => {
-    const user = userEvent.setup();
-    loaded();
-    renderWithProviders(<CspSection />);
+    const all = scopeCard('Shared');
+    expect(sourcesField(all, 'default-src')).toBeInTheDocument();
+    expect(sourcesField(all, 'frame-src')).toBeInTheDocument();
+    expect(all.getByRole('button', {name: 'Remove directive'})).toBeInTheDocument();
+    expect(all.queryByRole('combobox', {name: 'Sources for font-src'})).toBeNull();
 
-    await selectScope(user, '/console/');
-    expect(screen.getByRole('combobox', {name: 'Applies to'})).toHaveTextContent('/console/');
-    await user.click(sourcesField('font-src'));
-    await user.keyboard('{Backspace}');
-    await user.click(screen.getByRole('button', {name: 'Save changes'}));
-
-    expect(mockMutate).toHaveBeenCalledWith(
-      {
-        data: {
-          directives: {'frame-src': ["'self'"]},
-          paths: [{location: '/console/', directives: {'font-src': ["'self'"]}}],
-        },
-      },
-      expect.anything(),
+    const consoleCard = scopeCard('Console');
+    expect(consoleCard.getByText('Applies to pages under /console/.')).toBeInTheDocument();
+    expect(sourcesField(consoleCard, 'font-src')).toBeInTheDocument();
+    expect(consoleCard.getByRole('group', {name: 'Header sent for Console'})).toHaveTextContent(
+      "font-src 'self' data:",
     );
   });
 
@@ -127,8 +109,7 @@ describe('CspSection', () => {
     loaded();
     renderWithProviders(<CspSection />);
 
-    await selectScope(user, '/console/');
-    await user.type(sourcesField('font-src'), 'https://fonts.example.com{Enter}');
+    await user.type(sourcesField(scopeCard('Console'), 'font-src'), 'https://fonts.example.com{Enter}');
     await user.click(await screen.findByRole('button', {name: 'Save changes'}));
 
     expect(mockMutate).toHaveBeenCalledWith(
@@ -149,11 +130,12 @@ describe('CspSection', () => {
     const user = userEvent.setup();
     loaded();
     renderWithProviders(<CspSection />);
+    const all = scopeCard('Shared');
 
-    await user.click(screen.getAllByRole('button', {name: "'self'"})[0]);
+    await user.click(all.getAllByRole('button', {name: "'self'"})[0]);
     await user.keyboard('{Backspace}');
-    await user.type(sourcesField('script-src'), 'https://cdn.example.com{Enter}');
-    await user.type(sourcesField('default-src'), "'self'{Enter}");
+    await user.type(sourcesField(all, 'script-src'), 'https://cdn.example.com{Enter}');
+    await user.type(sourcesField(all, 'default-src'), "'self'{Enter}");
     await user.click(screen.getByRole('button', {name: 'Save changes'}));
 
     expect(mockMutate).toHaveBeenCalledWith(
@@ -174,11 +156,12 @@ describe('CspSection', () => {
     const user = userEvent.setup();
     loaded();
     renderWithProviders(<CspSection />);
+    const all = scopeCard('Shared');
 
-    await user.click(sourcesField('img-src'));
+    await user.click(sourcesField(all, 'img-src'));
     await user.keyboard('{Backspace}');
 
-    expect(screen.getByText('Add at least one source, or reset the directive to its default.')).toBeInTheDocument();
+    expect(all.getByText('Add at least one source, or reset the directive to its default.')).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
   });
 
@@ -187,7 +170,7 @@ describe('CspSection', () => {
     loaded(makeData({writable: {directives: {'img-src': ['https:']}}}));
     renderWithProviders(<CspSection />);
 
-    await user.click(screen.getByRole('button', {name: 'Reset to default'}));
+    await user.click(scopeCard('Shared').getByRole('button', {name: 'Reset to default'}));
     await user.click(screen.getByRole('button', {name: 'Save changes'}));
 
     expect(mockMutate).toHaveBeenCalledWith({data: {}}, expect.anything());
@@ -197,15 +180,42 @@ describe('CspSection', () => {
     const user = userEvent.setup();
     loaded();
     renderWithProviders(<CspSection />);
+    const all = scopeCard('Shared');
 
-    await user.click(screen.getByRole('button', {name: 'Add directive'}));
-    await user.type(sourcesField('script-src-elem'), "'self'{Enter}");
+    await user.click(all.getByRole('button', {name: 'Add directive'}));
+    await user.type(sourcesField(all, 'script-src-elem'), "'self'{Enter}");
     expect(screen.getByRole('button', {name: 'Save changes'})).toBeInTheDocument();
 
-    const removeButtons = screen.getAllByRole('button', {name: 'Remove directive'});
+    const removeButtons = all.getAllByRole('button', {name: 'Remove directive'});
     await user.click(removeButtons[removeButtons.length - 1]);
-    expect(screen.queryByRole('combobox', {name: 'Sources for script-src-elem'})).toBeNull();
+    expect(all.queryByRole('combobox', {name: 'Sources for script-src-elem'})).toBeNull();
     expect(screen.queryByRole('button', {name: 'Save changes'})).toBeNull();
+  });
+
+  it('changes the directive of a new row', async () => {
+    const user = userEvent.setup();
+    loaded();
+    renderWithProviders(<CspSection />);
+    const consoleCard = scopeCard('Console');
+
+    await user.click(consoleCard.getByRole('button', {name: 'Add directive'}));
+    const newDirective = consoleCard
+      .getAllByRole('combobox', {name: 'Directive'})
+      .find((el) => el.getAttribute('aria-disabled') !== 'true')!;
+    await user.click(newDirective);
+    await user.click(screen.getByRole('option', {name: 'media-src'}));
+    await user.type(sourcesField(consoleCard, 'media-src'), "'self'{Enter}");
+    await user.click(screen.getByRole('button', {name: 'Save changes'}));
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      {
+        data: {
+          directives: {'frame-src': ["'self'"]},
+          paths: [{location: '/console/', directives: {'media-src': ["'self'"]}}],
+        },
+      },
+      expect.anything(),
+    );
   });
 
   it('flags a source containing a separator and blocks the save', async () => {
@@ -213,28 +223,67 @@ describe('CspSection', () => {
     loaded();
     renderWithProviders(<CspSection />);
 
-    await user.type(sourcesField('img-src'), 'data:;{Enter}');
+    await user.type(sourcesField(scopeCard('Shared'), 'img-src'), 'data:;{Enter}');
 
     expect(screen.getByText("A source can't contain a semicolon or comma.")).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
   });
 
-  it('shows the effective header for the selected scope and updates it with the draft', async () => {
+  it('updates each header with the draft and the report-only choice', async () => {
     const user = userEvent.setup();
     loaded();
     renderWithProviders(<CspSection />);
+    const consoleHeader = scopeCard('Console').getByRole('group', {name: 'Header sent for Console'});
 
-    await selectScope(user, '/console/');
-    const header = screen.getByRole('group', {name: 'Header sent for /console/'});
-    expect(header).toHaveTextContent(/^Content-Security-Policy: default-src 'none';/);
-    expect(header).toHaveTextContent("font-src 'self' data:");
-    expect(header).toHaveTextContent("frame-src 'self'");
+    expect(consoleHeader).toHaveTextContent(/^Content-Security-Policy: default-src 'none';/);
+    expect(consoleHeader).toHaveTextContent("frame-src 'self'");
 
-    await user.type(sourcesField('img-src'), 'https:{Enter}');
-    expect(header).toHaveTextContent("img-src 'self' https:");
+    await user.type(sourcesField(scopeCard('Console'), 'img-src'), 'https:{Enter}');
+    expect(consoleHeader).toHaveTextContent("img-src 'self' https:");
+    expect(
+      scopeCard('Shared').getByRole('group', {name: 'Header sent when the Console or Gate has no section of its own'}),
+    ).toHaveTextContent("img-src 'self';");
 
     await user.click(screen.getByRole('switch', {name: 'Toggle Report only'}));
-    expect(header).toHaveTextContent(/^Content-Security-Policy-Report-Only: /);
+    expect(consoleHeader).toHaveTextContent(/^Content-Security-Policy-Report-Only: /);
+  });
+
+  it('edits and saves a path that only the saved layer has', async () => {
+    const user = userEvent.setup();
+    loaded(makeData({writable: {paths: [{location: '/custom/', directives: {'img-src': ['data:']}}]}}));
+    renderWithProviders(<CspSection />);
+
+    await user.type(sourcesField(scopeCard('/custom/'), 'img-src'), 'https:{Enter}');
+    await user.click(screen.getByRole('button', {name: 'Save changes'}));
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      {data: {paths: [{location: '/custom/', directives: {'img-src': ['data:', 'https:']}}]}},
+      expect.anything(),
+    );
+  });
+
+  it('clears the draft once the save completes', async () => {
+    const user = userEvent.setup();
+    let finishSave: (() => void) | undefined;
+    mockMutate.mockImplementation((...args: unknown[]) => {
+      finishSave = (args[1] as {onSuccess?: () => void} | undefined)?.onSuccess;
+    });
+    loaded();
+    const {rerender} = renderWithProviders(<CspSection />);
+
+    await user.type(sourcesField(scopeCard('Shared'), 'img-src'), 'data:{Enter}');
+    await user.click(screen.getByRole('button', {name: 'Save changes'}));
+    expect(mockMutate).toHaveBeenCalledWith(
+      {data: {directives: {'frame-src': ["'self'"], 'img-src': ["'self'", 'data:']}}},
+      expect.anything(),
+    );
+
+    loaded(makeData({writable: {directives: {'frame-src': ["'self'"], 'img-src': ["'self'", 'data:']}}}));
+    act(() => finishSave!());
+    rerender(<CspSection />);
+
+    expect(scopeCard('Shared').getByRole('button', {name: 'data:'})).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Save changes'})).toBeNull();
   });
 
   it('saves the report-only choice', async () => {

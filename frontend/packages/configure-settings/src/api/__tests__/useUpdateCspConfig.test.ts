@@ -71,6 +71,32 @@ describe('useUpdateCspConfig', () => {
     expect(queryClient.getQueryData(['server-config', 'csp'])).toEqual(mockResponse);
   });
 
+  it('keeps the saved config when a refetch that started before the save finishes after it', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockResponse});
+    const {result, queryClient} = renderHook(() => useUpdateCspConfig());
+    let finishRefetch: (value: CspConfigResponse) => void = () => undefined;
+    queryClient
+      .fetchQuery({
+        queryKey: ['server-config', 'csp'],
+        queryFn: () =>
+          new Promise<CspConfigResponse>((resolve) => {
+            finishRefetch = resolve;
+          }),
+      })
+      .catch(() => undefined);
+
+    result.current.mutate({data: {directives: {'img-src': ["'self'", 'https://cdn.example.com']}}});
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    finishRefetch({readOnly: {}, writable: {}, merged: {}});
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(queryClient.getQueryData(['server-config', 'csp'])).toEqual(mockResponse);
+  });
+
   it('surfaces update errors', async () => {
     mockHttpRequest.mockRejectedValue(new Error('nope'));
     const {result} = renderHook(() => useUpdateCspConfig());
