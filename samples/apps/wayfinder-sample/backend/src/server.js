@@ -10,7 +10,7 @@ import "dotenv/config";
 // so the JWKS fetch in auth.js would otherwise fail with UNABLE_TO_VERIFY_LEAF_SIGNATURE.
 // We disable Node's TLS verification ONLY when the configured issuer base URL
 // points at localhost / 127.0.0.1.
-const __thunderBaseUrl = process.env.THUNDER_BASE_URL || "";
+const __thunderBaseUrl = process.env.THUNDERID_BASE_URL || "";
 if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(__thunderBaseUrl)) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   console.warn("[api] Local Thunder detected — NODE_TLS_REJECT_UNAUTHORIZED set to 0. Do not use this build in production.");

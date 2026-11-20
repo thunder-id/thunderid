@@ -31,7 +31,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { buildResultsPath, readCriteria } from "./utils/routes";
 
 const AGENT_CHAT_URL = import.meta.env.VITE_AGENT_CHAT_URL || "http://localhost:8790/chat";
-const THUNDER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
+const THUNDERID_BASE_URL = import.meta.env.VITE_THUNDERID_BASE_URL || "";
 const AI_FEATURES_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED === "true";
 
 function createChatMessage(role, content) {
@@ -952,7 +952,7 @@ function App({ authReady }) {
       {!isAuthPage && !authReady && (
         <div className="setup-banner" role="status">
           <ShieldCheck size={18} />
-          Add `VITE_THUNDER_CLIENT_ID` and `VITE_THUNDER_BASE_URL` to enable live
+          Add `VITE_THUNDERID_CLIENT_ID` and `VITE_THUNDERID_BASE_URL` to enable live
           sign in and sign out.
         </div>
       )}

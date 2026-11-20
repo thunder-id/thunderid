@@ -3,8 +3,8 @@
 
 import { CHAT_SCOPES } from "./config";
 
-const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
-const CLIENT_ID = import.meta.env.VITE_THUNDER_CLIENT_ID || "WAYFINDER";
+const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDERID_BASE_URL || "";
+const CLIENT_ID = import.meta.env.VITE_THUNDERID_CLIENT_ID || "WAYFINDER";
 const AGENT_CHAT_URL = import.meta.env.VITE_AGENT_CHAT_URL || "http://localhost:8790/chat";
 const CALLBACK_PATH = "/chat-token-callback";
 const TOKEN_STORAGE_KEY = "wf_chat_token";

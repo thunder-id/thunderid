@@ -3,9 +3,9 @@
 
 import { SCOPES } from "./config.js";
 
-const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
-const CLIENT_ID = import.meta.env.VITE_THUNDER_CLIENT_ID || "WAYFINDER";
-const APP_ID = import.meta.env.VITE_THUNDER_APP_ID || CLIENT_ID;
+const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDERID_BASE_URL || "";
+const CLIENT_ID = import.meta.env.VITE_THUNDERID_CLIENT_ID || "WAYFINDER";
+const APP_ID = import.meta.env.VITE_THUNDERID_APP_ID || CLIENT_ID;
 const FETCH_TIMEOUT_MS = 15000;
 
 async function fetchWithTimeout(url, options = {}) {

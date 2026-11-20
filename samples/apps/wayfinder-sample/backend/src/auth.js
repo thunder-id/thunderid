@@ -36,7 +36,7 @@ function getIssuer() {
     return process.env.THUNDER_ISSUER;
   }
 
-  return process.env.THUNDER_BASE_URL;
+  return process.env.THUNDERID_BASE_URL;
 }
 
 async function getJwks() {
@@ -44,11 +44,11 @@ async function getJwks() {
     return jwksCache;
   }
 
-  if (!process.env.THUNDER_BASE_URL) {
-    throw new Error("THUNDER_BASE_URL is required when API_REQUIRE_AUTH=true");
+  if (!process.env.THUNDERID_BASE_URL) {
+    throw new Error("THUNDERID_BASE_URL is required when API_REQUIRE_AUTH=true");
   }
 
-  const response = await fetch(`${process.env.THUNDER_BASE_URL}/oauth2/jwks`);
+  const response = await fetch(`${process.env.THUNDERID_BASE_URL}/oauth2/jwks`);
 
   if (!response.ok) {
     throw new Error("Unable to load ThunderID JWKS");
