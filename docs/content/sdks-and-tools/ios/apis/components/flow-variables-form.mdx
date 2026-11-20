@@ -1,0 +1,256 @@
+---
+displayed_sidebar: null
+title: FlowVariablesForm
+docType: reference
+description: SwiftUI form that lets a delegated admin override the variables a flow shares with their organization unit, with a presentational base view for custom UI.
+---
+
+# `FlowVariablesForm`
+
+The `FlowVariablesForm` view lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit, the values the unit has set, and what the unit may change, shows them as a form, and saves the values that differ from their defaults.
+
+For a shared flow, a variable is offered to a unit only when a sharing policy names it. A variable the unit may not set is shown as set by its owner. This form saves the overrides of a unit the flow was shared with, not the owner's defaults. Change the defaults in the flow's `VARIABLES` node.
+
+`FlowVariablesForm` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy. The signed-in user's access token needs the permissions the server requires to read and update the flow's variables.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct FlowSettings: View {
+    let flowId: String
+    let ouId: String
+
+    var body: some View {
+        FlowVariablesForm(flowId: flowId, ouId: ouId, onSaved: { _ in
+            print("Saved")
+        })
+    }
+}
+```
+
+To let the admin pick the flow first, pair it with [`SharedFlowList`](../shared-flow-list).
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `flowId` | `String` | ✅ | Identifier of the flow whose variables are configured. |
+| `ouId` | `String` | ✅ | The organization unit the overrides belong to. |
+| `title` | `String?` | ❌ | Heading of the form. Defaults to the translated "Flow variables" heading. |
+| `description` | `String?` | ❌ | Text under the heading. |
+| `ouName` | `String?` | ❌ | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `String?` | ❌ | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `showScopeNotice` | `Bool` | ❌ | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. Set `ouName` for it to read well. |
+| `readOnly` | `Bool` | ❌ | Shows the variables without letting them be changed. Defaults to `false`. |
+| `onSaved` | `((FlowVariableValues) -> Void)?` | ❌ | Called with the saved overrides. |
+| `onCancel` | `(() -> Void)?` | ❌ | Called when the admin taps Cancel. The button appears only when this is set. |
+| `onCreateConnection` | `(() -> Void)?` | ❌ | Called when the admin asks to create a connection from the hint under a connection variable. Without it, the hint does not offer one. |
+| `content` | `(FlowVariablesFormState) -> Content` | ❌ | Renders custom UI in place of the default form. See [Custom Rendering](#custom-rendering). |
+
+Only the values that differ from their defaults are saved. A variable left at its default keeps following the default, even when the owner changes it later.
+
+`FlowVariableValues` is `[String: FlowVariableValue]`, keyed by the variable's identifier. `FlowVariableValue` is an enum with the cases `.string`, `.number`, and `.bool`. Read its `text` property for the value as a string.
+
+## Custom Rendering
+
+Pass a `content` closure to build the form with any UI while keeping the SDK's validation and rules. `FlowVariablesForm` still loads and saves the data, and passes the current state to the closure as a `FlowVariablesFormState`.
+
+```swift
+FlowVariablesForm(flowId: flowId, ouId: ouId) { state in
+    VStack(alignment: .leading) {
+        ForEach(state.variables, id: \.identifier) { definition in
+            let rule = state.rule(for: definition)
+            HStack {
+                Text(definition.label ?? definition.identifier)
+                Spacer()
+                if rule.editable {
+                    Text(state.values[definition.identifier]?.text ?? "")
+                } else {
+                    Text("Set by owner")
+                }
+            }
+        }
+        Button("Save") { state.submit?() }
+            .disabled(!state.isValid || state.isSubmitting)
+    }
+}
+```
+
+### `FlowVariablesFormState` Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `variables` | `[FlowVariableDefinition]` | The variables to render. |
+| `values` | `FlowVariableValues` | The current value of each variable. |
+| `errors` | `[String: String]` | The translated message to show under each invalid variable, keyed by identifier. |
+| `isValid` | `Bool` | Whether the values can be submitted. |
+| `isSubmitting` | `Bool` | Whether a submission is in progress. |
+| `error` | `String?` | The form-level error. |
+| `submit` | `(() -> Void)?` | Submits the current values. Does nothing while they are not valid. `nil` when the form cannot be saved. |
+| `resetToDefaults` | `() -> Void` | Returns every variable to its default. |
+| `onCancel` | `(() -> Void)?` | The `onCancel` parameter. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `rule(for:)` | `ResolvedFlowVariableRule` | What the unit may do with a variable: whether it can set its own value, and the default it starts from. |
+| `options(for:)` | `[FlowVariableOption]` | The choices of a select variable, narrowed to what the unit may pick. |
+| `setValue(_:for:)` | `Void` | Sets the value of one variable, by identifier. |
+
+## `BaseFlowVariables`
+
+`BaseFlowVariables` is the presentational form. It holds no data of its own: pass the variables and handle the submission. Use it to preview a flow's variables or to build a form from data you load yourself.
+
+```swift
+struct Preview: View {
+    let variables: [FlowVariableDefinition]
+
+    var body: some View {
+        BaseFlowVariables(variables: variables)
+    }
+}
+```
+
+Without `overlay`, every variable is editable. Without `onSubmit`, the form has no save button.
+
+### `BaseFlowVariables` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `variables` | `[FlowVariableDefinition]` | ✅ | The variables to render, as the flow declares them. |
+| `connections` | `[ConnectionInstance]` | ❌ | The connections a `CONNECTION_SELECT` variable can take. Defaults to none. |
+| `initialValues` | `FlowVariableValues?` | ❌ | The values the form starts with, over each variable's default. A variable left out starts at its default. |
+| `overlay` | `ResolvedOverlay?` | ❌ | What the unit may do with each variable, as `client.flows.overlayRules(id:ouId:fetcher:)` returns it. |
+| `isSubmitting` | `Bool` | ❌ | Disables the form and shows a loading state on the save button. Defaults to `false`. |
+| `error` | `String?` | ❌ | An error message shown above the variables. |
+| `title` | `String?` | ❌ | Heading of the form. |
+| `description` | `String?` | ❌ | Text under the heading. |
+| `ouName` | `String?` | ❌ | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `String?` | ❌ | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `showScopeNotice` | `Bool` | ❌ | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. |
+| `readOnly` | `Bool` | ❌ | Shows the variables without letting them be changed. Defaults to `false`. |
+| `onSubmit` | `((FlowVariableValues, FlowVariableValues) -> Void)?` | ❌ | Called when the form is submitted and valid. The first argument holds every value. The second holds the values of the variables the unit may set that differ from their default. |
+| `onChange` | `((FlowVariableValues) -> Void)?` | ❌ | Called with every value after one changes. |
+| `onCancel` | `(() -> Void)?` | ❌ | Called when the admin taps Cancel. The button appears only when this is set, next to the save button, so it also needs `onSubmit`. |
+| `onCreateConnection` | `(() -> Void)?` | ❌ | Called when the admin asks to create a connection from the hint under a connection variable. |
+| `content` | `(FlowVariablesFormState) -> Content` | ❌ | Renders custom UI in place of the default form. |
+
+Each variable type renders its own input:
+
+| Variable type | Input |
+| :--- | :--- |
+| `TEXT_INPUT`, `EMAIL_INPUT`, `PHONE_INPUT`, `NUMBER_INPUT`, `DATE_INPUT` | Text field with the keyboard the type calls for |
+| `BOOLEAN_INPUT` | Toggle |
+| `SELECT`, `CONNECTION_SELECT` | Menu. The first entry shows the default, for example "Use the default: Dark", and returns the variable to it. |
+
+## Load the Data Yourself
+
+`ThunderIDState.flowVariablesModel(flowId:ouId:fetcher:)` returns the `FlowVariablesModel` behind the form, for a screen built entirely by your app. It is an `ObservableObject`: hold it as a `@StateObject` and call `load()` from `.task`.
+
+```swift
+struct CustomSettings: View {
+    @StateObject private var model: FlowVariablesModel
+
+    init(state: ThunderIDState, flowId: String, ouId: String) {
+        _model = StateObject(wrappedValue: state.flowVariablesModel(flowId: flowId, ouId: ouId))
+    }
+
+    var body: some View {
+        BaseFlowVariables(
+            variables: model.definitions,
+            connections: model.connections,
+            initialValues: model.overrides,
+            overlay: model.overlay,
+            isSubmitting: model.isSaving,
+            onSubmit: { _, overrides in
+                Task { _ = await model.save(overrides) }
+            }
+        )
+        .task { await model.load() }
+    }
+}
+```
+
+| Property or method | Description |
+| :--- | :--- |
+| `flow` | The flow as the organization unit sees it. |
+| `definitions` | The variables the flow declares for the unit. |
+| `overrides` | The values the unit has set. A variable it has not set is absent, and its default applies. |
+| `overlay` | What the unit may do with each variable. |
+| `connections` | The connections a `CONNECTION_SELECT` variable can take. Loaded only when a variable needs them. |
+| `isLoaded`, `error` | Whether everything has arrived, and why it could not be loaded. |
+| `isSaving`, `saveError` | Whether a save is in progress, and why the last one failed. |
+| `load()` | Loads the flow, the unit's values, its rules, and the connections. |
+| `save(_:)` | Replaces the unit's values. A variable left out returns to its default. Never throws: read `saveError`. Returns the saved values, or `nil` when the save failed. |
+
+## Flow Variable Helpers
+
+The form is built on these functions from the `ThunderID` module. Use them with any UI.
+
+| Function | Description |
+| :--- | :--- |
+| `getFlowVariableDefinitions(_:)` | Reads the variables a flow declares. A flow shared with the unit lists them in `variables`. A flow the unit owns declares them on its `VARIABLES` node. Returns an empty array when the flow declares none. |
+| `resolveFlowVariableRule(_:overlay:)` | Works out what the unit may do with a variable. Returns a `ResolvedFlowVariableRule` with `editable`, `defaultValue`, `allowedValues`, and `excludedValues`. Without an `overlay`, every variable is editable. |
+| `getFlowVariableOptions(_:connections:restriction:)` | Lists what a select variable can take. A `SELECT` takes the values it declares. A `CONNECTION_SELECT` takes the connections that match its `category` and `connectionTypes`. Any other type returns an empty array. |
+| `validateFlowVariableValue(_:_:)` | Checks a value against the variable's type, options, and rules. Returns a `FlowVariableValidationError`, or `nil` when the value is valid. |
+
+```swift
+import ThunderID
+
+let flow = try await client.flows.get(id: flowId, ouId: ouId)
+let overlay = try await client.flows.overlayRules(id: flowId, ouId: ouId)
+
+for definition in getFlowVariableDefinitions(flow) {
+    let rule = resolveFlowVariableRule(definition, overlay: overlay)
+    let problem = validateFlowVariableValue(definition, rule.defaultValue)
+}
+```
+
+The owning unit does not use these helpers: the server rejects an override saved for it with HTTP 400, so it changes defaults in the flow's `VARIABLES` node.
+
+A `SELECT` value is validated by its text, as the server does, so `"true"` is valid for an option `true`.
+
+The `FlowVariableValidationError.Code` values are:
+
+| `code` | Meaning |
+| :--- | :--- |
+| `.required` | The value is empty. |
+| `.invalid` | The value is not valid for the type, such as text that is not an email address or a number that is not numeric. |
+| `.min` | A number is below `min`. |
+| `.max` | A number is above `max`. |
+| `.notOption` | A `SELECT` value is not one of its `options`. |
+| `.minLength` | Text is shorter than a `minLength` rule allows. |
+| `.maxLength` | Text is longer than a `maxLength` rule allows. |
+| `.pattern` | Text does not match a `regex` rule. |
+
+For the three text rules, the error also carries the rule's `message` when it has one. The text rules are checked for `TEXT_INPUT` only, so a value can pass here and still be rejected by the server, which validates again on save. A `regex` rule that cannot be compiled is skipped, and the server judges it.
+
+### `FlowVariableDefinition`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `identifier` | `String` | Name of the variable, which a `{{var(name)}}` placeholder uses. |
+| `type` | `FlowVariableType` | The input the variable is edited with: `.textInput`, `.emailInput`, `.phoneInput`, `.numberInput`, `.dateInput`, `.booleanInput`, `.select`, or `.connectionSelect`. |
+| `label` | `String?` | Display name. |
+| `description` | `String?` | Help text. |
+| `defaultValue` | `FlowVariableValue?` | The value the variable has until another is set. |
+| `options` | `[FlowVariableValue]?` | For a `SELECT`: the values it can take. |
+| `category` | `String?` | For a `CONNECTION_SELECT`: the kind of connection it takes. The server accepts only `IDENTITY_PROVIDER`. |
+| `connectionTypes` | `[String]?` | For a `CONNECTION_SELECT`: limits it to these vendors. The server accepts `google`, `github`, `oidc`, and `oauth`. |
+| `min`, `max` | `Double?` | For a `NUMBER_INPUT`: the lowest and highest value. |
+| `validation` | `[FlowVariableValidationRule]?` | Rules a text value has to meet. |
+
+## Cache Keys
+
+`FlowQueryKeys` and `FlowVariableQueryKeys` name flow resources for caching. `ThunderIDState` uses them to refetch after a save. Reuse them as keys in your own data fetching cache.
+
+| Constant | Keys |
+| :--- | :--- |
+| `FlowQueryKeys` | `flows` (`"flows"`) |
+| `FlowVariableQueryKeys` | `definitions` (`"flow-variable-definitions"`), `values` (`"flow-variable-values"`) |
+
+## Internationalization
+
+The labels, errors, and notices come from the `admin.flowVariables` keys in the SDK's translations, available in all nine locales.
