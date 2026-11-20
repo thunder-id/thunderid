@@ -17,4 +17,7 @@ const (
 	ErrorCodeAccountLocked = "AUP-0009"
 	// ErrorCodeAccountSuspended is returned when a suspension refuses the identity.
 	ErrorCodeAccountSuspended = "AUP-0010"
+	// ErrorCodeFederatedSyncFailed is returned when a federated sign-in cannot be synced to the account
+	// holding its link.
+	ErrorCodeFederatedSyncFailed = "AUP-0011"
 )

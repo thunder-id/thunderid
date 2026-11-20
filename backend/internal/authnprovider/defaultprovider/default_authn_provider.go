@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -21,21 +22,28 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 type defaultAuthnProvider struct {
-	entitySvc        entity.EntityServiceInterface
-	passkeyService   passkey.PasskeyServiceInterface
-	otpService       otp.OTPAuthnServiceInterface
-	magicLinkService magiclink.MagicLinkAuthnServiceInterface
-	openid4vpService openid4vp.OpenID4VPServiceInterface
-	federatedAuths   map[providers.IDPType]authncommon.FederatedAuthenticator
-	governance       identitygovernance.IdentityGovernanceServiceInterface
-	verification     attributeverification.AttributeVerificationServiceInterface
-	logger           *log.Logger
+	entitySvc             entity.EntityServiceInterface
+	entityTypeService     entitytype.EntityTypeServiceInterface
+	idpService            providers.IDPProvider
+	groupService          group.GroupServiceInterface
+	roleAssignmentService role.RoleAssignmentServiceInterface
+	passkeyService        passkey.PasskeyServiceInterface
+	otpService            otp.OTPAuthnServiceInterface
+	magicLinkService      magiclink.MagicLinkAuthnServiceInterface
+	openid4vpService      openid4vp.OpenID4VPServiceInterface
+	federatedAuths        map[providers.IDPType]authncommon.FederatedAuthenticator
+	governance            identitygovernance.IdentityGovernanceServiceInterface
+	verification          attributeverification.AttributeVerificationServiceInterface
+	logger                *log.Logger
 }
 
 // newDefaultAuthnProvider creates a new internal user authn provider.
@@ -45,17 +53,22 @@ func newDefaultAuthnProvider(entitySvc entity.EntityServiceInterface,
 	openid4vpService openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
-	verification attributeverification.AttributeVerificationServiceInterface) providers.AuthnProviderInterface {
+	verification attributeverification.AttributeVerificationServiceInterface,
+	syncDeps FederatedSyncDependencies) providers.AuthnProviderInterface {
 	return &defaultAuthnProvider{
-		entitySvc:        entitySvc,
-		passkeyService:   passkeyService,
-		otpService:       otpService,
-		magicLinkService: magicLinkService,
-		openid4vpService: openid4vpService,
-		federatedAuths:   federatedAuths,
-		governance:       governance,
-		verification:     verification,
-		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DefaultAuthnProvider")),
+		entitySvc:             entitySvc,
+		entityTypeService:     syncDeps.EntityTypeService,
+		idpService:            syncDeps.IDPService,
+		groupService:          syncDeps.GroupService,
+		roleAssignmentService: syncDeps.RoleAssignmentService,
+		passkeyService:        passkeyService,
+		otpService:            otpService,
+		magicLinkService:      magicLinkService,
+		openid4vpService:      openid4vpService,
+		federatedAuths:        federatedAuths,
+		governance:            governance,
+		verification:          verification,
+		logger:                log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DefaultAuthnProvider")),
 	}
 }
 
@@ -97,7 +110,61 @@ func (p *defaultAuthnProvider) Authenticate(
 	if svcErr := p.checkAuthenticationAccess(ctx, method, result); svcErr != nil {
 		return nil, svcErr
 	}
-	return result, nil
+	return p.settleFederatedSync(ctx, credentials, res, result, metadata)
+}
+
+// settleFederatedSync syncs a federated sign-in to the one account holding its link, or runs a deferred
+// sync to the account an authentication by entity ID signs in, and returns the result carrying what the
+// sign-in keeps to the session. A federated sign-in that is not synced, or a deferred sync whose account
+// doesn't hold the link, is returned as the pending identity for a later step. Any other
+// authentication returns the pending identity unchanged.
+func (p *defaultAuthnProvider) settleFederatedSync(ctx context.Context, credentials map[string]interface{},
+	res *authncommon.AuthnResult, result *providers.AuthnResult, metadata *providers.AuthnMetadata,
+) (*providers.AuthnResult, *tidcommon.ServiceError) {
+	var pending any
+	if metadata != nil {
+		pending = metadata.PendingIdentity
+	}
+	var toSync *pendingIdentity
+	created := false
+	if _, federated := credentials[authnprovidercm.CredentialTypeFederated]; federated &&
+		authnprovidercm.IsFederatedToken(res.Token) {
+		idpID, _ := res.Token[authnprovidercm.UserAttributeFederatedIdpID].(string)
+		sub, _ := res.Token[authnprovidercm.UserAttributeSub].(string)
+		signIn := &pendingIdentity{IdpID: idpID, Sub: sub, Claims: res.ReceivedClaims}
+		pending = signIn
+		if syncsAtSignIn(metadata) {
+			toSync = signIn
+		}
+	} else if _, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; provisioned {
+		toSync = decodePendingIdentity(pending)
+		created = metadata != nil && metadata.Created
+	}
+
+	// A subject the application refuses is never synced; the manager rejects the sign-in.
+	if toSync == nil || result.EntityReference == nil || !authnprovidercm.SubjectAllowed(ctx, result.EntityReference) {
+		result.PendingIdentity = pending
+		return result, nil
+	}
+	entityID := result.EntityReference.EntityID
+	values, held, svcErr := p.syncLinkedAccount(ctx, entityID, toSync, created)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !held {
+		result.PendingIdentity = pending
+		return result, nil
+	}
+
+	// The sync may have written the account, so the result is read again.
+	synced, svcErr := p.buildEntityAuthnResult(ctx, entityID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	synced.AuthenticatedClaims = make(providers.AuthenticatedClaims, len(result.AuthenticatedClaims)+1)
+	maps.Copy(synced.AuthenticatedClaims, result.AuthenticatedClaims)
+	synced.AuthenticatedClaims[authnprovidercm.ClaimSessionValues] = values
+	return synced, nil
 }
 
 // GetEntityReference retrieves the entity reference using the internal entity service.

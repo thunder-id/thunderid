@@ -676,6 +676,8 @@ func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svc
 		return &common.ErrorAccountLocked
 	case authnprovidermgr.ErrorAccountSuspended.Code:
 		return &common.ErrorAccountSuspended
+	case authnprovidermgr.ErrorFederatedSyncFailed.Code:
+		return &ErrorFederatedSyncFailed
 	// Ambiguity here means more than one user holds a recorded link to the same federated subject.
 	case authnprovidermgr.ErrorAuthenticationFailed.Code, authnprovidermgr.ErrorUserNotFound.Code,
 		authnprovidermgr.ErrorAmbiguousUser.Code, authnprovidermgr.ErrorInvalidRequest.Code,

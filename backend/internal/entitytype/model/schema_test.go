@@ -909,6 +909,40 @@ func (s *SchemaValidateTestSuite) TestIsStringBackedType() {
 	}
 }
 
+func (s *SchemaValidateTestSuite) TestConvertReceivedValue() {
+	cases := []struct {
+		name     string
+		received interface{}
+		attrType string
+		want     interface{}
+		ok       bool
+	}{
+		{"null", nil, TypeString, nil, true},
+		{"empty string", "", TypeString, nil, true},
+		{"string", "Ada", TypeString, "Ada", true},
+		{"number", "42", TypeNumber, float64(42), true},
+		{"boolean", true, TypeBoolean, true, true},
+		{"single value to array", "a", TypeArray, []interface{}{"a"}, true},
+		{"array", []interface{}{"a", "b"}, TypeArray, []interface{}{"a", "b"}, true},
+		{"object", map[string]interface{}{"a": 1}, TypeObject, map[string]interface{}{"a": 1}, true},
+		{"object to string", map[string]interface{}{"a": 1}, TypeString, nil, false},
+		{"object to array", map[string]interface{}{"a": 1}, TypeArray, nil, false},
+		{"array to object", []interface{}{"a"}, TypeObject, nil, false},
+		{"unparseable boolean", "maybe", TypeBoolean, nil, false},
+		{"unparseable number", "many", TypeNumber, nil, false},
+		{"infinite number", "1e999", TypeNumber, nil, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			got, ok := ConvertReceivedValue(tc.received, tc.attrType)
+			s.Equal(tc.ok, ok)
+			if tc.ok {
+				s.Equal(tc.want, got)
+			}
+		})
+	}
+}
+
 func (s *SchemaValidateTestSuite) TestIsContactType() {
 	for attrType, expected := range map[string]bool{
 		TypeEmail: true, TypeMobile: true, TypeString: false, TypeObject: false, "": false,

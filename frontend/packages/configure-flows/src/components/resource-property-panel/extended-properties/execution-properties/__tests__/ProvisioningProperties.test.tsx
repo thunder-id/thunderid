@@ -3,9 +3,11 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type {ReactFlowState} from '@xyflow/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Resource} from '../../../../../models/resources';
-import ProvisioningProperties from '../ProvisioningProperties';
+import {ExecutionTypes} from '../../../../../models/steps';
+import ProvisioningProperties, {selectHasFederatedExecutor} from '../ProvisioningProperties';
 
 interface MockListQuery {
   data: {id: string; name: string; ouId: string; ouHandle?: string}[] | undefined;
@@ -63,6 +65,13 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+let mockHasFederatedExecutor = false;
+
+vi.mock('@xyflow/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@xyflow/react')>()),
+  useStore: () => mockHasFederatedExecutor,
+}));
+
 describe('ProvisioningProperties', () => {
   const mockOnChange = vi.fn();
 
@@ -88,6 +97,7 @@ describe('ProvisioningProperties', () => {
       isSuccess: true,
       refetch: vi.fn(),
     };
+    mockHasFederatedExecutor = false;
   });
 
   it('should render the description and checkbox labels', () => {
@@ -354,6 +364,67 @@ describe('ProvisioningProperties', () => {
       expect(screen.getByRole('combobox', {name: /provisioningOU\.label/})).toHaveTextContent(
         'flows:core.executions.provisioning.provisioningOU.userType',
       );
+    });
+  });
+
+  describe('federated override warning', () => {
+    const warning = 'flows:core.executions.provisioning.federatedOverrideWarning';
+
+    it('should warn when a group is assigned in a flow with a federated sign-in', () => {
+      mockHasFederatedExecutor = true;
+      render(
+        <ProvisioningProperties resource={createResource({assignGroup: 'engineering'})} onChange={mockOnChange} />,
+      );
+
+      expect(screen.getByText(warning)).toBeInTheDocument();
+    });
+
+    it('should not warn when nothing is assigned or the flow has no federated sign-in', () => {
+      mockHasFederatedExecutor = true;
+      const {unmount} = render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
+      expect(screen.queryByText(warning)).not.toBeInTheDocument();
+      unmount();
+
+      mockHasFederatedExecutor = false;
+      render(<ProvisioningProperties resource={createResource({assignRole: 'admin'})} onChange={mockOnChange} />);
+      expect(screen.queryByText(warning)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('selectHasFederatedExecutor', () => {
+    const executorData = (name: string) => ({action: {executor: {name}}});
+    const stateOf = (nodes: {id: string; data: Record<string, unknown>}[]) => ({nodes}) as unknown as ReactFlowState;
+
+    it('should find a federated executor node', () => {
+      expect(selectHasFederatedExecutor(stateOf([{id: 'a', data: executorData(ExecutionTypes.OIDCAuthExecutor)}]))).toBe(
+        true,
+      );
+    });
+
+    it('should find a federated executor folded into a stack node', () => {
+      const stack = {
+        id: 'stack',
+        data: {
+          memberIds: ['a', 'b'],
+          members: [
+            {id: 'a', data: executorData(ExecutionTypes.ProvisioningExecutor)},
+            {id: 'b', data: executorData(ExecutionTypes.GoogleFederation)},
+          ],
+        },
+      };
+
+      expect(selectHasFederatedExecutor(stateOf([stack]))).toBe(true);
+    });
+
+    it('should return false when no node or stack member is a federated executor', () => {
+      const stack = {
+        id: 'stack',
+        data: {memberIds: ['a'], members: [{id: 'a', data: executorData(ExecutionTypes.ProvisioningExecutor)}]},
+      };
+
+      expect(
+        selectHasFederatedExecutor(stateOf([{id: 'c', data: executorData(ExecutionTypes.ProvisioningExecutor)}, stack])),
+      ).toBe(false);
     });
   });
 });

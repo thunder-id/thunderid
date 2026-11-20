@@ -389,6 +389,7 @@ func MergePresentedOptionalInputIdentifiers(raw string, identifiers []string) st
 func BuildProviderMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
 	return &providers.AuthnMetadata{
 		RuntimeMetadata: buildRuntimeMetadata(ctx),
+		FlowType:        ctx.FlowType,
 	}
 }
 

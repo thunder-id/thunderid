@@ -28,7 +28,8 @@ func Initialize(entitySvc entity.EntityServiceInterface,
 	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
-	verification attributeverification.AttributeVerificationServiceInterface) providers.AuthnProviderInterface {
+	verification attributeverification.AttributeVerificationServiceInterface,
+	syncDeps FederatedSyncDependencies) providers.AuthnProviderInterface {
 	return newDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc,
-		federatedAuths, governance, verification)
+		federatedAuths, governance, verification, syncDeps)
 }

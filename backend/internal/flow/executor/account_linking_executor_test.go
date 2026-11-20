@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -528,7 +530,9 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedByAnyCandidate
 	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: linkingOtherCandidateID},
 			(*tidcommon.ServiceError)(nil))
-	suite.expectLink(nil)
+	suite.mockAuthnProvider.On("LinkAccount", mock.Anything, mock.Anything, linkingIdpID, linkingSub).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.expectSyncWith(nil, linkingOtherCandidateID, mock.Anything)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -708,6 +712,127 @@ func withFederatedIdentity(runtime map[string]string) map[string]string {
 func (suite *AccountLinkingExecutorTestSuite) expectLink(err *tidcommon.ServiceError) {
 	suite.mockAuthnProvider.On("LinkAccount", mock.Anything, mock.Anything,
 		linkingIdpID, linkingSub).Return(err)
+	if err == nil {
+		suite.expectSync(nil)
+	}
+}
+
+// expectSync expects the linked account to be signed in once its link is written, which runs the
+// deferred sync of the federated sign-in.
+func (suite *AccountLinkingExecutorTestSuite) expectSync(err *tidcommon.ServiceError) {
+	suite.expectSyncWith(err, linkingCandidateID, mock.Anything)
+}
+
+// expectSyncWith is expectSync for entityID, with the AuthUser the sign-in is given matched by base.
+func (suite *AccountLinkingExecutorTestSuite) expectSyncWith(err *tidcommon.ServiceError, entityID string,
+	base interface{}) {
+	claims := providers.AuthenticatedClaims{authnprovidercm.ClaimSessionValues: &authnprovidercm.SessionValues{
+		RoleIDs: []string{"session-role"},
+	}}
+	if err != nil {
+		claims = nil
+	}
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(credentials map[string]interface{}) bool {
+			return credentials[authnprovidercm.CredentialTypeProvisionedEntityID] == entityID
+		}), mock.Anything, mock.Anything, base).Return(verifiedAuthUser(), claims, err)
+}
+
+// Signing in the linked account writes what the sync keeps to the session into runtime data.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedLink_SyncsTheAccount() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authenticatedAuthUser(),
+		RuntimeData: returningFromVerification(withFederatedIdentity(verificationPending())),
+	}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: linkingCandidateID},
+			(*tidcommon.ServiceError)(nil))
+	suite.expectLink(nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("session-role", resp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+	suite.NotContains(resp.RuntimeData, authnprovidercm.ClaimSessionValues)
+}
+
+// A verification through another federated connection replaces the provider's pending identity with
+// its own sign-in's. The deferred sync gets the token of the sign-in being linked back, so that sign-in is
+// synced.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedLink_KeepsTheLinkedSignInPending() {
+	withPending := func(authUser providers.AuthUser, token string) providers.AuthUser {
+		state, _ := authUser.StateFor("default")
+		state.PendingIdentity = token
+		authUser.SetStateFor("default", state)
+		return authUser
+	}
+	verification := withPending(authenticatedAuthUser(), "verification-sign-in")
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    verification,
+		RuntimeData: returningFromVerificationAs(withFederatedIdentity(verificationPending()),
+			withPending(pendingAuthUser(), "linked-sign-in")),
+	}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(verification, &providers.EntityReference{EntityID: linkingCandidateID},
+			(*tidcommon.ServiceError)(nil))
+	suite.mockAuthnProvider.On("LinkAccount", mock.Anything, mock.Anything, linkingIdpID, linkingSub).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.expectSyncWith(nil, linkingCandidateID, mock.MatchedBy(func(base providers.AuthUser) bool {
+		state, ok := base.StateFor("default")
+		return ok && state.PendingIdentity == "linked-sign-in" && state.EntityReferenceToken != nil
+	}))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
+// A rejected sync keeps the written link and fails the step with the sync error.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedLink_SyncRejected() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authenticatedAuthUser(),
+		RuntimeData: returningFromVerification(withFederatedIdentity(verificationPending())),
+	}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: linkingCandidateID},
+			(*tidcommon.ServiceError)(nil))
+	suite.mockAuthnProvider.On("LinkAccount", mock.Anything, mock.Anything, linkingIdpID, linkingSub).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.expectSync(&authnprovidermgr.ErrorFederatedSyncFailed)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrFederatedUserSyncFailed.Code, resp.Error.Code)
+}
+
+// A server error while signing in the linked account fails the flow.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedLink_SyncServerError() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authenticatedAuthUser(),
+		RuntimeData: returningFromVerification(withFederatedIdentity(verificationPending())),
+	}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: linkingCandidateID},
+			(*tidcommon.ServiceError)(nil))
+	suite.mockAuthnProvider.On("LinkAccount", mock.Anything, mock.Anything, linkingIdpID, linkingSub).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.expectSync(&tidcommon.InternalServerError)
+
+	_, err := suite.executor.Execute(ctx)
+
+	suite.Error(err)
 }
 
 // The candidate that proved itself is linked on the pass that settles the verification.
