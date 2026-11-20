@@ -903,7 +903,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_MissingPurpose_Treat
 	s.Nil(result)
 	s.NotNil(svcErr)
 	// HasEssentialDenial: phone (essential in purpose2) was implicitly denied
-	s.Equal(ErrorEssentialConsentDenied.Code, svcErr.Code)
+	s.Equal(providers.ErrorEssentialConsentDenied.Code, svcErr.Code)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_SearchFails_ClientError() {
@@ -1349,7 +1349,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_EssentialDenied_Retu
 
 	s.Nil(result)
 	s.NotNil(svcErr)
-	s.Equal(ErrorEssentialConsentDenied.Code, svcErr.Code)
+	s.Equal(providers.ErrorEssentialConsentDenied.Code, svcErr.Code)
 	// Verify consent was still persisted (CreateConsent was called)
 	s.mockConsentSvc.AssertCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
 }

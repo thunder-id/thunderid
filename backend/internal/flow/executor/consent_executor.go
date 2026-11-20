@@ -347,7 +347,7 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		}
 		// Essential consent denied: the consent record was persisted but the user denied
 		// a required attribute, so the flow cannot proceed
-		if svcErr.Code == consentauthn.ErrorEssentialConsentDenied.Code {
+		if svcErr.Code == providers.ErrorEssentialConsentDenied.Code {
 			logger.Debug(ctx.Context, "User denied essential consent attributes")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrConsentDenied

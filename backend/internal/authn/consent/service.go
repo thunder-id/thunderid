@@ -288,7 +288,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	// If the user denied any essential attribute, return an error after persisting
 	if hasEssentialDenial {
 		logger.Debug(ctx, "User denied essential attribute(s)", log.String("consentID", consentRecord.ID))
-		return nil, &ErrorEssentialConsentDenied
+		return nil, &providers.ErrorEssentialConsentDenied
 	}
 
 	result := convertToProvidersConsent(consentRecord)
