@@ -3,6 +3,7 @@
 
 import {SettingsCard} from '@thunderid/components';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {useRecordAccess} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {Stack, Typography, Select, MenuItem} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -34,6 +35,7 @@ export default function EditGeneralSettings({
 }: EditGeneralSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
+  const {readOnly: isReadOnly} = useRecordAccess('usertype', userType);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,7 +77,7 @@ export default function EditGeneralSettings({
       >
         <OrganizationUnitTreePicker
           value={effectiveOuId}
-          onChange={userType.isReadOnly ? () => undefined : (selectedOuId) => onFieldChange('ouId', selectedOuId)}
+          onChange={isReadOnly ? () => undefined : (selectedOuId) => onFieldChange('ouId', selectedOuId)}
           maxHeight={400}
         />
       </SettingsCard>
@@ -88,7 +90,7 @@ export default function EditGeneralSettings({
           'Allow users to self-register with this user type.',
         )}
         enabled={effectiveAllowSelfRegistration}
-        onToggle={userType.isReadOnly ? undefined : (enabled) => onFieldChange('allowSelfRegistration', enabled)}
+        onToggle={isReadOnly ? undefined : (enabled) => onFieldChange('allowSelfRegistration', enabled)}
       >
         <Typography variant="body2" color="text.secondary">
           {t('userTypes:edit.general.selfRegistration.enabledHint', 'Users can register themselves as this user type.')}
@@ -106,7 +108,7 @@ export default function EditGeneralSettings({
         <Select
           value={effectiveDisplayAttribute}
           onChange={(event) => onFieldChange('displayAttribute', event.target.value)}
-          disabled={userType.isReadOnly}
+          disabled={isReadOnly}
           size="small"
           fullWidth
           displayEmpty

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {CredentialResetSection, type CredentialResetField} from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -20,6 +19,10 @@ interface EditCredentialsSettingsProps {
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   /** The credentials the agent type declares, such as a password. None, or a personal agent, shows no reset. */
   credentialFields?: CredentialResetField[];
+  /**
+   * Whether the agent can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 export default function EditCredentialsSettings({
@@ -28,9 +31,9 @@ export default function EditCredentialsSettings({
   oauth2Config = undefined,
   onFieldChange,
   credentialFields = [],
+  readOnly = false,
 }: EditCredentialsSettingsProps): JSX.Element {
   const {t} = useTranslation();
-  const {can} = useCapabilitiesContext();
   const updateCredentials = useUpdateAgentCredentials();
 
   const handleOAuth2ConfigChange = (updates: Partial<OAuthAgentConfig>) => {
@@ -56,21 +59,21 @@ export default function EditCredentialsSettings({
         <>
           <ClientIdSection oauth2Config={oauth2Config} />
           {!isPersonalAgent && (
-            <ClientSecretSection agentId={agent.id} oauth2Config={oauth2Config} disabled={agent.isReadOnly} />
+            <ClientSecretSection agentId={agent.id} oauth2Config={oauth2Config} disabled={readOnly} />
           )}
           <CertificateSection
             certificate={oauth2Config.certificate}
             onCertificateChange={(cert) => handleOAuth2ConfigChange({certificate: cert})}
             required={oauth2Config.tokenEndpointAuthMethod === 'private_key_jwt'}
             encryptionDependsOnCert={encryptionDependsOnCert}
-            disabled={agent.isReadOnly}
+            disabled={readOnly}
           />
         </>
       )}
       {!isPersonalAgent && (
         <CredentialResetSection
           fields={credentialFields}
-          disabled={agent.isReadOnly === true || !can('agent', 'update')}
+          disabled={readOnly}
           onReset={(field, newValue) =>
             updateCredentials.mutateAsync({agentId: agent.id, data: {credentials: {[field.fieldName]: newValue}}})
           }

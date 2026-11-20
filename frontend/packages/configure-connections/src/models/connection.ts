@@ -64,6 +64,8 @@ export interface ConnectionInstance {
   type: ConnectionType;
   /** The organization unit the connection belongs to. */
   ouId?: string;
+  /** False for a connection shared into the organization unit it is listed in, which that unit cannot change. */
+  isOwnedByOU?: boolean;
   categories: ConnectionInstanceCategory[];
   /**
    * Present only for trust-only OIDC instances (trusted issuers); absent for plain federation
@@ -444,6 +446,8 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   name: string;
   /** The organization unit the connection belongs to. */
   ouId: string;
+  /** False for a connection shared into the organization unit it is read in, which that unit cannot change. */
+  isOwnedByOU?: boolean;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;

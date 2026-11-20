@@ -49,6 +49,10 @@ export interface BasicFlowDefinition {
    * Whether the flow is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+  /**
+   * False for a flow shared into the organization unit it is read in, which that unit cannot change.
+   */
+  isOwnedByOU?: boolean;
 }
 
 /**
@@ -391,6 +395,10 @@ export interface FlowDefinitionResponse {
    * Whether the flow is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+  /**
+   * False for a flow shared into the organization unit it is read in, which that unit cannot change.
+   */
+  isOwnedByOU?: boolean;
 }
 
 /**

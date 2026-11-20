@@ -10,7 +10,7 @@ import {
   type Project,
 } from '@thunderid/configure-gateways';
 import {useProjectSelection} from '@thunderid/configure-projects';
-import {useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useToast} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -42,6 +42,8 @@ export default function AutoDeploySwitch(): JSX.Element {
   const autoApply = useAutoApply();
   const setAutoApply = useSetAutoApply();
   const applyVersion = useApplyVersion();
+  const {can} = useCapabilitiesContext();
+  const canUpdate = can('serverconfig', 'update');
   // The setting asked for, waiting for the person to confirm it.
   const [confirming, setConfirming] = useState<boolean | null>(null);
   const [saving, setSaving] = useState<boolean | null>(null);
@@ -146,7 +148,16 @@ export default function AutoDeploySwitch(): JSX.Element {
         >
           <Switch
             checked={auto}
-            disabled={!first || autoApply.isLoading || autoApply.isError || (autoApply.data?.locked ?? false) || busy}
+            disabled={
+              !canUpdate ||
+              // Turning it on deploys what is pending first, which needs the gateway update permission.
+              (!auto && hasPending && !can('gateway', 'update')) ||
+              !first ||
+              autoApply.isLoading ||
+              autoApply.isError ||
+              (autoApply.data?.locked ?? false) ||
+              busy
+            }
             onChange={(_event, checked: boolean) => ask(checked)}
             slotProps={{
               input: {

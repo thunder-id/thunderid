@@ -36,6 +36,8 @@ export type {SettingFieldProps} from './components/common/SettingField';
 export {default as SessionTimeoutsCard} from './components/sessions/SessionTimeoutsCard';
 export {default as CspDirectiveRow} from './components/csp/CspDirectiveRow';
 export type {CspDirectiveRowAction, CspDirectiveRowProps} from './components/csp/CspDirectiveRow';
+export {default as CspScopeCard} from './components/csp/CspScopeCard';
+export type {CspScopeCardProps} from './components/csp/CspScopeCard';
 export {default as CspSection} from './components/csp/CspSection';
 
 // Hooks

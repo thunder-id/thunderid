@@ -37,6 +37,10 @@ interface UrlsSectionProps {
    * @param hasErrors - Boolean indicating if the URLs have validation errors
    */
   onValidationChange?: (hasErrors: boolean) => void;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -58,6 +62,7 @@ export default function UrlsSection({
   onFieldChange,
   entityLabel = 'application',
   onValidationChange = undefined,
+  readOnly = false,
 }: UrlsSectionProps) {
   const {t} = useTranslation();
 
@@ -122,7 +127,7 @@ export default function UrlsSection({
                 placeholder={t('applications:edit.customization.tosUri.placeholder')}
                 error={!!errors.tosUri}
                 helperText={errors.tosUri?.message ?? t('applications:edit.customization.tosUri.hint')}
-                disabled={application.isReadOnly}
+                disabled={readOnly}
               />
             )}
           />
@@ -146,7 +151,7 @@ export default function UrlsSection({
                 placeholder={t('applications:edit.customization.policyUri.placeholder')}
                 error={!!errors.policyUri}
                 helperText={errors.policyUri?.message ?? t('applications:edit.customization.policyUri.hint')}
-                disabled={application.isReadOnly}
+                disabled={readOnly}
               />
             )}
           />

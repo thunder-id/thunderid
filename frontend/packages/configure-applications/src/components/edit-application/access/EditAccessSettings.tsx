@@ -37,6 +37,10 @@ interface EditAccessSettingsProps {
    * user-facing grant.
    */
   showUserAccessConfig?: boolean;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -56,11 +60,13 @@ export default function EditAccessSettings({
   sectionResetKey = 0,
   onValidationChange = undefined,
   showUserAccessConfig = true,
+  readOnly = false,
 }: EditAccessSettingsProps): JSX.Element {
   return (
     <AccessSection
       key={sectionResetKey}
       application={application}
+      readOnly={readOnly}
       editedApp={editedApp}
       onFieldChange={onFieldChange}
       onValidationChange={onValidationChange}

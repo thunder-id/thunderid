@@ -171,7 +171,8 @@ describe('AgentSignInSection', () => {
   it('disables the toggle for a read-only agent', () => {
     render(
       <AgentSignInSection
-        agent={{...agent, isReadOnly: true}}
+        agent={agent}
+        readOnly
         editedAgent={{}}
         oauth2Config={delegationEnabledConfig}
         onFieldChange={mockOnFieldChange}

@@ -67,10 +67,11 @@ func (suite *SessionConfigAPITestSuite) TestListIncludesSessionSection() {
 	suite.Contains(names, "session")
 }
 
-// An unset section reads as its built-in defaults in effect, with nothing set.
+// An unset section reads as its built-in defaults in effect, with nothing set (#5213).
 func (suite *SessionConfigAPITestSuite) TestReadShowsTheDefaults() {
 	layers := suite.getLayers()
 
+	suite.Equal(sessionSectionValue{}, layers.ReadOnly)
 	suite.Equal(sessionSectionValue{}, layers.Writable)
 	suite.Equal(builtInSessionDefaults, layers.Merged)
 }

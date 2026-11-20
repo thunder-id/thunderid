@@ -1,15 +1,25 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@testing-library/react';
+import {render as rtlRender, screen, type RenderOptions, type RenderResult} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {AllowedOriginTypes, createRow} from '@thunderid/configure-settings';
+import {CapabilitiesProvider} from '@thunderid/contexts';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
 } from '../../../contexts/ApplicationCreate/ApplicationCreateContext';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import ConfigureRedirectUris from '../ConfigureRedirectUris';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 let translationLookup = (key: string): string => key;
 

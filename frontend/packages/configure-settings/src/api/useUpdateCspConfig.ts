@@ -51,9 +51,12 @@ export default function useUpdateCspConfig(): UseMutationResult<CspConfigRespons
 
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      const queryKey = [SettingsQueryKeys.SERVER_CONFIG, SettingsQueryKeys.CSP];
+      // A refetch still in flight would otherwise overwrite the saved value with older data.
+      await queryClient.cancelQueries({queryKey});
       // PUT returns the full config, so keep the read model in sync without a refetch.
-      queryClient.setQueryData([SettingsQueryKeys.SERVER_CONFIG, SettingsQueryKeys.CSP], data);
+      queryClient.setQueryData(queryKey, data);
       showToast(t('settings:csp.save.success', 'Content security policy updated.'), 'success');
     },
   });

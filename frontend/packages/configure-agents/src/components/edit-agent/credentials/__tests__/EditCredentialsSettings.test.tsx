@@ -141,15 +141,11 @@ describe('EditCredentialsSettings', () => {
     expect(screen.getByTestId('reset-error')).toHaveTextContent('Failed to update credentials. Please try again.');
   });
 
-  it.each([
-    ['the agent is read-only', {...mockAgent, isReadOnly: true}, true],
-    ['the caller may not update agents', mockAgent, false],
-  ])('turns the reset off when %s', (_name, agent, allowed) => {
-    mockCan.mockReturnValue(allowed);
-
+  it('turns the reset off when read-only', () => {
     render(
       <EditCredentialsSettings
-        agent={agent}
+        agent={mockAgent}
+        readOnly
         editedAgent={{}}
         onFieldChange={mockOnFieldChange}
         credentialFields={password}
@@ -159,7 +155,7 @@ describe('EditCredentialsSettings', () => {
     expect(screen.getByTestId('credential-reset')).toHaveAttribute('data-disabled', 'true');
   });
 
-  it('leaves the reset on for a caller who may update agents', () => {
+  it('leaves the reset on when not read-only', () => {
     render(
       <EditCredentialsSettings
         agent={mockAgent}

@@ -1,0 +1,94 @@
+---
+displayed_sidebar: null
+title: SharedFlowList
+docType: reference
+description: SwiftUI list of the flows shared with an organization unit, the flows it owns, or both, which reports the chosen flow so your app decides what to open.
+---
+
+# `SharedFlowList`
+
+The `SharedFlowList` view lists the flows shared with an organization unit, the flows it owns, or both. Choosing a flow calls `onSelect`, so your app decides what to open, for example [`FlowVariablesForm`](../flow-variables-form) for that flow.
+
+`SharedFlowList` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy. The signed-in user's access token needs the permissions the server requires to list flows.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderID
+import ThunderIDSwiftUI
+
+struct DelegatedAdmin: View {
+    let ouId: String
+    @State private var selected: ManagedFlow?
+
+    var body: some View {
+        VStack {
+            SharedFlowList(
+                ouId: ouId,
+                selectedFlowId: selected?.id,
+                onSelect: { selected = $0 }
+            )
+            if let flow = selected {
+                FlowVariablesForm(flowId: flow.id, ouId: ouId)
+                    .id(flow.id)
+            }
+        }
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `ouId` | `String` | ✅ | | The organization unit to list the flows of. |
+| `ownership` | `SharedFlowOwnership` | ❌ | `.shared` | Which flows to list: `.shared` for the ones shared with the unit, `.owned` for the ones it owns, or `.all` for both. |
+| `flowType` | `String?` | ❌ | `nil` | Restricts the list to one flow type, for example `AUTHENTICATION`. |
+| `limit` | `Int` | ❌ | `20` | Page size. |
+| `title` | `String?` | ❌ | | Heading of the list. |
+| `description` | `String?` | ❌ | | Text under the heading. |
+| `selectedFlowId` | `String?` | ❌ | | Identifier of the flow to highlight. |
+| `onSelect` | `((ManagedFlow) -> Void)?` | ❌ | | Called when a flow is chosen. Rows are selectable only when set. |
+| `actions` | `AnyView?` | ❌ | | Controls rendered next to the title. |
+| `content` | `(AdminListState<ManagedFlow>) -> Content` | ❌ | | Renders custom UI in place of the default list. |
+
+### Ownership and Paging
+
+The server cannot filter a flow list by ownership. For `.shared` and `.owned`, the view reads the unit's flows, up to 100, and filters on each flow's `isOwnedByOU` value on the device, then pages through the matches. A unit with more than 100 flows therefore lists matches from the first 100 flows only. For `.all`, the view pages on the server and has no such limit.
+
+## `BaseSharedFlowList`
+
+`BaseSharedFlowList` is the presentational list. It holds no data of its own: pass the page of flows and handle selection and pagination. The list shows each flow's name, handle, and type. Pair it with `ThunderIDState.flowsQuery(flowType:ouId:limit:offset:fetcher:)` or any other source.
+
+```swift
+BaseSharedFlowList(
+    flows: flows,
+    totalResults: total,
+    onSelect: { flow in open(flow) }
+)
+```
+
+### `BaseSharedFlowList` Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `flows` | `[ManagedFlow]` | ✅ | | The page of flows to show. |
+| `isLoading` | `Bool` | ❌ | `false` | Shows a loading state. |
+| `error` | `String?` | ❌ | `nil` | An error message to show in place of the rows. |
+| `title` | `String?` | ❌ | | Heading of the list. |
+| `description` | `String?` | ❌ | | Text under the heading. |
+| `limit` | `Int` | ❌ | `20` | Page size. |
+| `offset` | `Int` | ❌ | `0` | Offset of the current page. |
+| `totalResults` | `Int?` | ❌ | `flows.count` | Total number of flows, used for pagination. |
+| `selectedFlowId` | `String?` | ❌ | | Identifier of the flow to highlight. |
+| `onPageChange` | `((Int) -> Void)?` | ❌ | | Called with the offset of the page to show. Pagination is hidden when omitted. |
+| `onSelect` | `((ManagedFlow) -> Void)?` | ❌ | | Called when a flow is chosen. Rows are selectable only when set. |
+| `actions` | `AnyView?` | ❌ | | Controls rendered next to the title. |
+| `content` | `(AdminListState<ManagedFlow>) -> Content` | ❌ | | Renders custom UI in place of the default list. |
+
+The `content` closure receives an `AdminListState<ManagedFlow>` with the `rows`, the `isLoading` and `error` state, `limit`, `offset`, `totalResults`, `selectedId`, `onPageChange`, and `onSelect`.
+
+## Internationalization
+
+The title, empty message, and error message come from the `admin.flows.list` keys in the SDK's translations, available in all nine locales.

@@ -31,6 +31,10 @@ interface AuthenticationFlowSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -50,6 +54,7 @@ export default function AuthenticationFlowSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: AuthenticationFlowSectionProps) {
   const routes = useApplicationRoutes();
   const {t} = useTranslation();
@@ -93,7 +98,7 @@ export default function AuthenticationFlowSection({
         value={authFlowOptions.find((flow) => flow.id === selectedFlowId) ?? null}
         onChange={(_event, newValue) => onFieldChange('authFlowId', newValue?.id ?? '')}
         loading={loadingAuthFlows}
-        disabled={application.isReadOnly}
+        disabled={readOnly}
         renderInput={(params) => (
           <TextField
             {...params}

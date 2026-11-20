@@ -45,6 +45,7 @@ export default function AccountSecuritySection(): JSX.Element {
   const draft = useAccountLockDraft(data);
   const {can} = useCapabilitiesContext();
   const declarative = Boolean(data?.readOnly.user ?? data?.readOnly.agent);
+  const isReadOnly = declarative || !can('serverconfig', 'update');
   // Resolves an error through the `settings` catalog, per getErrorMessage's namespace contract, with
   // backend codes read from this section's own `accountLock.errors.*` keys, or from the wording every
   // server-config section shares when this section has none.
@@ -124,7 +125,7 @@ export default function AccountSecuritySection(): JSX.Element {
                   category={category}
                   form={draft.forms[category]}
                   errors={draft.errors[category]}
-                  disabled={declarative}
+                  disabled={isReadOnly}
                   onChange={(patch) => {
                     clearSaveError();
                     draft.change(category, patch);
@@ -138,7 +139,7 @@ export default function AccountSecuritySection(): JSX.Element {
         <AccountSuspensionSection />
       </Stack>
 
-      {draft.dirty && !declarative && (
+      {draft.dirty && !isReadOnly && (
         <UnsavedChangesBar
           message={t('settings:accountLock.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('settings:accountLock.reset', 'Reset')}

@@ -13,6 +13,8 @@ interface AgentSignInSectionProps {
   editedAgent: Partial<Agent>;
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  /** Whether the signed-in admin may change the agent here. */
+  readOnly?: boolean;
 }
 
 export default function AgentSignInSection({
@@ -20,6 +22,7 @@ export default function AgentSignInSection({
   editedAgent,
   oauth2Config = undefined,
   onFieldChange,
+  readOnly = false,
 }: AgentSignInSectionProps): JSX.Element | null {
   const {t} = useTranslation();
 
@@ -55,7 +58,7 @@ export default function AgentSignInSection({
         <Switch
           checked={isEnabled}
           onChange={(event) => handleToggle(event.target.checked)}
-          disabled={agent.isReadOnly}
+          disabled={readOnly}
           slotProps={{input: {'aria-label': toggleLabel}}}
         />
       }

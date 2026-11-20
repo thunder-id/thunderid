@@ -64,6 +64,7 @@ export type BasicApplication = Pick<
   | 'type'
   | 'template'
   | 'isReadOnly'
+  | 'isOwnedByOU'
   | 'status'
 > & {
   /**
@@ -352,6 +353,10 @@ export interface Application {
    * Whether this application is read-only (declarative/immutable)
    */
   isReadOnly?: boolean;
+  /**
+   * False for an application shared into the organization unit it is read in, which that unit cannot change
+   */
+  isOwnedByOU?: boolean;
 
   /**
    * Effective access status, derived by the server at read time. Read-only; never LOCKED, and never

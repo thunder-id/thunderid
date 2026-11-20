@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
+import {useConfig} from '@thunderid/contexts';
 import {Stack} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import AudienceSection from './AudienceSection';
@@ -69,6 +69,10 @@ interface EditAdvancedSettingsProps {
    * Callback invoked after the application is successfully deleted from the Danger Zone.
    */
   onDeleteSuccess?: () => void;
+  /** Whether the signed-in admin may change the application here. */
+  readOnly?: boolean;
+  /** Whether the signed-in admin may delete the application here. */
+  canDelete?: boolean;
 }
 
 /**
@@ -92,9 +96,10 @@ export default function EditAdvancedSettings({
   sectionResetKey = 0,
   onValidationChange = undefined,
   onDeleteSuccess = undefined,
+  readOnly: isReadOnly = false,
+  canDelete = false,
 }: EditAdvancedSettingsProps) {
   const {config} = useConfig();
-  const {can} = useCapabilitiesContext();
 
   // Redirect URIs, identity assertions, and passkeys validate independently; each is tracked
   // separately so one resolving doesn't clobber the other's still-invalid state when both report
@@ -159,7 +164,7 @@ export default function EditAdvancedSettings({
           oauth2Config={oauth2Config}
           oauth2Constraints={oauth2Constraints}
           onOAuth2ConfigChange={handleOAuth2ConfigChange}
-          disabled={application.isReadOnly}
+          disabled={isReadOnly}
           allowedGrantTypes={allowedGrantTypes}
           showRedirectUris={showRedirectUris}
           onValidationChange={setRedirectUrisInvalid}
@@ -169,7 +174,7 @@ export default function EditAdvancedSettings({
             key={sectionResetKey}
             oauth2Config={oauth2Config}
             onTokenConfigChange={handleTokenConfigChange}
-            disabled={application.isReadOnly}
+            disabled={isReadOnly}
             onValidationChange={setIdentityAssertionsInvalid}
           />
         )}
@@ -177,21 +182,19 @@ export default function EditAdvancedSettings({
           <AudienceSection
             audience={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
             onAudienceChange={handleDefaultAudienceChange}
-            disabled={application.isReadOnly}
+            disabled={isReadOnly}
           />
         )}
         <PasskeysSection
           allowedOrigins={currentPasskeyOrigins}
-          onPasskeysChange={application.isReadOnly ? undefined : handlePasskeysChange}
-          disabled={application.isReadOnly}
+          onPasskeysChange={isReadOnly ? undefined : handlePasskeysChange}
+          disabled={isReadOnly}
           onValidationChange={setPasskeysInvalid}
         />
         <MetadataSection application={application} />
-        {!application.isReadOnly &&
-          can('app', 'delete') &&
-          !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
-            <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
-          )}
+        {canDelete && !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
+          <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+        )}
       </Stack>
 
       {/* Delete Application Confirmation Dialog */}

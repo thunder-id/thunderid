@@ -611,9 +611,7 @@ func (ts *DCREncryptionTestSuite) TestDCRUserInfoUnsupportedEncryptionEncRejecte
 }
 
 // TestDCRIDTokenEncryptionEncWithoutAlgRejected verifies that an ID token content-encryption
-// algorithm without a key management algorithm is rejected. The DCR layer always derives a JWE
-// response type from either ID token field, so the product reports the paired alg and enc
-// requirement rather than a message naming the missing alg.
+// algorithm without a key management algorithm is rejected with a message naming the missing alg.
 func (ts *DCREncryptionTestSuite) TestDCRIDTokenEncryptionEncWithoutAlgRejected() {
 	jwks, _, err := buildRSAJWKS()
 	ts.Require().NoError(err, "Failed to generate RSA JWKS")
@@ -627,7 +625,7 @@ func (ts *DCREncryptionTestSuite) TestDCRIDTokenEncryptionEncWithoutAlgRejected(
 	ts.Require().NotNil(errResp)
 	ts.Equal(http.StatusBadRequest, statusCode)
 	ts.Equal("invalid_client_metadata", errResp.Error)
-	ts.Equal("idToken encryptionEnc is required when encryptionAlg is set", errResp.ErrorDescription)
+	ts.Equal("idToken encryptionAlg is required when encryptionEnc is set", errResp.ErrorDescription)
 }
 
 // authorizationCodeAccessToken runs a full authorization code login for a DCR-registered client and

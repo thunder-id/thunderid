@@ -1,0 +1,111 @@
+---
+displayed_sidebar: null
+title: SharedFlowList
+docType: reference
+description: Flutter list of the flows shared with an organization unit, the flows it owns, or both, which reports the chosen flow so your app decides what to open.
+---
+
+# `SharedFlowList`
+
+The `SharedFlowList` widget lists the flows shared with an organization unit, the flows it owns, or both. Choosing a flow calls `onSelect`, so your app decides what to open, for example [`FlowVariablesForm`](../flow-variables-form) for that flow.
+
+`SharedFlowList` requires a `ThunderIDProvider` ancestor. The signed-in user's access token needs the permissions the server requires to list flows.
+
+:::note
+The widget strings are available in English only. See [`FlowVariablesForm`](../flow-variables-form).
+:::
+
+## Usage
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+class DelegatedAdmin extends StatefulWidget {
+  const DelegatedAdmin({super.key, required this.ouId});
+
+  final String ouId;
+
+  @override
+  State<DelegatedAdmin> createState() => _DelegatedAdminState();
+}
+
+class _DelegatedAdminState extends State<DelegatedAdmin> {
+  String? _flowId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SharedFlowList(
+          ouId: widget.ouId,
+          selectedFlowId: _flowId,
+          onSelect: (flow) => setState(() => _flowId = flow.id),
+        ),
+        if (_flowId != null)
+          FlowVariablesForm(
+            key: ValueKey(_flowId),
+            flowId: _flowId!,
+            ouId: widget.ouId,
+          ),
+      ],
+    );
+  }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `ouId` | `String` | ✅ | | The organization unit to list the flows of. |
+| `ownership` | `SharedFlowOwnership` | ❌ | `SharedFlowOwnership.shared` | Which flows to list: `shared` for the ones shared with the unit, `owned` for the ones it owns, or `all` for both. |
+| `flowType` | `String?` | ❌ | `null` | Restricts the list to one flow type. See `FlowTypes`. |
+| `limit` | `int` | ❌ | `20` | Page size. |
+| `onSelect` | `ValueChanged<ManagedFlow>?` | ❌ | | Called when a flow is chosen. Rows are selectable only when set. |
+| `selectedFlowId` | `String?` | ❌ | | Identifier of the flow to highlight. |
+| `title` | `String?` | ❌ | | Heading of the list. Pass an empty string to hide it. |
+| `description` | `String?` | ❌ | | Text under the heading. |
+| `actions` | `List<Widget>` | ❌ | `[]` | Controls rendered next to the title. |
+| `preferences` | `ThunderIDPreferences?` | ❌ | | Internationalization preferences. |
+| `builder` | `AdminWidgetBuilder<AdminListState<ManagedFlow>>?` | ❌ | | Builds custom UI in place of the default list. |
+
+### Ownership and Paging
+
+The server cannot filter a flow list by ownership. For `shared` and `owned`, the widget reads the unit's flows, up to 100, and filters on each flow's `isOwnedByOU` value on the device, then pages through the matches. A unit with more than 100 flows therefore lists matches from the first 100 flows only. For `all`, the widget pages on the server and has no such limit.
+
+## `BaseSharedFlowList`
+
+`BaseSharedFlowList` is the presentational list. It holds no data of its own: pass the page of flows and handle selection and pagination. The list shows each flow's name, handle, and type.
+
+```dart
+BaseSharedFlowList(
+  flows: flows,
+  totalResults: total,
+  onSelect: (flow) => open(flow),
+)
+```
+
+### `BaseSharedFlowList` Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `flows` | `List<ManagedFlow>` | ✅ | | The page of flows to show. |
+| `isLoading` | `bool` | ❌ | `false` | Shows a loading state. |
+| `error` | `String?` | ❌ | `null` | An already-translated error message. Never pass the server's text here. |
+| `limit` | `int` | ❌ | `20` | Page size. |
+| `offset` | `int` | ❌ | `0` | Offset of the current page. |
+| `totalResults` | `int?` | ❌ | `flows.length` | Total number of flows, used for pagination. |
+| `onPageChange` | `ValueChanged<int>?` | ❌ | | Called with the offset of the page to show. Pagination is hidden when omitted. |
+| `onSelect` | `ValueChanged<ManagedFlow>?` | ❌ | | Called when a flow is chosen. Rows are selectable only when set. |
+| `selectedFlowId` | `String?` | ❌ | | Identifier of the flow to highlight. |
+| `title` | `String?` | ❌ | | Heading of the list. Pass an empty string to hide it. |
+| `description` | `String?` | ❌ | | Text under the heading. |
+| `actions` | `List<Widget>` | ❌ | `[]` | Controls rendered next to the title. |
+| `preferences` | `ThunderIDPreferences?` | ❌ | | Internationalization preferences. |
+| `builder` | `AdminWidgetBuilder<AdminListState<ManagedFlow>>?` | ❌ | | Builds custom UI in place of the default list. |
+
+The `builder` receives an `AdminListState<ManagedFlow>` with the `rows`, the `isLoading` and `error` state, `limit`, `offset`, `totalResults`, `selectedId`, `onPageChange`, and `onSelect`.
+
+## Internationalization
+
+The title, empty message, and error message come from the `admin.flows.list` keys in the SDK's built-in strings, which are English only. Override them through `preferences`.

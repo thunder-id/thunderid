@@ -51,6 +51,10 @@ interface AccessSectionProps {
    * clients with no user-facing grant.
    */
   showUserAccessConfig?: boolean;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -72,6 +76,7 @@ export default function AccessSection({
   onFieldChange,
   onValidationChange = undefined,
   showUserAccessConfig = true,
+  readOnly = false,
 }: AccessSectionProps) {
   const {t} = useTranslation();
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
@@ -148,7 +153,7 @@ export default function AccessSection({
               value={editedApp.allowedUserTypes ?? application.allowedUserTypes ?? []}
               onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
               loading={loadingUserTypes}
-              disabled={application.isReadOnly}
+              disabled={readOnly}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -186,7 +191,7 @@ export default function AccessSection({
             <Switch
               checked={isAgentSignInEnabled}
               onChange={(event) => handleAgentSignInToggle(event.target.checked)}
-              disabled={application.isReadOnly}
+              disabled={readOnly}
               slotProps={{input: {'aria-label': agentSignInLabel}}}
             />
           }
@@ -227,7 +232,7 @@ export default function AccessSection({
               placeholder="https://example.com"
               error={!!errors.url}
               helperText={errors.url?.message ?? t('applications:edit.general.applicationUrl.hint')}
-              disabled={application.isReadOnly}
+              disabled={readOnly}
             />
           )}
         />

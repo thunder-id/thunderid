@@ -13,6 +13,7 @@ interface AgentAccessTokenSectionProps {
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onValidationChange?: (hasErrors: boolean) => void;
+  readOnly?: boolean;
 }
 
 /**
@@ -26,6 +27,7 @@ export default function AgentAccessTokenSection({
   oauth2Config = undefined,
   onFieldChange,
   onValidationChange = undefined,
+  readOnly = false,
 }: AgentAccessTokenSectionProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -54,7 +56,7 @@ export default function AgentAccessTokenSection({
       onFieldChange={onFieldChange}
       availableAttributes={availableAttributes}
       isLoadingAttributes={isLoading}
-      disabled={agent.isReadOnly === true}
+      disabled={readOnly}
       onValidationChange={onValidationChange}
       inputId="agent-access-token-validity"
       subjectValue={agent.id}

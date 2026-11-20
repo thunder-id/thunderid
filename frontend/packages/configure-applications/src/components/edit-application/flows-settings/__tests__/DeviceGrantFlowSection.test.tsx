@@ -55,10 +55,15 @@ describe('DeviceGrantFlowSection', () => {
       ...overrides,
     }) as Application;
 
-  const renderSection = (app = application(), editedApp: Partial<Application> = {}) =>
+  const renderSection = (app = application(), editedApp: Partial<Application> = {}, readOnly = false) =>
     render(
       <MemoryRouter>
-        <DeviceGrantFlowSection application={app} editedApp={editedApp} onFieldChange={onFieldChange} />
+        <DeviceGrantFlowSection
+          application={app}
+          readOnly={readOnly}
+          editedApp={editedApp}
+          onFieldChange={onFieldChange}
+        />
       </MemoryRouter>,
     );
 
@@ -151,7 +156,7 @@ describe('DeviceGrantFlowSection', () => {
   });
 
   it('disables the selector for a readonly application', () => {
-    renderSection(application({isReadOnly: true}));
+    renderSection(application(), {}, true);
 
     expect(screen.getByPlaceholderText('Select a Device Grant flow')).toBeDisabled();
   });

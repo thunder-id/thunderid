@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, ButtonBase, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {AppWindow, ArrowRight, RefreshCw, SlidersHorizontal, Undo2, Wrench} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
@@ -85,6 +86,7 @@ export default function StageCard({
 }: StageCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const {canViewValues: canConfigure} = useGatewayValueAccess();
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   const owed = changedCount(changed);
   const owedNames = [...(changed?.variables ?? []), ...(changed?.secrets ?? [])].join(', ');
   const header = (
@@ -137,7 +139,7 @@ export default function StageCard({
           {t('stage.configure', 'Configure')}
         </Button>
       )}
-      {onRedeploy && version && changedCheckFailed && (
+      {canDeploy && onRedeploy && version && changedCheckFailed && (
         <Tooltip
           title={t(
             'stage.changedCheckFailed',
@@ -159,7 +161,7 @@ export default function StageCard({
           </Box>
         </Tooltip>
       )}
-      {onRedeploy && version && !changedCheckFailed && (
+      {canDeploy && onRedeploy && version && !changedCheckFailed && (
         <Tooltip
           title={
             owed > 0
@@ -187,7 +189,7 @@ export default function StageCard({
           </Box>
         </Tooltip>
       )}
-      {onRevert && (
+      {canDeploy && onRevert && (
         <Tooltip
           title={
             revertDisabled
@@ -294,7 +296,7 @@ export default function StageCard({
                       {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
                     </Typography>
                   </Tooltip>
-                  {onRetryRefused && (
+                  {canDeploy && onRetryRefused && (
                     <Button
                       variant="text"
                       size="small"

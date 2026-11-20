@@ -22,6 +22,7 @@ interface EditUserAttributesProps {
   user: User;
   editedUser: Partial<User>;
   onFieldChange: (field: keyof User, value: unknown) => void;
+  readOnly?: boolean;
 }
 
 type AttributeFormData = Record<string, unknown>;
@@ -35,7 +36,12 @@ const filterAttributes = (data: AttributeFormData): AttributeFormData =>
  * section. The parent remounts this component (via a `key` bumped on Save/Reset) so its local
  * react-hook-form state always starts fresh from the current attributes.
  */
-export default function EditUserAttributes({user, editedUser, onFieldChange}: EditUserAttributesProps): JSX.Element {
+export default function EditUserAttributes({
+  user,
+  readOnly = false,
+  editedUser,
+  onFieldChange,
+}: EditUserAttributesProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
@@ -77,7 +83,7 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
 
   // A read-only user can't be edited at all, so there's nothing for a form to do here — fall
   // back to the same summary shown on the General tab.
-  if (user.isReadOnly) {
+  if (readOnly) {
     return <AttributesSummarySection user={user} />;
   }
 

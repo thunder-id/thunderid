@@ -9,7 +9,7 @@ import {
 } from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {isRecordLocked, useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
@@ -110,6 +110,8 @@ function FlowBuilder() {
     error: flowLoadError,
     refetch: refetchFlow,
   } = useGetFlowById(flowId);
+  const isSharedFlow = existingFlowData?.isOwnedByOU === false;
+  const isReadOnlyFlow = isRecordLocked(existingFlowData) || !(flowId ? can('flow', 'update') : can('flow', 'create'));
 
   // Determine if we're editing an existing flow
   const isEditingExistingFlow = Boolean(flowId && existingFlowData);
@@ -381,12 +383,12 @@ function FlowBuilder() {
       flowId && existingFlowData?.ouId
         ? {
             id: flowId,
-            isReadOnly: existingFlowData.isReadOnly,
+            isReadOnly: isReadOnlyFlow,
             name: existingFlowData.name,
             ouId: existingFlowData.ouId,
           }
         : undefined,
-    [flowId, existingFlowData?.isReadOnly, existingFlowData?.name, existingFlowData?.ouId],
+    [flowId, isReadOnlyFlow, existingFlowData?.name, existingFlowData?.ouId],
   );
 
   // The flow's organization access is held here, not in the Share view, so the flow's own Save saves it too, after the
@@ -784,8 +786,6 @@ function FlowBuilder() {
     }));
   }, [baseDisplayEdges, sso.placement]);
 
-  const isReadOnlyFlow = Boolean(existingFlowData?.isReadOnly);
-
   // Memoized so the resource panel (which renders this as its footer and is
   // itself memoized) is not re-rendered on unrelated graph changes like drags.
   const ssoToggleFooter = useMemo(
@@ -848,10 +848,19 @@ function FlowBuilder() {
         },
       })}
     >
-      {existingFlowData?.isReadOnly && (
+      {isSharedFlow ? (
         <Alert severity="info" sx={{mb: 2}}>
-          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+          {t(
+            'flows:core.sharing.sharedIntoUnit',
+            "This flow is shared into this organization unit. Its steps aren't shown here and can't be changed here.",
+          )}
         </Alert>
+      ) : (
+        existingFlowData?.isReadOnly && (
+          <Alert severity="info" sx={{mb: 2}}>
+            {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+          </Alert>
+        )
       )}
       <FlowTypeContext.Provider value={flowType}>
         <CompactStacksContext.Provider value={compactStacksContextValue}>
@@ -864,7 +873,7 @@ function FlowBuilder() {
             onWidgetLoad={handleWidgetLoad}
             onStepLoad={handleStepLoad}
             onResourceAdd={handleResourceAdd}
-            onSave={existingFlowData?.isReadOnly || !can('flow', flowId ? 'update' : 'create') ? undefined : saveFlow}
+            onSave={isReadOnlyFlow ? undefined : saveFlow}
             nodes={displayNodes}
             sourceNodes={nodes}
             sourceEdges={edges}
