@@ -84,7 +84,8 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.typeStore = newTypeStoreInterfaceMock(s.T())
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
-	s.service = newAuthorizationDetailMgtService(s.typeStore, nil, authz).(*authorizationDetailMgtService)
+	s.service = newAuthorizationDetailMgtService(s.typeStore, nil, authz,
+		discardingBus{}).(*authorizationDetailMgtService)
 }
 
 func flightType() providers.AuthorizationDetailType {
@@ -920,7 +921,7 @@ func (s *ServiceTestSuite) TestWritesRefusedWithoutWriteAccess() {
 					&sysauthz.ActionContext{ResourceType: security.ResourceTypeAuthorizationDetailType}).
 					Return(false, tt.authzErr).Once()
 			}
-			service := newAuthorizationDetailMgtService(newTypeStoreInterfaceMock(s.T()), nil, authz)
+			service := newAuthorizationDetailMgtService(newTypeStoreInterfaceMock(s.T()), nil, authz, discardingBus{})
 
 			_, err := service.CreateAuthorizationDetailType(s.ctx, flightType())
 			s.Equal(tt.want, err)

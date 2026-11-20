@@ -282,3 +282,13 @@ func configurationClientErrorStatus(code string) int {
 		return http.StatusBadRequest
 	}
 }
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the credential configuration service needs an event bus")
+
+// errConfigurationNotFoundNoop is returned by deleteCredentialConfiguration when the configuration does not
+// exist. DeleteCredentialConfiguration turns it into a success, so it never reaches a caller.
+var errConfigurationNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorConfigurationNotFound.Code,
+}

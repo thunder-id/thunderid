@@ -145,7 +145,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
-	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz, nil)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz, nil, discardingBus{})
 	s.Require().NoError(err)
 	s.Equal(resourceTypeAuthorizationDetailType, exporter.GetResourceType())
 
@@ -185,7 +185,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_RegistersWriteToolsOnlyUnd
 			authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: tc.boundary})
 			server := mcp.NewServer(&mcp.Implementation{Name: "test"}, nil)
 
-			_, _, err := Initialize(http.NewServeMux(), server, nil, authz, nil)
+			_, _, err := Initialize(http.NewServeMux(), server, nil, authz, nil, discardingBus{})
 
 			s.Require().NoError(err)
 			s.ElementsMatch(tc.want, toolNames(s.T(), connectMCP(s.T(), server)))
@@ -197,7 +197,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_RegistersWriteToolsOnlyUnd
 // without one.
 func (s *DeclarativeResourceTestSuite) TestInitialize_RequiresAProjectWhereProjectsAreServed() {
 	s.setupConfig("", "mutable", false)
-	service, _, err := Initialize(http.NewServeMux(), nil, nil, nil, newProjectCheckerMock(s.T()))
+	service, _, err := Initialize(http.NewServeMux(), nil, nil, nil, newProjectCheckerMock(s.T()), discardingBus{})
 	s.Require().NoError(err)
 	s.True(service.(*authorizationDetailMgtService).projectRequired)
 
@@ -206,7 +206,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_RequiresAProjectWhereProje
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
-	_, _, err = Initialize(http.NewServeMux(), nil, nil, nil, newProjectCheckerMock(s.T()))
+	_, _, err = Initialize(http.NewServeMux(), nil, nil, nil, newProjectCheckerMock(s.T()), discardingBus{})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "must belong to a project")
 }
@@ -217,7 +217,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_FailsOnInvalidFile() {
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 
-	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil)
+	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, discardingBus{})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to load authorization details type resources")
 }

@@ -11,6 +11,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -25,12 +26,18 @@ import (
 //
 // projects is nil on a deployment that serves no projects, which keeps a type's project ID unchecked. Given one,
 // every type belongs to a project.
+//
+// bus is required: the service publishes the audit event of every change to a type it is asked for on it.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, valueCapturer declarativeresource.ValueCapturer,
 	authzService sysauthz.SystemAuthorizationServiceInterface, projects projectChecker,
+	bus eventbus.EventBusInterface,
 ) (AuthorizationDetailMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	typeStore, fileStore, dbStore := initializeStore()
-	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService)
+	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService, bus)
 	impl := service.(*authorizationDetailMgtService)
 	impl.managed = managedresource.GetStore()
 	impl.projects = projects
