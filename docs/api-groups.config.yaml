@@ -138,6 +138,8 @@ explicitSubGroups:
       - Flow Execution
       - Flow Management
       - Flow Versioning
+      - Flow Sharing
+      - Flow Variables
       - Flow Meta
 
   # ── Login UI customisation ────────────────────────────────────────────────────
