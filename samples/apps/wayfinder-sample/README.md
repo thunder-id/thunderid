@@ -103,8 +103,9 @@ The Wayfinder web app runs on `http://localhost:5173` and calls ThunderID direct
 
 The importable Wayfinder bundles intentionally omit the `cors` server-config section, so importing either bundle does not overwrite the server's existing CORS allowed origins.
 
-Before using the frontend, add `http://localhost:5173` to ThunderID's existing `allowedOrigins` list. Preserve all existing origins, including those used by the Console and Login Gate. If CORS is configured declaratively, update `server_configs/cors.yaml`. If you manage CORS at runtime, read the current configuration first and update the complete list using `PUT /server-config/cors`; do not replace the list with only the Wayfinder origin. Use your actual frontend origin if it differs from `http://localhost:5173`.
+Before using the frontend, add `http://localhost:5173` to ThunderID's existing `allowedOrigins` list. Preserve all existing origins, including those used by the Console and Login Gate. If CORS is configured declaratively, append the frontend origin to `server_configs/cors.yaml` and restart ThunderID to apply the change. If you manage CORS at runtime, read the current configuration first and update the complete list using `PUT /server-config/cors`; do not replace the list with only the Wayfinder origin. Use your actual frontend origin if it differs from `http://localhost:5173`.
 
+In Control Plane-managed deployments, update the allowed origins on the Control Plane instead of changing only the Data Plane. The Control Plane can synchronize its CORS configuration to the Data Plane and overwrite Data Plane-only changes. The runtime `PUT /server-config/cors` approach applies to setups where CORS is managed directly on the Data Plane.
 
 The bundle's `flow` server-config document makes `wayfinder-onboarding-flow` the user onboarding flow. It repeats every other default flow handle the server ships with, because an import replaces the whole section. Importing the bundle therefore resets any flow defaults you changed before the import.
 
