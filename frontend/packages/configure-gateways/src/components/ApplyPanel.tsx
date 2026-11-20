@@ -23,7 +23,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Rocket, Send, X} from '@wso2/oxygen-ui-icons-react';
+import {Rocket, Send, ShieldCheck, X} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useContext, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
@@ -31,7 +31,7 @@ import ChangeList from './ChangeList';
 import DeployChanges from './DeployChanges';
 import MissingValuesFields from './MissingValuesFields';
 import RefusedFixes from './RefusedFixes';
-import {useApplyCheck, useApplyVersion} from '../api/useGatewayVersions';
+import {useApplyCheck, useApplyVersion, usePreview} from '../api/useGatewayVersions';
 import {useRefused} from '../api/useMaster';
 import {useSetStoredValue, useStoredValuesNamed} from '../api/useStoredValues';
 import {useVersion} from '../api/useVersions';
@@ -40,14 +40,56 @@ import ResourceNamesContext from '../contexts/ResourceNames';
 import useChangeName from '../hooks/useChangeName';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
-import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
+import type {
+  ApplyRequest,
+  ApplyResult,
+  Change,
+  DroppedPolicy,
+  MasterEntry,
+  Refusal,
+  RemovalInUse,
+  StoredValue,
+  ValueReference,
+  Version,
+} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import {errorCodeOf, failureText, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
+import {APPLIED_CHANGED, errorCodeOf, failureText, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
 import {carriedWithProject, projectNeeds, sharedByDefault, sharedMissing} from '../utils/changeSummary';
 import {humanize} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';
 import {fieldKey, missingFields, type MissingField, type RefusedFix} from '../utils/missingValues';
 import {withNeeded, withReplaced} from '../utils/needs';
+
+/**
+ * Which resource a change is to: its type with its id, or with its name when it has none, as a
+ * translation is named by its language. A value reference names its resource the same way.
+ */
+const resourceOfChange = (change: Change): string => `${change.resourceType}/${change.id ?? change.name ?? ''}`;
+const resourceOfReference = (reference: ValueReference): string =>
+  `${reference.resourceType}/${reference.resourceId ?? reference.resourceName ?? ''}`;
+
+/**
+ * Merges the fields that name one value into one, with every resource that refers to it, so a value two
+ * resources use is kept for either of them.
+ */
+function mergeFields(fields: MissingField[]): MissingField[] {
+  const byKey = new Map<string, MissingField>();
+  for (const field of fields) {
+    const known = byKey.get(fieldKey(field));
+    if (!known) {
+      byKey.set(fieldKey(field), {...field, references: [...field.references]});
+      continue;
+    }
+    known.list = known.list || field.list;
+    for (const reference of field.references) {
+      const same = known.references.some(
+        (other) => resourceOfReference(other) === resourceOfReference(reference) && other.field === reference.field,
+      );
+      if (!same) known.references.push(reference);
+    }
+  }
+  return [...byKey.values()];
+}
 
 export interface ApplyPanelProps {
   version: Version;
@@ -79,10 +121,11 @@ export interface ApplyPanelProps {
 }
 
 /**
- * Deploys a version to a gateway in a dialog over the Deploy page: what the write would do is read as
- * soon as the panel opens, so the resources can be left out one by one and the values the gateway
- * lacks set in place, and one button then writes what is ticked, along with what it needs. Nothing
- * about the choice is kept: what is left out stays on offer.
+ * Deploys a version to a gateway in a dialog over the Deploy page: a preview of what the write would do
+ * is read as soon as the panel opens, so the resources can be left out one by one and the values the
+ * gateway lacks set in place, and one button then writes what is ticked, along with what it needs.
+ * The gateway itself checks the deploy only when asked to, since the deploy is checked as it is written.
+ * Nothing about the choice is kept: what is left out stays on offer.
  */
 export default function ApplyPanel({
   version,
@@ -109,7 +152,18 @@ export default function ApplyPanel({
   const promote = drawer && sourceName !== undefined;
   // What the drawer calls where the version goes: the gateway, not the gateway it runs on.
   const envName = targetName ?? gateway?.name ?? '';
-  const check = useApplyCheck(target, version.version);
+  const preview = usePreview(target, version.version);
+  // What the gateway itself says of the deploy, once asked: what it would refuse with the values it holds.
+  const gatewayCheck = useApplyCheck();
+  // When the preview the gateway's check was asked from was read, so the check is dropped once the
+  // preview is read again: what the gateway held then may not be what it holds now.
+  const [checkedOn, setCheckedOn] = useState<number | undefined>(undefined);
+  // The preview whose plan a deploy was refused for, by the gateway, version and project it was read for,
+  // and when it was read: until a newer one of the same preview is read, the deploy and the check wait, so
+  // the refused plan is not sent again. Another preview is not held up by it.
+  const [rejected, setRejected] = useState<
+    {gatewayId: string; version: string; project?: string; on: number} | undefined
+  >(undefined);
   const apply = useApplyVersion();
   const setVariable = useSetStoredValue(target, 'variable');
   const setSecret = useSetStoredValue(target, 'secret');
@@ -128,12 +182,19 @@ export default function ApplyPanel({
   const references = useVersion(version.version, true, target).data?.references;
   // What was typed over a value a refused resource uses, by its field key.
   const [fixValues, setFixValues] = useState<Record<string, string>>({});
+  // The corrections a deploy set out to write and has not written yet, with the gateway they are for.
+  // Writing values drops the gateway's check that pointed some of them out, so they are kept here for the
+  // retry until each is written; a retry writes only those for its gateway whose resource it still sends.
+  const [unwrittenFixes, setUnwrittenFixes] = useState<{gatewayId: string; fields: MissingField[]}>({
+    gatewayId: '',
+    fields: [],
+  });
   // Only the panel opened to retry what was refused starts with just those ticked; another gateway
   // chosen in it starts over with everything.
   const [startWith, setStartWith] = useState<string[] | undefined>(only);
 
-  const changes: Change[] = useMemo(() => check.data?.diff.changes ?? [], [check.data]);
-  // What a refusal calls a resource, by its key: its name and kind, for a resource the check or the
+  const changes: Change[] = useMemo(() => preview.data?.diff.changes ?? [], [preview.data]);
+  // What a refusal calls a resource, by its key: its name and kind, for a resource the preview or the
   // gateways' maps know, so a refusal names it as the changes do rather than by its id.
   const names = useContext(ResourceNamesContext);
   const nameOfKey = useCallback(
@@ -149,9 +210,9 @@ export default function ApplyPanel({
     },
     [changes, names, nameOfChange, t],
   );
-  // Under a project whose check places each change, the project's own changes start ticked and can be
+  // Under a project whose preview places each change, the project's own changes start ticked and can be
   // unticked one by one, what the ticked ones need that the target lacks goes with them, and only what
-  // else is ticked goes too; another project's changes are never carried. A check that places none, as
+  // else is ticked goes too; another project's changes are never carried. A preview that places none, as
   // where a project's deploys are not scoped, deploys as the whole organization does.
   const project = useProjectScope();
   const scoped = project !== undefined && changes.some((change: Change) => change.section !== undefined);
@@ -195,8 +256,10 @@ export default function ApplyPanel({
     setStartWith(undefined);
     setValues({});
     setFixValues({});
+    setUnwrittenFixes({gatewayId: '', fields: []});
     setError(null);
     setConfirmRemovals(false);
+    gatewayCheck.reset();
   };
 
   // What the source holds back it does not run, so a promotion cannot carry it: it is shown, never sent,
@@ -223,7 +286,7 @@ export default function ApplyPanel({
   // marked, not chosen by hand.
   const brought = useMemo(() => {
     if (scoped) {
-      // What the ticked resources need that the target lacks goes with them, locked. A check that names no
+      // What the ticked resources need that the target lacks goes with them, locked. A preview that names no
       // needs says only that the project needs it, so it goes whatever is ticked.
       const named = active.some((change: Change) => (change.needs ?? []).length > 0);
       const needed = active.filter(projectNeeds);
@@ -243,26 +306,64 @@ export default function ApplyPanel({
     () => new Set([...ticked, ...required.keys()].filter((key: string) => !unrun.has(key))),
     [ticked, required, unrun],
   );
+  // The deploy as it is sent, but for its confirmation: what is ticked is sent as the selection, and the
+  // control plane brings along what it needs when asked to, so the two agree on what is deployed. What is
+  // left unticked stays out of later deploys too, until one ticks it. A retry unticks the rest only to
+  // send what was refused, so it leaves that choice as it was.
+  const deployRequest: ApplyRequest = useMemo(() => {
+    const leaveOut =
+      startWith || scoped
+        ? []
+        : active
+            .filter((change: Change) => !change.sourceExcluded && !selected.has(change.key))
+            .map((change: Change) => change.key);
+    return {
+      version: version.version,
+      selection: [...(scoped ? selected : ticked)],
+      ...(leaveOut.length > 0 ? {leaveOut} : {}),
+      ...(includeNeeded && !scoped ? {} : {withDependencies: false}),
+      ...(scoped ? {project} : {}),
+    };
+  }, [active, includeNeeded, project, scoped, selected, startWith, ticked, version.version]);
+  // The gateway's check, and its failure, hold only for the deploy it checked, on the preview it was asked
+  // from: another gateway, another selection or a preview read again drops it.
+  const checkIsCurrent =
+    gatewayCheck.variables?.gatewayId === target &&
+    checkedOn === preview.dataUpdatedAt &&
+    JSON.stringify(gatewayCheck.variables.data) === JSON.stringify(deployRequest);
+  const checkedByGateway = gatewayCheck.isSuccess && checkIsCurrent;
+  const refreshing =
+    rejected?.gatewayId === target &&
+    rejected.version === version.version &&
+    rejected.project === project &&
+    preview.dataUpdatedAt <= rejected.on;
   // The values the deploy lacks that a ticked change uses. A value only unticked changes use is not
-  // asked for, nor one whose user the check does not name; a value no reference ties to a change is.
-  const fields: MissingField[] = useMemo(() => {
-    const byResource = new Map<string, string>(
-      changes.map((change: Change) => [`${change.resourceType}/${change.id ?? ''}`, change.key]),
-    );
-    return missingFields(check.data?.missing).filter((field: MissingField) => {
-      if (field.references.length === 0) return true;
-      return field.references.some((reference) => {
-        const key = byResource.get(`${reference.resourceType}/${reference.resourceId ?? ''}`);
-        return key === undefined || selected.has(key);
-      });
-    });
-  }, [check.data?.missing, changes, selected]);
-  // What the check, a dry run with the values the gateway holds, says the gateway would refuse, by key.
+  // asked for, nor one whose user the preview does not name; a value no reference ties to a change is.
+  // The key of the change to the resource a value reference is in, by the resource it is to.
+  const changeKeyByResource = useMemo(
+    () => new Map<string, string>(changes.map((change: Change) => [resourceOfChange(change), change.key])),
+    [changes],
+  );
+  const fields: MissingField[] = useMemo(
+    () =>
+      missingFields(preview.data?.missing).filter((field: MissingField) => {
+        if (field.references.length === 0) return true;
+        return field.references.some((reference) => {
+          const key = changeKeyByResource.get(resourceOfReference(reference));
+          return key === undefined || selected.has(key);
+        });
+      }),
+    [preview.data?.missing, changeKeyByResource, selected],
+  );
+  // What the gateway's check, a dry run with the values it holds, says it would refuse, by key.
   const predicted = useMemo(() => {
     const byKey = new Map<string, Refusal>();
-    for (const result of check.data?.import?.results ?? []) {
-      if (result.status === 'failed' && result.resourceId) {
-        byKey.set(`${result.resourceType}/${result.resourceId}`, {
+    if (!checkedByGateway) return byKey;
+    for (const result of gatewayCheck.data?.import?.results ?? []) {
+      // A resource without an id, such as a translation, is named by its name, as its change's key is.
+      const id = result.resourceId ?? result.resourceName;
+      if (result.status === 'failed' && id) {
+        byKey.set(`${result.resourceType}/${id}`, {
           code: result.code,
           message: result.message,
           description: result.description,
@@ -270,18 +371,20 @@ export default function ApplyPanel({
       }
     }
     return byKey;
-  }, [check.data]);
+  }, [checkedByGateway, gatewayCheck.data]);
   // The ticked resources the gateway refused last time or would refuse now, each with why and the
   // values it uses that the gateway holds, which can be set right first. A value the gateway lacks is
   // asked for above instead.
   const fixes: RefusedFix[] = useMemo(() => {
     const lacking = new Set(fields.map(fieldKey));
     return active
-      .filter((change: Change) => (change.failed === true || predicted.has(change.key)) && ticked.has(change.key))
+      .filter(
+        (change: Change) =>
+          (change.failed === true && ticked.has(change.key)) || (predicted.has(change.key) && selected.has(change.key)),
+      )
       .map((change: Change) => {
         const own = (references ?? []).filter(
-          (reference: ValueReference) =>
-            reference.resourceType === change.resourceType && reference.resourceId === change.id,
+          (reference: ValueReference) => resourceOfReference(reference) === resourceOfChange(change),
         );
         const byKey = new Map<string, MissingField>();
         for (const reference of own) {
@@ -295,7 +398,7 @@ export default function ApplyPanel({
         const entry = refusedEntries.find((refused: MasterEntry) => refused.key === change.key);
         return {change, failure: entry?.failure, predicted: predicted.get(change.key), fields: [...byKey.values()]};
       });
-  }, [active, ticked, references, fields, refusedEntries, predicted]);
+  }, [active, ticked, selected, references, fields, refusedEntries, predicted]);
   // What the gateway holds for the variables the fixes show, looked up by name rather than read in full.
   const fixNames = useMemo(
     () =>
@@ -312,21 +415,42 @@ export default function ApplyPanel({
     return field.list ? toListText(held) : held;
   };
   const fixValueOf = (field: MissingField): string => fixValues[fieldKey(field)] ?? heldValue(field);
-  // Each value typed over, once per name, that differs from what the gateway holds.
-  const fixed: MissingField[] = [
-    ...new Map(
-      fixes
-        .flatMap((fix: RefusedFix) => fix.fields)
-        .filter((field: MissingField) => {
-          const typed = fixValues[fieldKey(field)];
-          return typed !== undefined && (field.kind === 'secret' ? typed !== '' : typed !== heldValue(field));
-        })
-        .map((field: MissingField) => [fieldKey(field), field]),
-    ).values(),
-  ];
+  // Each value typed over, once per name with every resource that uses it, that differs from what the
+  // gateway holds.
+  const fixed: MissingField[] = mergeFields(
+    fixes
+      .flatMap((fix: RefusedFix) => fix.fields)
+      .filter((field: MissingField) => {
+        const typed = fixValues[fieldKey(field)];
+        return typed !== undefined && (field.kind === 'secret' ? typed !== '' : typed !== heldValue(field));
+      }),
+  );
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
-  const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
+  // The ticked removals the preview found a resource the target keeps still needs. The preview worked them
+  // out for the changes it marks selected, so they are pointed out, not taken as a check of what is ticked
+  // now: the control plane checks the deploy as it is sent, and so does the gateway's check.
+  const removalsInUse = useMemo(
+    () => (preview.data?.diff.removalsInUse ?? []).filter((removal: RemovalInUse) => selected.has(removal.key)),
+    [preview.data, selected],
+  );
+  const canDeploy =
+    Boolean(gateway) && preview.isSuccess && !refreshing && selected.size > 0 && unfilled.length === 0 && !isWriting;
+  // The removals the deploy sends, counted as the control plane counts them for its threshold: each ticked
+  // removal of a resource with an id, and each sharing policy a ticked resource no longer carries.
+  const removals =
+    active.filter((change: Change) => change.change === 'deleted' && Boolean(change.id) && selected.has(change.key))
+      .length +
+    (preview.data?.diff.droppedPolicies ?? []).filter((policy: DroppedPolicy) =>
+      selected.has(`${policy.resourceType}/${policy.resourceId ?? ''}`),
+    ).length;
+  // The preview says how many removals a deploy makes before it must be confirmed; above that the deploy
+  // is confirmed from the start rather than refused first, bound to the plan the preview showed.
+  const threshold = preview.data?.removals?.threshold ?? 0;
+  const confirming = confirmRemovals || (threshold > 0 && removals > threshold);
+  const runGatewayCheck = (): void => {
+    setCheckedOn(preview.dataUpdatedAt);
+    gatewayCheck.mutate({gatewayId: target, data: deployRequest});
+  };
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.
   const toggle = (key: string): void => {
@@ -352,34 +476,47 @@ export default function ApplyPanel({
     if (!gateway || !canDeploy) return;
     setIsWriting(true);
     setError(null);
+    // Every value is written to the gateway the deploy started for, whatever the dialog shows meanwhile.
+    const gatewayId = gateway.id;
     try {
       // Values first, one at a time, so a refusal names the value and leaves the rest unsent.
       const write = async (field: MissingField, entered: string): Promise<void> => {
         const value = field.list ? fromListText(entered) : entered;
-        if (field.kind === 'secret') await setSecret.mutateAsync({name: field.name, value});
-        else await setVariable.mutateAsync({name: field.name, value});
+        if (field.kind === 'secret') await setSecret.mutateAsync({gatewayId, name: field.name, value});
+        else await setVariable.mutateAsync({gatewayId, name: field.name, value});
       };
+      // A correction an earlier attempt did not get to write is written again only for its gateway, and
+      // only while the deploy still sends a resource that uses it.
+      const stillSent = (field: MissingField): boolean =>
+        field.references.some((reference) => {
+          const key = changeKeyByResource.get(resourceOfReference(reference));
+          return key !== undefined && selected.has(key);
+        });
+      // The corrections kept for this gateway: those typed now, and those an earlier attempt did not get to
+      // write, which the check that pointed them out no longer lists. One whose resources are all unticked
+      // now stays kept, unwritten, for a later deploy that ticks one of them again.
+      const kept = mergeFields([...(unwrittenFixes.gatewayId === gatewayId ? unwrittenFixes.fields : []), ...fixed]);
+      const corrections = kept.filter(stillSent);
+      // Values written here change what the gateway would accept, so its check no longer holds. The
+      // corrections stay kept until each is written, so a retry still writes them.
+      setUnwrittenFixes({gatewayId, fields: kept});
+      if (fields.length > 0 || corrections.length > 0) gatewayCheck.reset();
       for (const field of fields) await write(field, values[fieldKey(field)] ?? '');
-      for (const field of fixed) await write(field, fixValues[fieldKey(field)] ?? '');
-      // What is ticked is sent as the selection; the control plane brings along what it needs when
-      // asked to, so the two agree on what is deployed.
-      // What is left unticked stays out of later deploys too, until one ticks it. A retry unticks the
-      // rest only to send what was refused, so it leaves that choice as it was.
-      const leaveOut =
-        startWith || scoped
-          ? []
-          : active
-              .filter((change: Change) => !change.sourceExcluded && !selected.has(change.key))
-              .map((change: Change) => change.key);
+      for (const field of corrections) {
+        await write(field, fixValues[fieldKey(field)] ?? '');
+        setUnwrittenFixes((previous) => ({
+          ...previous,
+          fields: previous.fields.filter((kept: MissingField) => fieldKey(kept) !== fieldKey(field)),
+        }));
+      }
+      // A confirmed deploy is bound to the plan the preview showed, so it removes no more than was shown.
+      const plan = confirming ? preview.data?.diff.plan : undefined;
       const result = await apply.mutateAsync({
         gatewayId: gateway.id,
         data: {
-          version: version.version,
-          selection: [...(scoped ? selected : ticked)],
-          ...(leaveOut.length > 0 ? {leaveOut} : {}),
-          ...(includeNeeded && !scoped ? {} : {withDependencies: false}),
-          ...(scoped ? {project} : {}),
-          ...(confirmRemovals ? {confirmRemovals: true} : {}),
+          ...deployRequest,
+          ...(confirming ? {confirmRemovals: true} : {}),
+          ...(plan ? {plan} : {}),
         },
       });
       onDeployed(gateway, result);
@@ -387,6 +524,12 @@ export default function ApplyPanel({
       if (errorCodeOf(caught) === REMOVALS_NEED_CONFIRMATION) {
         setConfirmRemovals(true);
         return;
+      }
+      // The gateway changed since the preview: it is read again, and the deploy waits for another click.
+      if (errorCodeOf(caught) === APPLIED_CHANGED) {
+        setConfirmRemovals(false);
+        setRejected({gatewayId: gateway.id, version: version.version, project, on: preview.dataUpdatedAt});
+        void preview.refetch();
       }
       setError(caught instanceof Error ? caught : new Error(String(caught)));
     } finally {
@@ -429,6 +572,7 @@ export default function ApplyPanel({
       <Select
         size="small"
         value={target}
+        disabled={isWriting}
         onChange={(event) => chooseTarget(String(event.target.value))}
         inputProps={{'aria-label': t('applyPanel.gateway', 'Gateway')}}
         sx={{minWidth: 160}}
@@ -444,8 +588,8 @@ export default function ApplyPanel({
   // Shared resources the target lacks that the deploy leaves out, which its pages may need.
   const leftOut = scoped ? active.filter((change: Change) => sharedMissing(change) && !selected.has(change.key)) : [];
   let submitLabel = t('applyPanel.submit', 'Deploy');
-  if (confirmRemovals) submitLabel = t('applyPanel.submitConfirm', 'Deploy and remove {{count}}', {count: removals});
-  else if (drawer && check.isSuccess) {
+  if (confirming) submitLabel = t('applyPanel.submitConfirm', 'Deploy and remove {{count}}', {count: removals});
+  else if (drawer && preview.isSuccess) {
     const deployed = active.filter((change: Change) => selected.has(change.key));
     const count = deployed.filter(isShown).length;
     if (deployed.length === 0) submitLabel = t('applyPanel.nothingToDeploy', 'Nothing to deploy');
@@ -456,12 +600,12 @@ export default function ApplyPanel({
     else
       submitLabel = t('applyPanel.submitCount', 'Deploy {{count}} changes to {{gateway}}', {count, gateway: envName});
   }
-  if (!confirmRemovals && leftOut.length > 0 && check.isSuccess)
+  if (!confirming && leftOut.length > 0 && preview.isSuccess)
     submitLabel = promote
       ? t('applyPanel.promoteAnyway', 'Promote anyway')
       : t('applyPanel.deployAnyway', 'Deploy anyway');
   const leftOutWarning =
-    leftOut.length > 0 && check.isSuccess ? (
+    leftOut.length > 0 && preview.isSuccess ? (
       <Alert severity="warning" data-testid="deploy-shared-left-out" sx={{mx: drawer ? 3 : 0, mb: drawer ? 0 : 2}}>
         <AlertTitle>
           {t('applyPanel.sharedLeftOutTitle', "Some shared resources won't be on {{target}}", {target: envName})}
@@ -479,6 +623,29 @@ export default function ApplyPanel({
     ) : null;
   const footer = (
     <>
+      <Tooltip
+        title={t(
+          'applyPanel.checkWithGatewayHint',
+          'Asks {{gateway}} to check the deploy without writing it, and says what it would refuse. A deploy is checked as it is written either way.',
+          {gateway: envName},
+        )}
+      >
+        <span style={{marginRight: 'auto'}}>
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={
+              gatewayCheck.isPending ? <CircularProgress size={14} color="inherit" /> : <ShieldCheck size={14} />
+            }
+            onClick={runGatewayCheck}
+            disabled={!gateway || !preview.isSuccess || refreshing || gatewayCheck.isPending || isWriting}
+            data-testid="deploy-check-with-gateway"
+            sx={{borderRadius: 100}}
+          >
+            {t('applyPanel.checkWithGateway', 'Check with gateway')}
+          </Button>
+        </span>
+      </Tooltip>
       <Button variant="text" color="inherit" onClick={onClose} disabled={isWriting}>
         {t('applyPanel.cancel', 'Cancel')}
       </Button>
@@ -514,7 +681,7 @@ export default function ApplyPanel({
   const body = (
     <Stack spacing={2.5}>
       {before}
-      {check.isLoading && (
+      {preview.isLoading && (
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
           <CircularProgress size={18} />
           <Typography variant="body2" color="text.secondary">
@@ -522,9 +689,9 @@ export default function ApplyPanel({
           </Typography>
         </Box>
       )}
-      {check.isError && (
+      {preview.isError && (
         <QueryErrorNotice
-          error={check.error}
+          error={preview.error}
           t={tForErrors}
           variant="inline"
           fallbackKey="deploy:applyPanel.checkFailedFor"
@@ -541,11 +708,65 @@ export default function ApplyPanel({
                   nameOfKey,
                 )
           }
-          onRetry={() => void check.refetch()}
+          onRetry={() => void preview.refetch()}
         />
       )}
-      {check.data?.changed && <ChangedValuesNotice changed={check.data.changed} />}
-      {confirmRemovals && (
+      {preview.data?.changed && <ChangedValuesNotice changed={preview.data.changed} />}
+      {gatewayCheck.isPending && (
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}} data-testid="deploy-gateway-checking">
+          <CircularProgress size={18} />
+          <Typography variant="body2" color="text.secondary">
+            {t('applyPanel.gatewayChecking', 'Asking {{gateway}} to check the deploy...', {gateway: envName})}
+          </Typography>
+        </Box>
+      )}
+      {gatewayCheck.isError && checkIsCurrent && (
+        <Alert severity="error" data-testid="deploy-gateway-check-failed">
+          {isForbidden(gatewayCheck.error)
+            ? t('applyPanel.forbiddenFor', 'Your account may not deploy to {{target}}.', {target: envName})
+            : failureText(
+                gatewayCheck.error,
+                tForErrors,
+                t('applyPanel.gatewayCheckFailed', '{{target}} could not check the deploy.', {target: envName}),
+                nameOfKey,
+              )}
+        </Alert>
+      )}
+      {checkedByGateway && (
+        <Alert severity={predicted.size > 0 ? 'warning' : 'success'} data-testid="deploy-gateway-checked">
+          {predicted.size > 0
+            ? t('applyPanel.gatewayWouldRefuse', {
+                count: predicted.size,
+                target: envName,
+                defaultValue_one: '{{target}} would refuse {{count}} change. It is listed below with why.',
+                defaultValue_other: '{{target}} would refuse {{count}} changes. They are listed below with why.',
+              })
+            : t('applyPanel.gatewayAccepts', '{{target}} checked the deploy and would refuse none of it.', {
+                target: envName,
+              })}
+        </Alert>
+      )}
+      {preview.isSuccess && removalsInUse.length > 0 && (
+        <Alert severity="warning" data-testid="deploy-removals-in-use">
+          {t('applyPanel.removalsInUse', {
+            count: removalsInUse.length,
+            target: envName,
+            names: removalsInUse
+              .map((removal: RemovalInUse) =>
+                t('applyPanel.removalInUse', '{{resource}}, which {{holder}} needs', {
+                  resource: nameOfKey(removal.key) ?? removal.key,
+                  holder: nameOfKey(removal.neededBy) ?? removal.neededBy,
+                }),
+              )
+              .join('; '),
+            defaultValue_one:
+              'In the preview, {{target}} keeps a resource that still needs what this deploy removes: {{names}}. The removal is refused unless the deploy also sends a change that stops needing it. Check with gateway checks the deploy as it is ticked.',
+            defaultValue_other:
+              'In the preview, {{target}} keeps resources that still need what this deploy removes: {{names}}. Each removal is refused unless the deploy also sends a change that stops needing it. Check with gateway checks the deploy as it is ticked.',
+          })}
+        </Alert>
+      )}
+      {confirming && (
         <Alert severity="warning" data-testid="deploy-confirm-removals">
           {t(
             'applyPanel.confirmRemovals',
@@ -555,11 +776,11 @@ export default function ApplyPanel({
         </Alert>
       )}
       {!drawer && missingValues}
-      {check.isSuccess && fixes.length > 0 && (
+      {preview.isSuccess && fixes.length > 0 && (
         <RefusedFixes
           fixes={fixes}
           target={envName}
-          checked={check.isSuccess}
+          checked={checkedByGateway}
           valueOf={fixValueOf}
           onChange={(field, value) => setFixValues((previous) => ({...previous, [fieldKey(field)]: value}))}
           disabled={isWriting || !canSetValues}
@@ -573,7 +794,7 @@ export default function ApplyPanel({
           )}
         </Alert>
       )}
-      {check.isSuccess &&
+      {preview.isSuccess &&
         (drawer || scoped ? (
           <DeployChanges
             changes={shown}
@@ -594,7 +815,7 @@ export default function ApplyPanel({
             required={required}
           />
         ))}
-      {check.isSuccess && active.length > 0 && !scoped && (
+      {preview.isSuccess && active.length > 0 && !scoped && (
         <Tooltip
           title={t(
             'applyPanel.includeNeededHint',

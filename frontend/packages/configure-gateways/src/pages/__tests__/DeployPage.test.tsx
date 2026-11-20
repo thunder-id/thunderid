@@ -5,7 +5,7 @@ import {focusManager} from '@tanstack/react-query';
 import {HiddenResourcesProvider} from '@thunderid/contexts';
 import {act, render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, isDryRun, isPreview, SERVER, type Call} from '../../__tests__/fakeHttp';
 import DeployPage from '../DeployPage';
 
 let http = fakeHttp({});
@@ -186,6 +186,7 @@ describe('DeployPage', () => {
     routes['GET /gateways/gw-prod/applied-version'] = running(true);
     http = fakeHttp(routes);
     const {unmount} = render(<DeployPage />);
+    await within(await screen.findByTestId('deploy-stage-gw-prod')).findByTestId('stage-deployed');
     await waitFor(async () => expect(await deployOf()).toBeDisabled());
     unmount();
 
@@ -775,11 +776,30 @@ describe('DeployPage', () => {
       ).toBeVisible(),
     );
     expect(within(panel).getByRole('checkbox', {name: /Orders/})).toBeChecked();
-    // What the check says the gateway would refuse is named before the deploy, with what was refused.
+    // Opening the drawer does not ask the gateway to check the deploy.
+    expect(http.calls.filter(isDryRun)).toEqual([]);
+    expect(within(panel).queryByTestId('refused-fix-application/app-1')).not.toBeInTheDocument();
+    // Asked, the gateway's check names what it would refuse before the deploy, with what was refused.
+    await userEvent.click(within(panel).getByTestId('deploy-check-with-gateway'));
     const fix = await within(panel).findByTestId('refused-fix-application/app-1');
     expect(within(fix).getByTestId('refused-fix-predicted')).toHaveTextContent(
       "Would be refused: APP-1022: Field 'clientId' is already in use",
     );
+    expect(within(panel).getByTestId('deploy-gateway-checked')).toHaveTextContent('Dev would refuse 1 change.');
+    // The gateway checked the deploy as it would be sent: what is ticked, and what is left out.
+    expect(http.calls.filter(isDryRun).map((call: Call) => call.data)).toEqual([
+      {
+        version: versions[0].version,
+        selection: ['application/app-1'],
+        leaveOut: ['application/app-2'],
+        dryRun: true,
+      },
+    ]);
+    // Another selection is not what the gateway checked, so its answer is dropped.
+    await userEvent.click(within(panel).getByRole('checkbox', {name: /Billing/}));
+    expect(within(panel).queryByTestId('deploy-gateway-checked')).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('checkbox', {name: /Billing/}));
+    expect(within(panel).getByTestId('deploy-gateway-checked')).toBeInTheDocument();
 
     await userEvent.click(within(panel).getByRole('button', {name: 'Deploy'}));
     await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
@@ -864,7 +884,8 @@ describe('DeployPage', () => {
       dryRun: true,
       diff: {toVersion: versions[0].version, summary: {added: 0, updated: 0, deleted: 0, unchanged: 0}, changes: []},
     });
-    const checks = (): number => http.calls.filter((call: Call) => call.url.endsWith('/gw-dev/apply')).length;
+    const checks = (): number =>
+      http.calls.filter((call: Call) => isPreview(call) && call.url.includes('/gw-dev/diff?')).length;
     render(<DeployPage />);
 
     const dev = await screen.findByTestId('deploy-stage-gw-dev');
@@ -881,10 +902,11 @@ describe('DeployPage', () => {
     await userEvent.click(within(panel).getByRole('button', {name: 'Roll back'}));
 
     await waitFor(() => expect(screen.queryByTestId('deploy-revert-panel')).not.toBeInTheDocument());
+    // The rollback was previewed from what is recorded of the gateway, not by the gateway checking it.
     expect(http.calls.filter((call: Call) => call.url.endsWith('/revert')).map((call: Call) => call.data)).toEqual([
-      {dryRun: true},
       {dryRun: false},
     ]);
+    expect(http.calls.filter(isDryRun)).toEqual([]);
     // What the gateway holds back is read again, since the rollback changed what it runs.
     await waitFor(() => expect(checks()).toBeGreaterThan(before));
   });
@@ -930,7 +952,6 @@ describe('DeployPage', () => {
 
     await waitFor(() => expect(screen.queryByTestId('deploy-revert-panel')).not.toBeInTheDocument());
     expect(http.calls.filter((call: Call) => call.url.endsWith('/revert')).map((call: Call) => call.data)).toEqual([
-      {dryRun: true},
       {dryRun: false},
     ]);
   });
@@ -1093,9 +1114,48 @@ describe('DeployPage: apply safety', () => {
 
     await waitFor(() => expect(screen.queryByTestId('deploy-revert-panel')).not.toBeInTheDocument());
     expect(http.calls.filter((call: Call) => call.url.endsWith('/revert')).map((call: Call) => call.data)).toEqual([
-      {dryRun: true},
       {dryRun: false},
       {dryRun: false, confirmRemovals: true},
+    ]);
+  });
+
+  it('confirms a rollback that removes more than the preview says may go unconfirmed, bound to its plan', async () => {
+    // The preview read again after the refusal shows another plan, with one more removal.
+    let rollbackPreviews = 0;
+    routes['GET /gateways/gw-dev/diff'] = (call: Call) => {
+      if (!call.url.includes('revert=true')) return dryRunWithRemovals.diff;
+      rollbackPreviews += 1;
+      return rollbackPreviews === 1
+        ? {...dryRunWithRemovals.diff, removals: {count: 2, threshold: 1, needsConfirmation: true}, plan: 'plan-v1'}
+        : {...dryRunWithRemovals.diff, removals: {count: 3, threshold: 1, needsConfirmation: true}, plan: 'plan-v2'};
+    };
+    let changed = true;
+    routes['POST /gateways/gw-dev/revert'] = () => {
+      // The first rollback finds the gateway changed since the preview.
+      if (changed) {
+        changed = false;
+        return refusal('GTW-1019');
+      }
+      return {gatewayId: 'gw-dev', dryRun: false, diff: dryRunWithRemovals.diff};
+    };
+    render(<DeployPage />);
+
+    const dev = await screen.findByTestId('deploy-stage-gw-dev');
+    await userEvent.click(within(dev).getByRole('button', {name: 'Rollback'}));
+    const panel = await screen.findByTestId('deploy-revert-panel');
+    expect(await within(panel).findByTestId('deploy-confirm-removals')).toHaveTextContent(
+      'Rolling back removes 2 resources from Dev.',
+    );
+    await userEvent.click(within(panel).getByRole('button', {name: 'Roll back and remove 2'}));
+    // Refused for a changed gateway, the rollback is confirmed again from the preview read again.
+    const again = await within(panel).findByRole('button', {name: 'Roll back and remove 3'});
+    await waitFor(() => expect(again).toBeEnabled());
+    await userEvent.click(again);
+
+    await waitFor(() => expect(screen.queryByTestId('deploy-revert-panel')).not.toBeInTheDocument());
+    expect(http.calls.filter((call: Call) => call.url.endsWith('/revert')).map((call: Call) => call.data)).toEqual([
+      {dryRun: false, confirmRemovals: true, plan: 'plan-v1'},
+      {dryRun: false, confirmRemovals: true, plan: 'plan-v2'},
     ]);
   });
 

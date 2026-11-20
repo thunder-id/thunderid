@@ -121,6 +121,35 @@ holds no credential. The diff lists each such place under `misplacedSecrets`, in
 `references`, so the resource can be put right and captured again before the gateway refuses it. A dry
 run reports the same under `diff.misplacedSecrets`.
 
+### Preview an Apply or a Revert
+
+`GET /gateways/{id}/diff?version=<version>&preview=true` reports what applying the version would do, as
+a dry run of the apply with the same `version` and `project` reports it, without sending the gateway an
+import. The control plane works it out from its own records and asks only the gateway's store which of
+the values the version refers to it holds. Each change the apply would send is marked `selected`, and
+the answer adds `missing` and `changed`, as a dry run's answer has them, the sharing policies each
+change on offer would drop under `droppedPolicies`, and `removals`: how many removals the apply sends
+with the changes marked `selected`, the `threshold` of `gateway.removal_confirmation_threshold`, and
+whether the apply `needsConfirmation`. `plan` names what the preview was worked out from: the gateway's
+master, the version, the changes the gateway holds back, the `project` it is scoped to and, for a
+revert, the master it returns to.
+Send it back as `plan` on the apply or revert, and it is refused with `409` (`GTW-1019`) if any of
+those changed since. The removals an apply makes follow from that state and the apply's own
+`selection`, `leaveOut` and `withDependencies`, so with an unchanged `plan` they are the removals the
+preview shows for that selection. `plan` does not bind the selection: `removals.count` is for the
+changes the preview marks `selected`, so count the removals of another selection from its `changes`
+and `droppedPolicies` before confirming it.
+A removal the apply would refuse with `GTW-1033`, because a document the gateway keeps still names it
+(see [Deploy a Resource With What It Needs](#deploy-a-resource-with-what-it-needs)), does not fail the preview: it is listed
+under `removalsInUse`, each with the `key` of the resource removed and the `neededBy` key of what needs
+it, so the removal can be left out or what needs it selected. The apply itself still refuses it.
+`GET /gateways/{id}/diff?revert=true` previews a revert the same way, with `project` for a project's
+rollback.
+
+A preview does not say what the gateway itself would refuse, such as a resource that fails its own
+validation. Only a dry run, in which the gateway imports without writing, reports that under `import`.
+An apply is checked by the gateway as it is written either way.
+
 ## Apply a Version
 
 `POST /gateways/{id}/apply` sends the version to the gateway's import API with the gateway's key.
@@ -154,14 +183,15 @@ gateway is upgraded. These removals do not count toward `gateway.removal_confirm
   resource again, and the next apply sends it again.
 - **Many removals need confirming.** An apply or revert that would remove more resources than
   `gateway.removal_confirmation_threshold` (five unless configured) is refused with `409` (`GTW-1030`).
-  Run it as a dry run to see the removals, then send it again with `"confirmRemovals": true`.
+  Preview it or run it as a dry run to see the removals, then send it again with `"confirmRemovals": true`.
 - **A value changed since the last apply is reported, and sent.** `changed` names the variables and
   secrets the version refers to that were set on the gateway again since the version it holds was
   applied, with where the version refers to each, as `missing` does. Values are never shown. The
   resources that refer to such a value are sent again, so the gateway reads the new value although no
   document changed, and the `diff` in the apply's answer marks them `updated` with
-  `"valueChanged": true`. Only an apply reads the gateway's store, so `GET /gateways/{id}/diff` cannot
-  report them: run the apply as a dry run to see them before you build a `selection`. While a
+  `"valueChanged": true`. A plain `GET /gateways/{id}/diff` does not read the gateway's store, so it
+  cannot report them: [preview the apply](#preview-an-apply-or-a-revert), or run it as a dry run, to see
+  them before you build a `selection`. While a
   `selection` leaves such a resource out, the value stays reported as changed, and the next apply
   offers the resource again. The time the gateway's
   store gives for each value is compared with the time it gave at the last apply, so the control
@@ -587,12 +617,24 @@ the gateway lacks. One button sets the values and applies the version. **Rollbac
 card previews the changes that returning the gateway to its previous version would make, and rolls it
 back only when you confirm.
 
+What the dialogs show is a [preview](#preview-an-apply-or-a-revert): opening one, or any page of the
+console, never has the gateway check a deploy. **Check with gateway** in a dialog asks the gateway to
+check the deploy as it is ticked, or the rollback, without writing it, and lists what it would refuse, with why and the
+values each refused resource uses. Deploying does not wait for the check, since the gateway checks
+each deploy as it writes it.
+
 The dialog also lists the values set on the gateway since its last deploy, with the resources that
 use them, since they take effect with this deploy though no version carries them. When a deploy or a
-rollback would remove more resources than the control plane allows without asking, it is refused
-and the dialog says how many would go. Clicking again, now labelled **Deploy and remove** or **Roll
-back and remove**, confirms it. Changing which resources are ticked drops the confirmation, so it
-always covers the removals that were pointed out. A deploy or rollback to a gateway that is still
+rollback would remove more resources than the control plane allows without asking, the dialog says
+how many would go, sharing policies it drops included, and the button, labelled **Deploy and remove**
+or **Roll back and remove**, confirms it. The confirmation holds only for what the dialog showed: if
+another deploy changed the gateway meanwhile, the dialog reads it again and asks once more. A deploy the control plane still refuses for its removals, such as one that also drops
+sharing policies, is pointed out the same way, and clicking again confirms it. Changing which resources are ticked drops the confirmation, so it
+always covers the removals that were pointed out. When the preview finds a ticked removal still needed by a resource
+the gateway keeps, such as a flow an application update held back still names, the deploy dialog points
+it out. It found that for the changes the preview selects, so the control plane checks the deploy as
+it is ticked when it is sent, and **Check with gateway** checks it beforehand. A rollback sends what its
+preview shows, so the rollback dialog waits until its preview has no such removal. A deploy or rollback to a gateway that is still
 applying an earlier one is refused once it has waited, and the dialog says another deploy is running,
 so you can try again once it finishes.
 

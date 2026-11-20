@@ -45,6 +45,9 @@ type ProjectState struct {
 	// earlier deploy left them out for the deploys after it, so a deploy brings them only when they are
 	// selected. They are not pending, but they are still to be deployed.
 	HeldBack int `json:"heldBack"`
+	// ByType counts the project's own changes by resource type, pending or held back: what the gateway
+	// does not run as the version has it.
+	ByType []TypeCount `json:"byType"`
 	// DeployedAt and DeployedBy are when the project's own resources on the gateway were last written,
 	// and by whose apply. A gateway holding none of them has neither.
 	DeployedAt *time.Time `json:"deployedAt,omitempty"`
@@ -134,16 +137,16 @@ func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID
 	var promotable map[string]bool
 	if sourceMaster != nil {
 		// What the target holds back but the source runs is counted as held back, not dropped.
-		promotable = toSet(sourceRuns(sourceMaster, target, diff, true))
+		promotable = toSet(sourceRuns(sourceMaster, s.plans.bundle(target.Resources).resources, diff, true))
 	}
-	status := countSections(diff, promotable, projectID, soleNeeders(parseBundle(target.Resources)))
+	status := countSections(diff, promotable, projectID, soleNeeders(s.plans.bundle(target.Resources).resources))
 	status.Project.Versions = s.projectVersions(ctx, projectID, master)
 	latest, svcErr := s.latestProjectMaster(ctx, gatewayID, projectID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	status.Project.DeployedAt, status.Project.DeployedBy, status.Project.LastAction = lastWriteOf(projectID,
-		master, latest)
+		master, ownersOf(s.plans.bundle(master.Resources).resources), latest)
 	if status.Project.DeployedBy != nil {
 		s.names.fill(ctx, status.Project.DeployedBy)
 		status.Project.DeployedBy = shown(status.Project.DeployedBy)
@@ -155,6 +158,7 @@ func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID
 	}
 	if ok {
 		status.Project.Rollback = rollbackStateOf(projectID, master, rollback.before,
+			s.ownersAcross(rollback.before, master),
 			s.projectVersions(ctx, projectID, rollback.before), status.Project.Versions)
 	}
 	return status, nil
@@ -162,8 +166,9 @@ func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID
 
 // rollbackStateOf is what a project's rollback would undo: available only while it changes any of the
 // project's own resources, with the version it returns them to.
-func rollbackStateOf(projectID string, now, before *Master, earlier, current []ProjectVersion) ProjectRollbackState {
-	state := ProjectRollbackState{Changes: projectChanges(projectID, now, before)}
+func rollbackStateOf(projectID string, now, before *Master, owners map[string]string,
+	earlier, current []ProjectVersion) ProjectRollbackState {
+	state := ProjectRollbackState{Changes: projectChanges(projectID, now, before, owners)}
 	if state.Changes == 0 {
 		return state
 	}
@@ -177,9 +182,8 @@ func rollbackStateOf(projectID string, now, before *Master, earlier, current []P
 
 // projectChanges counts the project's own resources an earlier master holds otherwise than the gateway
 // holds them now: one only one of them holds, one held in another form, and one refused in one and
-// accepted in the other.
-func projectChanges(projectID string, now, before *Master) int {
-	owners := ownersOf(parseBundle(before.Resources), parseBundle(now.Resources))
+// accepted in the other. Owners are the projects of the resources of both, as ownersAcross reads them.
+func projectChanges(projectID string, now, before *Master, owners map[string]string) int {
 	held := func(master *Master) map[string]string {
 		states := map[string]string{}
 		for _, entry := range master.Entries {
@@ -215,8 +219,9 @@ const (
 // lastWriteOf is when the project's own resources on the gateway were last written, by whom, and how.
 // A write is a promotion when it named the gateway it came from. The project's rollback, when it is the
 // last write, is reported at its own time, even when it only removed the project's resources.
-func lastWriteOf(projectID string, master *Master, latest *Master) (*time.Time, *Actor, string) {
-	owners := ownersOf(parseBundle(master.Resources))
+// Owners are the projects of the master's resources.
+func lastWriteOf(projectID string, master *Master, owners map[string]string, latest *Master) (*time.Time,
+	*Actor, string) {
 	var last *MasterEntry
 	for i := range master.Entries {
 		entry := &master.Entries[i]
@@ -321,7 +326,7 @@ func (s *versionService) statusTarget(ctx context.Context, gatewayID, sourceGate
 func countSections(diff *Diff, promotable map[string]bool, projectID string, sole map[string]string) *ProjectStatus {
 	status := &ProjectStatus{Project: ProjectState{Versions: []ProjectVersion{}},
 		Shared: SharedState{ByType: []TypeCount{}}}
-	byType := map[string]int{}
+	byType, ownByType := map[string]int{}, map[string]int{}
 	for _, change := range diff.Changes {
 		if change.Change == ChangeUnchanged || (promotable != nil && !promotable[change.Key]) {
 			continue
@@ -330,6 +335,7 @@ func countSections(diff *Diff, promotable map[string]bool, projectID string, sol
 		switch change.Section {
 		case sectionProject:
 			countChange(&status.Project.Pending, &status.Project.HeldBack, change.HeldBack)
+			ownByType[change.ResourceType]++
 		case sectionNeeded:
 			switch {
 			case change.Required:
@@ -351,23 +357,31 @@ func countSections(diff *Diff, promotable map[string]bool, projectID string, sol
 			byType[change.ResourceType]++
 		}
 	}
+	status.Shared.ByType = typeCounts(byType)
+	status.Project.ByType = typeCounts(ownByType)
+	return status
+}
+
+// typeCounts lists counts by resource type, the largest first.
+func typeCounts(byType map[string]int) []TypeCount {
+	counts := make([]TypeCount, 0, len(byType))
 	for resourceType, count := range byType {
-		status.Shared.ByType = append(status.Shared.ByType, TypeCount{ResourceType: resourceType, Count: count})
+		counts = append(counts, TypeCount{ResourceType: resourceType, Count: count})
 	}
-	sort.Slice(status.Shared.ByType, func(i, j int) bool {
-		a, b := status.Shared.ByType[i], status.Shared.ByType[j]
+	sort.Slice(counts, func(i, j int) bool {
+		a, b := counts[i], counts[j]
 		if a.Count != b.Count {
 			return a.Count > b.Count
 		}
 		return a.ResourceType < b.ResourceType
 	})
-	return status
+	return counts
 }
 
 // projectVersions groups the project's own resources the gateway holds by the version each was deployed
 // from, newest first. A version no longer kept goes last, without its number.
 func (s *versionService) projectVersions(ctx context.Context, projectID string, master *Master) []ProjectVersion {
-	owners := ownersOf(parseBundle(master.Resources))
+	owners := ownersOf(s.plans.bundle(master.Resources).resources)
 	counts := map[string]int{}
 	for _, entry := range master.Entries {
 		if entry.State == EntryDeployed && entry.SourceVersion != "" && owners[entry.Key] == projectID {

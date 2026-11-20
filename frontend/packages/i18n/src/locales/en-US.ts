@@ -7329,6 +7329,14 @@ const translations = {
     'applyPanel.checkFailed': 'What the gateway would write could not be read.',
     'applyPanel.checkFailedFor': 'What {{target}} would receive could not be read.',
     'applyPanel.checking': 'Working out what {{gateway}} would write...',
+    'applyPanel.checkWithGateway': 'Check with gateway',
+    'applyPanel.checkWithGatewayHint':
+      'Asks {{gateway}} to check the deploy without writing it, and says what it would refuse. A deploy is checked as it is written either way.',
+    'applyPanel.gatewayAccepts': '{{target}} checked the deploy and would refuse none of it.',
+    'applyPanel.gatewayCheckFailed': '{{target}} could not check the deploy.',
+    'applyPanel.gatewayChecking': 'Asking {{gateway}} to check the deploy...',
+    'applyPanel.gatewayWouldRefuse_one': '{{target}} would refuse {{count}} change. It is listed below with why.',
+    'applyPanel.gatewayWouldRefuse_other': '{{target}} would refuse {{count}} changes. They are listed below with why.',
     'applyPanel.close': 'Close',
     'applyPanel.confirmRemovals_one':
       'Deploying removes {{count}} resource from {{gateway}}. Check it in the list, then deploy again to go ahead.',
@@ -7359,6 +7367,11 @@ const translations = {
       "{{count}} shared resource this gateway doesn't have yet is left out: {{names}}. Sign-in pages, branding or text in {{target}} may not work as expected until it is deployed.",
     'applyPanel.sharedLeftOut_other':
       "{{count}} shared resources this gateway doesn't have yet are left out, such as {{names}}. Sign-in pages, branding or text in {{target}} may not work as expected until they are deployed.",
+    'applyPanel.removalInUse': '{{resource}}, which {{holder}} needs',
+    'applyPanel.removalsInUse_one':
+      'In the preview, {{target}} keeps a resource that still needs what this deploy removes: {{names}}. The removal is refused unless the deploy also sends a change that stops needing it. Check with gateway checks the deploy as it is ticked.',
+    'applyPanel.removalsInUse_other':
+      'In the preview, {{target}} keeps resources that still need what this deploy removes: {{names}}. Each removal is refused unless the deploy also sends a change that stops needing it. Check with gateway checks the deploy as it is ticked.',
     'applyPanel.submitConfirm_one': 'Deploy and remove {{count}}',
     'applyPanel.submitConfirm_other': 'Deploy and remove {{count}}',
     'applyPanel.nothingToDeploy': 'Nothing to deploy',
@@ -7779,10 +7792,23 @@ const translations = {
     'resourceValues.save': 'Save',
     'resourceValues.set': 'Set',
     'resourceValues.setValue': 'Set',
+    'revertPanel.previewChanged':
+      '{{gateway}} changed since this rollback was previewed, so the preview is read again. Check what it changes, then roll back again.',
+    'revertPanel.previewFailed': 'What rolling back would change could not be read.',
+    'revertPanel.removalInUse': '{{resource}}, which {{holder}} needs',
+    'revertPanel.removalsInUse_one':
+      '{{gateway}} keeps a resource that still needs what rolling back removes: {{names}}. The rollback waits until it no longer does.',
+    'revertPanel.removalsInUse_other':
+      '{{gateway}} keeps resources that still need what rolling back removes: {{names}}. The rollback waits until they no longer do.',
     'revertPanel.cancel': 'Cancel',
     'revertPanel.changes_one': 'Rolling back writes {{count}} resource as the earlier version has it.',
     'revertPanel.changes_other': 'Rolling back writes {{count}} resources as the earlier version has them.',
     'revertPanel.checking': 'Working out what rolling back would change...',
+    'revertPanel.checkWithGateway': 'Check with gateway',
+    'revertPanel.gatewayAccepts': '{{gateway}} checked the rollback and would refuse none of it.',
+    'revertPanel.gatewayCheckFailed': '{{gateway}} could not check the rollback.',
+    'revertPanel.gatewayWouldRefuse_one': '{{gateway}} would refuse {{count}} resource: {{names}}.',
+    'revertPanel.gatewayWouldRefuse_other': '{{gateway}} would refuse {{count}} resources: {{names}}.',
     'revertPanel.confirmRemovals_one':
       'Rolling back removes {{count}} resource from {{gateway}}. Roll back again to go ahead.',
     'revertPanel.confirmRemovals_other':

@@ -800,6 +800,82 @@ func (_c *VersionServiceInterfaceMock_ListVersions_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// Preview provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) Preview(ctx context.Context, gatewayID string, req PreviewRequest) (*Diff, *common.ServiceError) {
+	ret := _mock.Called(ctx, gatewayID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Preview")
+	}
+
+	var r0 *Diff
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, PreviewRequest) (*Diff, *common.ServiceError)); ok {
+		return returnFunc(ctx, gatewayID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, PreviewRequest) *Diff); ok {
+		r0 = returnFunc(ctx, gatewayID, req)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*Diff)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, PreviewRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, gatewayID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// VersionServiceInterfaceMock_Preview_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Preview'
+type VersionServiceInterfaceMock_Preview_Call struct {
+	*mock.Call
+}
+
+// Preview is a helper method to define mock.On call
+//   - ctx context.Context
+//   - gatewayID string
+//   - req PreviewRequest
+func (_e *VersionServiceInterfaceMock_Expecter) Preview(ctx any, gatewayID any, req any) *VersionServiceInterfaceMock_Preview_Call {
+	return &VersionServiceInterfaceMock_Preview_Call{Call: _e.mock.On("Preview", ctx, gatewayID, req)}
+}
+
+func (_c *VersionServiceInterfaceMock_Preview_Call) Run(run func(ctx context.Context, gatewayID string, req PreviewRequest)) *VersionServiceInterfaceMock_Preview_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 PreviewRequest
+		if args[2] != nil {
+			arg2 = args[2].(PreviewRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_Preview_Call) Return(diff *Diff, serviceError *common.ServiceError) *VersionServiceInterfaceMock_Preview_Call {
+	_c.Call.Return(diff, serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_Preview_Call) RunAndReturn(run func(ctx context.Context, gatewayID string, req PreviewRequest) (*Diff, *common.ServiceError)) *VersionServiceInterfaceMock_Preview_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ProjectStatus provides a mock function for the type VersionServiceInterfaceMock
 func (_mock *VersionServiceInterfaceMock) ProjectStatus(ctx context.Context, gatewayID string, projectID string, sourceGatewayID string, ref string) (*ProjectStatus, *common.ServiceError) {
 	ret := _mock.Called(ctx, gatewayID, projectID, sourceGatewayID, ref)

@@ -7,6 +7,7 @@ import {
   useQuery,
   useQueryClient,
   type Mutation,
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
@@ -159,7 +160,18 @@ export function useStoredValuesNamed(
   });
 }
 
+/**
+ * Marks a gateway's previews stale once a value there is set or removed, since they say which values it
+ * lacks or set since its last deploy. They are read again when next shown, not under a panel showing them.
+ */
+function markPreviewsStale(queryClient: QueryClient, gatewayId: string): void {
+  void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.PREVIEW, gatewayId], refetchType: 'none'});
+  void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.REVERT_PREVIEW, gatewayId], refetchType: 'none'});
+}
+
 export interface SetValueInput {
+  /** The gateway to set it on, in place of the one the hook is for: a write that must not follow a switch. */
+  gatewayId?: string;
   name: string;
   value: string;
   /** The value's description, kept as it is when given. */
@@ -195,16 +207,26 @@ export const pendingWriteOf = (kind: ValueKind, name: string): string => `${kind
  * of the same value is in flight, and a removal while a save is, wherever the other was started.
  */
 export function usePendingValueWrites(gatewayId: string): PendingValueWrites {
+  // A save may name a gateway other than the one its hook is for, so a write is matched by the gateway it
+  // writes to, not by its key alone.
+  const writesHere = (mutation: Mutation<unknown, Error, unknown>): boolean => gatewayOfWrite(mutation) === gatewayId;
   const removing = useMutationState({
-    filters: {mutationKey: [DeployQueryKeys.VALUES, 'write', 'remove', gatewayId], status: 'pending'},
+    filters: {mutationKey: [DeployQueryKeys.VALUES, 'write', 'remove'], status: 'pending', predicate: writesHere},
     select: pendingWriteOfMutation,
   });
   const setting = useMutationState({
-    filters: {mutationKey: [DeployQueryKeys.VALUES, 'write', 'set', gatewayId], status: 'pending'},
+    filters: {mutationKey: [DeployQueryKeys.VALUES, 'write', 'set'], status: 'pending', predicate: writesHere},
     select: pendingWriteOfMutation,
   });
   // Each list keeps its identity while what it holds does not change.
   return useMemo(() => ({removing: new Set(removing), setting: new Set(setting)}), [removing, setting]);
+}
+
+/** The gateway a write goes to: the one its save names, or else the one its hook is for, from its key. */
+function gatewayOfWrite(mutation: Mutation<unknown, Error, unknown>): string {
+  const variables = mutation.state.variables as string | SetValueInput | undefined;
+  const named = typeof variables === 'object' ? variables.gatewayId : undefined;
+  return named ?? (mutation.options.mutationKey?.[3] as string);
 }
 
 /** A pending write to a value, as `kind:name`: the kind from its key, the name from its variables. */
@@ -223,10 +245,11 @@ export function useSetStoredValue(
   const queryClient = useQueryClient();
   return useMutation<StoredValue, Error, SetValueInput>({
     mutationKey: writeKey('set', gatewayId, kind),
-    mutationFn: ({name, value, description}: SetValueInput): Promise<StoredValue> =>
-      source.setValue(gatewayId, kind, name, {value, description}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({queryKey: valuesKey(gatewayId, kind)});
+    mutationFn: ({gatewayId: to = gatewayId, name, value, description}: SetValueInput): Promise<StoredValue> =>
+      source.setValue(to, kind, name, {value, description}),
+    onSuccess: (_stored: StoredValue, {gatewayId: to = gatewayId}: SetValueInput) => {
+      void queryClient.invalidateQueries({queryKey: valuesKey(to, kind)});
+      markPreviewsStale(queryClient, to);
     },
   });
 }
@@ -240,6 +263,7 @@ export function useDeleteStoredValue(gatewayId: string, kind: ValueKind): UseMut
     mutationFn: (name: string): Promise<void> => source.deleteValue(gatewayId, kind, name),
     onSuccess: () => {
       void queryClient.invalidateQueries({queryKey: valuesKey(gatewayId, kind)});
+      markPreviewsStale(queryClient, gatewayId);
     },
   });
 }

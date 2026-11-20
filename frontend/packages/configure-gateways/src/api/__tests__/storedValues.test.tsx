@@ -13,6 +13,7 @@ import {
   useSetStoredValue,
   useStoredValueCount,
   useStoredValuesNamed,
+  usePendingValueWrites,
   useStoredValuesPage,
 } from '../useStoredValues';
 
@@ -173,13 +174,47 @@ describe('stored value mutations', () => {
       await result.current.set.mutateAsync({name: 'VALUE_000', value: 'new'});
     });
     expect(invalidate).toHaveBeenCalledWith({queryKey: ['deploy-values', 'gw-dev', 'variables']});
+    // The gateway's previews are marked stale too, to be read again when next shown.
+    expect(invalidate).toHaveBeenCalledWith({queryKey: ['deploy-preview', 'gw-dev'], refetchType: 'none'});
     await waitFor(() => expect(reads()).toHaveLength(4));
 
     await act(async () => {
       await result.current.remove.mutateAsync('VALUE_000');
     });
-    expect(invalidate).toHaveBeenCalledTimes(2);
+    const valueRefreshes = invalidate.mock.calls.filter(
+      ([filters]) => (filters?.queryKey as unknown[] | undefined)?.[0] === 'deploy-values',
+    );
+    expect(valueRefreshes).toHaveLength(2);
     await waitFor(() => expect(reads()).toHaveLength(6));
+  });
+});
+
+describe('usePendingValueWrites', () => {
+  it('counts a save as pending on the gateway it writes to, not the one its hook is for', async () => {
+    let finish: () => void = () => undefined;
+    http = fakeHttp({
+      'PUT /gateways/gw-prod/variables/VALUE_000': () =>
+        new Promise((resolve) => {
+          finish = () => resolve({name: 'VALUE_000', value: 'new'});
+        }),
+    });
+    const {result} = renderHook(() => ({
+      set: useSetStoredValue('gw-dev', 'variable'),
+      dev: usePendingValueWrites('gw-dev'),
+      prod: usePendingValueWrites('gw-prod'),
+    }));
+
+    act(() => {
+      result.current.set.mutate({gatewayId: 'gw-prod', name: 'VALUE_000', value: 'new'});
+    });
+
+    await waitFor(() => expect(result.current.prod.setting).toEqual(new Set(['variable:VALUE_000'])));
+    expect(result.current.dev.setting).toEqual(new Set());
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.prod.setting).toEqual(new Set()));
   });
 });
 

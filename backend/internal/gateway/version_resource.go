@@ -6,6 +6,7 @@ package gateway
 import (
 	"context"
 	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -165,5 +166,8 @@ var scalarPlaceholder = regexp.MustCompile(`(?m)(:[ \t]+|^[ \t]*-[ \t]+)(\{\{\.[
 // is otherwise YAML reads as one and shows its placeholders as they are written. A template range is
 // left as it is, since no quoting makes it YAML.
 func quotePlaceholders(document string) string {
+	if !strings.Contains(document, "{{.") {
+		return document
+	}
 	return scalarPlaceholder.ReplaceAllString(document, `$1"$2"`)
 }

@@ -85,12 +85,16 @@ func ownersOf(sets ...[]bundleResource) map[string]string {
 	return owners
 }
 
+// ownersAcross reads the project of each resource an earlier master or the one held now holds, as
+// the one held now has it when both hold it.
+func (s *versionService) ownersAcross(before, now *Master) map[string]string {
+	return ownersOf(s.plans.bundle(before.Resources).resources, s.plans.bundle(now.Resources).resources)
+}
+
 // ownerOf reads the project one resource belongs to, or "" when it belongs to none.
 func ownerOf(resource bundleResource) string {
-	if resource.Type == resourceTypeProject {
-		return resource.ID
-	}
-	return firstMatch(projectIDField, resource.Content)
+	_, _, owner := resource.fieldsOf()
+	return owner
 }
 
 // organizationLevel are the kinds of resource that, in no project, are the organization's own: its
@@ -323,8 +327,8 @@ func (s *versionService) scope(ctx context.Context, projectID string, diff *Diff
 		s.logger.Warn(ctx, "Failed to read the projects", log.String("errorCode", svcErr.Code))
 		projects = map[string]string{}
 	}
-	held := parseBundle(master.Resources)
-	owners := ownersOf(held, parseBundle(target.Resources))
+	held := s.plans.bundle(master.Resources).resources
+	owners := ownersOf(held, s.plans.bundle(target.Resources).resources)
 	scope := scopeToProject(projectID, owners, diff)
 	scope.markUsedBy(diff, held, projects)
 	return scope, nil

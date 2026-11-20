@@ -4,7 +4,7 @@
 import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, isDryRun, SERVER, type Call} from '../../__tests__/fakeHttp';
 import useResourceDeploy from '../../hooks/useResourceDeploy';
 import GatewaysOverview from '../GatewaysOverview';
 
@@ -653,6 +653,8 @@ describe('GatewaysOverview', () => {
     expect(within(screen.getByTestId('deploy-stage-gw-prod')).getByTestId('card-standing')).toHaveTextContent(
       'Matches Development',
     );
+    // How far each gateway is behind, and what values changed there, is previewed: no gateway checks a deploy.
+    expect(http.calls.filter(isDryRun)).toEqual([]);
   });
 
   it('says how a project stands from its own resources, asking each gateway against the one before', async () => {
@@ -838,15 +840,20 @@ describe('GatewaysOverview', () => {
     expect(within(panel).getByTestId('deploy-revert-what')).toHaveTextContent(
       "Only this project's applications and agents on dev-gateway go back one step.",
     );
+    // The rollback is previewed for the project, and the gateway checks it only when asked to.
     await waitFor(() =>
       expect(http.calls).toContainEqual(
-        expect.objectContaining({
-          method: 'POST',
-          url: `${SERVER}/gateways/gw-dev/revert`,
-          data: {dryRun: true, project: 'p-shop'},
-        }),
+        expect.objectContaining({method: 'GET', url: `${SERVER}/gateways/gw-dev/diff?project=p-shop&revert=true`}),
       ),
     );
+    expect(http.calls.filter(isDryRun)).toEqual([]);
+    await userEvent.click(await within(panel).findByTestId('revert-check-with-gateway'));
+    expect(await within(panel).findByTestId('revert-gateway-checked')).toHaveTextContent(
+      'dev-gateway checked the rollback and would refuse none of it.',
+    );
+    expect(http.calls.filter(isDryRun)).toEqual([
+      expect.objectContaining({url: `${SERVER}/gateways/gw-dev/revert`, data: {dryRun: true, project: 'p-shop'}}),
+    ]);
   });
 
   it('undoes the last deploy when the rollback stays on the version the project runs, saying how much it changes', async () => {

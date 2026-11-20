@@ -574,7 +574,7 @@ type versionFixture struct {
 }
 
 // newVersionFixture builds a service administering one registered gateway, gw-1, whose key is sealed.
-func newVersionFixture(t *testing.T) *versionFixture {
+func newVersionFixture(t testing.TB) *versionFixture {
 	t.Helper()
 	cmodels.SetConfigCryptoProvider(reversingCrypto{})
 	t.Cleanup(func() { cmodels.SetConfigCryptoProvider(nil) })

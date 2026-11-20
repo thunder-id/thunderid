@@ -25,8 +25,10 @@ type stubVersionService struct {
 	lastProj string
 	lastFrom string
 	lastApp  ApplyRequest
-	forgot   string
-	captured CaptureRequest
+	// lastPreview is the last preview asked for.
+	lastPreview *PreviewRequest
+	forgot      string
+	captured    CaptureRequest
 	// delay makes an apply or a revert take this long, as one waiting on a gateway's import does.
 	delay time.Duration
 }
@@ -48,6 +50,11 @@ func (s *stubVersionService) GetApplied(_ context.Context, id string) (*AppliedV
 func (s *stubVersionService) Diff(_ context.Context, _, ref, projectID string) (*Diff,
 	*tidcommon.ServiceError) {
 	s.lastRef, s.lastProj = ref, projectID
+	return &Diff{}, s.err
+}
+func (s *stubVersionService) Preview(_ context.Context, _ string, req PreviewRequest) (*Diff,
+	*tidcommon.ServiceError) {
+	s.lastPreview = &req
 	return &Diff{}, s.err
 }
 func (s *stubVersionService) ProjectStatus(_ context.Context, _, projectID, sourceGatewayID,
@@ -130,6 +137,16 @@ func TestVersionRoutesAnswerEachCall(t *testing.T) {
 	assert.Equal(t, "3", stub.lastRef)
 	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodOptions,
 		"/gateways/gw-2/project-status", ``).Code)
+
+	stub.lastPreview = nil
+	assert.Equal(t, http.StatusOK, serveVersions(stub, http.MethodGet, "/gateways/gw-1/diff?version=4", ``).Code)
+	assert.Nil(t, stub.lastPreview, "a plain diff was answered as a preview")
+	assert.Equal(t, http.StatusOK, serveVersions(stub, http.MethodGet,
+		"/gateways/gw-1/diff?version=4&project=shop&preview=true", ``).Code)
+	assert.Equal(t, &PreviewRequest{Version: "4", Project: "shop"}, stub.lastPreview)
+	assert.Equal(t, http.StatusOK, serveVersions(stub, http.MethodGet,
+		"/gateways/gw-1/diff?project=shop&revert=true", ``).Code)
+	assert.Equal(t, &PreviewRequest{Project: "shop", Revert: true}, stub.lastPreview)
 
 	recorder := serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
 		`{"autoSync":true,"firstGateway":"gw-1"}`)

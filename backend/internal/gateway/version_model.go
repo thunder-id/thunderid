@@ -159,6 +159,11 @@ type ApplyRequest struct {
 	// project's resources, or leaving out what the selected ones need that the gateway lacks, is
 	// refused. The selection is not widened: WithDependencies is not read.
 	Project string `json:"project,omitempty"`
+	// Plan, when given, is the plan a preview reported (Diff.Plan). The apply is refused when the gateway
+	// or the version no longer matches it, so removals confirmed from a preview are the ones sent.
+	Plan string `json:"plan,omitempty"`
+	// preview works the dry run out from the control plane's own records, without the gateway's import.
+	preview bool
 }
 
 // PromoteRequest asks for the version one gateway runs to be applied to another, as a console promotes
@@ -182,6 +187,36 @@ type RevertRequest struct {
 	DryRun          bool   `json:"dryRun,omitempty"`
 	ConfirmRemovals bool   `json:"confirmRemovals,omitempty"`
 	Project         string `json:"project,omitempty"`
+	// Plan, when given, is the plan a preview of the revert reported, as on an apply.
+	Plan string `json:"plan,omitempty"`
+	// preview works the dry run out from the control plane's own records, without the gateway's import.
+	preview bool
+}
+
+// PreviewRequest asks what an apply of a version would do on a gateway, or with Revert what its revert
+// would, as a dry run reports it but from the control plane's own records: the gateway's import is not
+// asked, only its store, for which of the values the version refers to it holds. Project scopes either
+// as it scopes an apply or a revert.
+type PreviewRequest struct {
+	Version string
+	Project string
+	Revert  bool
+}
+
+// RemovalCount is how many resources and sharing policies an apply sends the gateway to remove, against
+// the deployment's threshold, above which the apply is refused until it is confirmed.
+type RemovalCount struct {
+	Count     int `json:"count"`
+	Threshold int `json:"threshold"`
+	// NeedsConfirmation is set when the count is above a threshold that is on.
+	NeedsConfirmation bool `json:"needsConfirmation"`
+}
+
+// RemovalInUse is a removal the apply cannot send while a resource the gateway keeps still needs it: Key
+// is the resource removed, by its key, and NeededBy the key of the resource that needs it.
+type RemovalInUse struct {
+	Key      string `json:"key"`
+	NeededBy string `json:"neededBy"`
 }
 
 // ChangeKind says how a resource differs between what a gateway holds and what is applied to it.
@@ -265,6 +300,20 @@ type Diff struct {
 	// MisplacedSecrets are the places the version refers to a secret from a field that holds no
 	// credential. A gateway refuses such a resource on import, so they are reported here first.
 	MisplacedSecrets []ValueReference `json:"misplacedSecrets,omitempty"`
+	// Missing, Changed, DroppedPolicies and Removals are reported only by a preview, as a dry run
+	// reports the first three beside its diff: the values the gateway lacks that a change on offer refers
+	// to, the values set on it since its version was applied, the sharing policies the apply would drop,
+	// and how many removals the apply sends unless a selection says otherwise.
+	Missing         *MissingValues  `json:"missing,omitempty"`
+	Changed         *ChangedValues  `json:"changed,omitempty"`
+	DroppedPolicies []DroppedPolicy `json:"droppedPolicies,omitempty"`
+	Removals        *RemovalCount   `json:"removals,omitempty"`
+	// RemovalsInUse, reported only by a preview, are the removals the apply cannot send as previewed,
+	// each with what still needs it. The apply refuses them until what needs one goes along or is updated
+	// in the same apply, or the removal is left out.
+	RemovalsInUse []RemovalInUse `json:"removalsInUse,omitempty"`
+	// Plan names what a preview was worked out from, for an apply or a revert to be bound to.
+	Plan string `json:"plan,omitempty"`
 }
 
 // ApplyResult is what an apply or a revert reports.

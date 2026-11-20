@@ -160,6 +160,26 @@ export interface Diff {
   toVersion: string;
   summary: DiffSummary;
   changes: Change[];
+  /** On a preview: the sharing policies each change on offer would drop, which count as removals. */
+  droppedPolicies?: DroppedPolicy[];
+  /** On a preview: what it was worked out from, sent back with a deploy or rollback to bind it to it. */
+  plan?: string;
+  /** On a preview: the removals a deploy is refused for as previewed, each with what still needs it. */
+  removalsInUse?: RemovalInUse[];
+}
+
+/** A removal a deploy is refused for while a resource the target keeps still needs it, both by key. */
+export interface RemovalInUse {
+  key: string;
+  neededBy: string;
+}
+
+/** A sharing policy a deploy drops for a resource it sends again. */
+export interface DroppedPolicy {
+  resourceType: string;
+  resourceId?: string;
+  resourceName?: string;
+  initiatingOuId?: string;
 }
 
 /** The values a version refers to that a gateway does not hold. */
@@ -192,6 +212,8 @@ export interface ApplyRequest {
   origin?: string;
   /** The project the deploy is for, which scopes the check and refuses another project's changes. */
   project?: string;
+  /** The plan a preview reported; the deploy is refused once the target or the version changed since. */
+  plan?: string;
 }
 
 export interface ApplyResult {
@@ -209,6 +231,16 @@ export interface ApplyResult {
   master?: string;
   missing?: MissingValues;
   changed?: ChangedValues;
+  /** On a preview: how many removals the deploy sends with what it selects, against the threshold. */
+  removals?: RemovalCount;
+}
+
+/** How many resources a deploy removes, against how many it may remove before it must be confirmed. */
+export interface RemovalCount {
+  count: number;
+  /** The most removals a deploy makes unconfirmed; 0 when there is no limit. */
+  threshold: number;
+  needsConfirmation: boolean;
 }
 
 export type EntryState = 'deployed' | 'failed' | 'removed';

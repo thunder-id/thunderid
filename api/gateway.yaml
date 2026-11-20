@@ -307,10 +307,35 @@ paths:
           change the gateway lacks or refused is marked `required`, and a needed or shared change that
           updates or removes what the gateway holds names in `usedBy` the other projects whose resources
           on the gateway use it. An unknown project is refused with `404` (`GTW-1038`).
+      - name: preview
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: |
+          `true` reports what applying the version would do, as a dry run of `POST /gateways/{id}/apply`
+          with the same `version` and `project` reports it, but from the control plane's own records:
+          the gateway's import is not called, only its store, for which of the values the version refers
+          to it holds. Each change the apply would send is marked `selected`, one whose value was set on
+          the gateway again since the last apply `valueChanged`, and the answer adds `missing`, `changed`,
+          `droppedPolicies` and `removals`. What the gateway itself would refuse is only known from a
+          dry run. A gateway whose store cannot be reached is answered with `502` (`GTW-5001`).
+      - name: revert
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: |
+          `true` reports, as `preview` does, what `POST /gateways/{id}/revert` would do, with `project`
+          as its body's `project`; `version` is not read. A gateway or project with nothing to revert to
+          is refused with `400` (`GTW-1016`, `GTW-1041`).
     get:
       tags: [Gateways]
       summary: Compare a version with what a gateway holds
-      description: Reports what applying the version would add, change and remove, without calling the gateway.
+      description: |
+        Reports what applying the version would add, change and remove, without calling the gateway.
+        With `preview` or `revert`, reports what the apply or the revert would do, calling only the
+        gateway's store.
       responses:
         "200":
           description: The differences
@@ -326,6 +351,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+        "502":
+          description: With `preview` or `revert`, the gateway's store could not be reached (`GTW-5001`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /projects/{projectId}/auto-sync:
     parameters:
       - name: projectId
@@ -1306,6 +1337,14 @@ components:
         dryRun:
           type: boolean
           description: Send the import as a dry run and record nothing.
+        plan:
+          type: string
+          description: |
+            The `plan` a preview of this apply reported. The apply is refused with `409` (`GTW-1019`)
+            when the gateway's master, the version or what the gateway holds back changed since. The
+            removals the apply makes then follow from the previewed state and this request's
+            `selection`, `leaveOut` and `withDependencies`; `plan` does not bind the selection itself.
+            Omitted, the apply is planned from what the gateway holds now.
         origin:
           type: string
           maxLength: 255
@@ -1394,6 +1433,18 @@ components:
                 The project's own changes, and what they need, that the gateway holds back because an
                 earlier deploy left them out. They are not counted as pending, and a deploy brings them
                 only when they are selected.
+            byType:
+              type: array
+              description: |
+                The project's own changes by resource type, the most first, pending or held back: what
+                the gateway does not run as the version has it.
+              items:
+                type: object
+                properties:
+                  resourceType:
+                    type: string
+                  count:
+                    type: integer
             deployedAt:
               type: string
               format: date-time
@@ -1496,6 +1547,9 @@ components:
           description: As on an apply. A revert to a much smaller version is the usual case.
         dryRun:
           type: boolean
+        plan:
+          type: string
+          description: The `plan` a preview of this revert reported, as on an apply.
         project:
           type: string
           description: |
@@ -1635,6 +1689,63 @@ components:
             refuses the configuration outright; this names what an earlier version still holds.
           items:
             $ref: '#/components/schemas/ValueReference'
+        missing:
+          description: |
+            Only on a preview: the variables and secrets the gateway's store does not hold that a change
+            the version offers refers to, as on a dry run's answer (`ApplyResult.missing`).
+          allOf:
+            - $ref: '#/components/schemas/ApplyResult/properties/missing'
+        changed:
+          description: |
+            Only on a preview: the values set on the gateway again since the version it holds was
+            applied, as on a dry run's answer (`ApplyResult.changed`).
+          allOf:
+            - $ref: '#/components/schemas/ApplyResult/properties/changed'
+        droppedPolicies:
+          description: |
+            Only on a preview: the sharing policies each change on offer would drop, a change the gateway
+            holds back included, so they can be counted for any selection. `removals.count` counts only
+            those of the changes marked `selected`.
+          allOf:
+            - $ref: '#/components/schemas/ApplyResult/properties/droppedPolicies'
+        removals:
+          type: object
+          description: |
+            Only on a preview: how many resources and sharing policies the apply or revert sends the
+            gateway to remove, with the changes as marked `selected`, against the deployment's threshold.
+            Above a threshold that is on, the apply is refused with `409` (`GTW-1030`) until it is sent
+            with `confirmRemovals`.
+          properties:
+            count:
+              type: integer
+            threshold:
+              type: integer
+              description: The most removals an apply sends without confirming them; `0` when the check is off.
+            needsConfirmation:
+              type: boolean
+        removalsInUse:
+          type: array
+          description: |
+            Only on a preview: the removals the apply or revert would refuse with `409` (`GTW-1033`) as
+            previewed, because a resource the gateway keeps still needs each. The preview reports them
+            rather than failing, so the removal can be left out or what needs it selected; the apply still
+            refuses them.
+          items:
+            type: object
+            required: [key, neededBy]
+            properties:
+              key:
+                type: string
+                description: The key of the resource removed.
+              neededBy:
+                type: string
+                description: The key of the resource that still needs it.
+        plan:
+          type: string
+          description: |
+            Only on a preview: names what it was worked out from, the gateway's master, the version, what
+            the gateway holds back, the project it is scoped to and, for a revert, the master it returns
+            to. Sent back as `plan` on the apply or revert, it binds them to that state.
     ApplyResult:
       type: object
       properties:

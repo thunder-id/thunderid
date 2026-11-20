@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 )
@@ -152,7 +153,7 @@ func TestWithProjectFromTakesOnlyTheProjectsResources(t *testing.T) {
 	earlier := &Master{Resources: joinBundle([]string{projectApp("a", "shop", "ou", "f"),
 		projectApp("d", "shop", "ou", "f"), projectApp("b", "billing", "ou", "f") + "description: old\n"})}
 
-	content, owned := withProjectFrom("shop", now, earlier)
+	content, owned := withProjectFrom("shop", parseBundle(now.Resources), parseBundle(earlier.Resources))
 
 	assert.Equal(t, map[string]bool{"application/a": true, "application/c": true, "application/d": true}, owned)
 	keys := map[string]string{}
@@ -164,6 +165,74 @@ func TestWithProjectFromTakesOnlyTheProjectsResources(t *testing.T) {
 	assert.NotContains(t, keys["application/b"], "description: old")
 	assert.Contains(t, keys, "application/d")
 	assert.NotContains(t, keys, "application/c")
+}
+
+// A resource the project held then that another project holds now keeps that project's document, and is
+// not the rolled back project's to restore.
+func (s *ProjectScopeTestSuite) TestWithProjectFromKeepsAResourceAnotherProjectHoldsNow() {
+	now := parseBundle(joinBundle([]string{projectApp("a", "billing", "ou", "f") + "description: billing\n",
+		projectApp("c", "shop", "ou", "f")}))
+	earlier := parseBundle(joinBundle([]string{projectApp("a", "shop", "ou", "f") + "description: shop\n"}))
+
+	content, owned := withProjectFrom("shop", now, earlier)
+
+	s.Equal(map[string]bool{"application/c": true}, owned)
+	bundle := parseBundle(content)
+	s.Require().Len(bundle, 1)
+	s.Contains(bundle[0].Content, "description: billing")
+}
+
+// A project's rollback is refused when a master is written between reading the project's history and
+// the master the rollback is planned from, since the history no longer says what it returns to.
+func (s *ProjectScopeTestSuite) TestARollbackPlannedAcrossANewMasterIsRefused() {
+	versions := newVersionStoreInterfaceMock(s.T())
+	svc := newVersionService(s.f.gateways, versions, s.f.exporter, s.f.client, testSecretFields, s.f.names,
+		newPipeline(), discardingBus{})
+	svc.projects = s.projects
+	before := Master{GatewayID: "gw-1", Seq: 1}
+	last := Master{GatewayID: "gw-1", Seq: 2, Project: "shop"}
+	// The history lists the shop's deploy as the newest master; another one is written before the
+	// master is read.
+	versions.EXPECT().ListMasters(mock.Anything, "gw-1").Return([]Master{last, before}, nil)
+	versions.EXPECT().GetMasterAt(mock.Anything, "gw-1", 1).Return(&before, nil)
+	versions.EXPECT().GetApplied(mock.Anything, "gw-1").Return(&AppliedVersion{GatewayID: "gw-1", AppliedVersion: 1},
+		nil)
+	versions.EXPECT().Get(mock.Anything, 1).Return(&Version{Seq: 1}, nil)
+	versions.EXPECT().GetMaster(mock.Anything, "gw-1").Return(&Master{GatewayID: "gw-1", Seq: 3, Project: "shop"}, nil)
+
+	_, svcErr := svc.Revert(context.Background(), "gw-1", RevertRequest{Project: "shop", DryRun: true})
+
+	s.Equal(&ErrorAppliedChanged, svcErr)
+}
+
+// A resource the project held at its rollback point that another project holds now is neither shown nor
+// written by the project's rollback: the gateway keeps the other project's document.
+func (s *ProjectScopeTestSuite) TestARollbackKeepsAResourceAnotherProjectHoldsNow() {
+	ctx := context.Background()
+	moved := func(projectID, description string) string {
+		return projectApp("app-x", projectID, "ou-team", "flow-1") + "description: " + description + "\n"
+	}
+	s.captureDocs(append(docs(flow("flow-1")), moved("shop", "shop"))...)
+	_, svcErr := s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	s.captureDocs(append(shopV2(), moved("shop", "shop"))...)
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	s.captureDocs(append(shopV2(), moved("billing", "billing"))...)
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "billing"})
+	s.Require().Nil(svcErr)
+	s.Require().Contains(s.heldDocument("application/app-x"), "description: billing")
+
+	preview, svcErr := s.f.svc.Preview(ctx, "gw-1", PreviewRequest{Project: "shop", Revert: true})
+	s.Require().Nil(svcErr)
+	s.False(changeNamed(preview, "application/app-x").Selected, "the rollback offered another project's resource")
+	s.True(changeNamed(preview, "application/app-shop").Selected)
+	_, svcErr = s.f.svc.Revert(ctx, "gw-1", RevertRequest{Project: "shop", Plan: preview.Plan})
+
+	s.Require().Nil(svcErr)
+	s.NotContains(s.f.client.last().Content, "id: app-x")
+	s.Contains(s.heldDocument("application/app-x"), "description: billing")
+	s.NotContains(s.heldDocument("application/app-shop"), "description: second")
 }
 
 // A project's rollback point outlives the bound on kept masters while other projects keep deploying: the
@@ -273,9 +342,9 @@ func (s *ProjectScopeTestSuite) TestARollbackKeepsWhatTheGatewayHoldsBack() {
 func TestARollbackPlannedFromAReplacedMasterIsRefused(t *testing.T) {
 	planned := "master-a"
 
-	_, _, svcErr := shipmentOf(&Diff{}, &Version{}, &Master{Hash: "master-b"}, nil,
+	_, svcErr := shipmentOf(&Diff{}, nil, &Master{Hash: "master-b"}, nil, nil,
 		applyOptions{plannedOn: &planned})
-	_, _, unchanged := shipmentOf(&Diff{}, &Version{}, &Master{Hash: "master-a"}, nil,
+	_, unchanged := shipmentOf(&Diff{}, nil, &Master{Hash: "master-a"}, nil, nil,
 		applyOptions{plannedOn: &planned})
 
 	assert.Equal(t, &ErrorAppliedChanged, svcErr)

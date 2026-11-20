@@ -252,7 +252,7 @@ func (s *DependenciesTestSuite) TestARemovalStillNamedIsRefused() {
 	held := parseBundle(joinBundle([]string{unit("ou-1"), childUnit("ou-2", "ou-1"), flow("flow-1"),
 		app("app-1", "ou-2", "flow-1")}))
 
-	assert.Equal(t, []string{"organization_unit/ou-1 is needed by organization_unit/ou-2"},
+	assert.Equal(t, []RemovalInUse{{Key: "organization_unit/ou-1", NeededBy: "organization_unit/ou-2"}},
 		stillReferenced([]gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, held, nil))
 	assert.Empty(t, stillReferenced([]gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"},
 		{ResourceType: "organization_unit", ID: "ou-2"}, {ResourceType: "application", ID: "app-1"}}, held, nil))
@@ -689,7 +689,7 @@ func (s *DependenciesTestSuite) TestASelectedAdditionTakesInTheRemovalItReplaces
 	}}
 	selection := []string{"resource_server/rs-b"}
 
-	sent, svcErr := chosen(diff, target, &selection, false)
+	sent, svcErr := chosen(diff, parseBundle(target.Resources), &selection, false)
 
 	s.Require().Nil(svcErr)
 	s.Equal([]gatewayDeletion{{ResourceType: "resource_server", ID: "rs-a"}}, sent.deletions)
@@ -709,7 +709,7 @@ func (s *DependenciesTestSuite) TestASelectedAdditionLeavesOutAHeldBackRemovalIt
 	}}
 	selection := []string{"resource_server/rs-b"}
 
-	sent, svcErr := chosen(diff, target, &selection, false)
+	sent, svcErr := chosen(diff, parseBundle(target.Resources), &selection, false)
 
 	s.Require().Nil(svcErr)
 	s.Empty(sent.deletions)

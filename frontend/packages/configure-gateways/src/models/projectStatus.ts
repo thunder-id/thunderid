@@ -37,6 +37,8 @@ export interface ProjectStatus {
      * deploy left them out: not waiting, but still to be brought there. Absent from older servers.
      */
     heldBack?: number;
+    /** The project's own changes there by resource type, waiting or held back. Absent from older servers. */
+    byType?: {resourceType: string; count: number}[];
   };
   /** Changes that belong to no project, which go with any project's promotion when ticked. */
   shared: {

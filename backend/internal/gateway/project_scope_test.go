@@ -113,6 +113,27 @@ func docs(shopFlow string) []string {
 		"resource_type: user\nid: usr-1\nouId: ou-shop\nattributes:\n  username: sam"}
 }
 
+// A plan names the project its preview was scoped to: one previewed for a project is refused for another
+// project, and for the whole organization, on the same gateway and version, and goes ahead for its own.
+func (s *ProjectScopeTestSuite) TestAPlanIsBoundToItsProject() {
+	ctx := context.Background()
+	s.captureDocs(docs(flow("flow-1"))...)
+	shop, svcErr := s.f.svc.Preview(ctx, "gw-1", PreviewRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	billing, svcErr := s.f.svc.Preview(ctx, "gw-1", PreviewRequest{Project: "billing"})
+	s.Require().Nil(svcErr)
+	s.NotEqual(shop.Plan, billing.Plan)
+
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "billing", Plan: shop.Plan})
+	s.Equal(&ErrorAppliedChanged, svcErr)
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Plan: shop.Plan})
+	s.Equal(&ErrorAppliedChanged, svcErr)
+	s.Empty(s.f.client.sent, "an apply off its project's plan reached the gateway")
+
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop", Plan: shop.Plan})
+	s.Nil(svcErr)
+}
+
 // A diff scoped to a project places each change: the resources that name the project, what they need,
 // what belongs to no project, and another project's own. A needed change the gateway lacks is required.
 func (s *ProjectScopeTestSuite) TestADiffScopedToAProjectPlacesEachChange() {

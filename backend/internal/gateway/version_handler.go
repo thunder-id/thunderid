@@ -6,10 +6,12 @@ package gateway
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // versionHandler serves capturing versions and applying them to gateways.
@@ -117,11 +119,21 @@ func (h *versionHandler) handleProjectStatus(w http.ResponseWriter, r *http.Requ
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, status)
 }
 
-// handleDiff reports how a version differs from what a gateway holds.
+// handleDiff reports how a version differs from what a gateway holds. Asked for as a preview, or for a
+// revert, it reports what the apply or the revert would do, as its dry run does but without the
+// gateway's import.
 func (h *versionHandler) handleDiff(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	diff, svcErr := h.service.Diff(ctx, r.PathValue("id"), r.URL.Query().Get("version"),
-		r.URL.Query().Get("project"))
+	query := r.URL.Query()
+	revert := strings.EqualFold(query.Get("revert"), "true")
+	var diff *Diff
+	var svcErr *tidcommon.ServiceError
+	if revert || strings.EqualFold(query.Get("preview"), "true") {
+		diff, svcErr = h.service.Preview(ctx, r.PathValue("id"), PreviewRequest{Version: query.Get("version"),
+			Project: query.Get("project"), Revert: revert})
+	} else {
+		diff, svcErr = h.service.Diff(ctx, r.PathValue("id"), query.Get("version"), query.Get("project"))
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return

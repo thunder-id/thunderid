@@ -4,7 +4,7 @@
 import {HiddenResourcesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, isDryRun, SERVER, type Call} from '../../__tests__/fakeHttp';
 import GatewayPage from '../GatewayPage';
 
 let http = fakeHttp({});
@@ -153,8 +153,11 @@ describe('GatewayPage', () => {
     const billing = screen.getByTestId('gateway-resource-application/a-2');
     expect(billing).toHaveTextContent('Not running');
     expect(billing).toHaveTextContent('Not deployed yet');
+    // The page compares from previews: the gateway is not asked to check a deploy.
+    expect(http.calls.filter(isDryRun)).toEqual([]);
     await userEvent.click(within(billing).getByRole('button', {name: 'Deploy'}));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(http.calls.filter(isDryRun)).toEqual([]);
   });
 
   it('leaves a hidden resource out of what the gateway runs', async () => {

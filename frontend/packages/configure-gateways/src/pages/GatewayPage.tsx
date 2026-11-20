@@ -25,7 +25,7 @@ import {useTranslation} from 'react-i18next';
 import {Link, useParams} from 'react-router';
 import useAppliedVersions from '../api/useAppliedVersions';
 import useChangedValues, {changedCount} from '../api/useChangedValues';
-import {useApplyCheck, useAppliedVersion, useRunningReferences} from '../api/useGatewayVersions';
+import {useAppliedVersion, usePreview, useRunningReferences} from '../api/useGatewayVersions';
 import {useMaster, useMasterHistory} from '../api/useMaster';
 import {usePipeline} from '../api/usePipeline';
 import useProjectStatus from '../api/useProjectStatus';
@@ -59,7 +59,7 @@ export interface GatewayPageProps {
 /** How many of a gateway's deploys the overview lists. */
 const RECENT = 3;
 
-/** The key a resource is named by in a deploy's check. */
+/** The key a resource is named by in a deploy's preview. */
 const keyOf = (resourceType: string, id: string | undefined): string => `${resourceType}/${id ?? ''}`;
 const referenceKey = (reference: ValueReference): string =>
   `${keyOf(reference.resourceType, reference.resourceId)}:${reference.kind}:${reference.name}:${reference.field ?? ''}`;
@@ -139,9 +139,9 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   // What this gateway is compared with: the latest version for the first, what the one before runs
   // for a later one.
   const source = index === 0 ? all[0]?.version : (beforeApplied.data?.appliedVersion ?? undefined);
-  const check = useApplyCheck(gatewayId, source);
-  const changes: Change[] = useMemo(() => check.data?.diff.changes ?? [], [check.data]);
-  // In a project, the page is about its own resources and the ones they need, as its check places them.
+  const preview = usePreview(gatewayId, source);
+  const changes: Change[] = useMemo(() => preview.data?.diff.changes ?? [], [preview.data]);
+  // In a project, the page is about its own resources and the ones they need, as its preview places them.
   const projectKeys: Set<string> | undefined = useMemo(() => {
     if (!project) return undefined;
     return new Set(
@@ -155,11 +155,11 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   const allReferences = useMemo(() => {
     const own = running.data ?? [];
     const seen = new Set(own.map(referenceKey));
-    const needed = (check.data?.missing?.references ?? []).filter(
+    const needed = (preview.data?.missing?.references ?? []).filter(
       (reference: ValueReference) => !seen.has(referenceKey(reference)),
     );
     return [...own, ...needed];
-  }, [running.data, check.data]);
+  }, [running.data, preview.data]);
   const references = useMemo(
     () =>
       projectKeys
@@ -433,13 +433,13 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
         }
         testId="gateway-deployed"
       >
-        {check.isError && (
+        {preview.isError && (
           <Alert severity="error">
             {t('gateway.deployedFailed', 'What {{name}} holds could not be read.', {name: stage.name})}
           </Alert>
         )}
-        {check.isLoading && <CircularProgress size={20} />}
-        {check.isSuccess && rows.length === 0 && (
+        {preview.isLoading && <CircularProgress size={20} />}
+        {preview.isSuccess && rows.length === 0 && (
           <Typography variant="body2" color="text.secondary">
             {t('stage.nothingDeployed', 'Nothing deployed yet')}
           </Typography>

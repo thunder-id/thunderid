@@ -6,7 +6,7 @@ import {CircleAlert, CircleCheck, Info, RefreshCw, Rocket, Undo2} from '@wso2/ox
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import useChangedValues, {changedCount} from '../api/useChangedValues';
-import {useApplyCheck} from '../api/useGatewayVersions';
+import {usePreview} from '../api/useGatewayVersions';
 import {useRefused} from '../api/useMaster';
 import {gatewayColor} from '../constants/gateway-colors';
 import useActorName from '../hooks/useActorName';
@@ -158,11 +158,11 @@ export default function GatewayCard({
   const hash = applied?.appliedVersion ?? undefined;
   const scoped = inProject || Boolean(projectStatus);
   const wholeRefused = useRefused(gateway.id);
-  // In a project, what the gateway refused is read from the project's check of what it runs, which
+  // In a project, what the gateway refused is read from the project's preview of what it runs, which
   // places each refused change in the project's sections: the project's own and what it cannot run
   // without count, and refused shared resources are said apart.
-  const projectCheck = useApplyCheck(gateway.id, hash, Boolean(projectStatus) && Boolean(hash));
-  const projectFailed = (projectCheck.data?.diff.changes ?? []).filter((change: Change) => change.failed);
+  const projectPreview = usePreview(gateway.id, hash, Boolean(projectStatus) && Boolean(hash));
+  const projectFailed = (projectPreview.data?.diff.changes ?? []).filter((change: Change) => change.failed);
   const isOwn = (change: Change): boolean => change.section === 'project' || change.required === true;
   const nameOfChange = (change: Change): string => change.name ?? change.id ?? change.key;
   const refused: {key: string; label: string}[] = scoped

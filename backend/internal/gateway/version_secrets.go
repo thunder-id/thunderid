@@ -19,8 +19,18 @@ import (
 // the field's API returns or that the resource sends elsewhere; finding them here lets a capture
 // refuse the configuration and a diff report a version captured before that check.
 func misplacedSecretsIn(content string, secretFields map[string][]string) []ValueReference {
+	return misplacedSecretsAmong(parseBundle(content), secretFields)
+}
+
+// misplacedSecretsAmong finds where resources refer to a secret from a field that holds no credential.
+// A document that does not hold the secret prefix, nor an escape that could spell it, holds no secret
+// reference, so it is not read as YAML.
+func misplacedSecretsAmong(resources []bundleResource, secretFields map[string][]string) []ValueReference {
 	var misplaced []ValueReference
-	for _, resource := range parseBundle(content) {
+	for _, resource := range resources {
+		if !strings.Contains(resource.Content, valueref.PrefixSecret) && !strings.Contains(resource.Content, `\`) {
+			continue
+		}
 		var root yaml.Node
 		if err := yaml.Unmarshal([]byte(quotePlaceholders(resource.Content)), &root); err != nil ||
 			len(root.Content) == 0 {

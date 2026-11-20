@@ -20,7 +20,7 @@ import (
 
 // keepVersions configures how many versions, and so how many masters per gateway, are kept, and puts
 // the configuration the package's tests run with back afterwards. Without one, one is kept.
-func keepVersions(t *testing.T, count int) {
+func keepVersions(t testing.TB, count int) {
 	t.Helper()
 	bound := shippedGatewayBound
 	config.ResetServerRuntime()

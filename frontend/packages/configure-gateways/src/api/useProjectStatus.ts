@@ -4,12 +4,10 @@
 import {useQueries, useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useMemo} from 'react';
 import useDeploySource from './source';
-import {useApplyCheck} from './useGatewayVersions';
+import {PREVIEW_STALE_TIME} from './useGatewayVersions';
 import {usePipeline} from './usePipeline';
-import {useVersions} from './useVersions';
 import DeployQueryKeys from '../constants/query-keys';
 import useProjectScope from '../contexts/ProjectScope';
-import type {Change} from '../models/deploy';
 import type {PipelineStage} from '../models/pipeline';
 import type {ProjectStatus} from '../models/projectStatus';
 
@@ -55,6 +53,8 @@ export default function useProjectStatus(targetId: string, from?: string): UseQu
       readProjectStatus((await source.projectStatus(targetId, project ?? '', from)) as ProjectStatusAnswer),
     enabled: Boolean(project) && Boolean(targetId),
     retry: false,
+    staleTime: PREVIEW_STALE_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -81,6 +81,8 @@ export function useProjectStatuses(stages: PipelineStage[]): {
           readProjectStatus((await source.projectStatus(stage.gateway.id, project ?? '', from)) as ProjectStatusAnswer),
         enabled: Boolean(project),
         retry: false,
+        staleTime: PREVIEW_STALE_TIME,
+        refetchOnWindowFocus: false,
       };
     }),
   });
@@ -108,23 +110,22 @@ export function useProjectStatuses(stages: PipelineStage[]): {
 
 /**
  * How many of the selected project's own changes the first gateway of its pipeline does not run
- * yet, by resource type, as a deploy of the latest version would check them. Empty outside a project.
+ * yet, by resource type, against the latest version, as the project's status there counts them. Empty
+ * outside a project.
  */
 export function useProjectChanges(): Record<string, number> {
-  const project = useProjectScope();
   const pipeline = usePipeline();
-  const versions = useVersions();
-  const first = pipeline.data?.stages[0]?.gateway.id ?? '';
-  const latest = versions.data?.[0]?.version;
-  const check = useApplyCheck(first, latest, Boolean(project));
-  return useMemo(() => {
-    const counts: Record<string, number> = {};
-    (check.data?.diff.changes ?? []).forEach((change: Change) => {
-      if (change.section !== 'project' || change.change === 'unchanged') return;
-      counts[change.resourceType] = (counts[change.resourceType] ?? 0) + 1;
-    });
-    return counts;
-  }, [check.data]);
+  const status = useProjectStatus(pipeline.data?.stages[0]?.gateway.id ?? '');
+  return useMemo(
+    () =>
+      Object.fromEntries(
+        (status.data?.project.byType ?? []).map(({resourceType, count}: {resourceType: string; count: number}) => [
+          resourceType,
+          count,
+        ]),
+      ),
+    [status.data],
+  );
 }
 
 /**
@@ -145,6 +146,8 @@ export function useProjectsPending(
         readProjectStatus((await source.projectStatus(targetId, project)) as ProjectStatusAnswer),
       enabled: Boolean(targetId),
       retry: false,
+      staleTime: PREVIEW_STALE_TIME,
+      refetchOnWindowFocus: false,
     })),
   });
   // The results array is new on every render; when each was last read, or failed, is what changes.

@@ -53,7 +53,7 @@ const (
 )
 
 // channelField reads the channel a notification template is sent on.
-var channelField = regexp.MustCompile(`(?m)^channel:\s*(.+?)\s*$`)
+var channelField = topLevelScalar("channel")
 
 // typeReferences are, by the kind of resource that holds them, the fields that name a resource by its
 // handle, and the kind each names: an agent's and a user's own type at the top of the document, the user
@@ -72,17 +72,20 @@ var fieldLine = regexp.MustCompile(`^(\s*)(?:-\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\
 // listItem reads a block-style list item's indent and scalar.
 var listItem = regexp.MustCompile(`^(\s*)-\s+['"]?([^'"#\[\]{}]+?)['"]?\s*$`)
 
-// typesNamed returns the types a document names by handle, each as its kind and handle. A type of the
-// agent or the user itself is read from the top of the document only, since a nested type, such as a
-// client's, says what kind of entry holds it. A list of types is read as a block or as a flow sequence.
-func typesNamed(resource bundleResource) []string {
+// typesNamedIn reads the types one resource's document, split into its lines, names by handle, each as
+// its kind and handle. A type of the agent or the user itself is read from the top of the document only,
+// since a nested type, such as a client's, says what kind of entry holds it. A list of types is read as a
+// block or as a flow sequence.
+func typesNamedIn(resource bundleResource, lines []string) []string {
 	fields := typeReferences[resource.Type]
 	if len(fields) == 0 {
 		return nil
 	}
 	var named []string
-	lines := strings.Split(resource.Content, "\n")
 	for i, line := range lines {
+		if !holdsAnyKey(line, fields) {
+			continue
+		}
 		match := fieldLine.FindStringSubmatch(line)
 		if match == nil {
 			continue
@@ -111,6 +114,16 @@ func typesNamed(resource bundleResource) []string {
 	return named
 }
 
+// holdsAnyKey reports whether a line holds one of the keys, which a line naming it as its field must.
+func holdsAnyKey(line string, keys map[string]string) bool {
+	for key := range keys {
+		if strings.Contains(line, key) {
+			return true
+		}
+	}
+	return false
+}
+
 // needsOf reads, for each resource in a bundle, the keys of the resources its document names by id, and of
 // the types it names by handle, sorted, each once. A document never needs itself. Resources of different
 // types that share an id are all needed, since the document names the id alone.
@@ -123,7 +136,7 @@ func needsOf(resources []bundleResource) map[string][]string {
 	}
 	typeByHandle := map[string]string{}
 	for _, resource := range resources {
-		handle := firstMatch(handleField, resource.Content)
+		handle, channel, _ := resource.fieldsOf()
 		if handle == "" {
 			continue
 		}
@@ -131,7 +144,7 @@ func needsOf(resources []bundleResource) map[string][]string {
 		case resourceTypeAgentType, resourceTypeUserType:
 			typeByHandle[resource.Type+"/"+handle] = resource.key()
 		case resourceTypeNotificationTemplate:
-			if channel := strings.ToLower(firstMatch(channelField, resource.Content)); channel != "" {
+			if channel := strings.ToLower(channel); channel != "" {
 				typeByHandle[resourceTypeNotificationTemplate+"/"+channel+"/"+handle] = resource.key()
 			}
 		}
@@ -140,39 +153,65 @@ func needsOf(resources []bundleResource) map[string][]string {
 	for _, resource := range resources {
 		own := resource.key()
 		seen := map[string]bool{}
-		for _, named := range typesNamed(resource) {
+		candidates, types := resource.namesOf()
+		for _, named := range types {
 			if needed, found := typeByHandle[named]; found && !seen[needed] {
 				seen[needed] = true
 				needs[own] = append(needs[own], needed)
 			}
 		}
-		for _, line := range strings.Split(resource.Content, "\n") {
-			match := scalarLine.FindStringSubmatch(line)
-			if len(match) < 4 {
-				continue
-			}
-			field := strings.Trim(match[1]+match[2], `"'`)
-			if describingKeys[field] || kindKeys[field] ||
-				(field == "id" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "-")) {
-				continue
-			}
-			values := []string{strings.TrimSpace(match[3])}
-			if idListKeys[field] {
-				values = strings.Split(match[3], ",")
-			}
-			for _, value := range values {
-				for _, needed := range byID[strings.TrimSpace(value)] {
-					if needed == own || seen[needed] {
-						continue
-					}
-					seen[needed] = true
-					needs[own] = append(needs[own], needed)
+		for _, value := range candidates {
+			for _, needed := range byID[value] {
+				if needed == own || seen[needed] {
+					continue
 				}
+				seen[needed] = true
+				needs[own] = append(needs[own], needed)
 			}
 		}
 		sort.Strings(needs[own])
 	}
 	return needs
+}
+
+// candidatesIn reads, from a document split into its lines, every scalar that may name another
+// resource by id, in document order: each value but those under a field that describes the resource or
+// says what kind it is, and the document's own top-level id, with each id of a field that lists several.
+func candidatesIn(lines []string) []string {
+	var candidates []string
+	for _, line := range lines {
+		if opensBlock(line) {
+			continue
+		}
+		match := scalarLine.FindStringSubmatch(line)
+		if len(match) < 4 {
+			continue
+		}
+		field := strings.Trim(match[1]+match[2], `"'`)
+		if describingKeys[field] || kindKeys[field] ||
+			(field == "id" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "-")) {
+			continue
+		}
+		values := []string{match[3]}
+		if idListKeys[field] {
+			values = strings.Split(match[3], ",")
+		}
+		for _, value := range values {
+			// No resource has an empty id, so an empty value names none.
+			if value = strings.TrimSpace(value); value != "" {
+				candidates = append(candidates, value)
+			}
+		}
+	}
+	return candidates
+}
+
+// opensBlock reports whether a line is a key alone, opening a mapping or a list below it, which holds
+// no scalar to read as an id: it is no list item and its only colon ends it.
+func opensBlock(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed == "" || (!strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") &&
+		strings.Count(trimmed, ":") == 1)
 }
 
 // sends reports whether a change writes its resource to the gateway.
@@ -242,7 +281,7 @@ func lacking(selection []string, changes []Change) (missing []string, heldBack b
 // the key that names it: removing it would leave that document pointing at nothing. The documents are
 // read as this apply leaves them: one the apply writes over is read as the version has it, so a
 // removal it no longer names goes through, and one removed in the same apply does not count.
-func stillReferenced(deletions []gatewayDeletion, held, updated []bundleResource) []string {
+func stillReferenced(deletions []gatewayDeletion, held, updated []bundleResource) []RemovalInUse {
 	if len(deletions) == 0 {
 		return nil
 	}
@@ -250,18 +289,23 @@ func stillReferenced(deletions []gatewayDeletion, held, updated []bundleResource
 	for _, deletion := range deletions {
 		removing[deletion.ResourceType+"/"+deletion.ID] = true
 	}
-	var referenced []string
+	var referenced []RemovalInUse
 	for holder, needs := range needsOf(projectedOver(held, updated)) {
 		if removing[holder] {
 			continue
 		}
 		for _, needed := range needs {
 			if removing[needed] {
-				referenced = append(referenced, needed+" is needed by "+holder)
+				referenced = append(referenced, RemovalInUse{Key: needed, NeededBy: holder})
 			}
 		}
 	}
-	sort.Strings(referenced)
+	sort.Slice(referenced, func(i, j int) bool {
+		if referenced[i].Key != referenced[j].Key {
+			return referenced[i].Key < referenced[j].Key
+		}
+		return referenced[i].NeededBy < referenced[j].NeededBy
+	})
 	return referenced
 }
 
