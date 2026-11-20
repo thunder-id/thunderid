@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -53,6 +54,14 @@ type serviceMocks struct {
 	tx    *transactionmock.TransactionerMock
 }
 
+// newBus returns an event bus mock that accepts every event, for a test the audit event does not matter
+// to. A test of what the service publishes swaps in newRecordingBus.
+func (suite *ServiceTestSuite) newBus() *eventbusmock.EventBusInterfaceMock {
+	bus := eventbusmock.NewEventBusInterfaceMock(suite.T())
+	bus.EXPECT().Publish(mock.Anything, mock.Anything).Return(nil).Maybe()
+	return bus
+}
+
 func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 	m := &serviceMocks{
 		store: newSessionStoreMock(suite.T()),
@@ -62,6 +71,7 @@ func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 		store:            m.store,
 		resolver:         newResolver(m.store),
 		transactioner:    m.tx,
+		bus:              suite.newBus(),
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("test"),
 		timeouts:         DefaultTimeouts(),
 		logger:           log.GetLogger(),
@@ -433,6 +443,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
 func (suite *ServiceTestSuite) TestSaveCheckpoint_EstablishError() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).Return(nil, nil)
+	runTx(m)
 	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(errors.New("insert failed"))
 
 	_, err := svc.SaveCheckpoint(context.Background(), saveInput())
@@ -815,6 +826,7 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
 		resolver:        newResolver(m.store),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
+		bus:             suite.newBus(),
 		timeouts:        DefaultTimeouts(),
 		logger:          log.GetLogger(),
 	}
@@ -873,6 +885,7 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeletesAllSessionsInOneTra
 		resolver:        newResolver(m.store),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
+		bus:             suite.newBus(),
 		timeouts:        DefaultTimeouts(),
 		logger:          log.GetLogger(),
 	}
@@ -908,6 +921,7 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeleteFailureRollsBackBatc
 		store:         m.store,
 		resolver:      newResolver(m.store),
 		transactioner: m.tx,
+		bus:           suite.newBus(),
 		timeouts:      DefaultTimeouts(),
 		logger:        log.GetLogger(),
 	}
@@ -936,6 +950,7 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NoSessionsIsNoOp() {
 		resolver:        newResolver(m.store),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
+		bus:             suite.newBus(),
 		timeouts:        DefaultTimeouts(),
 		logger:          log.GetLogger(),
 	}
@@ -1254,6 +1269,7 @@ func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks,
 		resolver:        newResolver(m.store),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
+		bus:             suite.newBus(),
 		timeouts:        DefaultTimeouts(),
 		logger:          log.GetLogger(),
 	}

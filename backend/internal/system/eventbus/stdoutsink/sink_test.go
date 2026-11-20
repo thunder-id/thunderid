@@ -52,6 +52,8 @@ type knownLine struct {
 	Action        string            `json:"action"`
 	Outcome       map[string]string `json:"outcome"`
 	Client        map[string]string `json:"client"`
+	Application   map[string]string `json:"application"`
+	SessionRef    string            `json:"session_ref"`
 	Details       map[string]string `json:"details"`
 }
 
@@ -132,13 +134,13 @@ func (s *SinkTestSuite) keys(written []byte) []string {
 }
 
 func (s *SinkTestSuite) TestALineCarriesTheMarkerFirstAndTheWholeEvent() {
-	written := s.write(envelope(), payload().WithSubject(testTarget).
-		WithDetails(map[string]string{"reason": "requested"}))
+	written := s.write(envelope(), payload().WithSubject(testTarget).WithApplication("a17").
+		WithSessionRef("s5d1").WithDetails(map[string]string{"reason": "requested"}))
 
 	s.True(bytes.HasPrefix(written, []byte(`{"log_type":"AUDIT","schema_version":1,`)))
 	s.Equal([]string{
 		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "subject", "target",
-		"action", "outcome", "client", "details",
+		"action", "outcome", "client", "application", "session_ref", "details",
 	}, s.keys(written))
 
 	decoded := s.decode(written)
@@ -153,6 +155,8 @@ func (s *SinkTestSuite) TestALineCarriesTheMarkerFirstAndTheWholeEvent() {
 	s.Equal("update", decoded.Action)
 	s.Equal(map[string]string{"result": "succeeded"}, decoded.Outcome)
 	s.Equal(map[string]string{"address": "8.8.8.8", "user_agent": testUserAgent}, decoded.Client)
+	s.Equal(map[string]string{"id": "a17"}, decoded.Application)
+	s.Equal("s5d1", decoded.SessionRef)
 	s.Equal(map[string]string{"reason": "requested"}, decoded.Details)
 }
 
@@ -203,6 +207,19 @@ func (s *SinkTestSuite) TestOptionalFieldsAreLeftOut() {
 	decoded := s.decode(written)
 	s.Equal(map[string]string{"type": audit.TargetTypeUser}, decoded.Target)
 	s.Equal(map[string]string{"result": "failed", "reason": "usr_1003"}, decoded.Outcome)
+}
+
+// The application and the session reference are written on their own, so a line with one has not the other.
+func (s *SinkTestSuite) TestTheApplicationAndTheSessionRefAreWrittenIndependently() {
+	withApplication := s.write(envelope(), payload().WithApplication("a17"))
+	withSessionRef := s.write(envelope(), payload().WithSessionRef("s5d1"))
+
+	s.Contains(s.keys(withApplication), "application")
+	s.NotContains(s.keys(withApplication), "session_ref")
+	s.Equal(map[string]string{"id": "a17"}, s.decode(withApplication).Application)
+	s.Contains(s.keys(withSessionRef), "session_ref")
+	s.NotContains(s.keys(withSessionRef), "application")
+	s.Equal("s5d1", s.decode(withSessionRef).SessionRef)
 }
 
 // details is a nested object, so a key in it cannot take the place of the top-level marker.
@@ -278,6 +295,21 @@ func (s *SinkTestSuite) TestThenTheCallerControlledFields() {
 	decoded := s.decode(written)
 	s.Equal(strings.Repeat("t", maxFieldBytes), decoded.TraceID)
 	s.Equal(env.ID, decoded.ID)
+}
+
+// The application ID and the session reference are free-form fields too, so the last cap bounds them.
+func (s *SinkTestSuite) TestTheCapAlsoBoundsTheApplicationAndTheSessionRef() {
+	l := newLine(envelope(), payload().WithApplication("a17").WithSessionRef("s5d1"))
+	l.Application.ID = strings.Repeat("a", 3*maxLineBytes)
+	l.SessionRef = strings.Repeat("s", 3*maxLineBytes)
+
+	buf, err := render(l)
+
+	s.Require().NoError(err)
+	s.LessOrEqual(len(buf), maxLineBytes)
+	decoded := s.decode(buf)
+	s.Equal(map[string]string{"id": strings.Repeat("a", maxFieldBytes)}, decoded.Application)
+	s.Equal(strings.Repeat("s", maxFieldBytes), decoded.SessionRef)
 }
 
 // A field that escapes to six bytes per character can keep a line over the limit after every cap.
