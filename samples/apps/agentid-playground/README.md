@@ -107,8 +107,8 @@ Every sign-in sends `prompt=consent`, so the Allow screen appears every time. Wi
 remembers a granted consent and silently skips the prompt on later logins, which is right for
 production and wrong here.
 
-John holds two roles. `Chat User` grants `agent:access`, which the consent flow checks before it
-will show him the Allow screen, and `Booking User` grants the `booking:read` and `booking:create`
+John holds two roles. `Playground Chat User` grants `agent:access`, which the consent flow checks before it
+will show him the Allow screen, and `Playground Booking User` grants the `booking:read` and `booking:create`
 that end up in his token. A user without `agent:access` is rejected before consent, which is the
 "Protect the Agent" behaviour from the docs.
 
@@ -165,7 +165,7 @@ No customer is involved, so there is no `act` claim at all.
 
 Watch three things. `sub` is the agent. `aud` is the booking API rather than the agent's own client
 id, because the request carries a `resource` (RFC 8707). And `scope` is `booking:read
-booking:recommend` and nothing more, because that is exactly what the Concierge's own `Recommender`
+booking:recommend` and nothing more, because that is exactly what the Concierge's own `Playground Recommender`
 role grants. It can recommend a flight; it cannot book one. The remaining highlighted rows are its
 identity claims (`name`, `owner`, `ou*`) and its `modelProvider` attribute, opted in through
 `token.accessToken.clientConfig.attributes`.

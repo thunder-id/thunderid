@@ -101,7 +101,7 @@ function dashboard(s) {
       t.access_token,
       ["sub", "act", "scope", "aud", "email", "username"],
       "Access token (on-behalf-of)",
-      "Because the client is an agent, this bearer token names John as sub and the Concierge as act (actor). It carries the booking scopes John's Booking User role grants, and the user attributes userConfig.attributes allow-lists.",
+      "Because the client is an agent, this bearer token names John as sub and the Concierge as act (actor). It carries the booking scopes John's Playground Booking User role grants, and the user attributes userConfig.attributes allow-lists.",
       changedByRefresh,
     ) +
     tokenSection({
@@ -159,7 +159,7 @@ export default {
       title: "Sign in as",
       note:
         "The resource file creates John Doe for you. Use these on the ThunderID gate after you " +
-        "click the button below. He holds <code>Chat User</code>, which the consent flow checks " +
+        "click the button below. He holds <code>Playground Chat User</code>, which the consent flow checks " +
         "before it will even show him the Allow screen.",
       fields: [
         {label: "Username", value: config.loginUser.username},

@@ -68,7 +68,7 @@ resources:
 #
 #   credentials -> authorization_check (agent:access) -> consent_check -> Allow / Deny -> assert
 #
-# The authorization_check is why John, who holds Chat User, gets in. A user without agent:access is
+# The authorization_check is why John, who holds Playground Chat User, gets in. A user without agent:access is
 # rejected before the consent screen, which is the "Protect the Agent" behaviour from the docs.
 
 resource_type: flow
@@ -330,7 +330,7 @@ inboundAuthConfig:
 
 resource_type: role
 id: agent-identity-chat-user
-name: Chat User
+name: Playground Chat User
 description: Grants access to use the Concierge at all
 ouHandle: default
 permissions:
@@ -344,7 +344,7 @@ assignments:
 ---
 resource_type: role
 id: agent-identity-booking-user
-name: Booking User
+name: Playground Booking User
 description: Grants John the booking permissions the Concierge acts with on his behalf
 ouHandle: default
 permissions:
@@ -359,7 +359,7 @@ assignments:
 ---
 resource_type: role
 id: agent-identity-recommender
-name: Recommender
+name: Playground Recommender
 description: What the Concierge may do on its own behalf, with no user involved
 ouHandle: default
 permissions:
