@@ -127,6 +127,7 @@ func requestToDTO(req *presentationDefinitionRequest) *PresentationDefinitionDTO
 		ClaimValues:          sanitizeClaimValues(req.ClaimValues),
 		EnforceTrustedIssuer: req.EnforceTrustedIssuer,
 		TrustedAuthorities:   sanitizeTrustedAuthorities(req.TrustedAuthorities),
+		SubjectClaim:         sysutils.SanitizeString(req.SubjectClaim),
 	}
 }
 

@@ -340,6 +340,21 @@ var (
 				"changed there",
 		},
 	}
+
+	// ErrorDefinitionInvalidSubjectClaim is returned when the subject claim is not one of the definition's
+	// mandatory claims or contains a colon.
+	ErrorDefinitionInvalidSubjectClaim = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_subject_claim",
+			DefaultValue: "Invalid subject claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_subject_claim_description",
+			DefaultValue: "The subject claim must be one of the mandatory claims and must not contain a colon",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.

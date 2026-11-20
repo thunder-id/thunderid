@@ -42,10 +42,12 @@ import {
 import {useTranslation} from 'react-i18next';
 import AddTrustedIssuerCertificateDialog from './AddTrustedIssuerCertificateDialog';
 import ClaimsEditor from './PresentationClaimsEditor';
+import PresentationSignInCard from './PresentationSignInCard';
 import {
   claimRowsToRequest,
   definitionToClaimRows,
   findDuplicateClaimNames,
+  isSignInValid,
   type ClaimRow,
 } from '../models/presentation-claims';
 import type {CreateVerifiablePresentationRequest, TrustedAuthorityInput} from '../models/presentation-requests';
@@ -124,6 +126,9 @@ export default function VerifiablePresentationForm({
   const [trustedAuthorities, setTrustedAuthorities] = useState<TrustedAuthorityInput[]>(
     toTrustedAuthorityInputs(initial),
   );
+  const [subjectClaim, setSubjectClaim] = useState<string>(initial?.subjectClaim ?? '');
+  const [signInTurnedOn, setSignInTurnedOn] = useState<boolean>(false);
+  const allowSignIn = signInTurnedOn || subjectClaim !== '';
   const [addCertificateOpen, setAddCertificateOpen] = useState<boolean>(false);
 
   // Once a save succeeds the new certificates are stored on the server, so keep only their names: a
@@ -170,7 +175,11 @@ export default function VerifiablePresentationForm({
   const duplicateClaimNames = findDuplicateClaimNames(claims);
 
   const valid =
-    handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '' && Object.keys(duplicateClaimNames).length === 0;
+    handle.trim() !== '' &&
+    vct.trim() !== '' &&
+    effectiveOuId !== '' &&
+    Object.keys(duplicateClaimNames).length === 0 &&
+    isSignInValid(allowSignIn, subjectClaim, claims);
 
   const snapshot = (
     h: string,
@@ -182,6 +191,7 @@ export default function VerifiablePresentationForm({
     cl: ClaimRow[],
     enforce: boolean,
     authorities: TrustedAuthorityInput[],
+    subject: string,
   ): string =>
     JSON.stringify({
       handle: h.trim(),
@@ -193,6 +203,7 @@ export default function VerifiablePresentationForm({
       ...claimRowsToRequest(cl),
       enforceTrustedIssuer: enforce,
       trustedAuthorities: authorities,
+      subjectClaim: subject,
     });
   const initialSnapshot = useMemo(
     () =>
@@ -206,14 +217,25 @@ export default function VerifiablePresentationForm({
         definitionToClaimRows(initial),
         (initial?.enforceTrustedIssuer ?? false) && (initial?.trustedAuthorities?.length ?? 0) > 0,
         toTrustedAuthorityInputs(initial),
+        initial?.subjectClaim ?? '',
       ),
     [initial],
   );
   // Never enforce issuer trust without a certificate (it would reject everything).
   const effectiveEnforce = enforceTrustedIssuer && !noCertificates;
   const dirty =
-    snapshot(handle, effectiveOuId, name, description, vct, format, claims, effectiveEnforce, trustedAuthorities) !==
-    initialSnapshot;
+    snapshot(
+      handle,
+      effectiveOuId,
+      name,
+      description,
+      vct,
+      format,
+      claims,
+      effectiveEnforce,
+      trustedAuthorities,
+      subjectClaim,
+    ) !== initialSnapshot;
 
   const handleSubmit = (): void => {
     onSubmit({
@@ -226,6 +248,7 @@ export default function VerifiablePresentationForm({
       ...claimRowsToRequest(claims),
       enforceTrustedIssuer: effectiveEnforce,
       trustedAuthorities: trustedAuthorities.length > 0 ? trustedAuthorities : undefined,
+      subjectClaim: subjectClaim || undefined,
     });
   };
 
@@ -239,6 +262,8 @@ export default function VerifiablePresentationForm({
     setClaims(definitionToClaimRows(initial));
     setEnforceTrustedIssuer(initial?.enforceTrustedIssuer ?? false);
     setTrustedAuthorities(toTrustedAuthorityInputs(initial));
+    setSubjectClaim(initial?.subjectClaim ?? '');
+    setSignInTurnedOn(false);
     onErrorClear?.();
   };
 
@@ -469,14 +494,32 @@ export default function VerifiablePresentationForm({
       </TabPanel>
 
       <TabPanel value={tab} index={2}>
-        <ClaimsEditor
-          duplicateNames={duplicateClaimNames}
-          claims={claims}
-          onChange={(rows: ClaimRow[]): void => {
-            onErrorClear?.();
-            setClaims(rows);
-          }}
-        />
+        <Stack spacing={3}>
+          <ClaimsEditor
+            duplicateNames={duplicateClaimNames}
+            claims={claims}
+            onChange={(rows: ClaimRow[]): void => {
+              onErrorClear?.();
+              setClaims(rows);
+            }}
+          />
+          <PresentationSignInCard
+            claims={claims}
+            allowSignIn={allowSignIn}
+            subjectClaim={subjectClaim}
+            onAllowSignInChange={(on: boolean): void => {
+              onErrorClear?.();
+              setSignInTurnedOn(on);
+              if (!on) setSubjectClaim('');
+            }}
+            onSubjectClaimChange={(claim: string): void => {
+              onErrorClear?.();
+              setSubjectClaim(claim);
+            }}
+            storedSubjectClaim={initial?.subjectClaim}
+            enforceTrustedIssuer={effectiveEnforce}
+          />
+        </Stack>
       </TabPanel>
 
       <TabPanel value={tab} index={3}>

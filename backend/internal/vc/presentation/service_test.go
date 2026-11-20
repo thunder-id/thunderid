@@ -271,6 +271,67 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateValidationAn
 	suite.Equal(ErrorDefinitionAlreadyExists.Code, svcErr.Code)
 }
 
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceSubjectClaimMustBeMandatory() {
+	svc, _ := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+
+	invalid := map[string]*PresentationDefinitionDTO{
+		// A wallet may withhold an optional claim, so it could never identify the holder.
+		"optional claim": {
+			Handle: "optional-subject", VCT: "v", OptionalClaims: []string{"national_id"},
+			SubjectClaim: "national_id",
+		},
+		"unrequested claim": {
+			Handle: "unrequested-subject", VCT: "v", MandatoryClaims: []string{"given_name"},
+			SubjectClaim: "national_id",
+		},
+		// The link subject is the claim name and value joined by a colon.
+		"claim with a colon": {
+			Handle: "colon-subject", VCT: "v", MandatoryClaims: []string{"urn:national_id"},
+			SubjectClaim: "urn:national_id",
+		},
+	}
+	for name, dto := range invalid {
+		suite.Run(name, func() {
+			_, svcErr := svc.CreatePresentationDefinition(ctx, dto)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorDefinitionInvalidSubjectClaim.Code, svcErr.Code)
+		})
+	}
+
+	// A definition without a subject claim only verifies presentations.
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "no-subject", VCT: "v", MandatoryClaims: []string{"national_id"},
+	})
+	suite.Require().Nil(svcErr)
+	suite.Empty(created.SubjectClaim)
+
+	created, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "mandatory-subject", VCT: "v", MandatoryClaims: []string{"national_id"}, SubjectClaim: "national_id",
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal("national_id", created.SubjectClaim)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceSubjectClaimIsEditable() {
+	svc, _ := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+	claims := []string{"national_id", "tax_id"}
+
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "editable-subject", VCT: "v", MandatoryClaims: claims, SubjectClaim: "national_id",
+	})
+	suite.Require().Nil(svcErr)
+
+	for _, subjectClaim := range []string{"tax_id", ""} {
+		updated, svcErr := svc.UpdatePresentationDefinition(ctx, created.ID, &PresentationDefinitionDTO{
+			Handle: "editable-subject", VCT: "v", MandatoryClaims: claims, SubjectClaim: subjectClaim,
+		})
+		suite.Require().Nil(svcErr)
+		suite.Equal(subjectClaim, updated.SubjectClaim)
+	}
+}
+
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsUnsupportedFormat() {
 	svc, _ := newTestDefinitionService(suite.T())
 	ctx := context.Background()

@@ -66,6 +66,52 @@ var (
 			DefaultValue: "No presentation definition is registered for the supplied id",
 		},
 	}
+
+	// ErrorNoHolderIdentifier indicates the presentation carries nothing that identifies the holder, so
+	// no user can be resolved or provisioned for it.
+	ErrorNoHolderIdentifier = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "EUDI-1005",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.eudi.no_holder_identifier",
+			DefaultValue: "Holder not identifiable",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.eudi.no_holder_identifier_description",
+			DefaultValue: "The credential does not carry a stable identifier for the holder",
+		},
+	}
+
+	// ErrorUntrustedHolderIssuer indicates the credential's issuer was not verified, so its subject cannot
+	// identify a user at sign-in.
+	ErrorUntrustedHolderIssuer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "EUDI-1006",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.eudi.untrusted_holder_issuer",
+			DefaultValue: "Credential issuer not trusted for sign-in",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.eudi.untrusted_holder_issuer_description",
+			DefaultValue: "Sign-in requires a presentation definition that enforces trusted issuers " +
+				"and a credential whose issuer matches its certificate",
+		},
+	}
+
+	// ErrorDefinitionNotForSignIn indicates the presentation definition names no subject claim, so it verifies
+	// presentations but cannot sign users in.
+	ErrorDefinitionNotForSignIn = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "EUDI-1007",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.eudi.definition_not_for_sign_in",
+			DefaultValue: "Presentation definition not set up for sign-in",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.eudi.definition_not_for_sign_in_description",
+			DefaultValue: "Set a subject claim on the presentation definition to sign users in with it",
+		},
+	}
 )
 
 // Sentinel errors returned by the verifier. HTTP-facing service errors live in error_constants.go.
@@ -74,6 +120,7 @@ var (
 	ErrUnexpectedVCT         = errors.New("openid4vp: unexpected credential type (vct)")
 	ErrUnrequestedClaim      = errors.New("openid4vp: disclosed claim was not requested")
 	ErrMissingMandatoryClaim = errors.New("openid4vp: mandatory claim missing")
+	ErrInvalidSubjectClaim   = errors.New("openid4vp: subject claim missing or not a string")
 	ErrClaimValueNotAllowed  = errors.New("openid4vp: disclosed claim value not in the allowed set")
 	ErrInvalidPresentation   = errors.New("openid4vp: invalid presentation")
 	ErrInvalidResponse       = errors.New("openid4vp: invalid authorization response")
@@ -99,6 +146,7 @@ func toServiceError(err error) *tidcommon.ServiceError {
 		errors.Is(err, ErrUnexpectedVCT),
 		errors.Is(err, ErrUnrequestedClaim),
 		errors.Is(err, ErrMissingMandatoryClaim),
+		errors.Is(err, ErrInvalidSubjectClaim),
 		errors.Is(err, ErrClaimValueNotAllowed):
 		return &ErrorVerificationFailed
 	default:

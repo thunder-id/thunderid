@@ -32,6 +32,7 @@ type policy struct {
 // verifiedCredential is the raw output of an SD-JWT VC verification, before policy enforcement.
 type verifiedCredential struct {
 	Issuer               string
+	IssuerBound          bool
 	VCT                  string
 	Claims               map[string]interface{}
 	DisclosedPaths       []string
@@ -40,9 +41,33 @@ type verifiedCredential struct {
 
 // VerifiedPresentation is the result of a successful presentation verification.
 type VerifiedPresentation struct {
+	// DefinitionID is the stable uuid of the presentation definition that was verified.
+	DefinitionID string
+	Issuer       string
+	// IssuerTrusted reports whether iss was verified against the definition's trust anchors.
+	IssuerTrusted bool
+	// SubjectClaim names the claim whose value is Subject. It is empty when the definition cannot sign users in.
+	SubjectClaim         string
 	Subject              string
 	Claims               map[string]interface{}
 	KeyBindingThumbprint string
+}
+
+// maxLinkedConnectionIDLength bounds the connection id a link is recorded for, so the indexed name
+// "linkedIds.<connection id>" fits the entity identifier name column.
+const maxLinkedConnectionIDLength = 245
+
+// LinkedConnectionID returns the connection id that links a holder's subject to a local user. A subject
+// is unique only within the issuer that asserted it, and an issuer is trusted only by the definition whose
+// authorities verified it, so links are scoped per definition and issuer.
+func LinkedConnectionID(definitionID, issuer string) string {
+	return "openid4vp:" + definitionID + ":" + issuer
+}
+
+// LinkedSubject returns the subject a link records for a holder. The claim name keeps the values of one
+// subject claim from matching links recorded under another when a definition's subject claim changes.
+func LinkedSubject(claim, value string) string {
+	return claim + ":" + value
 }
 
 // subjectDeriver produces the authenticated subject for a verified presentation.
@@ -51,7 +76,11 @@ type subjectDeriver func(*VerifiedPresentation) string
 // presentationDefinition describes a single, named presentation request the verifier can serve.
 // Optional fields fall back to the engine defaults supplied by the Service.
 type presentationDefinition struct {
-	ID            string
+	handle string
+	id     string
+	// subjectClaim names the claim that identifies the holder at sign-in; empty when the definition cannot
+	// sign users in.
+	subjectClaim  string
 	DCQL          dcqlConfig
 	policy        policy
 	DeriveSubject subjectDeriver
@@ -80,7 +109,9 @@ func dtoToDefinition(
 		keyIDs = trust.keyIDs()
 	}
 	return &presentationDefinition{
-		ID: dto.Handle,
+		handle:       dto.Handle,
+		id:           dto.ID,
+		subjectClaim: dto.SubjectClaim,
 		DCQL: dcqlConfig{
 			CredentialID:           dto.Handle,
 			VCT:                    dto.VCT,
@@ -97,7 +128,7 @@ func dtoToDefinition(
 			EnforceKeyBinding:    enforceKB,
 			ClaimValues:          dto.ClaimValues,
 		},
-		DeriveSubject: defaultSubjectDeriver(),
+		DeriveSubject: subjectDeriverFor(dto.SubjectClaim),
 		trust:         trust,
 	}, nil
 }
