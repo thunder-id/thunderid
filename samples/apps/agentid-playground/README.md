@@ -31,10 +31,14 @@ carry the identity story highlighted. Nothing is added: what you see is what Thu
 
 ## Self-contained resources
 
-Everything the playground imports is its own. Every id is prefixed `agent-identity-`, the resource
-servers use their own identifiers under `travel.example`, and the customer is `johndoe`, so importing
-it will not overwrite or collide with anything else already in your instance. Import is upsert by id,
-so re-importing, or importing the per-tab slices the app offers, is always safe.
+The playground uses `agent-identity-` IDs for its resource servers, agents, user, and roles.
+The authentication flow is an exception: its ID is the UUID
+`0193b0a1-2001-7000-8000-000000000001`, while its handle is
+`agent-identity-agent-auth-flow`. Resource server identifiers use `travel.example`,
+and the demo user is `johndoe`.
+
+Imports use upsert by ID. Re-importing an existing resource ID updates that resource,
+so check for ID conflicts before importing into an instance with existing resources.
 
 ## Prerequisites
 
@@ -106,6 +110,10 @@ The password is in the resource file in the clear because everything here runs l
 Every sign-in sends `prompt=consent`, so the Allow screen appears every time. Without it ThunderID
 remembers a granted consent and silently skips the prompt on later logins, which is right for
 production and wrong here.
+
+On the consent screen, enable the `booking:read` and `booking:create` permission
+toggles before selecting **Allow**. Otherwise the resulting access token may not
+include the booking permissions needed by the delegation examples.
 
 John holds two roles. `Playground Chat User` grants `agent:access`, which the consent flow checks before it
 will show him the Allow screen, and `Playground Booking User` grants the `booking:read` and `booking:create`
@@ -196,8 +204,9 @@ Then use the buttons:
 
 ### Delegates to agents
 
-Three exchanges, each narrowed to `booking:read`, showing how ThunderID both nests `act` and shrinks
-authority:
+The tab has four guided UI steps: step 3 signs John in, and step 4 runs three token
+exchanges. Each exchange is narrowed to `booking:read`, showing how ThunderID
+both nests `act` and shrinks authority:
 
 | Step | subject_token | actor_token | Resulting token |
 |------|---------------|-------------|-----------------|
