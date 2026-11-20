@@ -18,7 +18,20 @@ For a new feature, a major improvement, or a refactor that moves ownership bound
 Contributing to an SDK repository rather than this one? A pull request there also answers whether the change needs to ship in the other SDKs, and a required check holds it until it does. See [Cross-SDK Feature Parity](sdk-development/feature-parity.mdx).
 :::
 
-## 1. Make Your Changes
+## 1. Get the Issue Assigned
+
+Before you start writing code, get the issue you plan to work on assigned to you:
+
+1. Find an existing issue, or open one through [Report a Bug](../report-a-bug.mdx) or [Propose a Feature](../propose-a-feature.mdx).
+2. Comment on the issue to say you want to work on it. Include a short note on how you plan to approach it.
+3. Join the [LF Decentralized Trust Discord](https://discord.lfdecentralizedtrust.org/) and post a link to the issue in the `#thunderid-dev` channel, so maintainers see your request.
+4. Wait for a maintainer to assign the issue to you, then start your changes.
+
+This step is expected, not optional. It prevents two contributors from fixing the same problem, and it confirms that the change fits the project's plans before you invest time in it.
+
+Typo fixes and small documentation corrections do not need an assigned issue.
+
+## 2. Make Your Changes
 
 Follow coding guidelines and best practices:
 
@@ -33,7 +46,7 @@ Follow coding guidelines and best practices:
 - Add comments for complex logic
 - Maintain consistency with existing code
 
-## 2. Test and Validate Your Changes
+## 3. Test and Validate Your Changes
 
 Before committing, ensure code quality and correctness. Run everything CI will check with one command:
 
@@ -67,22 +80,24 @@ Or run individual checks:
 - Integration tests for API endpoints
 - Test edge cases and error scenarios
 
-## 3. Commit Your Changes
+## 4. Commit Your Changes
 
-Use clear, descriptive commit messages:
+Use clear, descriptive commit messages, and sign off each commit with `-s`:
 
 ```bash
-git commit -m "Fix token refresh failing after 30 minutes
+git commit -s -m "Fix token refresh failing after 30 minutes
 
 Fixes #123"
 ```
+
+The `-s` flag adds a `Signed-off-by` line, which certifies the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) for your change. A DCO check runs on every pull request and fails if any commit is missing this line. If you already made the commit without signing off, run `git commit --amend -s --no-edit`, then force-push the branch.
 
 **Best practices:**
 - Make atomic commits (one logical change per commit), ideally one commit per PR
 - Write commit messages that explain **why**, not just **what**
 - Reference the issue number using `Fixes #<number>` or `Closes #<number>`
 
-## 4. Push and Create PR
+## 5. Push and Create PR
 
 Push your changes to your forked repository:
 
@@ -99,13 +114,13 @@ Then create a Pull Request to the `upstream/main` branch on GitHub:
 5. Link to the related issue
 6. Ensure all CI checks pass
 
-## 5. Address Review Feedback
+## 6. Address Review Feedback
 
 - Respond to reviewer comments promptly
 - Keep commit history clean: rebase review fixes into the appropriate commit rather than adding separate "fix review comments" commits
 - Push updates to the same branch
 - Re-request review when ready
 
-## 6. Merge
+## 7. Merge
 
 Once approved by maintainers and all checks pass, a maintainer will merge your PR.
