@@ -1590,7 +1590,7 @@ func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_Encryption
 	}
 	assert.ErrorIs(suite.T(),
 		validateIDTokenConfig(context.Background(),
-			p, suite.cryptoMock, suite.jweService), ErrOAuthIDTokenEncryptionAlgRequiresEnc)
+			p, suite.cryptoMock, suite.jweService), ErrOAuthIDTokenEncryptionEncRequiresAlg)
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_EncryptionAlgWithoutEnc() {
@@ -1711,7 +1711,7 @@ func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_NESTEDJWTR
 	}
 	assert.ErrorIs(suite.T(),
 		validateIDTokenConfig(context.Background(),
-			p, suite.cryptoMock, suite.jweService), ErrOAuthIDTokenEncryptionAlgRequiresEnc)
+			p, suite.cryptoMock, suite.jweService), ErrOAuthIDTokenEncryptionEncRequiresAlg)
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_UnsupportedResponseType() {
