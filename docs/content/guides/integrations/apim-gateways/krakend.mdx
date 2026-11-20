@@ -37,7 +37,7 @@ JWT Token Validation is the foundation of API security with KrakenD and <Product
 #### Create an Application
 
 1. Sign in to the <ProductName /> Console at `https://<THUNDERID_HOST>:<THUNDERID_PORT>/console`.
-2. Navigate to **Applications** → **New Application**.
+2. Navigate to **Applications** → **Add application**.
 3. Enter an **Application name**.
 4. Select **Backend service** as the application type.
 5. Click **Create application**.
@@ -56,6 +56,12 @@ curl --location 'https://<THUNDERID_HOST>:8090/oauth2/token' \
 ```
 
 Save the returned `access_token`. You will use it in the **Try It Out** section.
+
+The JWT validator's `issuer` must match the token's `iss` claim
+exactly. Use your configured ThunderID issuer URL. For this initial
+request without a `resource` or permission scopes, the `aud` claim
+defaults to the client ID unless the application has a custom default
+audience. Set the validator's `audience` to that actual `aud` value.
 
 ### Configure KrakenD
 
@@ -130,6 +136,8 @@ Add the `auth/validator` block inside the endpoint:
         "auth/validator": {
           "alg": "RS256",
           "jwk_url": "https://<THUNDERID_HOST>:8090/oauth2/jwks",
+          "issuer": "https://<THUNDERID_HOST>:8090",
+          "audience": ["<CLIENT_ID>"],
           "disable_jwk_security": true,
           "cache": true
         }
@@ -179,7 +187,8 @@ KRAKEND DEBUG: [ENDPOINT: /api/items][JWTValidator] Validator enabled for this e
 
 ```bash
 curl --location 'http://localhost:8082/api/items' \
-  --header 'Content-Type: application/json'
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Widget","description":"A test item"}'
 ```
 
 **Request with a valid <ProductName /> token, expect `200 OK`:**
@@ -187,7 +196,8 @@ curl --location 'http://localhost:8082/api/items' \
 ```bash
 curl --location 'http://localhost:8082/api/items' \
   --header 'Authorization: Bearer <ACCESS_TOKEN>' \
-  --header 'Content-Type: application/json'
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Widget","description":"A test item"}'
 ```
 
 ## Configure Scope-Based Authorization in KrakenD
@@ -209,7 +219,7 @@ For a full reference, see [Resource Servers](../../../resource-servers).
 **Using the Console:**
 
 1. Sign in to the <ProductName /> Console at `https://<THUNDER_PUBLIC_URL>/console`.
-2. Navigate to **Resource servers** → **New Resource Server**.
+2. Navigate to **Resource servers** → **Add resource server**.
 3. Fill in the following fields:
    - **Name**: `Booking API`
    - **Identifier**: `https://api.example.com/bookings`
@@ -226,7 +236,7 @@ A Resource represents a specific entity within the API, such as `/api/items`. Re
 **Using the Console:**
 
 1. Open the **Booking API** Resource Server.
-2. Go to the **Resources** tab and click **New Resource**.
+2. Go to the **Resources** tab and click **Add resource**.
 3. Fill in the following fields:
    - **Name**: `Items`
    - **Handle**: `item`
@@ -241,7 +251,7 @@ Each action produces a scope in the format `<resource-handle>:<action-handle>`.
 **Using the Console:**
 
 1. Under the **Booking API** Resource Server, open the **Items** resource.
-2. Go to the **Actions** tab and click **New Action**.
+2. Go to the **Actions** tab and click **Add action**.
 3. Fill in the following fields:
    - **Name**: `Read Item`
    - **Handle**: `read`
@@ -254,7 +264,7 @@ Each action produces a scope in the format `<resource-handle>:<action-handle>`.
 
 Roles bundle one or more permissions together. Assign roles to applications to control which scopes appear in their tokens.
 
-1. Navigate to **Roles** → **New Role**.
+1. Navigate to **Roles** → **Add role**.
 2. Fill in the following fields:
    - **Name**: `Booking Reader`
 3. Click **Continue**.
@@ -267,9 +277,9 @@ Assign the role to the application you created in the previous section. <Product
 
 **Using the Console:**
 
-1. Navigate to **Applications** and open your Backend Service application.
-2. Go to the **Roles** tab.
-3. Click **Assign role**, select **Booking reader** from the list, and confirm.
+1. Navigate to **Roles** and open **Booking Reader**.
+2. Go to the **Assignments** tab and click **Add**.
+3. Select the **Applications** tab, choose your Backend service application, and confirm.
 
 
 ### Configure KrakenD
@@ -293,6 +303,8 @@ Add `scopes`, `scopes_key`, and `scopes_matcher` to the `auth/validator` block y
         "auth/validator": {
           "alg": "RS256",
           "jwk_url": "https://<THUNDERID_HOST>:<THUNDERID_PORT>/oauth2/jwks",
+          "issuer": "https://<THUNDERID_HOST>:<THUNDERID_PORT>",
+          "audience": ["https://api.example.com/bookings"],
           "disable_jwk_security": true,
           "cache": true,
           "scopes_key": "scope",
@@ -341,6 +353,7 @@ curl --location 'https://<THUNDERID_HOST>:8090/oauth2/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
   --data-urlencode 'scope=item:read' \
+  --data-urlencode 'resource=https://api.example.com/bookings' \
   --data-urlencode 'client_id=<CLIENT_ID>' \
   --data-urlencode 'client_secret=<CLIENT_SECRET>'
 ```
@@ -363,7 +376,8 @@ The response confirms the scope is present:
 ```bash
 curl --location 'http://localhost:8082/api/items' \
   --header 'Authorization: Bearer <ACCESS_TOKEN>' \
-  --header 'Content-Type: application/json'
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Widget","description":"A test item"}'
 ```
 
 **With a token missing the required scope, expect `403 Forbidden`:**
@@ -371,5 +385,6 @@ curl --location 'http://localhost:8082/api/items' \
 ```bash
 curl --location 'http://localhost:8082/api/items' \
   --header 'Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>' \
-  --header 'Content-Type: application/json'
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Widget","description":"A test item"}'
 ```
