@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
-import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {useProjectScope, useRecordAccess} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -58,7 +58,6 @@ export default function GroupEditPage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation('groups');
   const logger = useLogger('GroupEditPage');
-  const {can} = useCapabilitiesContext();
 
   const {data: group, isLoading, error: fetchError, refetch} = useGetGroup(groupId ?? '');
   const routes = useGroupRoutes();
@@ -152,6 +151,7 @@ export default function GroupEditPage(): JSX.Element {
   };
 
   const resourceTypeTitle = t('navigation:pages.groups', 'Groups');
+  const {readOnly: isReadOnly, canDelete} = useRecordAccess('group', group);
 
   if (isLoading || isOtherProject) {
     return (
@@ -247,7 +247,7 @@ export default function GroupEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedGroup.name ?? group.name}</Typography>
-                {!group.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label="Edit group name"
@@ -309,7 +309,7 @@ export default function GroupEditPage(): JSX.Element {
                 <Typography variant="body2" color="text.secondary">
                   {effectiveDescription || t('edit.page.description.empty', 'No description')}
                 </Typography>
-                {!group.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     aria-label="Edit group description"
@@ -346,12 +346,14 @@ export default function GroupEditPage(): JSX.Element {
           aria-controls="group-tabpanel-1"
           sx={{textTransform: 'none'}}
         />
-        <Tab
-          label={t('edit.page.tabs.advanced', 'Advanced')}
-          id="group-tab-2"
-          aria-controls="group-tabpanel-2"
-          sx={{textTransform: 'none'}}
-        />
+        {canDelete && (
+          <Tab
+            label={t('edit.page.tabs.advanced', 'Advanced')}
+            id="group-tab-2"
+            aria-controls="group-tabpanel-2"
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -364,11 +366,11 @@ export default function GroupEditPage(): JSX.Element {
           <EditMembersSettings group={group} />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={2}>
-          <EditAdvancedSettings
-            onDeleteClick={group.isReadOnly || !can('group', 'delete') ? undefined : () => setDeleteDialogOpen(true)}
-          />
-        </TabPanel>
+        {canDelete && (
+          <TabPanel value={activeTab} index={2}>
+            <EditAdvancedSettings onDeleteClick={() => setDeleteDialogOpen(true)} />
+          </TabPanel>
+        )}
       </>
 
       {/* Delete Dialog */}
@@ -387,7 +389,7 @@ export default function GroupEditPage(): JSX.Element {
           saveLabel={t('edit.page.save', 'Save changes')}
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={updateGroup.isPending}
-          saveDisabled={group.isReadOnly === true || !can('group', 'update')}
+          saveDisabled={isReadOnly}
           error={
             updateGroup.error
               ? getErrorMessage(updateGroup.error, t, 'update.error', 'Failed to update group. Please try again.')

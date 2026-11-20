@@ -87,11 +87,6 @@ vi.mock('../../../ClientSecretSuccessDialog', () => ({
     ) : null,
 }));
 
-const viewOnly = {
-  can: (_resource: string, action = 'view') => action === 'view',
-  isLoading: false,
-};
-
 describe('EditCredentialsSettings', () => {
   const mockOnFieldChange = vi.fn();
 
@@ -252,26 +247,12 @@ describe('EditCredentialsSettings', () => {
     it('disables the Regenerate button when the application is read-only', () => {
       render(
         <EditCredentialsSettings
-          application={buildApplication({isReadOnly: true})}
+          application={buildApplication()}
+          readOnly
           editedApp={{}}
           oauth2Config={confidentialOAuth2Config}
           onFieldChange={mockOnFieldChange}
         />,
-      );
-
-      expect(screen.getByRole('button', {name: /regenerate/i})).toBeDisabled();
-    });
-
-    it('disables the Regenerate button when the admin may not update applications', () => {
-      render(
-        <CapabilitiesProvider capabilities={viewOnly}>
-          <EditCredentialsSettings
-            application={buildApplication()}
-            editedApp={{}}
-            oauth2Config={confidentialOAuth2Config}
-            onFieldChange={mockOnFieldChange}
-          />
-        </CapabilitiesProvider>,
       );
 
       expect(screen.getByRole('button', {name: /regenerate/i})).toBeDisabled();

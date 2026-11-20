@@ -22,7 +22,7 @@ import {
 } from '@thunderid/configure-applications';
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
-import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {useProjectScope, useRecordAccess} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -92,13 +92,13 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps) {
 export default function AgentEditPage(): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
-  const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const location = useLocation();
   const logger = useLogger('AgentEditPage');
   const {agentId} = useParams<{agentId: string}>();
 
   const {data: agent, isLoading, error, refetch} = useGetAgent(agentId ?? '');
+  const {readOnly: isReadOnly, canDelete, canChangeState} = useRecordAccess('agent', agent);
   const {projectId} = useProjectScope();
   // Another project's agent is not shown in the selected one: a deep link, a stale tab or a switch of
   // project goes to the selected project's agents instead.
@@ -376,7 +376,7 @@ export default function AgentEditPage(): JSX.Element {
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
-  const isLogoEditable = !agent.isReadOnly;
+  const isLogoEditable = !isReadOnly;
 
   // List every failing check by name rather than a single generic message, so the user knows
   // exactly what to fix instead of guessing which tab has the problem.
@@ -461,6 +461,7 @@ export default function AgentEditPage(): JSX.Element {
         <EditAgentAttributes
           key={sectionResetKey}
           agent={agent}
+          readOnly={isReadOnly}
           editedAgent={editedAgent}
           onFieldChange={handleFieldChange}
           onLifespanValidationChange={setLifespanInvalid}
@@ -476,6 +477,7 @@ export default function AgentEditPage(): JSX.Element {
       render: () => (
         <EditCredentialsSettings
           agent={agent}
+          readOnly={isReadOnly}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
@@ -498,6 +500,7 @@ export default function AgentEditPage(): JSX.Element {
       render: () => (
         <EditFlowsSettings
           agent={agent}
+          readOnly={isReadOnly}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
@@ -513,6 +516,7 @@ export default function AgentEditPage(): JSX.Element {
       render: () => (
         <EditTokensSettings
           agent={agent}
+          readOnly={isReadOnly}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
@@ -533,6 +537,8 @@ export default function AgentEditPage(): JSX.Element {
       <EditAdvancedSettings
         key={sectionResetKey}
         agent={agent}
+        readOnly={isReadOnly}
+        canDelete={canDelete}
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}
         onFieldChange={handleFieldChange}
@@ -657,7 +663,7 @@ export default function AgentEditPage(): JSX.Element {
                     agent.description ??
                     t('agents:edit.page.description.empty', 'No description')}
                 </Typography>
-                {!agent.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -673,15 +679,17 @@ export default function AgentEditPage(): JSX.Element {
             )}
           </Stack>
         </PageTitle.SubHeader>
-        {/* Read-only records too: the flows change only runtime state. */}
+        {/* Declarative records too: the flows change only runtime state. The default flows need update. */}
         <PageTitle.Actions>
-          <AccountStatusAction
-            category="agent"
-            subject={agent.id}
-            status={agent.status}
-            listQueryKey={[AgentQueryKeys.AGENTS]}
-            onChanged={handleStatusChanged}
-          />
+          {canChangeState && (
+            <AccountStatusAction
+              category="agent"
+              subject={agent.id}
+              status={agent.status}
+              listQueryKey={[AgentQueryKeys.AGENTS]}
+              onChanged={handleStatusChanged}
+            />
+          )}
         </PageTitle.Actions>
       </PageTitle>
 
@@ -710,9 +718,7 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={
-            hasAnyValidationError || agent.isReadOnly === true || !can('agent', 'update') || typeSchemaError !== null
-          }
+          saveDisabled={hasAnyValidationError || isReadOnly || typeSchemaError !== null}
           error={
             updateAgent.error
               ? (getBackchannelLogoutUriServerError(updateAgent.error, tForErrors) ??

@@ -224,9 +224,7 @@ describe('EditUserAttributes', () => {
 
   describe('read-only users', () => {
     it('shows the read-only attribute summary instead of the edit form', () => {
-      render(
-        <EditUserAttributes user={{...baseUser, isReadOnly: true}} editedUser={{}} onFieldChange={mockOnFieldChange} />,
-      );
+      render(<EditUserAttributes user={baseUser} readOnly editedUser={{}} onFieldChange={mockOnFieldChange} />);
 
       expect(screen.getByText('email')).toBeInTheDocument();
       expect(screen.getByText('a@b.com')).toBeInTheDocument();
@@ -387,6 +385,7 @@ describe('EditUserAttributes', () => {
       render(
         <EditUserAttributes
           user={{...contactUser, isReadOnly: true}}
+          readOnly
           editedUser={{}}
           onFieldChange={mockOnFieldChange}
         />,

@@ -83,11 +83,6 @@ vi.mock('../../../ApplicationDeleteDialog', () => ({
     ) : null,
 }));
 
-const viewOnly = {
-  can: (_resource: string, action = 'view') => action === 'view',
-  isLoading: false,
-};
-
 describe('EditAdvancedSettings', () => {
   const mockApplication: Application = {
     id: 'test-app-id',
@@ -123,7 +118,14 @@ describe('EditAdvancedSettings', () => {
     });
 
     it('should render without OAuth2 config when not provided', () => {
-      render(<EditAdvancedSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          canDelete
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
 
       expect(screen.queryByText('applications:edit.advanced.labels.oauth2Config')).not.toBeInTheDocument();
       expect(screen.getByText('applications:edit.advanced.labels.metadata')).toBeInTheDocument();
@@ -497,11 +499,10 @@ describe('EditAdvancedSettings', () => {
     });
 
     it('passes disabled=true to PasskeysSection when the application is read-only', () => {
-      const readOnlyApp: Application = {...mockApplication, isReadOnly: true};
-
       render(
         <EditAdvancedSettings
-          application={readOnlyApp}
+          application={mockApplication}
+          readOnly
           editedApp={{}}
           oauth2Config={mockOAuth2Config}
           onFieldChange={mockOnFieldChange}
@@ -589,6 +590,7 @@ describe('EditAdvancedSettings', () => {
       render(
         <EditAdvancedSettings
           application={mockApplication}
+          canDelete
           editedApp={{}}
           oauth2Config={confidentialConfig}
           onFieldChange={mockOnFieldChange}
@@ -616,12 +618,10 @@ describe('EditAdvancedSettings', () => {
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
     });
 
-    it('should not render DangerZoneSection for a read-only application', () => {
-      const readOnlyApp: Application = {...mockApplication, isReadOnly: true};
-
+    it('should not render DangerZoneSection when the application may not be deleted', () => {
       render(
         <EditAdvancedSettings
-          application={readOnlyApp}
+          application={mockApplication}
           editedApp={{}}
           oauth2Config={confidentialConfig}
           onFieldChange={mockOnFieldChange}
@@ -631,23 +631,30 @@ describe('EditAdvancedSettings', () => {
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
     });
 
-    it('should not render DangerZoneSection when the admin may not delete applications', () => {
+    it('keeps DangerZoneSection for a read-only application the admin may still delete', () => {
       render(
-        <CapabilitiesProvider capabilities={viewOnly}>
-          <EditAdvancedSettings
-            application={mockApplication}
-            editedApp={{}}
-            oauth2Config={confidentialConfig}
-            onFieldChange={mockOnFieldChange}
-          />
-        </CapabilitiesProvider>,
+        <EditAdvancedSettings
+          application={mockApplication}
+          readOnly
+          canDelete
+          editedApp={{}}
+          oauth2Config={confidentialConfig}
+          onFieldChange={mockOnFieldChange}
+        />,
       );
 
-      expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
+      expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
     });
 
     it('should open delete dialog when delete button is clicked', () => {
-      render(<EditAdvancedSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          canDelete
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
 
       fireEvent.click(screen.getByTestId('delete-button'));
 
@@ -655,7 +662,14 @@ describe('EditAdvancedSettings', () => {
     });
 
     it('should pass application id to delete dialog', () => {
-      render(<EditAdvancedSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          canDelete
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
 
       fireEvent.click(screen.getByTestId('delete-button'));
 
@@ -663,7 +677,14 @@ describe('EditAdvancedSettings', () => {
     });
 
     it('should close delete dialog when cancel is triggered', () => {
-      render(<EditAdvancedSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          canDelete
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
 
       fireEvent.click(screen.getByTestId('delete-button'));
       expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();
@@ -679,6 +700,7 @@ describe('EditAdvancedSettings', () => {
       render(
         <EditAdvancedSettings
           application={mockApplication}
+          canDelete
           editedApp={{}}
           onFieldChange={mockOnFieldChange}
           onDeleteSuccess={mockOnDeleteSuccess}

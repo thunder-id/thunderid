@@ -116,9 +116,7 @@ describe('LifespanSection', () => {
   });
 
   it('is read only for a declarative agent', () => {
-    render(
-      <LifespanSection agent={{...mockAgent, isReadOnly: true}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
-    );
+    render(<LifespanSection agent={mockAgent} readOnly editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
     expect(screen.getByRole('button', {name: /choose date/i})).toBeDisabled();
   });

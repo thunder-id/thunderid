@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import AutoDeploySwitch from '../AutoDeploySwitch';
@@ -78,6 +79,47 @@ describe('AutoDeploySwitch', () => {
     );
     expect(state.setAutoApply).not.toHaveBeenCalled();
     expect(screen.getByText('Turn on auto deploy to Development?')).toBeInTheDocument();
+  });
+
+  it('locks the switch for an admin who cannot update the organization configuration', () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (_r, action = 'view') => action === 'view', isLoading: false}}>
+        <AutoDeploySwitch />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByLabelText('Auto deploy configuration to Development')).toBeDisabled();
+  });
+
+  it('locks turning auto deploy on while changes are pending for an admin who cannot update gateways', () => {
+    state.pending = 2;
+    render(
+      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'gateway', isLoading: false}}>
+        <AutoDeploySwitch />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByLabelText('Auto deploy configuration to Development')).toBeDisabled();
+  });
+
+  it('lets an admin who cannot update gateways turn auto deploy on when nothing is pending, and off', () => {
+    const capabilities = {can: (resource: string) => resource !== 'gateway', isLoading: false};
+    const {unmount} = render(
+      <CapabilitiesProvider capabilities={capabilities}>
+        <AutoDeploySwitch />
+      </CapabilitiesProvider>,
+    );
+    expect(screen.getByLabelText('Auto deploy configuration to Development')).toBeEnabled();
+    unmount();
+
+    state.enabled = true;
+    state.pending = 2;
+    render(
+      <CapabilitiesProvider capabilities={capabilities}>
+        <AutoDeploySwitch />
+      </CapabilitiesProvider>,
+    );
+    expect(screen.getByLabelText('Auto deploy configuration to Development')).toBeEnabled();
   });
 
   it('asks before turning auto deploy off', async () => {

@@ -23,6 +23,7 @@ interface EditTokenSettingsTabsProps {
   onFieldChange: (field: keyof Application, value: unknown) => void;
   onValidationChange?: (hasErrors: boolean) => void;
   sectionResetKey?: number;
+  readOnly?: boolean;
 }
 
 /**
@@ -43,6 +44,7 @@ export default function EditTokenSettingsTabs({
   onFieldChange,
   onValidationChange = undefined,
   sectionResetKey = 0,
+  readOnly = false,
 }: EditTokenSettingsTabsProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -112,7 +114,7 @@ export default function EditTokenSettingsTabs({
           inboundAuthConfig={application.inboundAuthConfig}
           onFieldChange={onFieldChange}
           availableAttributes={[...TokenConstants.CLIENT_TOKEN_OPTIONAL_CLAIMS]}
-          disabled={application.isReadOnly ?? false}
+          disabled={readOnly}
           onValidationChange={setClientTabHasError}
           subjectValue={application.id}
           subjectType="application"
@@ -148,6 +150,7 @@ export default function EditTokenSettingsTabs({
       {audience === USER_AUDIENCE && userUnlocked && (
         <EditTokenSettings
           application={application}
+          readOnly={readOnly}
           editedApp={editedApp}
           oauth2Config={oauth2Config}
           sectionResetKey={sectionResetKey}
