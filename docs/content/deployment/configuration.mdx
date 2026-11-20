@@ -920,10 +920,31 @@ Cryptographic settings for encryption and signing.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `crypto.password_hashing.algorithm` | `PBKDF2` | Password hashing algorithm |
-| `crypto.password_hashing.parameters.iterations` | `600000` | Number of hashing iterations |
-| `crypto.password_hashing.parameters.key_size` | `32` | Derived key size in bytes |
-| `crypto.password_hashing.parameters.salt_size` | `16` | Salt size in bytes |
+| `crypto.password_hashing.algorithm` | `PBKDF2` | Password hashing algorithm: `PBKDF2`, `ARGON2ID`, or `SHA256` |
+
+**`crypto.password_hashing.pbkdf2.*`** applies only when `crypto.password_hashing.algorithm` is `PBKDF2`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.pbkdf2.iterations` | `600000` | Number of iterations |
+| `crypto.password_hashing.pbkdf2.key_size` | `32` | Derived key size in bytes |
+| `crypto.password_hashing.pbkdf2.salt_size` | `16` | Salt size in bytes |
+
+**`crypto.password_hashing.argon2id.*`** applies only when `crypto.password_hashing.algorithm` is `ARGON2ID`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.argon2id.iterations` | `2` | Number of passes over memory |
+| `crypto.password_hashing.argon2id.memory` | `19456` | Memory cost in KiB |
+| `crypto.password_hashing.argon2id.parallelism` | `1` | Number of parallel lanes |
+| `crypto.password_hashing.argon2id.key_size` | `32` | Derived key size in bytes |
+| `crypto.password_hashing.argon2id.salt_size` | `16` | Salt size in bytes |
+
+**`crypto.password_hashing.sha256.*`** applies only when `crypto.password_hashing.algorithm` is `SHA256`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.sha256.salt_size` | `16` | Salt size in bytes |
 
 ### Signing Keys
 
