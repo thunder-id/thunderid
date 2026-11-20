@@ -32,8 +32,8 @@ function parseJwt(token) {
 }
 
 function getIssuer() {
-  if (process.env.THUNDER_ISSUER) {
-    return process.env.THUNDER_ISSUER;
+  if (process.env.THUNDERID_ISSUER) {
+    return process.env.THUNDERID_ISSUER;
   }
 
   return process.env.THUNDERID_BASE_URL;
@@ -77,7 +77,7 @@ const CLOCK_SKEW_TOLERANCE_SECS = 30;
 function validateClaims(payload) {
   const now = Math.floor(Date.now() / 1000);
   const issuer = getIssuer();
-  const audience = process.env.THUNDER_AUDIENCE;
+  const audience = process.env.THUNDERID_AUDIENCE;
 
   if (payload.iss !== issuer) {
     throw new Error("Invalid token issuer");
