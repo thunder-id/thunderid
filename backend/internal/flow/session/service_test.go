@@ -443,6 +443,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
 func (suite *ServiceTestSuite) TestSaveCheckpoint_EstablishError() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).Return(nil, nil)
+	runTx(m)
 	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(errors.New("insert failed"))
 
 	_, err := svc.SaveCheckpoint(context.Background(), saveInput())

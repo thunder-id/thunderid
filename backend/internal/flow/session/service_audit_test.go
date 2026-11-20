@@ -162,6 +162,50 @@ func auditSaveInput() SaveCheckpointInput {
 	return in
 }
 
+// A first checkpoint that fails leaves no session behind, so the retry that succeeds establishes the session
+// and publishes its creation, instead of finding a session it takes for one already audited.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_ARetryAfterAFailedFirstCheckpointIsAudited() {
+	svc, m := suite.newService()
+	bus, published := newRecordingBus(suite.T())
+	svc.bus = bus
+	var committed, pending *Session
+	m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).RunAndReturn(
+		func(context.Context, string) (*Session, error) {
+			if pending != nil {
+				return pending, nil
+			}
+			return committed, nil
+		})
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s Session) error { pending = &s; return nil })
+	m.tx.EXPECT().Transact(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, fn func(context.Context) error) error {
+			err := fn(ctx)
+			if err == nil {
+				committed = pending
+			}
+			pending = nil
+			return err
+		})
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(errAuditStore).Once()
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil).Once()
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	_, firstErr := svc.SaveCheckpoint(otherSubjectContext(), auditSaveInput())
+	res, retryErr := svc.SaveCheckpoint(otherSubjectContext(), auditSaveInput())
+
+	suite.ErrorIs(firstErr, errAuditStore)
+	suite.Require().NoError(retryErr)
+	suite.True(res.Created)
+	suite.requireAudit(published(), res.Handle,
+		wantAudit{event: audit.EventSessionCreate, actor: userActor(testAuditUserID), target: userRef(testAuditUserID),
+			action: audit.ActionCreate, outcome: audit.OutcomeFailed(audit.ReasonServerError),
+			application: testAuditJoinAppID},
+		wantAudit{event: audit.EventSessionCreate, actor: userActor(testAuditUserID),
+			subject: userRef(testAuditUserID), target: userRef(testAuditUserID), action: audit.ActionCreate,
+			outcome: audit.OutcomeSucceeded, sessionRef: res.SessionID, application: testAuditJoinAppID})
+}
+
 func (suite *ServiceTestSuite) TestSaveCheckpoint_Audit() {
 	failed := audit.OutcomeFailed(audit.ReasonServerError)
 	failedCreate := func(SaveCheckpointResult) []wantAudit {
@@ -216,14 +260,14 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Audit() {
 			input: auditSaveInput,
 			setup: func(_ *service, m *serviceMocks) {
 				m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).Return(nil, nil)
+				runTx(m)
 				m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(errAuditStore)
 			},
 			wantErr: errAuditStore,
 			want:    failedCreate,
 		},
 		{
-			// store.Create commits the row before the checkpoint transaction, so this leaves a row whose handle
-			// no client receives. The failed event is accurate for the client.
+			// The session is established in the checkpoint's transaction, so a failed write leaves no session.
 			name:  "a new session whose checkpoint cannot be written fails",
 			ctx:   otherSubjectContext(),
 			input: auditSaveInput,
@@ -240,7 +284,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Audit() {
 			ctx:   boundedContext("ou-x"),
 			input: auditSaveInput,
 			setup: func(svc *service, m *serviceMocks) {
-				establishes(m)
+				m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).Return(nil, nil)
 				svc.ouEligibility = suite.refusesOU(&tidcommon.InternalServerError)
 			},
 			failed: true,
