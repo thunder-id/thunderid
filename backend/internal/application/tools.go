@@ -108,6 +108,21 @@ application in its project.`,
 	}, tools.updateApplication)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "regenerate_application_secret",
+		Description: `Replace an application's client secret with a newly generated one and return it.
+
+Behavior:
+- Only an application that authenticates with a client secret has one to regenerate.
+- The old secret stops working at once. Where the server revokes tokens, the tokens it issued are revoked too,
+  and the notice says whether they were.
+- The new secret is returned only this once.`,
+		Annotations: &mcp.ToolAnnotations{
+			Title:          "Regenerate Application Secret",
+			IdempotentHint: false,
+		},
+	}, tools.regenerateApplicationSecret)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_application_templates",
 		Description: `Get minimal OAuth configuration templates for common application types.
 
@@ -115,7 +130,7 @@ Templates contain ONLY the required fields to create each app type. ` +
 			`Optional fields with service-layer defaults are omitted.
 
 Theme: SPA, Mobile, and Server templates include a themeId field that controls the ` +
-			`visual appearance of the ThunderID-hosted login page. ` +
+			`visual appearance of the hosted login page. ` +
 			`Call list_themes first to see available themes, then replace the ` +
 			`<THEME_ID> placeholder with the ID of the desired theme. ` +
 			`Omit themeId to use the system default theme. ` +
@@ -219,6 +234,32 @@ func (t *applicationTools) updateApplication(
 	}
 
 	return nil, updatedApp, nil
+}
+
+// regenerateApplicationSecret handles the regenerate_application_secret tool call.
+func (t *applicationTools) regenerateApplicationSecret(
+	ctx context.Context,
+	req *mcp.CallToolRequest,
+	input tool.IDInput,
+) (*mcp.CallToolResult, *model.RegenerateClientSecretOutput, error) {
+	regenerated, svcErr := t.appService.RegenerateClientSecret(ctx, input.ID)
+	if svcErr != nil {
+		return nil, nil, fmt.Errorf("failed to regenerate application secret: %s", svcErr.ErrorDescription)
+	}
+
+	var notice string
+	switch {
+	case regenerated.Revoked:
+		notice = "The old secret no longer works, and the tokens it issued are revoked. " + clientSecretNotice
+	case regenerated.RevocationIncomplete:
+		notice = "The old secret no longer works, but revoking the tokens issued while it was replaced failed, so " +
+			"those can stay valid until they expire; regenerating again revokes them. " + clientSecretNotice
+	default:
+		notice = "The old secret no longer works. Tokens it already issued were not revoked and stay valid until " +
+			"they expire. " + clientSecretNotice
+	}
+	return nil, &model.RegenerateClientSecretOutput{ClientSecret: regenerated.ClientSecret,
+		RevocationIncomplete: regenerated.RevocationIncomplete, Notice: notice}, nil
 }
 
 // getApplicationTemplates handles the get_application_templates tool call.

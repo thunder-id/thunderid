@@ -741,3 +741,42 @@ describe('FlowComponentRenderer: extension points', () => {
     expect(screen.getByRole('button', {name: 'Continue'}).hasAttribute('disabled')).toBe(false);
   });
 });
+
+describe('FlowComponentRenderer — input autofocus', () => {
+  const signInBlock = {
+    id: 'block_sign_in',
+    type: 'BLOCK',
+    components: [
+      {
+        id: 'stack_fields',
+        type: 'STACK',
+        components: [{id: 'input_username', type: 'TEXT_INPUT', ref: 'username', label: 'Username'}],
+      },
+      {id: 'action_sign_in', type: 'ACTION', label: 'Sign In', variant: 'PRIMARY', eventType: 'SUBMIT'},
+    ],
+  } as unknown as EmbeddedFlowComponent;
+
+  const renderBlock = (isAutoFocusDisabled?: boolean) =>
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={signInBlock}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+        isAutoFocusDisabled={isAutoFocusDisabled}
+      />,
+    );
+
+  it('focuses the username input when it mounts', () => {
+    const {container} = renderBlock();
+    expect(document.activeElement).toBe(container.querySelector('input[name="username"]'));
+  });
+
+  it('leaves focus alone when autofocus is disabled', () => {
+    const {container} = renderBlock(true);
+    expect(document.activeElement).not.toBe(container.querySelector('input[name="username"]'));
+  });
+});

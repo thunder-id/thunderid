@@ -463,7 +463,7 @@ func (ts *PersonalAgentRegistrationFlowTestSuite) signIn() (string, string) {
 	ts.Require().Equal(http.StatusOK, status, string(body))
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, string(body))
 	// The prompt is driven by the agent type's schema, plus the redirect URI and the key inputs.
-	ts.Require().Subset(inputIdentifiers(step), []string{agentNameInput, agentModelInput, agentRedirectURIsInput},
+	ts.Require().Subset(inputIdentifiers(step), []string{agentNameInput, agentModelProviderInput, agentRedirectURIsInput},
 		"signing in leads to the details prompt: %s", string(body))
 	return executionID, step.ChallengeToken
 }

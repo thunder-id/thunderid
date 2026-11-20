@@ -1,0 +1,4 @@
+resource_type: server_config
+name: flow
+value:
+  defaultReturnUrl: "https://declarative-return.example.com"

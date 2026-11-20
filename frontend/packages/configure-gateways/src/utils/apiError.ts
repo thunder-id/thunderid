@@ -27,3 +27,59 @@ export const REMOVALS_NEED_CONFIRMATION = 'GTW-1030';
 export function isForbidden(error: unknown): boolean {
   return (error as {response?: {status?: number}} | undefined)?.response?.status === 403;
 }
+
+/** A refusal's interpolation params, each resource key in them named as the caller names that resource. */
+function namedParams(error: Error, nameOf?: (key: string) => string | undefined): Record<string, string> {
+  const data = (error as {response?: {data?: {description?: unknown; message?: unknown}}}).response?.data;
+  const raw =
+    (data?.description as {params?: unknown} | undefined)?.params ??
+    (data?.message as {params?: unknown} | undefined)?.params;
+  const params: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object') return params;
+  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' || typeof value === 'number') params[name] = withNames(String(value), nameOf);
+  }
+  return params;
+}
+
+/**
+ * A text with each resource key it names, such as `group/0190…0040`, replaced by what the caller calls
+ * that resource. A key the caller does not know is left as it is, so nothing else in the text is touched.
+ */
+function withNames(text: string, nameOf?: (key: string) => string | undefined): string {
+  if (!nameOf) return text;
+  return text.replace(
+    /(^|[^\w/:.-])([a-z][a-z_]*\/[A-Za-z0-9][A-Za-z0-9._-]*)/g,
+    (whole, before: string, key: string) => {
+      const named = nameOf(key);
+      return named ? `${before}${named}` : whole;
+    },
+  );
+}
+
+/**
+ * Why a call failed, for the user, from the error catalog alone: a refusal that names what it refused
+ * (its params) reads `errors.<CODE>.details`, which says which resources, each named as the caller names
+ * it; otherwise `errors.<CODE>`, then the shared `common:errors.<CODE>`. A code the catalog does not
+ * know, or a failure with no code, reads the fallback. Server-returned text is never shown.
+ */
+export function failureText(
+  error: Error,
+  translate: (key: string, options?: Record<string, unknown>) => string,
+  fallback: string,
+  nameOf?: (key: string) => string | undefined,
+): string {
+  const code = errorCodeOf(error);
+  if (!code) return fallback;
+  const params = namedParams(error, nameOf);
+  // A key the catalog does not hold translates to the empty default, so a translation is present when
+  // what it reads is not empty.
+  const read = (key: string, values: Record<string, string> = params): string =>
+    translate(key, {...values, defaultValue: ''});
+  if (Object.keys(params).length > 0) {
+    // A refusal names either what is missing or what still refers to the resource; the other reads empty.
+    const detailed = read(`errors.${code}.details`, {missing: '', referenced: '', source: '', ...params});
+    if (detailed) return detailed;
+  }
+  return read(`errors.${code}`) || read(`common:errors.${code}`) || fallback;
+}

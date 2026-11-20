@@ -71,7 +71,7 @@ type getAgentMCPInput struct {
 //
 //nolint:lll
 type agentAccessMCPInput struct {
-	Credential         string         `json:"credential,omitempty" jsonschema:"How the agent proves who it is. client_secret: ThunderID issues a secret. private_key_jwt: the agent signs with its own key, given as jwksUri or jwks, so no secret is issued; prefer it when the agent can hold a private key. none: no credential."`
+	Credential         string         `json:"credential,omitempty" jsonschema:"How the agent proves who it is. client_secret: the server issues a secret. private_key_jwt: the agent signs with its own key, given as jwksUri or jwks, so no secret is issued; prefer it when the agent can hold a private key. none: no credential."`
 	JWKSURI            string         `json:"jwksUri,omitempty" jsonschema:"URL of the agent's public key set, for private_key_jwt"`
 	JWKS               map[string]any `json:"jwks,omitempty" jsonschema:"The agent's public key set, for private_key_jwt. A JSON Web Key Set whose keys each have a unique kid and no private members."`
 	ActsForUsers       []string       `json:"actsForUsers,omitempty" jsonschema:"The ways the agent acts for users, in any combination. sign_in: a user who is present signs in, and the agent acts in that session; needs redirectUris. approval: the agent asks a user who isn't there, or is offline, to approve on their own device (CIBA); needs authFlowId. token_exchange: the agent exchanges a user token it already holds, or takes sub-tasks from another agent. Empty: the agent acts only on its own."`
@@ -317,8 +317,8 @@ It changes only what you send. actsForUsers, when sent, is the complete set, so 
 			`secret, returned once, and the old one stops working at once. For a registered key set, addKey ` +
 			`adds the agent's new public key next to the current ones, and removeKeyId retires an old key once ` +
 			`the agent signs with the new one. For a key set URI, rotate the keys at that URI; there is nothing ` +
-			`to change in ThunderID. Access tokens already issued stay valid until they expire. Refresh tokens ` +
-			`issued before a secret rotation stop working.`,
+			`to change here. Where the server revokes tokens, a secret rotation also revokes the tokens ` +
+			`the old secret issued, and the notice says whether it did.`,
 		InputSchema: tool.GenerateSchema[rotateAgentCredentialsMCPInput](),
 		Annotations: &mcp.ToolAnnotations{
 			Title:           "Rotate Agent Credentials",
@@ -723,15 +723,25 @@ func (t *agentTools) rotateAgentCredentials(
 			return nil, nil, errors.New("failed to rotate agent credentials: addKey and removeKeyId apply to a " +
 				"registered key set, and this agent uses a client secret")
 		}
-		secret, regenerateErr := t.agentService.RegenerateAgentSecret(ctx, current.ID)
+		regenerated, regenerateErr := t.agentService.RegenerateAgentSecret(ctx, current.ID)
 		if regenerateErr != nil {
 			return nil, nil, fmt.Errorf("failed to rotate agent credentials: %s", regenerateErr.ErrorDescription)
 		}
+		var notice string
+		switch {
+		case regenerated.Revoked:
+			notice = "The old secret no longer works, and the tokens it issued are revoked. " + secretNotice
+		case regenerated.RevocationIncomplete:
+			notice = "The old secret no longer works, but revoking the tokens issued while it was replaced " +
+				"failed, so those can stay valid until they expire; rotating again revokes them. " + secretNotice
+		default:
+			notice = "The old secret no longer works. Tokens it already issued were not revoked and stay " +
+				"valid until they expire. " + secretNotice
+		}
 		return nil, &rotateAgentCredentialsMCPResponse{
 			Credential:   string(credentialClientSecret),
-			ClientSecret: secret,
-			Notice: "The old secret no longer works. " + secretNotice + " Access tokens already issued stay " +
-				"valid until they expire, and refresh tokens issued before now no longer work.",
+			ClientSecret: regenerated.ClientSecret,
+			Notice:       notice,
 		}, nil
 	case credentialPrivateKeyJWT:
 		return t.rotateKeySet(ctx, current, currentConfig, input)
@@ -751,7 +761,7 @@ func (t *agentTools) rotateKeySet(ctx context.Context, current *model.AgentGetRe
 		}
 		return nil, &rotateAgentCredentialsMCPResponse{
 			Credential: string(credentialPrivateKeyJWT),
-			Notice: "The agent's keys come from a key set URI, so there is nothing to rotate in ThunderID. " +
+			Notice: "The agent's keys come from a key set URI, so there is nothing to rotate here. " +
 				"Publish the new key at that URI, then retire the old one there once the agent signs with the new key.",
 		}, nil
 	}

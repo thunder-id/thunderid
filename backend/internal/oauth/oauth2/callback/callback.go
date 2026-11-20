@@ -34,7 +34,7 @@ const maxCallbackBodyBytes = 1 << 20 // 1 MiB
 // assertion; the grant-type handler tells them apart from the assertion's own claims. Type identifies
 // which handler processes it. When absent it defaults to authorization_code, preserving existing
 // behavior for the auth code flow. SessionData is the SSO sessions the caller collected from the flow's
-// responses; the authorization code keeps them when the client requested the device_sso scope.
+// responses; the authorization code or Device Grant request keeps them when device_sso was requested.
 type flowCallbackRequest struct {
 	AuthID      string                    `json:"authId"`
 	Assertion   string                    `json:"assertion"`
@@ -150,7 +150,7 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 				"Unsupported callback type", http.StatusBadRequest, nil)
 			return
 		}
-		deviceErr := d.deviceService.HandleCallback(ctx, req.AuthID, req.Assertion)
+		deviceErr := d.deviceService.HandleCallback(ctx, req.AuthID, req.Assertion, req.SessionData)
 		if deviceErr != nil {
 			statusCode := http.StatusBadRequest
 			if deviceErr.Code == oauth2const.ErrorServerError {

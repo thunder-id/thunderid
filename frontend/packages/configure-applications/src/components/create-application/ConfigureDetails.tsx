@@ -39,6 +39,7 @@ import type {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '.
 import getConfigurationTypeFromTemplate from '../../utils/getConfigurationTypeFromTemplate';
 import hasInvalidCorsRows from '../../utils/hasInvalidCorsRows';
 import isRedirectCapableTemplate from '../../utils/isRedirectCapableTemplate';
+import isValidRedirectUriFormat from '../../utils/isValidRedirectUriFormat';
 
 /**
  * Zod schema for validating URL inputs (hosting URLs and callback URLs).
@@ -296,6 +297,8 @@ export default function ConfigureDetails({
     setRelyingPartyName,
     appName,
     corsOrigins,
+    redirectUris,
+    postLogoutRedirectUris,
   } = useApplicationCreate();
   const {
     control,
@@ -335,6 +338,16 @@ export default function ConfigureDetails({
   // selected template can't block a step that no longer shows them.
   const showsCorsEditor: boolean = effectiveIsRedirectCapable && Boolean(selectedTemplateConfig?.capabilities?.cors);
   const hasInvalidCorsOrigins: boolean = showsCorsEditor && hasInvalidCorsRows(corsOrigins);
+
+  // The URL and deep link configurations always contribute a callback URL, so only a template
+  // without one depends on the redirect URI editor for the application's required redirect URI.
+  const isRedirectUriRequired: boolean = effectiveConfigurationType === ApplicationCreateFlowConfiguration.NONE;
+  const enteredRedirectUris: string[] = redirectUris.map((uri) => uri.trim()).filter(Boolean);
+  const enteredPostLogoutRedirectUris: string[] = postLogoutRedirectUris.map((uri) => uri.trim()).filter(Boolean);
+  const hasRedirectUriErrors: boolean =
+    effectiveIsRedirectCapable &&
+    ((isRedirectUriRequired && enteredRedirectUris.length === 0) ||
+      [...enteredRedirectUris, ...enteredPostLogoutRedirectUris].some((uri) => !isValidRedirectUriFormat(uri)));
 
   const isWallet: boolean = selectedTemplateConfig?.id === 'wallet';
   const [walletVendor, setWalletVendor] = useState<string>(CUSTOM_WALLET_VENDOR);
@@ -488,7 +501,7 @@ export default function ConfigureDetails({
 
     // A malformed CORS origin used to be dropped on submit without a word, so block here instead.
     // This reads the same rows that get merged into the allow-list, so the two cannot disagree.
-    onReadyChange(ready && !hasInvalidCorsOrigins);
+    onReadyChange(ready && !hasInvalidCorsOrigins && !hasRedirectUriErrors);
   }, [
     isValid,
     effectiveConfigurationType,
@@ -504,6 +517,7 @@ export default function ConfigureDetails({
     selectedTemplateConfig,
     isDuplicateWalletClientId,
     hasInvalidCorsOrigins,
+    hasRedirectUriErrors,
   ]);
 
   // For platforms that don't require configuration AND no passkey configuration needed AND the
@@ -805,7 +819,7 @@ export default function ConfigureDetails({
             </Stack>
           )}
 
-          {effectiveIsRedirectCapable && <ConfigureRedirectUris />}
+          {effectiveIsRedirectCapable && <ConfigureRedirectUris redirectUriRequired={isRedirectUriRequired} />}
         </Stack>
       )}
 

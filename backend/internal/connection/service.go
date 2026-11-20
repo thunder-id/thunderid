@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
@@ -43,6 +44,7 @@ type service struct {
 	valueCapturer       declarativeresource.ValueCapturer
 	sharingService      sharing.SharingServiceInterface
 	authzService        sysauthz.SystemAuthorizationServiceInterface
+	bus                 eventbus.EventBusInterface
 	logger              *log.Logger
 	// managed says which connections a control plane deployed, which stay read only here. Nil where
 	// nothing is deployed from one.
@@ -50,18 +52,19 @@ type service struct {
 }
 
 // newService creates a connection service over the given identity-provider and
-// notification-sender services.
+// notification-sender services, publishing the audit events of sharing policy changes on bus.
 func newService(idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
-	httpService httpconnection.HTTPConnectionServiceInterface) *service {
+	httpService httpconnection.HTTPConnectionServiceInterface, bus eventbus.EventBusInterface) *service {
 	return &service{
 		idpService:          idpService,
 		notificationService: notificationService,
 		resourceService:     resourceService,
 		authZENPDPService:   authZENPDPService,
 		httpService:         httpService,
+		bus:                 bus,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConnectionService")),
 	}
 }

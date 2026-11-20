@@ -51,6 +51,23 @@ func (s *FlowConfigHandlerTestSuite) TestDecode_ValidJSON() {
 	s.Equal(int64(900), cfg.AuthFlow.ExpirySeconds)
 }
 
+// A configuration written before the secret regeneration flow was removed still loads: the entry that
+// named it is ignored and the rest of the section stands.
+func (s *FlowConfigHandlerTestSuite) TestDecode_IgnoresRemovedSecretRegenerationFlow() {
+	raw := json.RawMessage(`{"secretRegenerationFlow":{"defaultHandle":"default-secret-regeneration-flow"},` +
+		`"agentOnboardingFlow":{"defaultHandle":"default-agent-onboarding-flow"}}`)
+
+	result, err := s.handler.Decode(raw)
+	s.Require().NoError(err)
+
+	cfg, ok := result.(flowconfig.FlowSectionConfig)
+	s.Require().True(ok)
+	s.Equal(flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-agent-onboarding-flow"},
+	}, cfg)
+	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
+}
+
 func (s *FlowConfigHandlerTestSuite) TestDecode_InvalidJSON() {
 	_, err := s.handler.Decode(json.RawMessage(`{invalid`))
 	s.Error(err)
@@ -78,6 +95,24 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_ValidConfig() {
 	}
 	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.NoError(err)
+}
+
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURL() {
+	for _, value := range []string{"https://app.example.com", "https://app.example.com:8443/home"} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.NoError(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURLNotAbsolute() {
+	for _, value := range []string{
+		"/signin", "app.example.com", "https://", "https://:443", "javascript://example.com/%0aalert(1)",
+		"data://example.com/text", "https://user:secret@app.example.com",
+		"https://app.example.com:65536",
+	} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.Error(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
 }
 
 func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorCalled() {
@@ -162,6 +197,17 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_ReadOnlyFallsBackWhenWritableZero
 	result := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
 	s.Equal("ro-handle", result.AuthFlow.DefaultHandle)
 	s.Equal(int64(1800), result.AuthFlow.ExpirySeconds)
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_DefaultReturnURL() {
+	ro := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://ro.example.com"}
+
+	result := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal("https://ro.example.com", result.DefaultReturnURL)
+
+	wr := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://wr.example.com"}
+	result = s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+	s.Equal("https://wr.example.com", result.DefaultReturnURL)
 }
 
 func (s *FlowConfigHandlerTestSuite) TestMerge_NilInputsReturnZero() {
@@ -274,7 +320,6 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
 	}
 	return flowconfig.FlowSectionConfig{
-		SecretRegenerationFlow:         handle("secret-regeneration"),
 		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
 		UserUnlockFlow:                 handle("user-unlock"),
 		UserSuspendFlow:                handle("user-suspend"),

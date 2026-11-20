@@ -283,6 +283,56 @@ paths:
         "500":
           $ref: '#/components/responses/InternalServerError'
 
+  /projects/{id}/deletion-check:
+    parameters:
+      - $ref: '#/components/parameters/projectIdPathParam'
+    get:
+      tags:
+        - Projects
+      summary: Check whether a project can be deleted
+      description: |
+        Answers as `DELETE /projects/{id}` would, without deleting the project: `204` when the project
+        can be deleted, the delete's `400` for a project a control plane deployed, and the delete's `409`
+        while a resource is still in it. A project that does not exist is `404`, where the delete answers
+        `204`.
+      responses:
+        "204":
+          description: The project can be deleted.
+        "400":
+          description: A control plane deployed the project, so it can only be changed there.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "PRJ-1014"
+                message:
+                  key: "error.projectservice.managed_project"
+                  defaultValue: "Cannot modify a project deployed by the control plane"
+                description:
+                  key: "error.projectservice.managed_project_description"
+                  defaultValue: "The project was deployed by the control plane and can only be changed there"
+        "404":
+          $ref: '#/components/responses/ProjectNotFound'
+        "409":
+          description: The project still has applications, agents, flows, layouts, themes, notification
+            templates, presentation definitions, credential configurations, authorization details types, groups
+            or organization units.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "PRJ-1013"
+                message:
+                  key: "error.projectservice.project_not_empty"
+                  defaultValue: "Project is not empty"
+                description:
+                  key: "error.projectservice.project_not_empty_description"
+                  defaultValue: "Delete or move the project's applications, agents, flows, layouts, themes, notification templates, presentation definitions, credential configurations, authorization details types, groups and organization units before deleting the project"
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     OAuth2:

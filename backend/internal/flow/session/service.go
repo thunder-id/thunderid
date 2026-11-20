@@ -134,8 +134,8 @@ type SaveCheckpointInput struct {
 }
 
 // SaveCheckpointResult reports the outcome of a save. Handle is the session's handle and SessionID
-// its id; Created is true only when this call minted the session (so the caller emits the cookie);
-// Skipped is true when the save was declined because of a subject mismatch.
+// its id; Created is true only when this call minted the session; Skipped is true when the save was
+// declined because of a subject mismatch.
 type SaveCheckpointResult struct {
 	Handle    string
 	SessionID string
@@ -145,6 +145,9 @@ type SaveCheckpointResult struct {
 	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
 	// too, rather than being re-derived from the clock when the assertion is built.
 	AuthenticatedAt time.Time
+	// AbsoluteExpiresAt is when the session ends, as the session records it. A joined session keeps the
+	// end it was created with.
+	AbsoluteExpiresAt time.Time
 }
 
 // CriteriaRevoker revokes a token family (one authorization grant) by its id. It is injected so session
@@ -579,15 +582,18 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 	return nil
 }
 
-// saveCheckpoint attaches the checkpoint without publishing the audit event. On an error after the session is
-// known it still returns the session's ID and whether this call created it, so the caller can tell a session that
+// saveCheckpoint attaches the checkpoint without publishing the audit event. A session this execution has none
+// of yet is established in the same transaction that writes its first checkpoint, so a failed save leaves no
+// session behind for a retry to find, and Created is true on the one save that commits it. On an error after
+// an existing session is known it still returns the session's ID, so the caller can tell a session that
 // failed to establish from one that only failed to take a checkpoint.
 func (s *service) saveCheckpoint(ctx context.Context, in SaveCheckpointInput) (SaveCheckpointResult, error) {
-	target, created, err := s.targetSession(ctx, in)
+	existing, err := s.existingSession(ctx, in.HandleHint, in.ExecutionID)
 	if err != nil {
 		return SaveCheckpointResult{}, err
 	}
-	if target == nil {
+	if existing != nil && existing.SubjectID != in.SubjectID {
+		s.logger.Warn(ctx, "Authenticated subject differs from the SSO session subject; not attaching checkpoint")
 		return SaveCheckpointResult{Skipped: true}, nil
 	}
 
@@ -597,38 +603,48 @@ func (s *service) saveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	// longer satisfied), so the session's authentication time has to move forward with it. Leaving it
 	// stale would make the session claim an older authentication than actually took place, which
 	// under-reports auth_time and makes a later max_age check reject a request it should allow.
-	if !created {
+	if existing != nil {
 		now := time.Now().UTC()
-		properties := target.Properties
-		properties.LastActiveIP = s.activeIP(in.ClientInfo, target)
-		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
+		properties := existing.Properties
+		properties.LastActiveIP = s.activeIP(in.ClientInfo, existing)
+		if err := s.store.TouchAuthenticatedAt(ctx, existing.SessionID, now,
 			now.Add(s.timeouts.Idle), properties); err != nil {
 			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
 			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
 		} else {
-			target.AuthenticatedAt = now
-			target.Properties = properties
+			existing.AuthenticatedAt = now
+			existing.Properties = properties
 		}
 	}
 
-	snapshot := SessionContext{
-		SessionID:      target.SessionID,
-		CheckpointID:   in.Checkpoint,
-		RuntimeData:    snapshotRuntimeData(in.RuntimeData),
-		AuthUser:       in.AuthUser,
-		CompletedSteps: in.CompletedSteps,
-		ContextVersion: 1,
+	var known SaveCheckpointResult
+	if existing != nil {
+		known.SessionID = existing.SessionID
 	}
-
-	known := SaveCheckpointResult{SessionID: target.SessionID, Created: created}
 	participantOU, err := s.participantOU(ctx, in.SubjectID, participantOUID(ctx))
 	if err != nil {
 		return known, err
 	}
 
-	// Write this checkpoint's context (upsert) and the joining participant in one transaction.
+	// Establish the session when there is none, and write this checkpoint's context (upsert) and the joining
+	// participant, in one transaction.
+	target, created := existing, false
 	now := time.Now().UTC()
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if target == nil {
+			var establishErr error
+			if target, created, establishErr = s.establishSession(txCtx, in); establishErr != nil {
+				return establishErr
+			}
+		}
+		snapshot := SessionContext{
+			SessionID:      target.SessionID,
+			CheckpointID:   in.Checkpoint,
+			RuntimeData:    snapshotRuntimeData(in.RuntimeData),
+			AuthUser:       in.AuthUser,
+			CompletedSteps: in.CompletedSteps,
+			ContextVersion: 1,
+		}
 		if err := s.store.CreateContext(txCtx, snapshot); err != nil {
 			return err
 		}
@@ -639,10 +655,11 @@ func (s *service) saveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 
 	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
 	return SaveCheckpointResult{
-		Handle:          target.HandleID,
-		SessionID:       target.SessionID,
-		Created:         created,
-		AuthenticatedAt: target.AuthenticatedAt,
+		Handle:            target.HandleID,
+		SessionID:         target.SessionID,
+		Created:           created,
+		AuthenticatedAt:   target.AuthenticatedAt,
+		AbsoluteExpiresAt: target.AbsoluteExpiresAt,
 	}, nil
 }
 
@@ -758,9 +775,9 @@ func (s *service) loadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 // succeeds or fails. The actor is the authenticated user, set explicitly since the login flow keeps the bearer
 // token of the request it came in on.
 //
-// store.Create commits a new session before the checkpoint transaction, so a failed checkpoint write leaves a
-// session row whose handle never reaches a client: the executor emits the cookie only after a successful save,
-// and the row expires by its deadlines. The failed event, which names no session, is accurate for the client.
+// A session is established in the transaction that writes its first checkpoint, so Created is true only for a
+// session that committed, and a session found for the execution was created, and audited, with a checkpoint.
+// The failed event names no session, since none was left behind.
 func (s *service) publishCreate(ctx context.Context, in SaveCheckpointInput, res SaveCheckpointResult, err error) {
 	record := sessionAudit{
 		event:       eventSessionCreate,
@@ -892,26 +909,6 @@ func (s *service) participantsForTermination(ctx context.Context, sessions []Ses
 		grouped[p.SessionID] = append(grouped[p.SessionID], p)
 	}
 	return grouped
-}
-
-// targetSession returns the session this execution's checkpoints attach to, establishing one when
-// none exists yet. The bool reports whether this call minted the session. It returns (nil, false,
-// nil) when an existing session belongs to a different subject than the one just authenticated, so
-// the caller skips the save rather than cross-attaching.
-func (s *service) targetSession(ctx context.Context, in SaveCheckpointInput) (*Session, bool, error) {
-	existing, err := s.existingSession(ctx, in.HandleHint, in.ExecutionID)
-	if err != nil {
-		return nil, false, err
-	}
-	if existing != nil {
-		if existing.SubjectID != in.SubjectID {
-			s.logger.Warn(ctx,
-				"Authenticated subject differs from the SSO session subject; not attaching checkpoint")
-			return nil, false, nil
-		}
-		return existing, false, nil
-	}
-	return s.establishSession(ctx, in)
 }
 
 // existingSession returns the session already backing this execution: the one referenced by the

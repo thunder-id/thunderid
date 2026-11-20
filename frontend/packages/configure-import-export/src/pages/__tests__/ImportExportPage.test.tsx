@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, fireEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ImportExportPage from '../ImportExportPage';
@@ -70,6 +71,17 @@ describe('ImportExportPage', () => {
     render(<ImportExportPage />);
 
     expect(screen.getByText('Import')).toBeInTheDocument();
+    expect(screen.getByText('Export')).toBeInTheDocument();
+  });
+
+  it('offers only what the admin may do', () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (resource) => resource === 'export', isLoading: false}}>
+        <ImportExportPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByText('Import')).not.toBeInTheDocument();
     expect(screen.getByText('Export')).toBeInTheDocument();
   });
 

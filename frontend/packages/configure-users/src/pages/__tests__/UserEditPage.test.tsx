@@ -164,6 +164,10 @@ vi.mock('@/components/edit-user/AttributesSummarySection', () => ({
   default: () => <div data-testid="attributes-summary" />,
 }));
 
+vi.mock('@/components/edit-user/UserRolesSection', () => ({
+  default: ({userId}: {userId: string}) => <div data-testid="user-roles" data-user-id={userId} />,
+}));
+
 vi.mock('@/components/edit-user/OwnedAgentsSection', () => ({
   default: ({userId}: {userId: string}) => <div data-testid="owned-agents" data-user-id={userId} />,
 }));
@@ -217,7 +221,6 @@ vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
 
 const viewOnly = {
   can: (_resource: string, action = 'view') => action === 'view',
-  canManageRoot: false,
   isLoading: false,
 };
 
@@ -678,6 +681,7 @@ describe('UserEditPage', () => {
       expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'General',
         'Attributes',
+        'Roles',
         'Agents',
         'Affiliations',
         'Advanced',
@@ -685,6 +689,16 @@ describe('UserEditPage', () => {
 
       await user.click(screen.getByRole('tab', {name: 'Advanced'}));
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
+    });
+
+    it("shows the user's roles on the Roles tab", async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      expect(screen.queryByTestId('user-roles')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Roles'}));
+      expect(screen.getByTestId('user-roles')).toHaveAttribute('data-user-id', 'user123');
     });
 
     it('omits the Advanced tab and disables Save when the admin may only view users', async () => {
@@ -1103,6 +1117,7 @@ describe('UserEditPage', () => {
         'General',
         'Attributes',
         'Credentials',
+        'Roles',
         'Agents',
         'Affiliations',
         'Advanced',

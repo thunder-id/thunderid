@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"slices"
 	"time"
 
@@ -185,4 +186,27 @@ func compactPermissionScopes(scopes, oidcScopes []string,
 		}
 	}
 	return result
+}
+
+// buildDeviceSecret returns the device secret carrying the SSO sessions a grant kept for its subject. It returns
+// an empty token when the grant keeps none, and a failure to build it is logged rather than failing the
+// exchange, since the grant has already been spent.
+func buildDeviceSecret(ctx context.Context, tokenBuilder tokenservice.TokenBuilderInterface, validity time.Duration,
+	oauthApp *providers.OAuthClient, subjectID string, sessionData []model.SessionData,
+	logger *log.Logger) model.TokenDTO {
+	if validity == 0 || len(sessionData) == 0 {
+		return model.TokenDTO{}
+	}
+	token, err := tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
+		OAuthApp:    oauthApp,
+		SubjectID:   subjectID,
+		SessionData: sessionData,
+		// Each session's own deadline is checked when it is exchanged.
+		ValidityPeriod: int64(math.Ceil(validity.Seconds())),
+	})
+	if err != nil {
+		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
+		return model.TokenDTO{}
+	}
+	return *token
 }

@@ -47,7 +47,7 @@ Use attributes the provider verifies and that identify one person. If more than 
 ## Step 2: Add Linking to the Flow
 
 1. In the Console, navigate to **Flows** and open the authentication flow that signs in through the connection.
-2. From the resource panel, drag a linking widget onto the canvas. It connects itself after the federated sign-in step.
+2. From the resource panel, drag a linking widget onto the canvas. It connects itself after the federated sign-in step. In a flow with several providers, add one widget per provider. Each one connects after the next federated sign-in step that has no linking yet.
     - Use **Account Linking with Verification** when each identity links to at most one user.
     - Use **Account Linking with Verification and Account Selection** when an identity can link to users in several organization units. It adds the account picker.
 3. Select the widget's **Call** step, then select the verification flow.

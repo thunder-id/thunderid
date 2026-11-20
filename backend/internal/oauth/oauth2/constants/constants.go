@@ -107,6 +107,7 @@ const (
 	SessionDataKeyConsent string = "sessionDataKeyConsent"
 	ShowInsecureWarning   string = "showInsecureWarning"
 	AppID                 string = "applicationId"
+	Ref                   string = "ref"
 	ExecutionID           string = "executionId"
 )
 
@@ -376,14 +377,6 @@ const (
 	SubjectTypePublic string = "public"
 )
 
-// Token-exchange token family modes (oauth.token_exchange.token_family).
-const (
-	// TokenExchangeTokenFamilyNone issues an exchanged token with no token family id (independent).
-	TokenExchangeTokenFamilyNone string = "none"
-	// TokenExchangeTokenFamilyInherit copies the subject token's token family id onto the exchanged token.
-	TokenExchangeTokenFamilyInherit string = "inherit"
-)
-
 // User attribute constants.
 const (
 	// UserAttributeGroups is the constant for user's groups attribute.
@@ -397,8 +390,8 @@ const (
 // Standard OIDC scope names.
 const (
 	ScopeOpenID = "openid"
-	// ScopeDeviceSSO asks for the device secret, the SSO session the code was issued from, in the code
-	// exchange response (OpenID Connect Native SSO for Mobile Apps).
+	// ScopeDeviceSSO asks for the device secret, the SSO session the grant was issued from, in the code
+	// exchange or device code token response (OpenID Connect Native SSO for Mobile Apps).
 	ScopeDeviceSSO = "device_sso"
 )
 

@@ -1,9 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useMutation, type UseMutationResult} from '@tanstack/react-query';
+import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import UserQueryKeys from '../constants/user-query-keys';
 
 /** Variables for giving one user roles. */
 export interface AddUserToRolesVariables {
@@ -40,6 +41,7 @@ export class AddUserToRolesError extends Error {
 export default function useAddUserToRoles(): UseMutationResult<void, AddUserToRolesError, AddUserToRolesVariables> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const queryClient = useQueryClient();
 
   return useMutation<void, AddUserToRolesError, AddUserToRolesVariables>({
     mutationFn: async ({userId, roleIds}: AddUserToRolesVariables): Promise<void> => {
@@ -78,6 +80,9 @@ export default function useAddUserToRoles(): UseMutationResult<void, AddUserToRo
         }),
       );
       throw new AddUserToRolesError(failedRoles);
+    },
+    onSettled: (_data, _error, {userId}) => {
+      queryClient.invalidateQueries({queryKey: [UserQueryKeys.USER_ROLES, userId]}).catch(() => null);
     },
   });
 }

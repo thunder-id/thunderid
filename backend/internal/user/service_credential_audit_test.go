@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
-	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -102,24 +101,10 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_PublishesOne
 		outcome audit.Outcome
 	}{
 		{
-			name:   "a first password is set",
+			name:   "a password is set",
 			userID: svcTestUserID1,
 			arrange: func() {
 				s.existing(true)
-				s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-				s.entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil).Once()
-				s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-			},
-			outcome: audit.OutcomeSucceeded,
-		},
-		{
-			name:   "a held password is replaced",
-			userID: svcTestUserID1,
-			arrange: func() {
-				s.existing(true)
-				s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-				s.entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).
-					Return([]string{"password"}, nil).Once()
 				s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
 			},
 			outcome: audit.OutcomeSucceeded,
@@ -144,7 +129,7 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_PublishesOne
 			userID: svcTestUserID1,
 			arrange: func() {
 				s.existing(true)
-				s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+				s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
 					Return(entitypkg.ErrSchemaValidationFailed).Once()
 			},
 			outcome: audit.OutcomeFailed("usr_1041"),
@@ -154,8 +139,6 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_PublishesOne
 			userID: svcTestUserID1,
 			arrange: func() {
 				s.existing(true)
-				s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-				s.entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil).Once()
 				s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
 					Return(errors.New("database is unavailable")).Once()
 			},
@@ -176,23 +159,14 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_PublishesOne
 	}
 }
 
-// The credentials are already replaced when the post flow fails, so the attempt is recorded as succeeded
-// while the caller still gets the failure, as an enrollment that stored its credential is.
+// The credentials are already replaced when the revocation after the write fails, so the attempt is recorded
+// as succeeded while the caller still gets the failure, as an enrollment that stored its credential is.
 func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_RecordsReplacedCredentialsWhenThePostFlowFails() {
-	flows := newSystemFlowProviderMock(s.T())
-	s.service.systemFlows = flows
 	bus, published := newRecordingBus(s.T())
 	s.service.bus = bus
 	s.existing(true)
-	s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-	s.entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string{"password"}, nil).Once()
-	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool {
-		return c.Handle == systemFlowUserCredentialUpdatePre
-	})).Return(&flowcommon.SystemFlowResult{}, nil).Once()
-	s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-	flows.EXPECT().ExecuteSystemFlow(mock.Anything, mock.MatchedBy(func(c *flowcommon.SystemFlowContext) bool {
-		return c.Handle == systemFlowUserCredentialUpdatePost
-	})).Return(nil, &tidcommon.InternalServerError).Once()
+	s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+		Return(fmt.Errorf("%w: SSE-5000", entitypkg.ErrRevocationIncomplete)).Once()
 
 	svcErr := s.service.UpdateUserCredentials(adminContext(), svcTestUserID1,
 		json.RawMessage(`{"password":"`+testAuditNewPassword+`"}`))
@@ -216,9 +190,6 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_FlowActorIsN
 			name: "the password is reset",
 			arrange: func() {
 				s.existing(true)
-				s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-				s.entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).
-					Return([]string{"password"}, nil).Once()
 				s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
 			},
 			outcome:   audit.OutcomeSucceeded,
@@ -228,7 +199,7 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_FlowActorIsN
 			name: "the new password fails the credential policy",
 			arrange: func() {
 				s.existing(true)
-				s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+				s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
 					Return(entitypkg.ErrSchemaValidationFailed).Once()
 			},
 			outcome:   audit.OutcomeFailed("usr_1041"),
@@ -272,8 +243,6 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_SucceedsWhen
 	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Once()
 	s.service.bus = failing
 	s.existing(true)
-	s.entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
-	s.entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil).Once()
 	s.entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
 
 	s.Nil(s.service.UpdateUserCredentials(adminContext(), svcTestUserID1,

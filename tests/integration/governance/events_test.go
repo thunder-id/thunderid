@@ -53,6 +53,7 @@ type GovernanceEventsTestSuite struct {
 	suite.Suite
 	fixture  *heldRecoveryFixture
 	reader   *testutils.EventLogReader
+	audit    *testutils.AuditLogReader
 	adminSub string
 }
 
@@ -77,6 +78,7 @@ func (ts *GovernanceEventsTestSuite) SetupSuite() {
 	ts.adminSub = claims.Sub
 
 	ts.reader = testutils.NewEventLogReader(logPath)
+	ts.audit = testutils.NewAuditLogReader()
 	ts.fixture = newHeldRecoveryFixture(t, "events")
 }
 
@@ -84,7 +86,7 @@ func (ts *GovernanceEventsTestSuite) SetupSuite() {
 func (ts *GovernanceEventsTestSuite) TestLifecycleOperationsArePublishedWithTheOperatorAndTarget() {
 	userID, _, _ := ts.fixture.newUser(ts.T(), "lifecycle", nil)
 	note := "events-note-" + ts.fixture.suffix
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	runAdministrationFlowAs(ts.T(), adminToken(ts.T()), suspendFlowHandle,
 		map[string]string{subjectInput: userID, operatorNoteInput: note})
@@ -103,6 +105,16 @@ func (ts *GovernanceEventsTestSuite) TestLifecycleOperationsArePublishedWithTheO
 	unlocked := ts.awaitEvent(eventIdentityUnlocked, userID)
 	ts.Equal(ts.adminSub, unlocked.Str(eventKeyActorSub), "the operator must be act_sub")
 
+	user := testutils.AuditRef{Type: auditTargetUser, ID: userID}
+	wantDetails := map[string]map[string]string{
+		auditUserSuspend:   {"applied_by": "organization"},
+		auditUserUnsuspend: {"applied_by": "organization"},
+		auditUserUnlock:    {"self_service": "false"},
+	}
+	for _, name := range []string{auditUserSuspend, auditUserUnsuspend, auditUserUnlock} {
+		ts.requireOperatorLine(name, user, ts.adminSub, wantDetails[name])
+	}
+
 	// The unlock is a later request than the suspend and unsuspend, so every event they published has
 	// been read by now.
 	events, err := ts.reader.Read()
@@ -110,11 +122,17 @@ func (ts *GovernanceEventsTestSuite) TestLifecycleOperationsArePublishedWithTheO
 	for _, evt := range events {
 		ts.NotContains(evt.Raw, note, "the operator note must never be published")
 	}
+	lines, err := ts.audit.Read()
+	ts.Require().NoError(err)
+	for _, line := range lines {
+		ts.NotContains(line.Raw, note, "the operator note must never be written to the audit log")
+	}
+	ts.Equal(1, ts.countLines(auditUserSuspend, userID), "one suspend must write one line")
 }
 
 func (ts *GovernanceEventsTestSuite) TestARefusedOperationIsPublishedWithItsFailureClass() {
 	userID, _, _ := ts.fixture.newUser(ts.T(), "refused", nil)
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	answer := attemptAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
 	ts.Require().Equal(governanceRefusal, answer, "unsuspend of an active account must be refused")
@@ -123,13 +141,18 @@ func (ts *GovernanceEventsTestSuite) TestARefusedOperationIsPublishedWithItsFail
 	ts.Equal("failure", failed.Status)
 	ts.Equal("not_applicable", failed.Str(eventKeyError), "the failure class must be published")
 	ts.Equal(ts.adminSub, failed.Str(eventKeyActorSub), "a refusal must name the operator too")
+
+	line := ts.awaitLine(auditUserUnsuspend, userID)
+	ts.Equal(testutils.AuditRef{Type: auditTargetUser, ID: userID}, line.Target)
+	ts.Equal(testutils.AuditRef{}, line.Subject, "a failed attempt names no subject")
+	ts.Equal(map[string]string{"result": auditResultFailed, "reason": "igs_1002"}, line.Outcome)
 }
 
 // The operator is a throwaway root, so a regressed pre-check suspends it rather than the
 // administrator every other suite runs as.
 func (ts *GovernanceEventsTestSuite) TestASuspendRefusedAtItsPreCheckIsPublishedAndRevokesNothing() {
 	rootID, _, _, rootToken := newRootOperator(ts.T(), ts.fixture.userFixture)
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	answer := attemptAdministrationFlowAs(ts.T(), rootToken, suspendFlowHandle,
 		map[string]string{subjectInput: rootID})
@@ -139,6 +162,12 @@ func (ts *GovernanceEventsTestSuite) TestASuspendRefusedAtItsPreCheckIsPublished
 	ts.Equal("failure", failed.Status)
 	ts.Equal("not_authorized", failed.Str(eventKeyError), "the failure class must be published")
 	ts.Equal(rootID, failed.Str(eventKeyActorSub), "a refusal must name the operator too")
+
+	denied := ts.awaitLine(auditUserSuspend, rootID)
+	root := testutils.AuditRef{Type: auditTargetUser, ID: rootID}
+	ts.Equal(root, denied.Actor)
+	ts.Equal(root, denied.Subject, "a denied attempt names the identity it was refused on")
+	ts.Equal(map[string]string{"result": auditResultDenied, "reason": "forbidden"}, denied.Outcome)
 
 	// A later suspension's revocation, once the REST API enforces it, shows the deny list was refreshed
 	// past anything the refused attempt could have written.
@@ -159,7 +188,7 @@ func (ts *GovernanceEventsTestSuite) TestAnOperationWithoutAKnownSubjectIsRefuse
 	unknownID := fmt.Sprintf("00000000-0000-4000-8000-%012d", time.Now().UnixNano()%1_000_000_000_000)
 	token, err := testutils.GetAccessToken()
 	ts.Require().NoError(err)
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	for _, handle := range []string{suspendFlowHandle, unsuspendFlowHandle} {
 		status, raw := executeAdministrationFlowAs(ts.T(), token, handle, map[string]string{})
@@ -178,6 +207,7 @@ func (ts *GovernanceEventsTestSuite) TestAnOperationWithoutAKnownSubjectIsRefuse
 		"the unsuspend's failure class must be published")
 	ts.Zero(criteriaRowCount(ts.T(), "subject", unknownID), "a refused suspend must revoke nothing")
 	ts.Zero(runtimeRowCount(ts.T(), unknownID), "nothing may be held for an unknown identity")
+	ts.Zero(ts.countLines(auditUserSuspend, unknownID), "an unknown identity must write no audit line")
 
 	// The refusals awaited above came after the attempts without a subject, so every event those
 	// attempts could have published has been read by now. The sink flushes on a ticker, so an earlier
@@ -203,7 +233,7 @@ func (ts *GovernanceEventsTestSuite) TestAnOverLongOperatorNoteIsRefusedBeforeCo
 	acceptedHolder := ts.holderStatus(acceptedName, acceptedPassword)
 	token, err := testutils.GetAccessToken()
 	ts.Require().NoError(err)
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	answer := attemptAdministrationFlowAs(ts.T(), token, suspendFlowHandle, map[string]string{
 		subjectInput:      refusedID,
@@ -249,19 +279,26 @@ func (ts *GovernanceEventsTestSuite) TestARecoveryReleaseIsPublishedAsSelfServic
 	userID, username, _ := ts.fixture.newUser(ts.T(), "self_unlock", nil)
 	failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
 	ts.Require().Equal("LOCKED", readStatus(ts.T(), userID).Value, "the account must be locked first")
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	ts.fixture.recover(ts.T(), username, "Recovered-Events-1!")
 	released := ts.awaitEvent(eventIdentitySelfUnlocked, userID)
 	ts.Equal("success", released.Status)
 	ts.Empty(released.Str(eventKeyActorSub), "a self-service release has no operator")
+
+	line := ts.awaitLine(auditUserUnlock, userID)
+	user := testutils.AuditRef{Type: auditTargetUser, ID: userID}
+	ts.Equal(user, line.Actor, "a recovery release names the released identity as actor")
+	ts.Equal(user, line.Subject)
+	ts.Equal(auditResultSucceeded, line.Outcome["result"])
+	ts.Equal(map[string]string{"self_service": "true"}, line.Details, "a recovery release is self-service")
 }
 
 // A lock is published once with no operator: wrong passwords during it and the refused correct one
 // publish nothing more before the unlock.
 func (ts *GovernanceEventsTestSuite) TestALockIsPublishedOnceWithoutAnOperator() {
 	userID, username, password := ts.fixture.newUser(ts.T(), "locked", nil)
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
 	locked := ts.awaitEvent(eventIdentityLocked, userID)
@@ -271,6 +308,16 @@ func (ts *GovernanceEventsTestSuite) TestALockIsPublishedOnceWithoutAnOperator()
 	ts.Equal(float64(1), locked.Data[eventKeyLockCount], "the first lock must be published as the first rung")
 	ts.Equal(false, locked.Data[eventKeyLockPermanent], "the shipped first rung expires")
 	ts.False(locked.Has(eventKeyActorSub), "a lock failed sign-ins formed has no operator to publish")
+
+	user := testutils.AuditRef{Type: auditTargetUser, ID: userID}
+	lockLine := ts.awaitLine(auditUserLock, userID)
+	ts.Equal("lock", lockLine.Action)
+	ts.Equal(testutils.AuditRef{Type: "anonymous"}, lockLine.Actor, "failed sign-ins have no operator")
+	ts.Equal(user, lockLine.Target)
+	ts.Equal(user, lockLine.Subject)
+	ts.Equal(auditResultSucceeded, lockLine.Outcome["result"])
+	ts.Equal(map[string]string{"authentication_method": "credential"}, lockLine.Details)
+	ts.NotContains(lockLine.Raw, username, "the attempted username must never be written")
 
 	expiry, reported := readStatus(ts.T(), userID).expiryOf("credential")
 	ts.Require().True(reported, "the lock must report its expiry")
@@ -286,6 +333,40 @@ func (ts *GovernanceEventsTestSuite) TestALockIsPublishedOnceWithoutAnOperator()
 	ts.Equal(ts.adminSub, unlocked.Str(eventKeyActorSub), "an operator unlock must name the operator")
 	ts.Equal("user", unlocked.Str(eventKeySubjectType), "the target's category must be published")
 	ts.Equal(1, ts.countEvents(eventIdentityLocked, userID), "one lock must be published once")
+	ts.Equal(1, ts.countLines(auditUserLock, userID), "one lock must write one line")
+}
+
+// Agents write the same lines as users: the lock is anonymous, the operator's suspend, unsuspend and
+// unlock name the operator, and the agent is target and subject.
+func (ts *GovernanceEventsTestSuite) TestAnAgentsLifecycleAndLockAreWrittenToTheAuditLog() {
+	t := ts.T()
+	applyPolicy(t, agentLockPolicy())
+	snapshot := widenDefaultAgentType(t)
+	agentID, username, _ := newPasswordAgent(t, snapshot.OUID, "audit", ts.fixture.suffix)
+	ts.resetReaders()
+
+	failAuthentication(t, "agent_username", username, lockThreshold)
+	ts.Require().Equal("LOCKED", readEntityStatus(t, agentCollection, agentID).Value,
+		"the agent must be locked")
+	agent := testutils.AuditRef{Type: auditTargetAgent, ID: agentID}
+	locked := ts.awaitLine(auditAgentLock, agentID)
+	ts.Equal(testutils.AuditRef{Type: "anonymous"}, locked.Actor, "failed sign-ins have no operator")
+	ts.Equal(agent, locked.Target)
+	ts.Equal(agent, locked.Subject)
+	ts.Equal(auditResultSucceeded, locked.Outcome["result"])
+	ts.Equal(map[string]string{"authentication_method": "credential"}, locked.Details)
+
+	runAdministrationFlow(t, agentSuspendFlowHandle, agentID)
+	runAdministrationFlow(t, agentUnsuspendFlowHandle, agentID)
+	runAdministrationFlow(t, agentUnlockFlowHandle, agentID)
+	wantDetails := map[string]map[string]string{
+		auditAgentSuspend:   {"applied_by": "organization"},
+		auditAgentUnsuspend: {"applied_by": "organization"},
+		auditAgentUnlock:    {"self_service": "false"},
+	}
+	for _, name := range []string{auditAgentSuspend, auditAgentUnsuspend, auditAgentUnlock} {
+		ts.requireOperatorLine(name, agent, ts.adminSub, wantDetails[name])
+	}
 }
 
 // An accountAccess write publishes the operator and the section and never the value; a refused
@@ -301,7 +382,7 @@ func (ts *GovernanceEventsTestSuite) TestASectionWriteIsPublishedWithoutItsValue
 		ts.NoError(testutils.PutWritableServerConfig(accountAccessSection, restore),
 			"failed to restore the accountAccess section")
 	}()
-	ts.Require().NoError(ts.reader.Reset())
+	ts.resetReaders()
 
 	const marker = 7364519
 	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection,
@@ -360,4 +441,51 @@ func (ts *GovernanceEventsTestSuite) TestConcurrentFailuresPublishOneLockEpisode
 	runAdministrationFlow(ts.T(), unlockFlowHandle, userID)
 	ts.awaitEvent(eventIdentityUnlocked, userID)
 	ts.Equal(1, ts.countEvents(eventIdentityLocked, userID), "one episode must publish one lock event")
+}
+
+// resetReaders starts a fresh window on the event and audit readers.
+func (ts *GovernanceEventsTestSuite) resetReaders() {
+	ts.T().Helper()
+	ts.Require().NoError(ts.reader.Reset())
+	ts.Require().NoError(ts.audit.Reset())
+}
+
+// requireOperatorLine waits for the audit line of the event about the target and requires the operator
+// as actor, the target as subject, success and the details.
+func (ts *GovernanceEventsTestSuite) requireOperatorLine(event string, target testutils.AuditRef,
+	operatorSub string, details map[string]string) {
+	ts.T().Helper()
+	line := ts.awaitLine(event, target.ID)
+	ts.Equal(event[strings.Index(event, ".")+1:], line.Action)
+	ts.Equal(testutils.AuditRef{Type: auditTargetUser, ID: operatorSub}, line.Actor,
+		"%s must name the operator", event)
+	ts.Equal(target, line.Target, "%s must name the identity", event)
+	ts.Equal(target, line.Subject, "%s must belong to the identity's activity", event)
+	ts.Equal(auditResultSucceeded, line.Outcome["result"], "%s must succeed", event)
+	ts.Equal(details, line.Details, "%s must carry its details", event)
+}
+
+// awaitLine waits for an audit line of the event about the target ID.
+func (ts *GovernanceEventsTestSuite) awaitLine(event, targetID string) testutils.AuditLine {
+	ts.T().Helper()
+	line, err := ts.audit.Await(func(line testutils.AuditLine) bool {
+		return line.Event == event && line.Target.ID == targetID
+	})
+	ts.Require().NoError(err, "no %s line for %q was written", event, targetID)
+	return line
+}
+
+// countLines counts the audit lines of the event about the target ID read since the last reset. It does
+// not wait, so the caller first awaits a line written after the ones it counts.
+func (ts *GovernanceEventsTestSuite) countLines(event, targetID string) int {
+	ts.T().Helper()
+	lines, err := ts.audit.Read()
+	ts.Require().NoError(err)
+	matched := 0
+	for _, line := range lines {
+		if line.Event == event && line.Target.ID == targetID {
+			matched++
+		}
+	}
+	return matched
 }

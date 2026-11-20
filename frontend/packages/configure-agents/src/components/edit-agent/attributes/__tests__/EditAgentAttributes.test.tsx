@@ -97,7 +97,7 @@ describe('EditAgentAttributes', () => {
     expect(screen.queryByTestId('field-password')).not.toBeInTheDocument();
   });
 
-  it("orders the editable fields as the agent type's schema does, display attribute first", () => {
+  it('orders the editable fields in the shared order', () => {
     mockUseGetAgentType.mockReturnValue({
       data: {
         id: 'schema-1',
@@ -119,10 +119,10 @@ describe('EditAgentAttributes', () => {
 
     // The credential is not editable here, so it is left out.
     expect(screen.getAllByTestId(/^field-/).map((element) => element.getAttribute('data-testid'))).toEqual([
-      'field-label',
       'field-environment',
-      'field-model',
+      'field-label',
       'field-function',
+      'field-model',
     ]);
   });
 

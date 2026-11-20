@@ -187,6 +187,87 @@ func (h *agentHandler) HandleAgentDeleteRequest(w http.ResponseWriter, r *http.R
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// HandleClientSecretRegenerateRequest handles POST /agents/{id}/client-secret/regenerate. The new secret is
+// in the response, the only time it can be read.
+func (h *agentHandler) HandleClientSecretRegenerateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+	regenerated, svcErr := h.service.RegenerateAgentSecret(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, regenerated)
+}
+
+// HandleAgentCredentialUpdateRequest handles POST /agents/{id}/update-credentials.
+func (h *agentHandler) HandleAgentCredentialUpdateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+
+	req, err := sysutils.DecodeJSONBody[model.UpdateAgentCredentialsRequest](r)
+	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	if req == nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+
+	if svcErr := h.service.UpdateAgentCredentials(ctx, id, req.Credentials); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleOwnedAgentCredentialUpdateRequest handles POST /users/me/agents/{id}/update-credentials.
+func (h *agentHandler) HandleOwnedAgentCredentialUpdateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+
+	req, err := sysutils.DecodeJSONBody[model.UpdateOwnedAgentCredentialsRequest](r)
+	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	if req == nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+
+	if svcErr := h.service.UpdateOwnedAgentCredentials(ctx, callerID, r.PathValue("id"),
+		providers.AgentKindPersonalAssistant, req.Attributes); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
 // HandleAgentGroupsRequest handles GET /agents/{id}/groups.
 func (h *agentHandler) HandleAgentGroupsRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

@@ -1168,34 +1168,6 @@ var (
 		},
 	}
 
-	// ErrInvalidRevocationMode is returned when an administrative action receives an unsupported mode.
-	ErrInvalidRevocationMode = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1083",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.invalid_revocation_mode",
-			DefaultValue: "Invalid revocation mode",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.invalid_revocation_mode_desc",
-			DefaultValue: "The requested revocation mode is not supported for this action",
-		},
-	}
-
-	// ErrUserDeletionNotAllowed is returned when the target user cannot be deleted.
-	ErrUserDeletionNotAllowed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1084",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_deletion_not_allowed",
-			DefaultValue: "User deletion not allowed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_deletion_not_allowed_desc",
-			DefaultValue: "The user cannot be deleted in the current state",
-		},
-	}
-
 	// ErrApplicationDeletionNotAllowed is returned when the target application cannot be deleted.
 	ErrApplicationDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -1207,34 +1179,6 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.application_deletion_not_allowed_desc",
 			DefaultValue: "The application cannot be deleted in the current state",
-		},
-	}
-
-	// ErrSecretRegenerationNotAllowed is returned when the target application has no rotatable secret.
-	ErrSecretRegenerationNotAllowed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1088",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_not_allowed",
-			DefaultValue: "Client secret regeneration not allowed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_not_allowed_desc",
-			DefaultValue: "The application has no client secret that can be regenerated",
-		},
-	}
-
-	// ErrSecretRegenerationFailed is returned when a permitted secret regeneration cannot be completed.
-	ErrSecretRegenerationFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1089",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_failed",
-			DefaultValue: "Client secret regeneration failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.secret_regeneration_failed_desc",
-			DefaultValue: "The client secret could not be regenerated",
 		},
 	}
 

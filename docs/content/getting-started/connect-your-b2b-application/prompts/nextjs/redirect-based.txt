@@ -1,0 +1,44 @@
+# Build a B2B Next.js Application with {{productName}} Organizations
+
+## Context
+I have a Next.js application (App Router) for a business-to-business (B2B) product, and I want to integrate {{productName}} organizations using the {{productName}} Next.js SDK with {{productName}}-hosted login pages. Each customer company signs up as an organization.
+
+## Requirements
+- Use @thunderid/nextjs 1.20.0 or later with {{productName}}-hosted sign-in pages
+- Sign in and sign out with prebuilt components. Companies register from the hosted sign-in page, so the app has no sign-up page
+- Show the current company, the user's roles there, and the access token's claims
+- Switch between the user's companies without leaving the page
+- Let a company admin add the company's OpenID Connect identity provider and select it for enterprise SSO
+
+## Configuration
+- **Base URL**: {{baseUrl}}
+- **Client ID**: {{clientId}}
+- **Client Secret**: `<your-client-secret>`
+- **Sign-in flow ID**: 019f0b20-0000-7000-8000-000000000021
+- **App URL**: http://localhost:3000 (the only redirect URI)
+
+## IMPORTANT Configuration Rules
+- Configure with `.env`, not provider props: NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, NEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL and NEXT_PUBLIC_THUNDERID_AFTER_SIGN_OUT_URL (both http://localhost:3000), NEXT_PUBLIC_THUNDERID_SCOPES=openid profile email roles ou org device_sso, THUNDERID_SECRET (from `openssl rand -base64 32`), and NEXT_PUBLIC_THUNDERID_SIGN_IN_FLOW_ID (read by the app's own code, not the SDK)
+- Never ask me to paste the client secret or THUNDERID_SECRET here. Add placeholders to `.env` and tell me to fill them in
+- A local instance at https://localhost:8090 uses a self-signed certificate, so put NODE_TLS_REJECT_UNAUTHORIZED=0 in `.env.development`, which only `next dev` loads. Never put it in `.env` or use it in production
+- Import ThunderIDProvider, thunderIDProxy and thunderid from '@thunderid/nextjs/server', and components and hooks from '@thunderid/nextjs'
+- In `app/layout.tsx`, render the provider with `preferences={{ user: { fetchUserProfile: false } }}` from an async component that awaits `connection()` from 'next/server', inside <Suspense>. Do not use `export const dynamic`
+- In `app/page.tsx`, read the access token on the server (`await thunderid()`, `getSessionId()`, `getAccessToken(sessionId)`) inside its own <Suspense>, and pass only its decoded claims to a client component
+- Switch with `<OrganizationUnitSwitcher scope="siblings" />`. The SDK's server exchanges the device secret, so the app needs no switching code
+- Show the admin section only when the `scope` claim contains `org`, keyed by `currentOrganizationUnit.id`
+- Add the identity provider with `const { baseUrl: managementBaseUrl, fetcher, url } = useManagementRequestConfig('connections')`: POST to `${url ?? `${managementBaseUrl}/connections`}/oidc` with `(fetcher ?? fetch)`. The JSON body has `name`, `clientId`, `clientSecret`, `issuer`, `authorizationEndpoint`, `tokenEndpoint`, `userInfoEndpoint`, `jwksEndpoint`, `ouId` (the current company), `redirectUri: ${baseUrl}/gate/callback` with `baseUrl` from `useThunderID()`, and `scopes: ['openid', 'profile', 'email']`. Show the admin that callback URL
+- Select it with `<FlowVariablesForm flowId ouId ouName showScopeNotice onCreateConnection />`. `onCreateConnection` opens the add-connection form. Change the form's `key` after a connection is added, so it lists the new one
+
+## Implementation Steps
+1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/nextjs-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these, and do not do them yourself:
+   - Generate a client secret with `openssl rand -base64 32` and set it as NEXTJS_B2B_CLIENT_SECRET in `thunderid-config/thunderid.env`. The same value goes into THUNDERID_CLIENT_SECRET in `.env`
+   - Import the resources in the Control Plane console: Import / Export, then Import, uploading `thunderid-config.yaml` and `thunderid.env`
+2. Create the app: `npx create-next-app@latest nextjs-b2b` with the recommended defaults, then `cd nextjs-b2b`
+3. Install the SDK: `npm install @thunderid/nextjs`
+4. Create `.env`, and `.env.development` for the certificate setting
+5. Wrap the root layout with <ThunderIDProvider>, and create `proxy.ts` exporting `thunderIDProxy()` with a matcher that skips `_next/static`, `_next/image` and `favicon.ico`
+6. Create the client components `app/components/EnterpriseSso.tsx` and `app/components/Workspace.tsx`. <SignedOut> shows <SignInButton>, and <SignedIn> shows the switcher, <SignOutButton>, the company view, the claims, and <EnterpriseSso> for admins
+7. Replace `app/page.tsx` with a Server Component that reads the claims and renders <Workspace>
+8. Run `npm run dev` and open http://localhost:3000. To try it, choose Sign in, then Register your company
+
+Please provide complete, working code for a B2B Next.js application with {{productName}} organizations, using the {{productName}} Next.js SDK.

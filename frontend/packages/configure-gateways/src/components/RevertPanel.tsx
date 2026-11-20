@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useHiddenResources} from '@thunderid/contexts';
-import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -25,7 +24,7 @@ import useProjectScope from '../contexts/ProjectScope';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {ApplyResult, Change} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
+import {errorCodeOf, failureText, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
 
 export interface RevertPanelProps {
   gateway: Gateway;
@@ -191,12 +190,7 @@ export default function RevertPanel({
               <Alert severity="error">
                 {isForbidden(error)
                   ? t('revertPanel.forbidden', 'Your account may not roll this gateway back.')
-                  : getErrorMessage(
-                      error,
-                      tForErrors,
-                      'deploy:revertPanel.failed',
-                      'The gateway could not be rolled back.',
-                    )}
+                  : failureText(error, tForErrors, t('revertPanel.failed', 'The gateway could not be rolled back.'))}
               </Alert>
             )}
           </Stack>

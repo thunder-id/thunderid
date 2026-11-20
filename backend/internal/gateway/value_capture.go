@@ -404,9 +404,8 @@ func (c *ValueCapture) unheldVariables(ctx context.Context, gatewayID string, wa
 	map[string]string, error) {
 	names := slices.Sorted(maps.Keys(wanted))
 	missing := maps.Clone(wanted)
-	for start := 0; start < len(names); start += maxNamesPerLookup {
-		answer, svcErr := c.store.ListVariables(ctx, gatewayID,
-			lookupOf(names[start:min(start+maxNamesPerLookup, len(names))]))
+	for _, batch := range nameBatches(names) {
+		answer, svcErr := c.store.ListVariables(ctx, gatewayID, lookupOf(batch))
 		if svcErr != nil {
 			return nil, fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
 		}

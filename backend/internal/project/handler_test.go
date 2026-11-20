@@ -221,6 +221,34 @@ func (suite *ProjectHandlerTestSuite) TestHandleProjectDeleteRequest() {
 	})
 }
 
+func (suite *ProjectHandlerTestSuite) TestHandleProjectDeletionCheckRequest() {
+	cases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		wantCode int
+	}{
+		{"deletable", nil, http.StatusNoContent},
+		{"not empty", &ErrorProjectNotEmpty, http.StatusConflict},
+		{"not found", &ErrorProjectNotFound, http.StatusNotFound},
+	}
+	for _, c := range cases {
+		suite.Run(c.name, func() {
+			suite.SetupTest()
+			suite.mockService.On("CheckProjectDeletion", mock.Anything, testProjectID).Return(c.svcErr)
+			req := httptest.NewRequest(http.MethodGet, projectsPath+"/"+testProjectID+"/deletion-check", nil)
+			req.SetPathValue("id", testProjectID)
+			rec := httptest.NewRecorder()
+
+			suite.handler.HandleProjectDeletionCheckRequest(rec, req)
+
+			suite.Equal(c.wantCode, rec.Code)
+			if c.svcErr != nil {
+				suite.Equal(c.svcErr.Code, suite.errorCode(rec))
+			}
+		})
+	}
+}
+
 func (suite *ProjectHandlerTestSuite) TestWriteProjectErrorStatusMapping() {
 	cases := []struct {
 		err  tidcommon.ServiceError

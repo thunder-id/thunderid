@@ -33,25 +33,28 @@ const (
 // applicationExporter implements declarativeresource.ResourceExporter for applications.
 type applicationExporter struct {
 	service        ApplicationServiceInterface
+	entityService  entity.EntityServiceInterface
 	sharingService sharing.SharingServiceInterface
+	logger         *log.Logger
 }
 
-// newApplicationExporter creates a new application exporter. The sharing service supplies the
-// policies an exported application carries.
-func newApplicationExporter(
-	service ApplicationServiceInterface, sharingService sharing.SharingServiceInterface,
-) *applicationExporter {
-	return &applicationExporter{service: service, sharingService: sharingService}
+// newApplicationExporter creates a new application exporter. The entity service tells whether an
+// application holds a Flow Secret, and the sharing service supplies the policies an exported
+// application carries.
+func newApplicationExporter(service ApplicationServiceInterface, entityService entity.EntityServiceInterface,
+	sharingService sharing.SharingServiceInterface) *applicationExporter {
+	return &applicationExporter{service: service, entityService: entityService, sharingService: sharingService,
+		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationExporter"))}
 }
 
 // NewApplicationExporterForTest creates a new application exporter for testing purposes.
-func NewApplicationExporterForTest(
-	service ApplicationServiceInterface, sharingService sharing.SharingServiceInterface,
+func NewApplicationExporterForTest(service ApplicationServiceInterface,
+	entityService entity.EntityServiceInterface, sharingService sharing.SharingServiceInterface,
 ) *applicationExporter {
 	if !testing.Testing() {
 		panic("only for tests!")
 	}
-	return newApplicationExporter(service, sharingService)
+	return newApplicationExporter(service, entityService, sharingService)
 }
 
 // GetResourceType returns the resource type for applications.
@@ -85,7 +88,20 @@ func (e *applicationExporter) GetAllResourceIDs(ctx context.Context) ([]string, 
 // policies that govern it carried alongside.
 type applicationDeclarativeResource struct {
 	providers.Application `yaml:",inline"`
-	SharingPolicies       []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
+	// FlowSecret is where the export refers to the application's Flow Secret. It is kept here rather
+	// than on the application, so no read of an application carries it. A stored Flow Secret is
+	// hashed, so an export leaves it empty and refers to it by name; only a capture, handed what a
+	// write still holds, carries the value.
+	FlowSecret      string                  `yaml:"flowSecret,omitempty" json:"flowSecret,omitempty"`
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
+	// holdsFlowSecret records that the exported application holds a Flow Secret.
+	holdsFlowSecret bool
+}
+
+// refersToFlowSecret reports whether the document refers to a Flow Secret: one the application holds,
+// or one a write has just set.
+func (r *applicationDeclarativeResource) refersToFlowSecret() bool {
+	return r.holdsFlowSecret || r.FlowSecret != ""
 }
 
 // applicationOf reads the application out of either shape the export pipeline hands around:
@@ -121,11 +137,41 @@ func (e *applicationExporter) GetResourceByID(ctx context.Context, id string) (
 		policies = append(policies, r.Request)
 	}
 
-	exported := &applicationDeclarativeResource{Application: *app}
+	holdsFlowSecret, svcErr := e.holdsFlowSecret(ctx, app)
+	if svcErr != nil {
+		return nil, "", svcErr
+	}
+
+	exported := &applicationDeclarativeResource{Application: *app, holdsFlowSecret: holdsFlowSecret}
 	if len(policies) > 0 {
 		exported.SharingPolicies = policies
 	}
 	return exported, app.Name, nil
+}
+
+// holdsFlowSecret reports whether an application holds a Flow Secret its export must refer to. An
+// application that may hold one but was never given one, such as one an update made eligible, is
+// reported as holding none, since an import would otherwise demand a value nothing holds. So is one
+// with no entity, which a read of the application allows.
+func (e *applicationExporter) holdsFlowSecret(ctx context.Context, app *providers.Application) (
+	bool, *tidcommon.ServiceError) {
+	oauthConfig, svcErr := getOAuthInboundAuthConfigDTO(app.InboundAuthConfig)
+	if svcErr != nil {
+		return false, svcErr
+	}
+	if !isFlowSecretEligible(model.ApplicationType(app.Type), oauthConfig) {
+		return false, nil
+	}
+	held, err := e.entityService.GetCredentialsByType(ctx, app.ID, fieldFlowSecret)
+	if errors.Is(err, entity.ErrEntityNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		e.logger.Error(ctx, "Failed to read an application's Flow Secret for export",
+			log.String("appID", app.ID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return len(held) > 0, nil
 }
 
 // ValidateResource validates an application resource.
@@ -294,9 +340,10 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 	return &appDTO, nil
 }
 
-// SecretFields names where an exported application holds its client secret.
+// SecretFields names where an exported application holds a secret: its client secret and its Flow
+// Secret.
 func (e *applicationExporter) SecretFields() []string {
-	return []string{"inboundAuthConfig[].config.clientSecret"}
+	return []string{"inboundAuthConfig[].config.clientSecret", "flowSecret"}
 }
 
 // GetResourceRules returns the parameterization rules for applications.
@@ -317,27 +364,26 @@ func (e *applicationExporter) GetResourceRules() *declarativeresource.ResourceRu
 // GetResourceRulesForResource returns parameterization rules tailored to the specific application
 // instance. Public clients and clients using private_key_jwt or none do not have a client secret, so
 // the ClientSecret variable is excluded from their export to avoid injecting an empty or invalid
-// placeholder into the YAML template.
+// placeholder into the YAML template. The FlowSecret variable is included only for a document that
+// refers to a Flow Secret, as a field a rule names is written even when it is empty.
 func (e *applicationExporter) GetResourceRulesForResource(resource interface{}) *declarativeresource.ResourceRules {
+	rules := e.GetResourceRules()
 	app, ok := applicationOf(resource)
 	if !ok {
-		return e.GetResourceRules()
+		return rules
 	}
 
 	for _, inbound := range app.InboundAuthConfig {
 		if inbound.OAuthConfig != nil && !inboundclient.UsesClientSecret(inbound.OAuthConfig) {
-			return &declarativeresource.ResourceRules{
-				Variables: []string{
-					"InboundAuthConfig[].OAuthConfig.ClientID",
-				},
-				ArrayVariables: []string{
-					"InboundAuthConfig[].OAuthConfig.RedirectURIs",
-				},
-			}
+			rules.SecretVariables = nil
+			break
 		}
 	}
+	if doc, isDocument := resource.(*applicationDeclarativeResource); isDocument && doc.refersToFlowSecret() {
+		rules.SecretVariables = append(rules.SecretVariables, "FlowSecret")
+	}
 
-	return e.GetResourceRules()
+	return rules
 }
 
 // makeAppDeclarativeConfig creates the declarative loader config for loading application

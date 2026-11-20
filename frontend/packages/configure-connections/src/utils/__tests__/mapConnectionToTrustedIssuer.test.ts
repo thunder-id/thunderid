@@ -35,4 +35,15 @@ describe('mapConnectionToTrustedIssuer', () => {
       }),
     );
   });
+
+  it('should carry the attribute configuration through', () => {
+    const attributeConfiguration = {
+      userTypeResolution: {default: ''},
+      authorizationMapping: {direct: [{claim: 'scope', targetType: 'permission' as const}]},
+    };
+
+    expect(mapConnectionToTrustedIssuer({...BASE_CONNECTION, attributeConfiguration}).attributeConfiguration).toEqual(
+      attributeConfiguration,
+    );
+  });
 });

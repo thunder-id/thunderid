@@ -75,6 +75,16 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/flutter/apis/components/change-credential',
               label: 'ChangeCredential',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/flutter/apis/components/flow-variables-form',
+              label: 'FlowVariablesForm',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/flutter/apis/components/shared-flow-list',
+              label: 'SharedFlowList',
+            },
           ],
         },
       ],

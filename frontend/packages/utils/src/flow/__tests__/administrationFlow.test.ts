@@ -35,37 +35,37 @@ function httpFor(routes: Record<string, unknown>, onRequest?: (config: {url: str
 }
 
 function configuring(handle: string) {
-  return {[`${SERVER}/server-config/flow`]: {merged: {secretRegenerationFlow: {defaultHandle: handle}}}};
+  return {[`${SERVER}/server-config/flow`]: {merged: {userSuspendFlow: {defaultHandle: handle}}}};
 }
 
 describe('resolveAdministrationFlowHandle', () => {
   it('reads the handle from the merged layer, which is the effective configuration', async () => {
     const http = httpFor({
       [`${SERVER}/server-config/flow`]: {
-        readOnly: {secretRegenerationFlow: {defaultHandle: 'declared'}},
-        writable: {secretRegenerationFlow: {defaultHandle: 'written'}},
-        merged: {secretRegenerationFlow: {defaultHandle: 'effective'}},
+        readOnly: {userSuspendFlow: {defaultHandle: 'declared'}},
+        writable: {userSuspendFlow: {defaultHandle: 'written'}},
+        merged: {userSuspendFlow: {defaultHandle: 'effective'}},
       },
     });
 
-    await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION),
-    ).resolves.toBe('effective');
+    await expect(resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND)).resolves.toBe(
+      'effective',
+    );
   });
 
   it('returns an empty handle when the action has no flow configured', async () => {
     const http = httpFor({[`${SERVER}/server-config/flow`]: {merged: {}}});
 
-    await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION),
-    ).resolves.toBe('');
+    await expect(resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND)).resolves.toBe(
+      '',
+    );
   });
 
   it('propagates a read failure instead of reporting no flow', async () => {
     const http = {request: vi.fn(() => Promise.reject(new Error('server-config unreachable')))};
 
     await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION),
+      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND),
     ).rejects.toThrow('server-config unreachable');
   });
 
@@ -73,9 +73,9 @@ describe('resolveAdministrationFlowHandle', () => {
     const denied = Object.assign(new Error('Forbidden'), {response: {status: 403}});
     const http = {request: vi.fn(() => Promise.reject(denied))};
 
-    await expect(
-      resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION),
-    ).rejects.toBe(denied);
+    await expect(resolveAdministrationFlowHandle(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND)).rejects.toBe(
+      denied,
+    );
   });
 
   it('does not run the native fallback when the flow configuration read is denied', async () => {
@@ -83,7 +83,7 @@ describe('resolveAdministrationFlowHandle', () => {
     const http = {request: vi.fn(() => Promise.reject(denied))};
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION, {}, 'secret regeneration'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND, {}, 'user suspension'),
     ).rejects.toBe(denied);
   });
 });
@@ -122,13 +122,13 @@ describe('resolveAdministrationFlowId', () => {
       [`${SERVER}/flows`]: {flows: [{id: 'flow-1', handle: 'wanted', flowType: 'ADMINISTRATION'}]},
     });
 
-    await expect(resolveAdministrationFlowId(http, SERVER, 'wanted', 'secret regeneration')).resolves.toBe('flow-1');
+    await expect(resolveAdministrationFlowId(http, SERVER, 'wanted', 'user suspension')).resolves.toBe('flow-1');
   });
 
   it('refuses when the handle names no existing flow, without reading the flow configuration', async () => {
     const http = httpFor({[`${SERVER}/flows`]: {flows: []}});
 
-    await expect(resolveAdministrationFlowId(http, SERVER, 'stale-handle', 'secret regeneration')).rejects.toThrow(
+    await expect(resolveAdministrationFlowId(http, SERVER, 'stale-handle', 'user suspension')).rejects.toThrow(
       'no longer exists',
     );
     expect(http.request).toHaveBeenCalledTimes(1);
@@ -140,7 +140,7 @@ describe('runAdministrationFlow', () => {
     const http = httpFor({[`${SERVER}/server-config/flow`]: {merged: {}}});
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION, {}, 'secret regeneration'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND, {}, 'user suspension'),
     ).resolves.toBeNull();
   });
 
@@ -148,7 +148,7 @@ describe('runAdministrationFlow', () => {
     const http = httpFor({...configuring('stale-handle'), [`${SERVER}/flows`]: {flows: []}});
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION, {}, 'secret regeneration'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND, {}, 'user suspension'),
     ).rejects.toThrow('no longer exists');
   });
 
@@ -156,9 +156,9 @@ describe('runAdministrationFlow', () => {
     const seen: {url: string}[] = [];
     const http = httpFor(
       {
-        ...configuring('default-secret-regeneration-flow'),
+        ...configuring('default-user-suspend-flow'),
         [`${SERVER}/flows`]: {
-          flows: [{id: 'flow-1', handle: 'default-secret-regeneration-flow', flowType: 'ADMINISTRATION'}],
+          flows: [{id: 'flow-1', handle: 'default-user-suspend-flow', flowType: 'ADMINISTRATION'}],
         },
         [`${SERVER}/flow/execute`]: {flowStatus: 'COMPLETE', data: {additionalData: {ok: 'yes'}}},
       },
@@ -169,9 +169,9 @@ describe('runAdministrationFlow', () => {
       runAdministrationFlow(
         http,
         SERVER,
-        AdministrationFlowConfigKey.SECRET_REGENERATION,
+        AdministrationFlowConfigKey.USER_SUSPEND,
         {targetGroupId: 'group-1'},
-        'secret regeneration',
+        'user suspension',
       ),
     ).resolves.toEqual({ok: 'yes'});
 
@@ -187,9 +187,9 @@ describe('runAdministrationFlow', () => {
 
   it('carries a refusal code out, so the feature can localize it', async () => {
     const http = httpFor({
-      ...configuring('default-secret-regeneration-flow'),
+      ...configuring('default-user-suspend-flow'),
       [`${SERVER}/flows`]: {
-        flows: [{id: 'flow-1', handle: 'default-secret-regeneration-flow', flowType: 'ADMINISTRATION'}],
+        flows: [{id: 'flow-1', handle: 'default-user-suspend-flow', flowType: 'ADMINISTRATION'}],
       },
       [`${SERVER}/flow/execute`]: {
         flowStatus: 'ERROR',
@@ -198,21 +198,21 @@ describe('runAdministrationFlow', () => {
     });
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION, {}, 'secret regeneration'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND, {}, 'user suspension'),
     ).rejects.toMatchObject({code: 'GRP-1015'});
   });
 
   it('treats a paused flow as an error, not a success that did nothing', async () => {
     const http = httpFor({
-      ...configuring('default-secret-regeneration-flow'),
+      ...configuring('default-user-suspend-flow'),
       [`${SERVER}/flows`]: {
-        flows: [{id: 'flow-1', handle: 'default-secret-regeneration-flow', flowType: 'ADMINISTRATION'}],
+        flows: [{id: 'flow-1', handle: 'default-user-suspend-flow', flowType: 'ADMINISTRATION'}],
       },
       [`${SERVER}/flow/execute`]: {flowStatus: 'INCOMPLETE'},
     });
 
     await expect(
-      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.SECRET_REGENERATION, {}, 'secret regeneration'),
+      runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND, {}, 'user suspension'),
     ).rejects.toThrow('requires additional input');
   });
 });

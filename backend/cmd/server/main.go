@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -91,7 +92,7 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier :=
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier, gatewayStopper :=
 		registerServices(mux, cacheManager, auditBus)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
@@ -147,13 +148,13 @@ func main() {
 
 	serverURL := config.GetServerURL(&cfg.Server)
 	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
-	logger.Info(ctx, "ThunderID Server URL", log.String("url", serverURL))
-	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
+	logger.Info(ctx, cfg.Server.ProductName+" Server URL", log.String("url", serverURL))
+	logger.Info(ctx, cfg.Server.ProductName+" Console URL", log.String("url", consoleURL))
 
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info(ctx, "ThunderID Server started",
+		logger.Info(ctx, cfg.Server.ProductName+" Server started",
 			log.String("mode", string(config.GetServerMode())), log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
@@ -164,7 +165,7 @@ func main() {
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
 	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher, lockNotifier,
-		auditStopper)
+		gatewayStopper, auditStopper)
 }
 
 // initSystemPermissions activates the Data Plane's permissions: the deployment-wide system root and the org
@@ -206,7 +207,7 @@ func initRevocationCache(ctx context.Context, logger *log.Logger,
 func getThunderHome(ctx context.Context, logger *log.Logger) string {
 	// Parse project directory from command line arguments.
 	projectHome := ""
-	projectHomeFlag := flag.String("serverHome", "", "Path to ThunderID home directory")
+	projectHomeFlag := flag.String("serverHome", "", "Path to the server home directory")
 	flag.Parse()
 
 	if *projectHomeFlag != "" {
@@ -360,6 +361,7 @@ func gracefulShutdown(
 	revocationSyncer revocationcache.Syncer,
 	backchannelDispatcher backchannel.DispatcherInterface,
 	lockNotifier identitygovernance.LockNotifierInterface,
+	gatewayStopper gateway.StopperInterface,
 	auditStopper eventbus.StopperInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
@@ -382,6 +384,10 @@ func gracefulShutdown(
 	}
 	if lockNotifier != nil {
 		lockNotifier.Stop()
+	}
+	// Stop the sweeps of gateways' stores that applies started, before the database closes under them.
+	if gatewayStopper != nil {
+		gatewayStopper.Stop()
 	}
 
 	// Stop audit once the HTTP server and the background workers have stopped, so their last events

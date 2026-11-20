@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/flowconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/interceptormock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
@@ -2695,7 +2696,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OUFlowIDUsedWhenNoO
 
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_ServerDefaultUsedWhenOUHasNoFlowID() {
 	mockOU := newOuProviderMock(s.T())
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
 		mockSC, mockOU, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
@@ -2721,7 +2722,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_ServerDefaultUsedWh
 }
 
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_EmptyWhenNoDefaultConfigured() {
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
 		mockSC, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
@@ -2736,7 +2737,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_EmptyWhenNoDefaultC
 
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OULookupErrorFallsThrough() {
 	mockOU := newOuProviderMock(s.T())
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
 		mockSC, mockOU, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
@@ -2770,48 +2771,10 @@ func (s *FlowMgtServiceTestSuite) TestOUFlowIDForType_AllTypes() {
 	s.Empty(ouFlowIDForType(ou, providers.FlowType("UNKNOWN")))
 }
 
-// ----- getFlowSectionConfig -----
-
-func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_NilServerConfigSvc() {
-	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
-
-	cfg := svc.getFlowSectionConfig(context.Background())
-
-	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_ServerConfigError() {
-	mockSC := newServerConfigProviderMock(s.T())
-	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
-
-	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(nil, &tidcommon.InternalServerError)
-
-	cfg := svc.getFlowSectionConfig(context.Background())
-
-	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_WrongType() {
-	mockSC := newServerConfigProviderMock(s.T())
-	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
-
-	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return("not-a-flow-section-config", nil)
-
-	cfg := svc.getFlowSectionConfig(context.Background())
-
-	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
-}
-
 // ----- resolveDefaultFlowHandle -----
 
 func (s *FlowMgtServiceTestSuite) TestResolveDefaultFlowHandle_AllFlowTypes() {
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
 		mockSC, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))

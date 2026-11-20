@@ -5,7 +5,7 @@ import {useContext} from 'react';
 import CapabilitiesContext, {type Capabilities} from './CapabilitiesContext';
 
 /**
- * Reads what the signed-in admin may do. Without a `CapabilitiesProvider`, everything is allowed.
+ * Reads what the signed-in admin may do. Without a `CapabilitiesProvider`, nothing is allowed.
  *
  * @public
  */

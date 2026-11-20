@@ -47,6 +47,14 @@ vi.mock('../adapters/input/OTPInputAdapter', () => ({
   ),
 }));
 
+vi.mock('../adapters/input/DateTimeInputAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="date-time-input-adapter" data-resource-id={resource.id}>
+      Date Time Input Adapter
+    </div>
+  ),
+}));
+
 vi.mock('../adapters/input/DefaultInputAdapter', () => ({
   default: ({resource}: {resource: Element}) => (
     <div data-testid="default-input-adapter" data-resource-id={resource.id} data-type={resource.type}>
@@ -281,6 +289,19 @@ describe('CommonElementFactory', () => {
       render(<CommonElementFactory stepId="step-1" resource={otpElement} />);
 
       expect(screen.getByTestId('otp-input-adapter')).toBeInTheDocument();
+    });
+  });
+
+  describe('Date Time Input Element', () => {
+    it('should render DateTimeInputAdapter for DateTimeInput type', () => {
+      const dateTimeElement = createMockElement({
+        type: ElementTypes.DateTimeInput,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={dateTimeElement} />);
+
+      expect(screen.getByTestId('date-time-input-adapter')).toBeInTheDocument();
+      expect(screen.queryByTestId('default-input-adapter')).not.toBeInTheDocument();
     });
   });
 

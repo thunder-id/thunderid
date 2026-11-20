@@ -1,0 +1,6 @@
+resource_type: organization_unit
+id: decl-paging-parent
+handle: decl-paging-parent
+name: Paging Declarative Parent
+description: Parent of the runtime children and declarative children the composite paging test lists
+parent: decl-ou-1

@@ -77,7 +77,7 @@ describe('SettingsCard', () => {
         </SettingsCard>,
       );
 
-      const toggleSwitch = screen.getByRole('switch');
+      const toggleSwitch = screen.getByRole('switch', {name: 'Toggle Test Settings'});
       expect(toggleSwitch).toBeInTheDocument();
       expect(toggleSwitch).toBeChecked();
     });

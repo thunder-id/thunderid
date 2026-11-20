@@ -964,3 +964,100 @@ describe('GatewaysOverview', () => {
     expect(await screen.findByText('The gateways could not be read.')).toBeInTheDocument();
   });
 });
+
+describe('GatewaysOverview after a promotion that left changes out', () => {
+  it('keeps the promotion open, and says how many are left out, while only held-back changes remain', async () => {
+    routes['GET /gateways/gw-prod/project-status'] = {
+      project: {versions: [{hash: v2, number: 2, resources: 2}], pending: 0, required: 0, heldBack: 1},
+      shared: {pending: 0, heldBack: 1, byType: []},
+      needed: {differing: 0},
+    };
+    routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod', appliedVersion: v2};
+
+    render(
+      <ProjectScopeProvider project={{id: 'p-shop'}}>
+        <GatewaysOverview />
+      </ProjectScopeProvider>,
+    );
+
+    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
+    const prodCard = screen.getByTestId('deploy-stage-gw-prod');
+    await waitFor(() => expect(within(prodCard).getByTestId('card-held-back')).toHaveTextContent('2 changes left out'));
+    expect(within(devCard).getByRole('button', {name: 'Promote'})).toBeInTheDocument();
+  });
+
+  it('offers no promotion once nothing is left out or waiting', async () => {
+    routes['GET /gateways/gw-prod/project-status'] = {
+      project: {versions: [{hash: v2, number: 2, resources: 2}], pending: 0, required: 0, heldBack: 0},
+      shared: {pending: 0, heldBack: 0, byType: []},
+      needed: {differing: 0},
+    };
+    routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod', appliedVersion: v2};
+
+    render(
+      <ProjectScopeProvider project={{id: 'p-shop'}}>
+        <GatewaysOverview />
+      </ProjectScopeProvider>,
+    );
+
+    const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
+    // The version tags come from each gateway's project status, so production's status is read once v2
+    // carries its tag.
+    await within(await screen.findByTestId(`pipeline-version-${v2}`)).findByText('Production');
+    expect(
+      within(screen.getByTestId('deploy-stage-gw-dev')).queryByRole('button', {name: 'Promote'}),
+    ).not.toBeInTheDocument();
+    expect(within(prodCard).queryByTestId('card-held-back')).not.toBeInTheDocument();
+  });
+});
+
+describe('GatewaysOverview after a deploy to the first gateway that left changes out', () => {
+  it("offers the version the first gateway runs again while the project's changes still wait there", async () => {
+    routes['GET /gateways/gw-dev/project-status'] = {
+      project: {versions: [{hash: v2, number: 2, resources: 2}], pending: 1, required: 0, heldBack: 0},
+      shared: {pending: 0, heldBack: 0, byType: []},
+      needed: {differing: 0},
+    };
+
+    render(
+      <ProjectScopeProvider project={{id: 'p-shop'}}>
+        <GatewaysOverview />
+      </ProjectScopeProvider>,
+    );
+
+    // The first card says the project's change waits there only once the project status is read.
+    await within(await screen.findByTestId('deploy-stage-gw-dev')).findByText(/1 change behind/);
+    const latest = screen.getByTestId(`pipeline-version-${v2}`);
+    expect(within(latest).getByRole('button', {name: 'Deploy'})).toBeEnabled();
+  });
+});
+
+describe('GatewaysOverview when a value was set since a deploy', () => {
+  const changedOnly = (gatewayId: string) => ({
+    gatewayId,
+    dryRun: true,
+    diff: {toVersion: v2, summary: {added: 0, updated: 0, deleted: 0, unchanged: 2}, changes: []},
+    changed: {variables: ['SHOP_BASE_URL']},
+  });
+
+  it('offers the version the first gateway runs again, so the value can be deployed', async () => {
+    routes['POST /gateways/gw-dev/apply'] = changedOnly('gw-dev');
+
+    render(<GatewaysOverview />);
+
+    const latest = await screen.findByTestId(`pipeline-version-${v2}`);
+    // Once the first gateway is known to run it, the version offers a deploy only for the value.
+    await within(latest).findByText('Development');
+    await waitFor(() => expect(within(latest).getByRole('button', {name: 'Deploy'})).toBeEnabled());
+  });
+
+  it('keeps the promotion open to a later gateway that runs the same version', async () => {
+    routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod', appliedVersion: v2};
+    routes['POST /gateways/gw-prod/apply'] = changedOnly('gw-prod');
+
+    render(<GatewaysOverview />);
+
+    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
+    expect(await within(devCard).findByRole('button', {name: 'Promote'})).toBeInTheDocument();
+  });
+});

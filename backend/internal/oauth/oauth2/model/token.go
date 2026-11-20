@@ -107,7 +107,8 @@ type TokenResponseDTO struct {
 	// alongside is stamped with it. Taken from the access token's ouId claim when unset. Never returned to the
 	// client.
 	OUID string
-	// DeviceSecret is the token carrying the SSO sessions the code kept, returned on a code exchange.
+	// DeviceSecret is the token carrying the SSO sessions the grant kept, returned on a code exchange or a device
+	// code token response.
 	DeviceSecret TokenDTO
 	// IssuesRefreshToken marks a response whose grant path issues a refresh token although its grant
 	// type does not otherwise, subject to the client allowing the refresh token grant.
@@ -118,8 +119,10 @@ type TokenResponseDTO struct {
 }
 
 // SessionData is one SSO session a client holds: the handle that resumes it, keyed by the identifier of
-// the flow it belongs to.
+// the flow it belongs to. ExpiresIn is the whole seconds the session has left when the caller posts it with
+// the callback, nil when not given; zero or less means the session has ended.
 type SessionData struct {
 	FlowIdentifier string `json:"flowIdentifier"`
 	SessionHandle  string `json:"sessionHandle"`
+	ExpiresIn      *int64 `json:"expiresIn,omitempty"`
 }

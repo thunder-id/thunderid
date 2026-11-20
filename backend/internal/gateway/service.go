@@ -16,6 +16,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -39,13 +41,15 @@ type ServiceInterface interface {
 type service struct {
 	store    storeInterface
 	pipeline pipeline
+	bus      eventbus.EventBusInterface
 	logger   *log.Logger
 }
 
-func newService(store storeInterface, p pipeline) ServiceInterface {
+func newService(store storeInterface, p pipeline, bus eventbus.EventBusInterface) ServiceInterface {
 	return &service{
 		store:    store,
 		pipeline: p,
+		bus:      bus,
 		logger:   log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayService")),
 	}
 }
@@ -101,6 +105,33 @@ func (s *service) Get(ctx context.Context, id string) (*Gateway, *tidcommon.Serv
 
 // Register records a gateway this control plane administers.
 func (s *service) Register(ctx context.Context,
+	req RegisterRequest) (*Registration, *tidcommon.ServiceError) {
+	registration, svcErr := s.register(ctx, req)
+	var gatewayID string
+	if svcErr == nil {
+		gatewayID = registration.ID
+	}
+	publishGatewayChange(ctx, s.bus, audit.EventGatewayCreate, audit.ActionCreate, gatewayID, svcErr)
+	return registration, svcErr
+}
+
+// Update applies the fields the request names and leaves the rest as they are.
+func (s *service) Update(ctx context.Context, id string,
+	req UpdateRequest) (*Gateway, *tidcommon.ServiceError) {
+	updated, svcErr := s.update(ctx, id, req)
+	publishGatewayChange(ctx, s.bus, audit.EventGatewayUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// Delete removes a registration. A gateway that is not registered answers as not found.
+func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := s.delete(ctx, id)
+	publishGatewayChange(ctx, s.bus, audit.EventGatewayDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// register records a gateway without publishing its audit event.
+func (s *service) register(ctx context.Context,
 	req RegisterRequest) (*Registration, *tidcommon.ServiceError) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -213,8 +244,8 @@ func (s *service) newKey(ctx context.Context) (string, *tidcommon.ServiceError) 
 	return key, nil
 }
 
-// Update applies the fields the request names and leaves the rest as they are.
-func (s *service) Update(ctx context.Context, id string,
+// update changes a registration without publishing its audit event.
+func (s *service) update(ctx context.Context, id string,
 	req UpdateRequest) (*Gateway, *tidcommon.ServiceError) {
 	if strings.TrimSpace(id) == "" {
 		return nil, &ErrorInvalidGatewayID
@@ -304,7 +335,8 @@ func (s *service) Update(ctx context.Context, id string,
 	return existing, nil
 }
 
-func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError {
+// delete removes a registration without publishing its audit event.
+func (s *service) delete(ctx context.Context, id string) *tidcommon.ServiceError {
 	if strings.TrimSpace(id) == "" {
 		return &ErrorInvalidGatewayID
 	}
@@ -325,6 +357,17 @@ func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError
 	}
 	s.logger.Info(ctx, "Removed a gateway", log.String("gatewayID", id))
 	return nil
+}
+
+// publishGatewayChange publishes the audit event of an attempt on the gateway with gatewayID. Only the ID
+// is recorded: never the key, the address or the certificate.
+func publishGatewayChange(ctx context.Context, bus eventbus.EventBusInterface, event string,
+	action audit.Action, gatewayID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no gateway, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeGateway, ID: gatewayID}
+	eventbus.TryPublish(ctx, bus,
+		eventbus.NewEvent(ctx, event).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // baseURLOf trims a base URL to how it is stored, refusing one this plane may not call.

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -31,13 +32,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// serverConfigProvider is the narrow subset of serverconfig.ServerConfigService consumed by flowexec
-// for reading the "flow" section (per-type default handles and expiries). Defined locally so flowexec
-// does not import the serverconfig package.
-type serverConfigProvider interface {
-	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
-}
-
 // flowVisibilityProvider tells whether an organization unit owns a flow or was shared it.
 type flowVisibilityProvider interface {
 	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
@@ -56,7 +50,7 @@ type flowExecService struct {
 	cryptoSvc           providers.RuntimeCryptoProvider
 	attestationVerifier providers.AttestationProvider
 	jwtService          jwt.JWTServiceInterface
-	serverConfigSvc     serverConfigProvider
+	serverConfigSvc     flowconfig.ServerConfigReader
 	governance          providers.IdentityGovernanceProvider
 	flowVisibility      flowVisibilityProvider
 	permissionProvider  providers.PermissionProvider
@@ -76,7 +70,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	attestationVerifier providers.AttestationProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	jwtService jwt.JWTServiceInterface,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	governance providers.IdentityGovernanceProvider,
 	flowVisibility flowVisibilityProvider,
 	permissionProvider providers.PermissionProvider,
@@ -483,7 +477,7 @@ func applyInboundSSO(engineCtx *EngineContext, ctx context.Context, sessionData 
 	engineCtx.SSOHandleIn = inbound.HandleFor(flowID)
 }
 
-// applyOutboundSSO adds the SSO session this step started or ended to the step, keyed by flow
+// applyOutboundSSO adds the SSO session this step started, reused or ended to the step, keyed by flow
 // identifier, for the response body to return to a caller that holds its handles itself.
 func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
@@ -492,12 +486,23 @@ func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 				FlowIdentifier: session.FlowIdentifier(flowStep.SSOFlowID),
 				SessionHandle:  flowStep.SSOHandleOut,
 			},
-			ExpiresIn: int64(s.ssoHandleTTL.Seconds()),
+			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now()),
 		}}
 	}
 	if flowStep.SSOClearFlowID != "" {
 		flowStep.ClearedSessions = []string{session.FlowIdentifier(flowStep.SSOClearFlowID)}
 	}
+}
+
+// handleExpiresIn returns the seconds from now a returned handle stays usable: the time its session has left
+// when known, never more than the configured handle lifetime. Rounded up, so a session started in this
+// request reports the whole lifetime.
+func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time) int64 {
+	remaining := s.ssoHandleTTL
+	if !expiresAt.IsZero() {
+		remaining = min(max(expiresAt.Sub(now), 0), s.ssoHandleTTL)
+	}
+	return int64(math.Ceil(remaining.Seconds()))
 }
 
 // loadNewContext initializes a new flow context with the given details.
@@ -1611,32 +1616,7 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 // Returns a zero FlowSectionConfig when the serverconfig service is not wired or the section is
 // absent, letting callers fall back to built-in defaults.
 func (s *flowExecService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
-	return readFlowSectionConfig(ctx, s.serverConfigSvc)
-}
-
-// readFlowSectionConfig reads the "flow" section from serverConfigSvc, as getFlowSectionConfig does.
-func readFlowSectionConfig(ctx context.Context, serverConfigSvc serverConfigProvider) flowconfig.FlowSectionConfig {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
-
-	if serverConfigSvc == nil {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	merged, svcErr := serverConfigSvc.GetMergedConfig(ctx, "flow")
-	if svcErr != nil {
-		logger.Error(ctx, "Failed to retrieve merged flow section from serverconfig",
-			log.String("error", svcErr.Error.DefaultValue))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	cfg, ok := merged.(flowconfig.FlowSectionConfig)
-	if !ok {
-		logger.Error(ctx, "Unexpected type for merged flow server config; using built-in defaults",
-			log.String("type", fmt.Sprintf("%T", merged)))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	return cfg
+	return flowconfig.ReadFlowSectionConfig(ctx, s.serverConfigSvc)
 }
 
 // getFlowExpirySeconds returns the context TTL for the given flow type.

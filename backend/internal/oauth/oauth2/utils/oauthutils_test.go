@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -1700,6 +1701,7 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_InvalidJWT() {
 func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllClaims_IatFloat64() {
 	assertion := buildTestAssertion(map[string]interface{}{
 		"sub":                  "user-123",
+		"sub_id":               "entity-123",
 		"aci":                  "cache-abc",
 		"completed_auth_class": "urn:acr:pwd",
 		"iat":                  float64(1700000000),
@@ -1708,6 +1710,7 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 	claims, payload, err := DecodeFlowAssertionClaims(assertion)
 	suite.NoError(err)
 	suite.Equal("user-123", claims.UserID)
+	suite.Equal("entity-123", claims.SubjectID)
 	suite.Equal("cache-abc", claims.AttributeCacheID)
 	suite.Equal("urn:acr:pwd", claims.CompletedACR)
 	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
@@ -2153,6 +2156,49 @@ func (suite *OAuth2UtilsTestSuite) TestAuditClientActor() {
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
 			suite.Equal(tc.want, AuditClientActor(tc.client))
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestKeepDeviceSessions() {
+	first := model.SessionData{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}
+	second := model.SessionData{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-2"}
+	longest := model.SessionData{FlowIdentifier: "77e0937879f72858",
+		SessionHandle: strings.Repeat("h", maxDeviceSessionFieldLength)}
+	overLong := strings.Repeat("x", maxDeviceSessionFieldLength+1)
+	tooMany := make([]model.SessionData, 0, maxDeviceSessions+1)
+	for i := range maxDeviceSessions + 1 {
+		tooMany = append(tooMany, model.SessionData{FlowIdentifier: fmt.Sprintf("identifier-%d", i),
+			SessionHandle: "handle"})
+	}
+	cases := []struct {
+		name        string
+		scopes      []string
+		sessionData []model.SessionData
+		want        []model.SessionData
+	}{
+		{"every posted session is kept", []string{"openid", "device_sso"}, []model.SessionData{first, second},
+			[]model.SessionData{first, second}},
+		{"device_sso was not granted", []string{"openid"}, []model.SessionData{first}, nil},
+		{"nothing was posted", []string{"device_sso"}, nil, nil},
+		{"an entry missing a field is dropped", []string{"device_sso"},
+			[]model.SessionData{{FlowIdentifier: "identifier"}, {SessionHandle: "handle"}, first},
+			[]model.SessionData{first}},
+		{"an entry with an over-long field is dropped", []string{"device_sso"},
+			[]model.SessionData{{FlowIdentifier: overLong, SessionHandle: "handle"},
+				{FlowIdentifier: "identifier", SessionHandle: overLong}, longest},
+			[]model.SessionData{longest}},
+		{"no more than maxDeviceSessions are kept", []string{"device_sso"}, tooMany, tooMany[:maxDeviceSessions]},
+		{"a posted time left is kept as posted", []string{"device_sso"},
+			[]model.SessionData{{FlowIdentifier: first.FlowIdentifier, SessionHandle: first.SessionHandle,
+				ExpiresIn: new(int64(600))}},
+			[]model.SessionData{{FlowIdentifier: first.FlowIdentifier, SessionHandle: first.SessionHandle,
+				ExpiresIn: new(int64(600))}}},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.Equal(tc.want, KeepDeviceSessions(tc.scopes, tc.sessionData))
 		})
 	}
 }

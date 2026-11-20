@@ -1,0 +1,76 @@
+---
+slug: thunderid-joins-lfdt
+title: "ThunderID Joins LF Decentralized Trust (LFDT)"
+description: "ThunderID has moved to LF Decentralized Trust, joining the Linux Foundation's decentralized identity and wallet ecosystem under open and neutral governance that anyone with a stake in the project can shape."
+docType: community
+authors: [sagara]
+tags: [thunderid, community, identity, "2026"]
+category: Community
+featured: true
+heroGradient: "linear-gradient(135deg,#152a5e 0%,#3f6fe0 100%)"
+heroIcon: chain
+thumbnail: /assets/images/blog/thunderid-joins-lfdt/thumbnail.svg
+---
+
+When we introduced <ProductName /> as an open source project, the argument was simple: open source IAM was designed for a world where humans were the only intelligent actors, quantum computing was a research topic, and decentralized identity was still mostly a spec draft. That world is gone, and <ProductName /> is our attempt to build the IAM stack the next decade actually needs.
+
+We took another big step. <ProductName /> moved to [LF Decentralized Trust (LFDT)](https://www.lfdecentralizedtrust.org/), putting the project under open and neutral governance within the Linux Foundation's flagship organization for decentralized technologies and digital trust. [WSO2](https://wso2.com/), which originally founded <ProductName />, and the project's other current contributors remained committed to continuing their work on using it as the foundation for a next-generation product platform. We also welcomed the wider community to join us in solving the problems <ProductName /> set out to address.
+
+<!-- truncate -->
+
+## What is <ProductName />?
+
+<ProductName /> is an open source Identity and Access Management stack, built from scratch in Go. It handles authentication, authorization, and identity for humans, AI agents, and machines, and it secures applications, APIs, Model Context Protocol (MCP) servers, and wallets. That covers standards-based authentication and authorization (OAuth 2.1, OpenID Connect), identity and credential management, fine-grained authorization and consent, and a flow engine for login, registration, recovery, and step-up authentication, all with a lightweight runtime and GitOps-native configuration. If you want the full picture, we covered it in the [<ProductName /> introduction](/blog/introducing-thunderid) back in May.
+
+<ProductName /> is built around four pillars, each one addressing a gap the current generation of open source IAM doesn't cover well:
+
+- **Agent-native identity.** AI agents are modeled as a distinct identity type with their own lifecycle, supporting delegated authority, consent-aware access, traceability, and verifiable credentials issued to them directly. Agents interact with <ProductName /> as themselves, not through credentials borrowed from a service account.
+
+- **Post-quantum-safe by design.** The cryptographic foundation is agile. Algorithms, key types, signing methods, and token protection mechanisms are configuration rather than assumptions, so they can evolve toward post-quantum-safe algorithms and hybrid approaches during the transition. Crypto-agility applies across key management, credential issuance, signed assertions, and service-to-service communication.
+
+- **Decentralized identity integration.** Decentralized identity has an adoption gap on the consuming side. <ProductName /> makes it practical for applications to consume, verify, and trust DIDs, verifiable credentials, digital wallets, and trust registries, following the issuer, verifier, and holder model, rather than treating any of it as a later add-on.
+
+- **Lightweight runtime with GitOps support.** Headless and API-first, with declarative configuration so IAM definitions are versioned and deployed through the same pipelines as the rest of your platform, on-premises or in the cloud.
+
+Beyond the runtime, <ProductName /> ships a console UI, RESTful APIs, server-side and client-side SDKs, framework SDKs for React, Next.js, Vue.js, and Nuxt.js, a flow engine, and a visual flow designer.
+
+<ProductName /> also prioritizes integration with existing community projects, so teams can adopt it without leaving the tools they already use. The [`@thunderid/better-auth`](/sdks-and-tools/better-auth) package, for example, is a community provider helper that wires <ProductName /> into Better Auth's generic OAuth plugin.
+
+<ProductName /> is already integrated as a core identity component in production deployments and open source initiatives, including [MOSIP's eSignet](https://www.mosip.io/eSignet) and [Lanka Software Foundation](https://opensource.lk/) projects, with the MOSIP team contributing directly to the codebase.
+
+## Why LF Decentralized Trust?
+
+LF Decentralized Trust is the Linux Foundation's flagship organization for decentralized technologies and digital trust, and a neutral home for the open development of the technologies that make digital trust work at scale. Its scope spans decentralized identity, ledger technologies, cryptographic tools and protocols, interoperability, and the integration work that connects them. The OpenWallet Foundation's projects and communities are becoming part of LFDT as well, bringing wallet runtimes and credential libraries into the same ecosystem.
+
+Decentralized identity integration is one of <ProductName />'s four pillars, and it isn't a roadmap line item we plan to get to eventually. DIDs, verifiable credentials, digital wallets, and trust registries are moving from specification into production right now, and digital wallets in particular are becoming part of everyday personal and enterprise use. <ProductName /> is built to integrate with that ecosystem rather than bolt it on later: issuing credentials to digital wallets, accepting presentations for authentication and registration, and covering issuer, verifier, and holder interaction patterns through standard APIs, so you don't have to become a credential format expert to participate.
+
+<ProductName /> has already been used this way. CitizenVerify, a demo application built for the EUDI Wallet Hackathon 2026, uses <ProductName /> for credential issuance and verification end to end, and won the Public Sector Track. We [wrote up](/blog/eudi-wallet-hackathon) how it works in August.
+
+Being part of that ecosystem also means being governed like it. <ProductName /> adopts the LF Decentralized Trust Code of Conduct and operates under open, consensus-driven governance that will evolve as the community grows. Neutral governance is what makes a project credible to build on, and it's what lets anyone with a stake in this problem help decide where it goes next.
+
+## Where <ProductName /> is today, and what's next
+
+[<ProductName /> 1.0 shipped](/blog/thunderid-1-0) in September. Here is what's in it.
+
+**Standards and protocols.** <ProductName /> is an OAuth 2.1-compliant authorization server with OpenID Connect on top, supporting the authorization code, client credentials, refresh token, token exchange, CIBA, and JWT bearer grants, with PKCE, DPoP, PAR, resource indicators, dynamic client registration, token introspection, revocation, and OIDC discovery. Authorization covers a hierarchical resource model with resource servers, MCP-aware tool and resource scopes, and permission- and role-based access control, and IAM operations are exposed over the Model Context Protocol. <ProductName /> can also act as an AuthZEN-compatible external authorization engine.
+
+**Identity, directory, and access.** Users, AI agents, and machines are first-class identity types, each with its own attribute schema. An agent lives in an organization unit, carries a recorded owning user for accountability, and takes its access through groups and roles the same way a person does, while still working on its own for machine-to-machine cases. The directory covers custom user type schemas, nested groups, and hierarchical organization units.
+
+**Wallets and verifiable credentials.** <ProductName /> issues credentials with OpenID4VCI and verifies presentations with OpenID4VP against presentation definitions and trust anchors, covering the full issuer, verifier, and holder model. Credential presentation is also available as a step inside a flow, so a credential check during registration or in front of a high-value action is configuration rather than a separate integration.
+
+**User journeys and experience.** Login, self-registration, onboarding, and recovery are modeled as flows, composed in a visual editor from built-in executors: password with Argon2id or PBKDF2, passkeys and WebAuthn, SMS and email OTP, magic links, social login with Google and GitHub, federation with any OIDC or OAuth2 provider, and credential presentation. Connections manage identity providers and notification senders, including Twilio and Vonage, in one place. <ProductName /> Gate, the hosted login UI, serves these flows with browser SSO, and themes, layouts, and translations cover the look and feel before you drop down to the SDKs.
+
+**Runtime and operations.** <ProductName /> is written in Go and ships as a single binary and container image, with a small footprint and low latency. It deploys with Helm or on OpenChoreo, on-premises or in the cloud, backed by SQLite or PostgreSQL with Redis for transient state and caching. Every resource can be defined in YAML, built visually in the Console and exported, and those definitions are locked at startup, so the policy running in production is the one that was reviewed and committed.
+
+**Security and cryptography.** The cryptographic foundation is agile: algorithms, key types, and signing methods are all configuration. 1.0 ships Argon2id and PBKDF2 for password hashing, AES-256 for symmetric encryption, ML-DSA for JWT signing, X25519MLKEM768 for post-quantum TLS inbound and outbound, and bring your own key. Hybrid key exchange on TLS is the piece worth acting on now, because traffic captured today can be stored and decrypted later.
+
+**Developer tooling.** 1.0 ships client SDKs covering web and mobile stacks, which handle protocol correctness on the application's behalf, plus OpenAPI specifications, a Postman collection, and runnable samples. A CLI covers installation through day-to-day resource management, and skills and plugins for Claude Code and Codex bring the same operations into the AI coding tools most teams already run.
+
+<ProductName /> is openly built, design discussions happen in public before anything is built, and the roadmap is shaped by what people hit when they actually use it.
+
+- [Get started and run <ProductName /> locally](../../docs/getting-started/get-thunderid)
+- [Explore the docs, APIs, and SDKs](../../docs/)
+- [Open an issue](https://github.com/thunder-id/thunderid) when something doesn't work
+- Join [#thunderid-dev](https://discord.com/channels/905194001349627914) or #thunderid-user channels on [LFDT Discord](https://discord.lfdecentralizedtrust.org/)
+
+This project changes hands, but not direction. We're glad you're here.

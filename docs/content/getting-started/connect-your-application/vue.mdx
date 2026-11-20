@@ -224,6 +224,27 @@ You should see the `<SignInButton />`. Click it to be redirected to the <Product
 
 </Stepper>
 
+## Run the Sample App
+
+The [Vue sample](https://github.com/thunder-id/samples/tree/main/quickstarts/vue) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fvue&expanded=true) and open its folder.
+2. Create `.env` in the sample's folder with your application's values:
+
+   ```dotenv title=".env"
+   VITE_THUNDERID_BASE_URL=https://localhost:8090
+   VITE_THUNDERID_CLIENT_ID=<your-client-id>
+   ```
+
+3. Install the dependencies and start the app:
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+4. Open [http://localhost:5173](http://localhost:5173) and sign in.
+
 ## What's Next
 
 <NextSteps>

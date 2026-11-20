@@ -17,7 +17,7 @@
  * const onboarding = new AgentOnboardingPage(page, baseUrl);
  * await onboarding.open();
  * await onboarding.submitOwnerStep();
- * await onboarding.submitDetailsStep({ name: 'zz_e2e_agent_1', model: 'claude-opus-5' });
+ * await onboarding.submitDetailsStep({ name: 'zz_e2e_agent_1', modelProvider: /^anthropic$/i });
  */
 
 import { expect, Locator, Page } from "@playwright/test";
@@ -35,8 +35,6 @@ export class AgentOnboardingPage extends BasePage {
   readonly ownerSelect: Locator;
   readonly nameInput: Locator;
   readonly modelProviderSelect: Locator;
-  readonly modelInput: Locator;
-  readonly functionSelect: Locator;
 
   readonly closeButton: Locator;
 
@@ -49,8 +47,6 @@ export class AgentOnboardingPage extends BasePage {
     this.ownerSelect = page.locator("#owner");
     this.nameInput = page.locator("#name");
     this.modelProviderSelect = page.locator("#modelProvider");
-    this.modelInput = page.locator("#model");
-    this.functionSelect = page.locator("#function");
 
     this.closeButton = page.getByRole("button", { name: /^close$/i });
   }
@@ -130,11 +126,10 @@ export class AgentOnboardingPage extends BasePage {
   }
 
   /** Fill the schema-driven detail step. The name is required; every other field on it is optional. */
-  async submitDetailsStep({ name, modelProvider, model }: { name: string; modelProvider?: RegExp; model?: string }) {
+  async submitDetailsStep({ name, modelProvider }: { name: string; modelProvider?: RegExp }) {
     await this.expectStep(/agent details/i);
     await this.nameInput.fill(name);
     if (modelProvider) await this.chooseOption(this.modelProviderSelect, modelProvider);
-    if (model) await this.modelInput.fill(model);
     await this.submitStep(/^create agent$/i);
   }
 

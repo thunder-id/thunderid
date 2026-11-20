@@ -114,6 +114,8 @@ spec:
     #   declarativeResourcesEnabled: true  # false: services default to database-backed stores
     #   gate:
     #     clientBase: "/gate"
+    #     # JSON: a string, an object or an array of objects
+    #     slogan: '[{"title": "Title", "description": "Description.", "icon": "assets/images/icon.svg"}]'
     #   console:
     #     clientBase: "/console"
     #     clientId: "CONSOLE"

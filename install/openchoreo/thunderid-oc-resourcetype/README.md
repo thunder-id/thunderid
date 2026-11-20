@@ -361,6 +361,7 @@ A second `HTTPRoute` is rendered for that hostname and the Console's
 | `runtime.imagePullPolicy` | `Always` / `IfNotPresent` / `Never` | `Always` |
 | `runtime.port` | Port the ThunderID server listens on | `8090` |
 | `runtime.gate.clientBase` | Gate frontend base path | `/gate` |
+| `runtime.gate.slogan` | Content for the Gate sign-in hero panel, as a JSON value in a string: a JSON string such as `"\"Sign in to Acme\""` (a single title), a `{"title", "description", "icon"}` object, or an array of them. `[]` keeps the built-in items. Icon files must already be in the Gate assets of the image | `[]` |
 | `runtime.console.clientBase` | Console frontend base path | `/console` |
 | `runtime.console.clientId` | Console OAuth client ID | `CONSOLE` |
 | `runtime.console.scopes` | Console OAuth scopes (JSON array string). The default covers the management scopes the Console requests | `["openid", "profile", "email", "group", "ou", "system"]` |

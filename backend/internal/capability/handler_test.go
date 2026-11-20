@@ -51,7 +51,7 @@ func (s *HandlerTestSuite) TestWritesTheCapabilities() {
 	var body map[string]any
 	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &body))
 	s.Equal(map[string]any{"type": "ou", "ouId": "ou-1"}, body["scope"])
-	s.Equal(map[string]any{"manage": false}, body["root"])
+	s.NotContains(body, "root")
 	s.Contains(body["resources"], "app")
 }
 
