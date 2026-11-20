@@ -23,7 +23,8 @@ const (
 	// passkey.allowed_origins accepts.
 	passkeyRelyingPartyID = "localhost"
 
-	userSuspendFlowHandle = "default-user-suspend-flow"
+	secretRegenerationFlowHandle = "default-secret-regeneration-flow"
+	userSuspendFlowHandle        = "default-user-suspend-flow"
 )
 
 func (ts *AuditLogTestSuite) TestEveryUserCredentialUpdateRecordsItsOutcome() {
