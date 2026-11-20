@@ -57,7 +57,7 @@ JWT Token Validation is the foundation of API security with Envoy and <ProductNa
 
 #### Create an Application
 
-1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+1. Sign in to the <ProductName /> Console at `https://<THUNDERID_HOST>:<THUNDERID_PORT>/console`.
 2. Navigate to **Applications** → **New Application**.
 3. Enter an **Application name**.
 4. Select **Backend service** as the application type.
@@ -69,7 +69,7 @@ JWT Token Validation is the foundation of API security with Envoy and <ProductNa
 Use the client credentials grant to request an access token. The examples use HTTP Basic authentication for the client credentials:
 
 ```bash
-curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+curl -kL -X POST 'https://<THUNDERID_HOST>:8090/oauth2/token' \
   --user '<CLIENT_ID>:<CLIENT_SECRET>' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials'
@@ -239,8 +239,8 @@ clusters:
 
 | Field | Value | Description |
 |---|---|---|
-| `issuer` | `https://<THUNDER_HOST>:<THUNDER_PORT>` | Token issuer expected by Envoy |
-| `remote_jwks.http_uri.uri` | `https://<THUNDER_HOST>:<THUNDER_PORT>/oauth2/jwks` | <ProductName /> JWKS endpoint for fetching public keys |
+| `issuer` | `https://<THUNDERID_HOST>:<THUNDERID_PORT>` | Token issuer expected by Envoy |
+| `remote_jwks.http_uri.uri` | `https://<THUNDERID_HOST>:<THUNDERID_PORT>/oauth2/jwks` | <ProductName /> JWKS endpoint for fetching public keys |
 | `cache_duration` | `300s` | Caches JWKS keys to avoid fetching them on every request |
 | `from_headers` | `Authorization: Bearer` | Reads the JWT from the `Authorization` header |
 | `trust_chain_verification` | `ACCEPT_UNTRUSTED` | Skips TLS certificate chain verification. Use only in local development. |
@@ -315,7 +315,7 @@ For a full reference, see [Resource Servers](../../../resource-servers).
 
 **Using the Console:**
 
-1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+1. Sign in to the <ProductName /> Console at `https://<THUNDERID_HOST>:<THUNDERID_PORT>/console`.
 2. Navigate to **Resource servers** → **New Resource Server**.
 3. Fill in the following fields:
    - **Name**: `Resources API`
@@ -472,7 +472,7 @@ envoy -c envoy.yaml
 Request a token for the application that has the role assigned:
 
 ```bash
-curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+curl -kL -X POST 'https://<THUNDERID_HOST>:8090/oauth2/token' \
   --user '<CLIENT_ID>:<CLIENT_SECRET>' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
@@ -1113,7 +1113,7 @@ Use a user token or client credentials token for a subject that has the `resourc
 For a [client credentials](../../../protocols/oauth-oidc/client-credentials) token, request the corresponding scope from <ProductName />:
 
 ```bash
-curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+curl -kL -X POST 'https://<THUNDERID_HOST>:8090/oauth2/token' \
   --user '<CLIENT_ID>:<CLIENT_SECRET>' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \

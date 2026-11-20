@@ -50,7 +50,7 @@ Azure API Management is a cloud-hosted service and cannot reach a <ProductName /
    Forwarding   https://abc123.ngrok-free.app -> http://localhost:8090
    ```
 
-   Use this URL as `<THUNDER_PUBLIC_URL>` in the steps below.
+   Use this URL as `<THUNDERID_PUBLIC_URL>` in the steps below.
 
 The ngrok URL changes on every restart unless you have a reserved domain. If the URL changes, update the configuration below and the `openid-config url` in your Azure APIM `validate-jwt` policy.
 :::
@@ -61,10 +61,10 @@ Set the public URL in <ProductName />'s `deployment.yaml`:
 server:
   hostname: "localhost"
   port: 8090
-  public_url: "https://<THUNDER_PUBLIC_URL>"
+  public_url: "https://<THUNDERID_PUBLIC_URL>"
 ```
 
-Restart <ProductName /> after saving the change. Also update the Console callback URL to `https://<THUNDER_PUBLIC_URL>/console`.
+Restart <ProductName /> after saving the change. Also update the Console callback URL to `https://<THUNDERID_PUBLIC_URL>/console`.
 
 ## Configure JWT Token Validation in Azure API Management
 
@@ -74,7 +74,7 @@ JWT authentication is the foundation of API security with Azure APIM and <Produc
 
 #### Create an Application
 
-1. Sign in to the <ProductName /> Console at `https://<THUNDER_PUBLIC_URL>/console`.
+1. Sign in to the <ProductName /> Console at `https://<THUNDERID_PUBLIC_URL>/console`.
 2. Navigate to **Applications** → **New Application**.
 3. Enter an **Application name**.
 4. Select **Backend service** as the application type.
@@ -86,7 +86,7 @@ JWT authentication is the foundation of API security with Azure APIM and <Produc
 Use the client credentials grant to request an access token:
 
 ```bash
-curl --location 'https://<THUNDER_PUBLIC_URL>/oauth2/token' \
+curl --location 'https://<THUNDERID_PUBLIC_URL>/oauth2/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
   --data-urlencode 'client_id=<CLIENT_ID>' \
@@ -115,7 +115,7 @@ Azure APIM enforces JWT validation through [inbound policies](https://learn.micr
 | `header-name` | `Authorization` | HTTP header that carries the Bearer token |
 | `failed-validation-httpcode` | `401` | HTTP status code returned when validation fails |
 | `failed-validation-error-message` | `Unauthorized` | Error message returned when validation fails |
-| `url` (openid-config) | `https://<THUNDER_PUBLIC_URL>/.well-known/openid-configuration` | <ProductName /> OpenID Connect discovery endpoint; Azure APIM uses it to resolve the JWKS URI and signing keys |
+| `url` (openid-config) | `https://<THUNDERID_PUBLIC_URL>/.well-known/openid-configuration` | <ProductName /> OpenID Connect discovery endpoint; Azure APIM uses it to resolve the JWKS URI and signing keys |
 | `<audience>` (optional) | `https://api.example.com/bookings` | Must match the `identifier` of the Resource Server created in <ProductName />; Azure APIM rejects tokens whose `aud` claim does not contain this value |
 
 5. Add the `validate-jwt` policy inside the `<inbound>` section:
@@ -125,7 +125,7 @@ Azure APIM enforces JWT validation through [inbound policies](https://learn.micr
 <inbound>
   <base />
   <validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
-    <openid-config url="https://<THUNDER_PUBLIC_URL>/.well-known/openid-configuration" />
+    <openid-config url="https://<THUNDERID_PUBLIC_URL>/.well-known/openid-configuration" />
   </validate-jwt>
 </inbound>
 ```
@@ -240,7 +240,7 @@ A Resource Server represents your API in <ProductName />. The Resource Server gr
 
 **Using the Console:**
 
-1. Sign in to the <ProductName /> Console at `https://<THUNDER_PUBLIC_URL>/console`.
+1. Sign in to the <ProductName /> Console at `https://<THUNDERID_PUBLIC_URL>/console`.
 2. Navigate to **Resource servers** → **New Resource Server**.
 3. Fill in the following fields:
    - **Name**: `Booking API`
@@ -315,7 +315,7 @@ Update the `validate-jwt` policy to add a `<required-claims>` block. Azure APIM 
 <inbound>
   <base />
   <validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
-    <openid-config url="https://<THUNDER_PUBLIC_URL>/.well-known/openid-configuration" />
+    <openid-config url="https://<THUNDERID_PUBLIC_URL>/.well-known/openid-configuration" />
     <required-claims>
       <claim name="scope" match="any" separator=" ">
         <value>item:write</value>
@@ -343,7 +343,7 @@ Update the `validate-jwt` policy to add a `<required-claims>` block. Azure APIM 
 Request a token for the application that has the role assigned:
 
 ```bash
-curl --location 'https://<THUNDER_PUBLIC_URL>/oauth2/token' \
+curl --location 'https://<THUNDERID_PUBLIC_URL>/oauth2/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
   --data-urlencode 'scope=item:write' \
