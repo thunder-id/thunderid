@@ -18,6 +18,12 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+async function throwResponseError(response, operation) {
+  const body = (await response.text()).trim();
+  const details = body ? `: ${body}` : "";
+  throw new Error(`${operation} (${response.status})${details}`);
+}
+
 export async function getAppMetadata() {
   const res = await fetchWithTimeout(
     `${AUTH_SERVER_BASE_URL}/flow/meta?type=APP&id=${encodeURIComponent(APP_ID)}`
@@ -39,7 +45,7 @@ export async function initiateFlow(flowType) {
     // included for the browser to store it here and send it back on later flow calls.
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`Flow initiation failed: ${res.status}`);
+  if (!res.ok) await throwResponseError(res, "Flow initiation failed");
   return res.json();
 }
 
@@ -55,7 +61,7 @@ export async function submitFlowStep({ executionId, action, inputs, challengeTok
     body: JSON.stringify(payload),
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`Flow step failed: ${res.status}`);
+  if (!res.ok) await throwResponseError(res, "Flow step failed");
   return res.json();
 }
 
@@ -102,6 +108,6 @@ export async function exchangeAssertion(assertion) {
       client_id: CLIENT_ID,
     }),
   });
-  if (!res.ok) throw new Error(`Token exchange failed (${res.status})`);
+  if (!res.ok) await throwResponseError(res, "Token exchange failed");
   return res.json();
 }
