@@ -155,9 +155,11 @@ func (s *securityService) authorize(r *http.Request) error {
 	if !HasSufficientSystemPermission(permissions, required) {
 		return errInsufficientPermissions
 	}
-	// A public path also serves callers without a token, so its service decides what a token that names no
+	// A permission of the system tree reaches the whole deployment, so it needs no organization unit. A public
+	// path also serves callers without a token, so its service decides what a token that names no
 	// organization unit may do there.
-	if LacksOrganizationUnit(r.Context()) && !s.isPublicPath(r.Context(), r.URL.Path) {
+	if !reachesDeployment(required) && LacksOrganizationUnit(r.Context()) &&
+		!s.isPublicPath(r.Context(), r.URL.Path) {
 		s.logger.Debug(r.Context(), "Request refused: the token names no organization unit",
 			log.String("path", r.URL.Path))
 		return errForbidden
