@@ -7643,12 +7643,13 @@
   },
   {
     "resourceType": "TEMPLATE",
-    "category": "PASSWORDLESS",
+    "category": "CIBA",
     "type": "CIBA_EMAIL_NOTIFICATION",
     "flowType": "AUTHENTICATION",
+    "configureBeforeSave": true,
     "display": {
       "label": "CIBA Email Notification",
-      "description": "Backchannel authentication with email-based approval",
+      "description": "Backchannel authentication that emails an approval link, asks the user to approve or deny, and signs them in with an existing authentication flow",
       "image": "assets/images/icons/email-down.svg",
       "showOnResourcePanel": true
     },
@@ -7844,7 +7845,7 @@
               }
             ]
           },
-          "onSuccess": "prompt_credentials",
+          "onSuccess": "approve_request",
           "layout": {
             "size": {
               "width": 244,
@@ -7857,41 +7858,40 @@
           }
         },
         {
-          "id": "prompt_credentials",
+          "id": "approve_request",
           "type": "PROMPT",
           "meta": {
             "components": [
               {
                 "align": "center",
                 "type": "TEXT",
-                "id": "credentials_heading",
-                "label": "{{ t(signin:forms.ciba.credentials.heading) }}",
+                "id": "approve_heading",
+                "label": "{{ t(signin:forms.ciba.approve.heading) }}",
                 "variant": "HEADING_1"
               },
               {
                 "align": "center",
                 "type": "TEXT",
-                "id": "credentials_message",
-                "label": "{{ t(signin:forms.ciba.credentials.message) }}",
+                "id": "approve_message",
+                "label": "{{ t(signin:forms.ciba.approve.message) }}",
                 "variant": "HEADING_6"
               },
               {
                 "type": "BLOCK",
-                "id": "block_credentials",
+                "id": "approve_block",
                 "components": [
-                  {
-                    "id": "input_password",
-                    "ref": "password",
-                    "type": "PASSWORD_INPUT",
-                    "label": "{{ t(signin:forms.credentials.fields.password.label) }}",
-                    "required": true,
-                    "placeholder": "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
-                  },
                   {
                     "type": "ACTION",
                     "id": "action_approve",
-                    "label": "{{ t(signin:forms.ciba.credentials.actions.approve.label) }}",
+                    "label": "{{ t(signin:forms.ciba.approve.actions.approve.label) }}",
                     "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_deny",
+                    "label": "{{ t(signin:forms.ciba.approve.actions.deny.label) }}",
+                    "variant": "SECONDARY",
                     "eventType": "SUBMIT"
                   }
                 ]
@@ -7900,24 +7900,22 @@
           },
           "prompts": [
             {
-              "inputs": [
-                {
-                  "ref": "input_password",
-                  "identifier": "password",
-                  "type": "PASSWORD_INPUT",
-                  "required": true
-                }
-              ],
               "action": {
                 "ref": "action_approve",
-                "nextNode": "credentials_auth"
+                "nextNode": "call_sign_in"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_deny",
+                "nextNode": "request_denied"
               }
             }
           ],
           "layout": {
             "size": {
               "width": 350,
-              "height": 500
+              "height": 400
             },
             "position": {
               "x": 2039,
@@ -7926,57 +7924,54 @@
           }
         },
         {
-          "id": "credentials_auth",
-          "type": "TASK_EXECUTION",
-          "executor": {
-            "name": "CredentialsAuthExecutor"
+          "id": "request_denied",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "denied_heading",
+                "label": "{{ t(signin:forms.ciba.denied.heading) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "denied_message",
+                "label": "{{ t(signin:forms.ciba.denied.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
           },
-          "onSuccess": "authorization_check",
-          "onIncomplete": "prompt_credentials",
+          "next": "end",
           "layout": {
             "size": {
-              "width": 244,
-              "height": 113
+              "width": 350,
+              "height": 400
             },
             "position": {
-              "x": 2489,
-              "y": 442
+              "x": 2039,
+              "y": 850
             }
           }
         },
         {
-          "id": "authorization_check",
-          "type": "TASK_EXECUTION",
-          "executor": {
-            "name": "AuthorizationExecutor"
-          },
-          "onSuccess": "auth_assert",
-          "layout": {
-            "size": {
-              "width": 244,
-              "height": 113
-            },
-            "position": {
-              "x": 2833,
-              "y": 442
-            }
-          }
-        },
-        {
-          "id": "auth_assert",
-          "type": "TASK_EXECUTION",
-          "executor": {
-            "name": "AuthAssertExecutor"
+          "id": "call_sign_in",
+          "type": "CALL",
+          "flow": {
+            "ref": "",
+            "filterFlowType": "AUTHENTICATION"
           },
           "onSuccess": "auth_success",
           "layout": {
             "size": {
-              "width": 244,
-              "height": 113
+              "width": 260,
+              "height": 120
             },
             "position": {
-              "x": 3177,
-              "y": 442
+              "x": 2489,
+              "y": 438
             }
           }
         },
@@ -8016,7 +8011,7 @@
               "height": 400
             },
             "position": {
-              "x": 3521,
+              "x": 2849,
               "y": 110
             }
           }
@@ -8030,7 +8025,401 @@
               "height": 34
             },
             "position": {
-              "x": 3971,
+              "x": 3299,
+              "y": 434
+            }
+          }
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "CIBA",
+    "type": "CIBA_SMS_NOTIFICATION",
+    "flowType": "AUTHENTICATION",
+    "configureBeforeSave": true,
+    "display": {
+      "label": "CIBA SMS Notification",
+      "description": "Backchannel authentication that texts an approval link, asks the user to approve or deny, and signs them in with an existing authentication flow",
+      "image": "assets/images/icons/mobile-message.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "CIBA SMS Notification Flow",
+      "handle": "ciba-sms-notification-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "identify_user",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 434
+            }
+          }
+        },
+        {
+          "id": "identify_user",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "loginHintAttribute": "username"
+          },
+          "executor": {
+            "name": "IdentifyingExecutor",
+            "inputs": [
+              {
+                "identifier": "login_hint",
+                "type": "TEXT_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "generate_invite",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 213,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "generate_invite",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_notification_sms",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 557,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "send_notification_sms",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "senderId": "{{SENDER_ID}}",
+            "smsTemplate": "ciba-notification"
+          },
+          "executor": {
+            "name": "SMSExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "mobile_number",
+                "type": "PHONE_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "notification_sent_status",
+          "onFailure": "notification_error_status",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 901,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "notification_sent_status",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "notification_icon",
+                "label": "📱",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "notification_heading",
+                "label": "{{ t(signin:forms.ciba.notification_sent.heading) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "notification_message",
+                "label": "{{ t(signin:forms.ciba.notification_sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Authentication notification sent",
+          "next": "verify_invite",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 1245,
+              "y": 110
+            }
+          }
+        },
+        {
+          "id": "notification_error_status",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "error_icon",
+                "label": "❌",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "error_heading",
+                "label": "{{ t(signin:forms.ciba.notification_error.heading) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "error_message",
+                "label": "{{ t(signin:forms.ciba.notification_error.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Authentication notification failed",
+          "next": "end",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 1245,
+              "y": 850
+            }
+          }
+        },
+        {
+          "id": "verify_invite",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify",
+            "inputs": [
+              {
+                "identifier": "inviteToken",
+                "type": "HIDDEN",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "approve_request",
+          "layout": {
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 1695,
+              "y": 442
+            }
+          }
+        },
+        {
+          "id": "approve_request",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "approve_heading",
+                "label": "{{ t(signin:forms.ciba.approve.heading) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "approve_message",
+                "label": "{{ t(signin:forms.ciba.approve.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "approve_block",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_approve",
+                    "label": "{{ t(signin:forms.ciba.approve.actions.approve.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_deny",
+                    "label": "{{ t(signin:forms.ciba.approve.actions.deny.label) }}",
+                    "variant": "SECONDARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_approve",
+                "nextNode": "call_sign_in"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_deny",
+                "nextNode": "request_denied"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 2039,
+              "y": 110
+            }
+          }
+        },
+        {
+          "id": "request_denied",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "denied_heading",
+                "label": "{{ t(signin:forms.ciba.denied.heading) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "denied_message",
+                "label": "{{ t(signin:forms.ciba.denied.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "end",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 2039,
+              "y": 850
+            }
+          }
+        },
+        {
+          "id": "call_sign_in",
+          "type": "CALL",
+          "flow": {
+            "ref": "",
+            "filterFlowType": "AUTHENTICATION"
+          },
+          "onSuccess": "auth_success",
+          "layout": {
+            "size": {
+              "width": 260,
+              "height": 120
+            },
+            "position": {
+              "x": 2489,
+              "y": 438
+            }
+          }
+        },
+        {
+          "id": "auth_success",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "success_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "success_heading",
+                "label": "{{ t(signin:forms.ciba.success.heading) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "success_message",
+                "label": "{{ t(signin:forms.ciba.success.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Authentication successful",
+          "next": "end",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 2849,
+              "y": 110
+            }
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 3299,
               "y": 434
             }
           }

@@ -280,6 +280,39 @@ func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ForceRepromptFromRun
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ForceRepromptFromSharedRuntimeData() {
+	ctx := buildConsentNodeContext()
+	ctx.SharedRuntimeData = map[string]string{common.RuntimeKeyForceConsentReprompt: "true"}
+	suite.setupDefaultAuthnProviderMocks()
+
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"), mock.Anything).Return(true)
+	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+		On("HasRequiredInputs", ctx, mock.AnythingOfType("*providers.ExecutorResponse")).Return(false)
+
+	suite.mockConsentEnforcer.On("ResolveConsent", mock.Anything, "default", "app-123", "", "user-123",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true, mock.Anything).
+		Return(nil, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+}
+
+func (suite *ConsentExecutorTestSuite) TestGetRequiredAttributes_FromSharedRuntimeData() {
+	ctx := buildConsentNodeContext()
+	ctx.SharedRuntimeData = map[string]string{
+		common.RuntimeKeyRequiredEssentialAttributes: "email",
+		common.RuntimeKeyRequiredOptionalAttributes:  "name phone",
+	}
+
+	essential, optional := suite.executor.getRequiredAttributes(ctx)
+
+	assert.Equal(suite.T(), []string{"email"}, essential)
+	assert.Equal(suite.T(), []string{"name", "phone"}, optional)
+}
+
 // The client's own setting asks for consent on every authorization; an explicit false leaves it remembered.
 func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ForceRepromptFromTheClient() {
 	yes, no := true, false

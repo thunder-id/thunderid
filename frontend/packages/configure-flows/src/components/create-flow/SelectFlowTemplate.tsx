@@ -21,10 +21,16 @@ import {useTranslation} from 'react-i18next';
 import useGetFlowsMeta from '../../api/useGetFlowsMeta';
 import type {FlowType} from '../../models/flows';
 import type {FlowTemplate} from '../../models/templates';
+import {TemplateCategories} from '../../models/templates';
 import resolveStaticResourcePath from '../../utils/resolveStaticResourcePath';
 
 interface SelectFlowTemplateProps {
   flowType: FlowType;
+  /**
+   * Lists only the templates of this category, and the blank template. Without it, the templates of the CIBA
+   * category are left out: they are offered only when the wizard's CIBA kind asks for them.
+   */
+  category?: string;
   selectedTemplate: FlowTemplate | null;
   onTemplateChange: (template: FlowTemplate) => void;
 }
@@ -72,6 +78,7 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   MAGIC_LINK: ['assets/images/icons/link.svg'],
   BASIC_MAGIC_LINK: ['assets/images/icons/password.svg', 'assets/images/icons/link.svg'],
   CIBA_EMAIL_NOTIFICATION: ['assets/images/icons/email-down.svg'],
+  CIBA_SMS_NOTIFICATION: ['assets/images/icons/mobile-message.svg'],
   DISAMBIGUATION_LOGIN: ['assets/images/icons/magnifying-glass.svg'],
   DEFAULT: ['assets/images/icons/user.svg'],
   SELF_ATTRIBUTE_VERIFICATION: ['assets/images/icons/email-down.svg'],
@@ -85,12 +92,20 @@ const DEVICE_TEMPLATE_ICONS: Record<string, ReactNode> = {
 
 export default function SelectFlowTemplate({
   flowType,
+  category = '',
   selectedTemplate,
   onTemplateChange,
 }: SelectFlowTemplateProps): JSX.Element {
   const {t} = useTranslation();
   const {data} = useGetFlowsMeta({flowType});
-  const templates = data.templates;
+  const flowTypeTemplates = data.templates;
+  const templates = useMemo(
+    () =>
+      category
+        ? flowTypeTemplates.filter((tmpl) => tmpl.category === category || tmpl.type === 'BLANK')
+        : flowTypeTemplates.filter((tmpl) => tmpl.category !== TemplateCategories.Ciba),
+    [flowTypeTemplates, category],
+  );
 
   const {mode, systemMode} = useColorScheme();
   const effectiveMode = mode === 'system' ? systemMode : mode;
@@ -111,9 +126,10 @@ export default function SelectFlowTemplate({
 
   useEffect(() => {
     if (!selectedTemplate && templates.length > 0) {
-      onTemplateChange(templates[0]);
+      // A scoped list starts on its own templates, not on the blank one.
+      onTemplateChange(category ? (nonBlankTemplates[0] ?? templates[0]) : templates[0]);
     }
-  }, [templates, selectedTemplate, onTemplateChange]);
+  }, [templates, nonBlankTemplates, category, selectedTemplate, onTemplateChange]);
 
   const categories = useMemo(() => {
     const present = new Set(nonBlankTemplates.map((template) => template.category));
@@ -263,25 +279,27 @@ export default function SelectFlowTemplate({
             },
           }}
         />
-        <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
-          <Chip
-            label={t('common:all', 'All')}
-            onClick={() => setSelectedCategory(null)}
-            color={selectedCategory === null ? 'primary' : 'default'}
-            variant={selectedCategory === null ? 'filled' : 'outlined'}
-            size="small"
-          />
-          {categories.map((cat) => (
+        {!category && (
+          <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
             <Chip
-              key={cat}
-              label={CATEGORY_LABELS[cat] ?? cat}
-              onClick={() => setSelectedCategory(cat)}
-              color={selectedCategory === cat ? 'primary' : 'default'}
-              variant={selectedCategory === cat ? 'filled' : 'outlined'}
+              label={t('common:all', 'All')}
+              onClick={() => setSelectedCategory(null)}
+              color={selectedCategory === null ? 'primary' : 'default'}
+              variant={selectedCategory === null ? 'filled' : 'outlined'}
               size="small"
             />
-          ))}
-        </Box>
+            {categories.map((cat) => (
+              <Chip
+                key={cat}
+                label={CATEGORY_LABELS[cat] ?? cat}
+                onClick={() => setSelectedCategory(cat)}
+                color={selectedCategory === cat ? 'primary' : 'default'}
+                variant={selectedCategory === cat ? 'filled' : 'outlined'}
+                size="small"
+              />
+            ))}
+          </Box>
+        )}
       </Stack>
 
       {/* Template grid */}

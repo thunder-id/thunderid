@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"time"
 
@@ -231,6 +232,8 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		}
 	}
 
+	surfaceBindingMessage(engineCtx, &flowStep)
+
 	// Build a signed error assertion for an in-band flow failure so the OAuth callback can verify and
 	// propagate it to the waiting authorization request.
 	if flowStep.Status == providers.FlowStatusError {
@@ -270,6 +273,27 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	}
 
 	return &flowStep, nil
+}
+
+// surfaceBindingMessage adds the binding message of a CIBA request to a step that waits for the user, so each
+// screen of the request can show it. Other requests and finished steps carry none.
+func surfaceBindingMessage(engineCtx *EngineContext, flowStep *FlowStep) {
+	if flowStep.Status != providers.FlowStatusIncomplete {
+		return
+	}
+	if common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyCallbackType) != string(providers.GrantTypeCIBA) {
+		return
+	}
+	message := common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyBindingMessage)
+	if message == "" {
+		return
+	}
+	if flowStep.Data.AdditionalData == nil {
+		flowStep.Data.AdditionalData = make(map[string]string)
+	}
+	flowStep.Data.AdditionalData[common.DataBindingMessage] = message
 }
 
 // flowErrorCallbackData returns the callback metadata needed to report a signed flow failure.
@@ -1419,6 +1443,7 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 	}
 
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
+	engineCtx.sharedRuntimeData = maps.Clone(initContext.SharedRuntimeData)
 
 	// Store the context without executing the flow
 	if storeErr := s.storeContext(ctx, engineCtx, 0, logger); storeErr != nil {
@@ -1480,6 +1505,7 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 
 	engineCtx.TraceID = sysContext.GetTraceID(ctx)
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
+	engineCtx.sharedRuntimeData = maps.Clone(initContext.SharedRuntimeData)
 	prepareContext(engineCtx, "", initContext.InitialInputs)
 
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)

@@ -102,6 +102,7 @@ interface MockAcceptInviteRenderProps {
   handleSubmit: typeof mockHandleSubmit;
   isLoading: boolean;
   components: unknown[];
+  additionalData?: Record<string, string>;
   isComplete: boolean;
   isValidatingToken: boolean;
   isTokenInvalid: boolean;
@@ -213,6 +214,27 @@ describe('AcceptInviteBox', () => {
     render(<AcceptInviteBox />);
     expect(screen.getByText(/Unable to verify invite/)).toBeInTheDocument();
     expect(screen.getByText(/This invite link is invalid or has expired/)).toBeInTheDocument();
+  });
+
+  it('shows the binding message of a backchannel request as plain text', () => {
+    mockAcceptInviteRenderProps = createMockAcceptInviteRenderProps({
+      additionalData: {bindingMessage: 'Approve <b>login</b> from the call center'},
+      components: [{id: 'heading', type: 'TEXT', label: 'Authorize Request', variant: 'HEADING_1'}],
+    });
+    render(<AcceptInviteBox />);
+
+    const message = screen.getByTestId('invite-binding-message');
+    expect(message).toHaveTextContent('Request message');
+    expect(message).toHaveTextContent('Approve <b>login</b> from the call center');
+    expect(message.querySelector('b')).toBeNull();
+  });
+
+  it('shows no binding message when the step carries none', () => {
+    mockAcceptInviteRenderProps = createMockAcceptInviteRenderProps({
+      additionalData: {callbackType: 'urn:openid:params:grant-type:ciba'},
+    });
+    render(<AcceptInviteBox />);
+    expect(screen.queryByTestId('invite-binding-message')).not.toBeInTheDocument();
   });
 
   it('shows loading spinner when loading and no components', () => {

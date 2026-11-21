@@ -257,6 +257,8 @@ A **CALL** node invokes another flow as a sub-flow. When the callee flow reaches
 
 Any flow can call any other flow, regardless of `flowType`, with one exception: a flow that runs with the server's authority, such as an authentication or registration flow, cannot call an administration, user onboarding, or invitation flow. Such a call terminates the flow with the code `FES-1031`. See [Permissions for Administration Flows](../../users/manage-roles#permissions-for-administration-flows). The referenced flow is resolved at runtime by its ID, so the callee can be edited independently. Nested CALLs are supported up to a fixed maximum depth of 10; exceeding it terminates the flow with a call-depth-exceeded error.
 
+The caller and the callee share the signed-in user and the user inputs. Values that the callee's steps store in the flow's runtime data, such as authorized permissions and consent decisions, stay in the callee, so a step after the CALL node cannot change what the callee decided or asserted. An authentication flow that calls an authentication flow needs no Auth Assertion Generator of its own, because the callee issues the assertion. A backchannel authentication (CIBA) request is the exception to the runtime data rule: its request details stay readable in the callee. See [Sign the User In with an Existing Flow](../../protocols/oauth-oidc/backchannel-authentication#sign-the-user-in-with-an-existing-flow).
+
 **Node configuration**
 
 | Field | Required | Description |
@@ -474,7 +476,7 @@ Some Executors run entirely in the background and do not need a preceding View t
 
 | Executor | Placement | Prerequisites |
 |---|---|---|
-| **Auth Assertion Generator** | Last Executor before the END node in every authentication flow | User must be authenticated by prior Executors |
+| **Auth Assertion Generator** | Last Executor before the END node in every authentication flow, unless the flow calls an authentication flow | User must be authenticated by prior Executors |
 | **Authorization** | After authentication Executors, before Auth Assertion Generator | User must be authenticated |
 | **Generate OTP** | Before the SMS OTP View | - |
 | **Send SMS** | After Generate OTP, before the SMS OTP View | User's mobile number must be on record |
@@ -2733,9 +2735,9 @@ Initiates an OpenID4VP presentation request and, on each subsequent poll, checks
 <details>
 <summary>Auth Assertion Generator</summary>
 
-Generates the final authentication assertion, a signed JWT, that <ProductName /> returns to the client on successful flow completion. This must be the last executor before every END node in an authentication flow.
+Generates the final authentication assertion, a signed JWT, that <ProductName /> returns to the client on successful flow completion. This must be the last executor before every END node in an authentication flow, unless the flow calls an authentication flow, which issues the assertion.
 
-**When to use:** Every authentication flow, immediately before the END node. This is the final step that returns the signed JWT to the client. Do not place in registration-only or recovery-only flows unless those flows also complete with a sign-in.
+**When to use:** Every authentication flow, immediately before the END node, except one that calls an authentication flow, such as a CIBA flow. This is the final step that returns the signed JWT to the client. Do not place in registration-only or recovery-only flows unless those flows also complete with a sign-in.
 
 **Prerequisites:**
 - An authenticated user must be present in the flow context: at least one authentication executor (Identifier + Password, OAuth, OIDC, SMS OTP, Passkey, Magic Link, etc.) must have set `isAuthenticated: true`. The executor hard-fails if no authenticated user is present.

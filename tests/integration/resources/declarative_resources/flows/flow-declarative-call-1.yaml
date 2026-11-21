@@ -1,0 +1,18 @@
+resource_type: flow
+id: decl-flow-call-1
+ouHandle: decl-ou-1
+handle: decl-flow-call-1
+name: Declarative Calling Flow
+flowType: AUTHENTICATION
+activeVersion: 1
+nodes:
+  - id: start
+    type: START
+    onSuccess: call_sign_in
+  - id: call_sign_in
+    type: CALL
+    flow:
+      ref: decl-flow-1
+    onSuccess: end
+  - id: end
+    type: END

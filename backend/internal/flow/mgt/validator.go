@@ -77,7 +77,10 @@ type flowValidator struct {
 	idpProvider            idpProvider
 	groupProvider          groupProvider
 	roleProvider           roleProvider
-	logger                 *log.Logger
+	// deferCallTargetChecks is set while flows load from files, when a call target cannot be resolved yet. A flow
+	// that calls another flow then passes the assertion check, which runs again once every file is loaded.
+	deferCallTargetChecks bool
+	logger                *log.Logger
 }
 
 // newFlowValidator creates a new instance of flowValidator with the provided dependencies. The IdP provider is
@@ -148,7 +151,7 @@ func (v *flowValidator) validateFlow(ctx context.Context, flowDef *FlowDefinitio
 		return err
 	}
 
-	if err := v.validateFlowTypeBasedConstraints(flowDef.FlowType, flowDef.Nodes); err != nil {
+	if err := v.validateFlowTypeBasedConstraints(ctx, flowDef.FlowType, flowDef.Nodes); err != nil {
 		return err
 	}
 	if flowDef.FlowType == providers.FlowTypeDeviceGrant {
@@ -323,9 +326,9 @@ var modeFlowTypes = map[string]map[string][]providers.FlowType{
 // validateFlowTypeBasedConstraints checks forbidden and required executor rules for the flow type.
 // Uses static maps only — no registry access required.
 func (v *flowValidator) validateFlowTypeBasedConstraints(
-	flowType providers.FlowType, nodes []providers.NodeDefinition,
+	ctx context.Context, flowType providers.FlowType, nodes []providers.NodeDefinition,
 ) *tidcommon.ServiceError {
-	if svcErr := v.validateRequiredExecutors(flowType, nodes); svcErr != nil {
+	if svcErr := v.validateRequiredExecutors(ctx, flowType, nodes); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := v.validateModeFlowTypes(flowType, nodes); svcErr != nil {
@@ -547,9 +550,10 @@ func (v *flowValidator) validateCompanionExecutors(
 }
 
 // validateRequiredExecutors returns an error if a TASK_EXECUTION node with a required executor
-// is absent from the flow for the given flow type.
+// is absent from the flow for the given flow type. An authentication flow that calls another
+// authentication flow needs no assertion step of its own: the called flow issues the assertion.
 func (v *flowValidator) validateRequiredExecutors(
-	flowType providers.FlowType, nodes []providers.NodeDefinition,
+	ctx context.Context, flowType providers.FlowType, nodes []providers.NodeDefinition,
 ) *tidcommon.ServiceError {
 	required, ok := requiredExecutorsByFlowType[flowType]
 	if !ok {
@@ -558,6 +562,18 @@ func (v *flowValidator) validateRequiredExecutors(
 	presentExecutors := collectPresentExecutors(nodes)
 	for _, name := range required {
 		if !presentExecutors[name] {
+			if name == executormeta.ExecutorNameAuthAssert {
+				if v.deferCallTargetChecks && hasCallTarget(nodes) {
+					continue
+				}
+				callsAuthentication, svcErr := v.callsAuthenticationFlow(ctx, nodes)
+				if svcErr != nil {
+					return svcErr
+				}
+				if callsAuthentication {
+					continue
+				}
+			}
 			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.required_executor_missing_description",
 				DefaultValue: "Flow type {{param(flowType)}} requires executor '{{param(executorName)}}'",
@@ -566,6 +582,41 @@ func (v *flowValidator) validateRequiredExecutors(
 		}
 	}
 	return nil
+}
+
+// hasCallTarget reports whether a CALL node of the flow names the flow it calls.
+func hasCallTarget(nodes []providers.NodeDefinition) bool {
+	return slices.ContainsFunc(nodes, func(node providers.NodeDefinition) bool {
+		return node.Type == string(common.NodeTypeCall) && node.Flow != nil && node.Flow.Ref != ""
+	})
+}
+
+// callsAuthenticationFlow reports whether a CALL node of the flow targets an authentication flow. A target
+// that cannot be resolved, or a flow without a flow store to resolve it, does not count.
+func (v *flowValidator) callsAuthenticationFlow(
+	ctx context.Context, nodes []providers.NodeDefinition,
+) (bool, *tidcommon.ServiceError) {
+	if v.flowStore == nil {
+		return false, nil
+	}
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeCall) || node.Flow == nil || node.Flow.Ref == "" {
+			continue
+		}
+		target, err := v.flowStore.GetFlowByID(ctx, node.Flow.Ref)
+		if err != nil {
+			if errors.Is(err, errFlowNotFound) {
+				continue
+			}
+			v.logger.Error(ctx, "Failed to resolve call target flow",
+				log.String("flowID", node.Flow.Ref), log.Error(err))
+			return false, &tidcommon.InternalServerError
+		}
+		if target != nil && target.FlowType == providers.FlowTypeAuthentication {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // collectPresentExecutors returns a set of executor names present in TASK_EXECUTION nodes.

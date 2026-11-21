@@ -358,14 +358,17 @@ type FlowRequest struct {
 	OUID           string            `json:"ouId,omitempty"`
 }
 
-// FlowInitContext represents the context for initiating a new flow with runtime data
+// FlowInitContext represents the context for initiating a new flow with runtime data.
+// SharedRuntimeData seeds the cross-frame bucket, so its values stay readable inside flows the
+// initiated flow calls.
 type FlowInitContext struct {
-	ApplicationID    string
-	FlowType         string
-	RuntimeData      map[string]string
-	InitialInputs    map[string]string
-	ExpirySeconds    int64
-	InitiatorRequest *providers.InitiatorRequest
+	ApplicationID     string
+	FlowType          string
+	RuntimeData       map[string]string
+	SharedRuntimeData map[string]string
+	InitialInputs     map[string]string
+	ExpirySeconds     int64
+	InitiatorRequest  *providers.InitiatorRequest
 }
 
 // FlowContextDB represents the database row for a flow context.

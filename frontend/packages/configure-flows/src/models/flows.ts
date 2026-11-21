@@ -79,6 +79,13 @@ export const FlowType = {
 export type FlowType = (typeof FlowType)[keyof typeof FlowType];
 
 /**
+ * A kind of flow the Create Flow wizard offers that is not a flow type of its own. The server runs a CIBA
+ * request through the application's authentication flow, so a CIBA flow is an AUTHENTICATION flow built from
+ * the CIBA templates.
+ */
+export const CIBA_FLOW_KIND = 'CIBA';
+
+/**
  * Enumeration of node types available in flow definitions.
  *
  * @public

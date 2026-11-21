@@ -3249,6 +3249,31 @@ func (s *PromptOnlyNodeTestSuite) TestLoginOptionsVariant_SingleACRFilter() {
 		"selected_auth_class must be recorded for the auto-selected ACR")
 }
 
+func (s *PromptOnlyNodeTestSuite) TestLoginOptionsVariant_SingleACRFilterFromSharedRuntimeData() {
+	node := newPromptNode("login-chooser", loginOptionsProps(), false, false)
+	pn := node.(PromptNodeInterface)
+	pn.SetVariant(providers.NodeVariantLoginOptions)
+	pn.SetPrompts([]common.Prompt{
+		{Action: &common.Action{Ref: "pwd", NextNode: "pwd-node"}},
+		{Action: &common.Action{Ref: "otp", NextNode: "otp-node"}},
+		{Action: &common.Action{Ref: "wallet", NextNode: "wallet-node"}},
+	})
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{},
+		SharedRuntimeData: map[string]string{
+			common.RuntimeKeyRequestedAuthClasses: "urn:thunder:acr:generated-code",
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("otp-node", resp.NextNodeID)
+}
+
 func (s *PromptOnlyNodeTestSuite) TestLoginOptionsVariant_PreferenceOrder() {
 	node := newPromptNode("login-chooser", loginOptionsProps(), false, false)
 	pn := node.(PromptNodeInterface)

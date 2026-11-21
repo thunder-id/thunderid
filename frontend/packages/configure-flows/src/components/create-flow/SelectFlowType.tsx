@@ -2,10 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Card, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Lock, LogOut, Send, ShieldCheck, UserCheck, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {
+  KeyRound,
+  Lock,
+  LogOut,
+  Send,
+  ShieldCheck,
+  Smartphone,
+  UserCheck,
+  UserCog,
+  UserPlus,
+} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {FlowType} from '../../models/flows';
+import {CIBA_FLOW_KIND, FlowType} from '../../models/flows';
 
 interface SelectFlowTypeProps {
   selectedType: string | null;
@@ -81,6 +91,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionKey: 'flows:create.type.deviceGrant.description',
       descriptionDefault: 'Authorize input-constrained devices through a browser sign-in flow',
       icon: <KeyRound size={28} />,
+    },
+    {
+      type: CIBA_FLOW_KIND,
+      labelKey: 'flows:create.type.ciba.label',
+      labelDefault: 'CIBA (Backchannel Authentication)',
+      descriptionKey: 'flows:create.type.ciba.description',
+      descriptionDefault: 'Let a user approve a sign-in request on another device, such as their phone',
+      icon: <Smartphone size={28} />,
     },
     {
       type: FlowType.SELF,

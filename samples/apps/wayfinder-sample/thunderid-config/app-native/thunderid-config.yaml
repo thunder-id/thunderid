@@ -1173,6 +1173,145 @@ nodes:
     type: END
 
 ---
+resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000011
+ouHandle: default
+name: Wayfinder App Authentication Consent Flow
+handle: wayfinder-app-auth-consent-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: sso_check
+  - id: sso_check
+    type: TASK_EXECUTION
+    executor:
+      name: SSOCheckExecutor
+    properties:
+      checkpointRef: session
+    onSuccess: session
+    onFailure: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_001
+          label: "{{ t(signin:forms.credentials.title) }}"
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_001
+          components:
+            - id: input_001
+              ref: username
+              type: TEXT_INPUT
+              label: "{{ t(signin:forms.credentials.fields.username.label) }}"
+              required: true
+              placeholder: "{{ t(signin:forms.credentials.fields.username.placeholder) }}"
+            - id: input_002
+              ref: password
+              type: PASSWORD_INPUT
+              label: "{{ t(signin:forms.credentials.fields.password.label) }}"
+              required: true
+              placeholder: "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
+            - type: ACTION
+              id: action_001
+              label: "{{ t(signin:forms.credentials.actions.submit.label) }}"
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_001
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: input_002
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_001
+          nextNode: credentials_auth
+  - id: credentials_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: session
+    onIncomplete: prompt_credentials
+  - id: session
+    type: TASK_EXECUTION
+    executor:
+      name: SessionExecutor
+    onSuccess: authorization_check
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: consent_check
+  - id: consent_check
+    type: TASK_EXECUTION
+    executor:
+      name: ConsentExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: consent_heading
+          label: "{{ meta(application.name) }} is requesting authorization"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: consent_message
+          label: Review the permissions being requested and confirm your authorization.
+          variant: HEADING_6
+        - type: BLOCK
+          id: consent_block
+          components:
+            - id: consent_input
+              ref: consent_decisions
+              type: CONSENT_INPUT
+              required: true
+            - type: ACTION
+              id: consent_action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
+            - type: ACTION
+              id: consent_action_allow
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT_INPUT
+            required: true
+        action:
+          ref: consent_action_allow
+          nextNode: consent_check
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT_INPUT
+            required: true
+        action:
+          ref: consent_action_deny
+          nextNode: consent_check
+  - id: auth_assert
+    type: TASK_EXECUTION
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: end
+  - id: end
+    type: END
+
+---
 resource_type: application
 id: wayfinder-app
 name: Wayfinder
@@ -1309,113 +1448,61 @@ nodes:
         - identifier: inviteToken
           type: HIDDEN
           required: true
-    onSuccess: prompt_credentials
-  - id: prompt_credentials
+    onSuccess: approve_request
+  - id: approve_request
     type: PROMPT
     meta:
       components:
         - align: center
           type: TEXT
-          id: credentials_heading
-          label: Confirm Your Identity
+          id: approve_heading
+          label: Authentication Request
           variant: HEADING_1
         - align: center
           type: TEXT
-          id: credentials_message
-          label: Enter your password to approve the authentication request.
+          id: approve_message
+          label: If you recognize this request, select Approve to continue. If you do not recognize it, select Deny.
           variant: HEADING_6
         - type: BLOCK
-          id: block_credentials
+          id: approve_block
           components:
-            - id: input_password
-              ref: password
-              type: PASSWORD_INPUT
-              label: Password
-              required: true
-              placeholder: Enter your password
             - type: ACTION
               id: action_approve
               label: Approve
               variant: PRIMARY
               eventType: SUBMIT
+            - type: ACTION
+              id: action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
     prompts:
-      - inputs:
-          - ref: input_password
-            identifier: password
-            type: PASSWORD_INPUT
-            required: true
-        action:
+      - action:
           ref: action_approve
-          nextNode: basic_auth
-  - id: basic_auth
-    type: TASK_EXECUTION
-    executor:
-      name: CredentialsAuthExecutor
-    onSuccess: authorization_check
-    onIncomplete: prompt_credentials
-  - id: authorization_check
-    type: TASK_EXECUTION
-    executor:
-      name: AuthorizationExecutor
-    onSuccess: consent_check
-  - id: consent_check
-    type: TASK_EXECUTION
-    executor:
-      name: ConsentExecutor
-    onSuccess: auth_assert
-    onIncomplete: prompt_consent
-  - id: prompt_consent
+          nextNode: call_sign_in
+      - action:
+          ref: action_deny
+          nextNode: request_denied
+  - id: request_denied
     type: PROMPT
     meta:
       components:
         - align: center
           type: TEXT
-          id: consent_heading
-          label: "{{ meta(application.name) }} is requesting authorization"
+          id: denied_heading
+          label: Request Denied
           variant: HEADING_1
         - align: center
           type: TEXT
-          id: consent_message
-          label: Review the permissions being requested and confirm your authorization.
+          id: denied_message
+          label: You denied this request. You may close this window.
           variant: HEADING_6
-        - type: BLOCK
-          id: consent_block
-          components:
-            - id: consent_input
-              ref: consent_decisions
-              type: CONSENT_INPUT
-              required: true
-            - type: ACTION
-              id: consent_action_deny
-              label: Deny
-              variant: SECONDARY
-              eventType: SUBMIT
-            - type: ACTION
-              id: consent_action_allow
-              label: Approve
-              variant: PRIMARY
-              eventType: SUBMIT
-    prompts:
-      - inputs:
-          - ref: consent_input
-            identifier: consent_decisions
-            type: CONSENT_INPUT
-            required: true
-        action:
-          ref: consent_action_allow
-          nextNode: consent_check
-      - inputs:
-          - ref: consent_input
-            identifier: consent_decisions
-            type: CONSENT_INPUT
-            required: true
-        action:
-          ref: consent_action_deny
-          nextNode: consent_check
-  - id: auth_assert
-    type: TASK_EXECUTION
-    executor:
-      name: AuthAssertExecutor
+    message: Request denied
+    next: end
+  - id: call_sign_in
+    type: CALL
+    flow:
+      ref: 0193b0a1-1001-7000-8000-000000000011
     onSuccess: auth_success
   - id: auth_success
     type: PROMPT
@@ -1513,113 +1600,61 @@ nodes:
         - identifier: inviteToken
           type: HIDDEN
           required: true
-    onSuccess: prompt_credentials
-  - id: prompt_credentials
+    onSuccess: approve_request
+  - id: approve_request
     type: PROMPT
     meta:
       components:
         - align: center
           type: TEXT
-          id: credentials_heading
-          label: Confirm Your Identity
+          id: approve_heading
+          label: Authentication Request
           variant: HEADING_1
         - align: center
           type: TEXT
-          id: credentials_message
-          label: Enter your password to approve the authentication request.
+          id: approve_message
+          label: If you recognize this request, select Approve to continue. If you do not recognize it, select Deny.
           variant: HEADING_6
         - type: BLOCK
-          id: block_credentials
+          id: approve_block
           components:
-            - id: input_password
-              ref: password
-              type: PASSWORD_INPUT
-              label: Password
-              required: true
-              placeholder: Enter your password
             - type: ACTION
               id: action_approve
               label: Approve
               variant: PRIMARY
               eventType: SUBMIT
+            - type: ACTION
+              id: action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
     prompts:
-      - inputs:
-          - ref: input_password
-            identifier: password
-            type: PASSWORD_INPUT
-            required: true
-        action:
+      - action:
           ref: action_approve
-          nextNode: basic_auth
-  - id: basic_auth
-    type: TASK_EXECUTION
-    executor:
-      name: CredentialsAuthExecutor
-    onSuccess: authorization_check
-    onIncomplete: prompt_credentials
-  - id: authorization_check
-    type: TASK_EXECUTION
-    executor:
-      name: AuthorizationExecutor
-    onSuccess: consent_check
-  - id: consent_check
-    type: TASK_EXECUTION
-    executor:
-      name: ConsentExecutor
-    onSuccess: auth_assert
-    onIncomplete: prompt_consent
-  - id: prompt_consent
+          nextNode: call_sign_in
+      - action:
+          ref: action_deny
+          nextNode: request_denied
+  - id: request_denied
     type: PROMPT
     meta:
       components:
         - align: center
           type: TEXT
-          id: consent_heading
-          label: "{{ meta(application.name) }} is requesting authorization"
+          id: denied_heading
+          label: Request Denied
           variant: HEADING_1
         - align: center
           type: TEXT
-          id: consent_message
-          label: Review the permissions being requested and confirm your authorization.
+          id: denied_message
+          label: You denied this request. You may close this window.
           variant: HEADING_6
-        - type: BLOCK
-          id: consent_block
-          components:
-            - id: consent_input
-              ref: consent_decisions
-              type: CONSENT_INPUT
-              required: true
-            - type: ACTION
-              id: consent_action_deny
-              label: Deny
-              variant: SECONDARY
-              eventType: SUBMIT
-            - type: ACTION
-              id: consent_action_allow
-              label: Approve
-              variant: PRIMARY
-              eventType: SUBMIT
-    prompts:
-      - inputs:
-          - ref: consent_input
-            identifier: consent_decisions
-            type: CONSENT_INPUT
-            required: true
-        action:
-          ref: consent_action_allow
-          nextNode: consent_check
-      - inputs:
-          - ref: consent_input
-            identifier: consent_decisions
-            type: CONSENT_INPUT
-            required: true
-        action:
-          ref: consent_action_deny
-          nextNode: consent_check
-  - id: auth_assert
-    type: TASK_EXECUTION
-    executor:
-      name: AuthAssertExecutor
+    message: Request denied
+    next: end
+  - id: call_sign_in
+    type: CALL
+    flow:
+      ref: 0193b0a1-1001-7000-8000-000000000011
     onSuccess: auth_success
   - id: auth_success
     type: PROMPT
