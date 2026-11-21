@@ -17,8 +17,7 @@ Complete [Set Up Your Environment](../../../try-it-out/setup) before starting th
 
 ### 1. Configure the Direct Auth Secret
 
-For the local sample, keep the file-backed setting in the
-<ProductName /> deployment configuration:
+For the local sample, keep the file-backed setting in the <ProductName /> deployment configuration:
 
 ```yaml
 server:
@@ -40,10 +39,7 @@ wayfinder-direct-auth-secret
 
 Restart <ProductName /> after updating the secret file.
 
-The Direct Auth Secret authenticates the Wayfinder Server when it calls
-the AuthZEN API. It must match the value configured for the Wayfinder
-backend in the next step. It does not replace the signed-in user or
-agent used as the evaluation subject.
+The Direct Auth Secret authenticates the Wayfinder Server when it calls the AuthZEN API. It must match the value configured for the Wayfinder backend in the next step. It does not replace the signed-in user or agent used as the evaluation subject.
 
 ### 2. Enable AuthZEN Mode
 
