@@ -48,9 +48,30 @@ func outcomesOf(answer json.RawMessage) ([]importOutcome, bool) {
 	return *parsed.Results, true
 }
 
+// writeMode says where a master write takes the sources it records from.
+type writeMode int
+
+const (
+	// forwardWrite applies a version: what the gateway holds as the version has it comes from it.
+	forwardWrite writeMode = iota
+	// revertWrite returns the gateway to an earlier master: what it writes takes the sources that master
+	// records.
+	revertWrite
+)
+
+// writeModeOf is the mode an apply writes the master in: a revert, a project's rollback included, or a
+// forward apply of a version.
+func writeModeOf(options applyOptions) writeMode {
+	if options.isRevert || options.revertTo != nil {
+		return revertWrite
+	}
+	return forwardWrite
+}
+
 // masterWrite is one apply's effect on a gateway's master: what was sent to be written and removed,
 // what the gateway answered, and where it all came from.
 type masterWrite struct {
+	mode      writeMode
 	sent      []bundleResource
 	deletions []gatewayDeletion
 	answer    json.RawMessage
@@ -58,9 +79,20 @@ type masterWrite struct {
 	origin    string
 	by        *Actor
 	at        time.Time
-	// earlier is the master a revert returns to: a resource it sends keeps the source and origin that
-	// master records for it.
+	// earlier is the master a revert returns to, when it has one: what the revert writes takes the source
+	// and origin that master records for it.
 	earlier *Master
+	// sourceContent names each resource of the version a forward write applies by its content hash, so a
+	// resource the gateway holds as that version has it is recorded as coming from it.
+	sourceContent map[string]string
+	// scope is the project a forward apply was scoped to, if any. With owners set, a write names its
+	// version only for scope's resources, if any, and for those of no project: another project's resource
+	// keeps the version its own deploy named, so what a project shows as deployed is never moved by another
+	// project's deploy or by a selection that deployed nothing of it.
+	scope string
+	// owners names the project each resource belongs to, by key, for a write limited as scope says. Nil for
+	// a whole deploy, which names its version for everything the gateway holds as the version has it.
+	owners map[string]string
 	// project is the project the apply was scoped to, and projectRevert marks a rollback of it.
 	project       string
 	projectRevert bool
@@ -73,8 +105,9 @@ type masterWrite struct {
 // A role or group the gateway did not take every removed assignee or member off is recorded refused,
 // with the document it held before, so the next diff offers it, and the removal, again.
 // Every other document is carried over as it was, as is a sent resource the gateway already held as it
-// is, which keeps where it came from. A resource the answer does not name is deployed when the
-// gateway refused nothing it did not name, and failed otherwise, since it is not known.
+// is. A resource the answer does not name is deployed when the gateway refused nothing it did not name,
+// and failed otherwise, since it is not known. After a forward apply, every resource the gateway holds
+// as the applied version has it names that version as its source, sent or not (see repoint).
 func nextMaster(previous *Master, write masterWrite) *Master {
 	outcomes, answered := outcomesOf(write.answer)
 	matcher := newOutcomeMatcher(outcomes)
@@ -101,11 +134,6 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 		key := resource.key()
 		entry := MasterEntry{Key: key, ResourceType: resource.Type, ID: resource.ID, Name: resource.Name,
 			SourceVersion: write.source, Origin: write.origin, At: write.at, By: write.by}
-		if write.earlier != nil && !removal {
-			if was, ok := entryOf(write.earlier, key); ok {
-				entry.SourceVersion, entry.Origin = was.SourceVersion, was.Origin
-			}
-		}
 		switch {
 		case outcome.Status != outcomeSuccess:
 			entry.State = EntryFailed
@@ -186,8 +214,88 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 		}
 		entries[removal.key] = entry
 	}
+	repoint(entries, write)
 
 	return assemble(previous, entries, documents, write)
+}
+
+// repoint settles where each resource the next master records came from, without touching when or by
+// whom its entry was last written. A revert gives what it returns to the sources the master it returns
+// to records (see restoreSources). A forward apply names its version, with its origin, for every
+// resource the gateway holds deployed as that version has it, and for every removal the version agrees
+// with by not holding the resource, leaving another project's resources to a deploy scoped to one.
+// A removal keeps no document to say which project it was, and its source is read only to keep the
+// version it names, so any later version that agrees with it may take it over; who removed it, and
+// when, stay as they were.
+// Otherwise a resource unchanged since an older version, or removed in
+// one and never deployed again, goes on naming that version, and a version a kept master names is never
+// pruned, so versions would pile up past gateway.max_versions.
+func repoint(entries map[string]MasterEntry, write masterWrite) {
+	if write.mode == revertWrite {
+		restoreSources(entries, write)
+		return
+	}
+	for key, entry := range entries {
+		if entry.SourceVersion == write.source && entry.Origin == write.origin {
+			continue
+		}
+		if owner := write.owners[key]; write.owners != nil && owner != "" && owner != write.scope {
+			continue
+		}
+		hash, inVersion := write.sourceContent[key]
+		switch {
+		case entry.State == EntryDeployed && inVersion && hash == entry.ContentHash:
+		case entry.State == EntryRemoved && !inVersion:
+		default:
+			continue
+		}
+		entry.SourceVersion, entry.Origin = write.source, write.origin
+		entries[key] = entry
+	}
+}
+
+// restoreSources gives what a revert returns to the source and origin the master it returns to records.
+// A resource the revert writes or removes takes that master's whatever the gateway answered. A whole
+// revert also restores a resource it carries over as that master records it, deployed or removed with
+// the same document, since a forward apply since may have named a later version for it. A project's
+// rollback leaves every resource it does not write as the gateway holds it now, source included.
+func restoreSources(entries map[string]MasterEntry, write masterWrite) {
+	if write.earlier == nil {
+		return
+	}
+	recorded := make(map[string]MasterEntry, len(write.earlier.Entries))
+	for _, entry := range write.earlier.Entries {
+		recorded[entry.Key] = entry
+	}
+	written := make(map[string]bool, len(write.sent)+len(write.deletions))
+	for _, resource := range write.sent {
+		written[resource.key()] = true
+	}
+	for _, deletion := range write.deletions {
+		written[bundleResource{Type: deletion.ResourceType, ID: deletion.ID}.key()] = true
+	}
+	for key, entry := range entries {
+		was, ok := recorded[key]
+		if !ok {
+			continue
+		}
+		asRecorded := was.State == entry.State && was.ContentHash == entry.ContentHash &&
+			(entry.State == EntryDeployed || entry.State == EntryRemoved)
+		if !written[key] && (write.projectRevert || !asRecorded) {
+			continue
+		}
+		entry.SourceVersion, entry.Origin = was.SourceVersion, was.Origin
+		entries[key] = entry
+	}
+}
+
+// contentHashes names each resource of a version by its content hash, keyed as a master keys it.
+func contentHashes(version *Version) map[string]string {
+	hashes := map[string]string{}
+	for _, resource := range parseBundle(version.Resources) {
+		hashes[resource.key()] = contentHash(resource.Content)
+	}
+	return hashes
 }
 
 // memberListOf returns the resource type whose assignees or members a removal type takes off.
