@@ -146,6 +146,51 @@ func (ts *DCRMTestSuite) TestUnauthenticatedRequestIsRejected() {
 	ts.Assert().Equal("DCRM Unauthenticated", read.ClientName)
 }
 
+// A token that has been revoked is rejected, and the registration is neither disclosed nor modified.
+func (ts *DCRMTestSuite) TestRevokedTokenIsRejected() {
+	registered := ts.register("DCRM Revoked Token")
+	ts.registeredAppIDs = append(ts.registeredAppIDs, registered.AppID)
+
+	token := obtainTokenToRevoke(&ts.Suite)
+	_, status, _ := ts.manageWithAuthorization(http.MethodGet, registered.ClientID, nil, "Bearer "+token)
+	ts.Require().Equal(http.StatusOK, status, "the token must read the registration before it is revoked")
+
+	revokeAndAwaitRejection(&ts.Suite, token)
+
+	update, err := json.Marshal(DCRRegistrationRequest{
+		ClientID:                registered.ClientID,
+		ClientName:              "DCRM Revoked Token Updated",
+		RedirectURIs:            []string{"https://dcrm.example.com/updated"},
+		GrantTypes:              []string{"authorization_code"},
+		ResponseTypes:           []string{"code"},
+		TokenEndpointAuthMethod: "client_secret_basic",
+	})
+	ts.Require().NoError(err)
+	requests := []struct {
+		method string
+		body   []byte
+	}{
+		{http.MethodGet, nil},
+		{http.MethodPut, update},
+		{http.MethodDelete, nil},
+	}
+	for _, r := range requests {
+		read, status, errResp := ts.manageWithAuthorization(r.method, registered.ClientID, r.body, "Bearer "+token)
+		ts.Assert().Equal(http.StatusUnauthorized, status, r.method)
+		ts.Assert().Nil(read, r.method)
+		if ts.Assert().NotNil(errResp, r.method) {
+			ts.Assert().Equal("unauthorized_client", errResp.Error, r.method)
+		}
+	}
+
+	// The registration is untouched and still readable by an administrative caller.
+	read, status, _ := ts.manage(http.MethodGet, registered.ClientID, nil)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Assert().Equal("DCRM Revoked Token", read.ClientName)
+	ts.Assert().Contains(read.RedirectURIs, "https://dcrm.example.com/callback")
+	ts.Assert().NotContains(read.RedirectURIs, "https://dcrm.example.com/updated")
+}
+
 // An update naming a different client is rejected.
 func (ts *DCRMTestSuite) TestUpdateWithMismatchedClientIDIsRejected() {
 	registered := ts.register("DCRM Mismatch Client")
@@ -408,6 +453,19 @@ func (ts *DCRMTestSuite) manage(method, clientID string, body []byte) (
 // credentials at all, so the authorization boundary can be exercised.
 func (ts *DCRMTestSuite) manageAs(method, clientID string, body []byte, asAdmin bool) (
 	*DCRRegistrationResponse, int, *DCRErrorResponse) {
+	authorization := ""
+	if asAdmin {
+		token, err := testutils.GetAccessToken()
+		ts.Require().NoError(err, "Failed to obtain access token")
+		authorization = "Bearer " + token
+	}
+	return ts.manageWithAuthorization(method, clientID, body, authorization)
+}
+
+// manageWithAuthorization issues a client configuration request with the given Authorization header, or
+// none when it is empty.
+func (ts *DCRMTestSuite) manageWithAuthorization(method, clientID string, body []byte, authorization string) (
+	*DCRRegistrationResponse, int, *DCRErrorResponse) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -418,8 +476,8 @@ func (ts *DCRMTestSuite) manageAs(method, clientID string, body []byte, asAdmin 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if asAdmin {
-		ts.setAdminAuthorization(req)
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
 	}
 
 	// A plain client is used so that only the credentials set above are attached.
