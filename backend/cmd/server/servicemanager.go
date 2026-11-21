@@ -603,6 +603,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// OAuth client.
 	fatalOnError(ctx, logger, executor.SetActorProvider(execRegistry, actorProvider),
 		"Failed to inject the actor provider into the flow executors")
+	fatalOnError(ctx, logger, revocation.SetActorProvider(revocationSvc, actorProvider),
+		"Failed to inject the actor provider into the revocation service")
 
 	// Initialize flow metadata service
 	_ = flowmeta.Initialize(mux, actorProvider, ouProvider, designResolveService, i18nService, serverConfigService)

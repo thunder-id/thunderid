@@ -110,74 +110,76 @@ func revokeRequest(form url.Values, category providers.EntityCategory) *http.Req
 
 // Every exit of the handler is one token.revoke event by the client, named by its application or agent
 // ID. A revoked, unknown or invalid token succeeds alike, so the line never tells whether a token
-// existed; another client's token is denied. No event carries the token, a subject or a detail.
+// existed; another client's token is denied. Only a revocation that took effect names the subject the
+// service reports, and no event carries the token or a detail.
 func (suite *RevocationHandlerAuditTestSuite) TestEveryExitPublishesOneEvent() {
+	userToken := buildToken(map[string]interface{}{
+		"jti": "jti-user", "sub": testAuditUserID, "client_id": testClientID,
+	})
+	app := audit.Actor{Type: audit.ActorTypeApplication, ID: testAuditAppID}
 	cases := []struct {
 		name     string
 		form     url.Values
 		category providers.EntityCategory
-		setup    func()
+		result   RevokeResult
+		err      error
 		status   int
 		actor    audit.Actor
+		subject  audit.Ref
 		outcome  audit.Outcome
 	}{
 		{
-			name: "a revoked token", form: url.Values{"token": {testAuditRefresh}},
+			name: "a revoked token with a subject", form: url.Values{"token": {userToken}},
 			category: providers.EntityCategoryApp,
-			setup: func() {
-				suite.service.EXPECT().RevokeToken(mock.Anything, testAuditRefresh, "", testClientID).
-					Return(RevokeOutcomeRevoked, nil).Once()
-			},
-			status: http.StatusOK, actor: audit.Actor{Type: audit.ActorTypeApplication, ID: testAuditAppID},
+			result:   RevokeResult{Outcome: RevokeOutcomeRevoked, TokenSubject: testAuditUserID},
+			status:   http.StatusOK, actor: app,
+			subject: audit.Ref{Type: audit.TargetTypeUser, ID: testAuditUserID},
 			outcome: audit.OutcomeSucceeded,
 		},
 		{
-			name: "an unknown token, by an agent", form: url.Values{"token": {"not-a-token"}},
+			name: "a revoked token without a subject, by an agent", form: url.Values{"token": {testAuditRefresh}},
 			category: providers.EntityCategoryAgent,
-			setup: func() {
-				suite.service.EXPECT().RevokeToken(mock.Anything, "not-a-token", "", testClientID).
-					Return(RevokeOutcomeRevoked, nil).Once()
-			},
-			status: http.StatusOK, actor: audit.Actor{Type: audit.ActorTypeAgent, ID: testAuditAppID},
+			result:   RevokeResult{Outcome: RevokeOutcomeRevoked},
+			status:   http.StatusOK, actor: audit.Actor{Type: audit.ActorTypeAgent, ID: testAuditAppID},
 			outcome: audit.OutcomeSucceeded,
 		},
 		{
-			name: "another client's token", form: url.Values{"token": {testAuditRefresh}},
+			name: "another client's token", form: url.Values{"token": {userToken}},
 			category: providers.EntityCategoryApp,
-			setup: func() {
-				suite.service.EXPECT().RevokeToken(mock.Anything, testAuditRefresh, "", testClientID).
-					Return(RevokeOutcomeNotOwned, nil).Once()
-			},
-			status: http.StatusBadRequest, actor: audit.Actor{Type: audit.ActorTypeApplication, ID: testAuditAppID},
+			result:   RevokeResult{Outcome: RevokeOutcomeNotOwned, TokenSubject: testAuditUserID},
+			status:   http.StatusBadRequest, actor: app,
 			outcome: audit.OutcomeDenied(constants.ErrorInvalidGrant),
 		},
 		{
-			name: "a store failure", form: url.Values{"token": {testAuditRefresh}},
+			name: "a store failure", form: url.Values{"token": {userToken}},
 			category: providers.EntityCategoryApp,
-			setup: func() {
-				suite.service.EXPECT().RevokeToken(mock.Anything, testAuditRefresh, "", testClientID).
-					Return(RevokeOutcomeRevoked, errors.New("deny list unavailable")).Once()
-			},
-			status:  http.StatusInternalServerError,
-			actor:   audit.Actor{Type: audit.ActorTypeApplication, ID: testAuditAppID},
+			result:   RevokeResult{TokenSubject: testAuditUserID},
+			err:      errors.New("deny list unavailable"),
+			status:   http.StatusInternalServerError, actor: app,
 			outcome: audit.OutcomeFailed(constants.ErrorServerError),
 		},
 		{
 			name: "no token", form: url.Values{"token_type_hint": {"refresh_token"}},
-			category: providers.EntityCategoryApp, setup: func() {},
-			status: http.StatusBadRequest, actor: audit.Actor{Type: audit.ActorTypeApplication, ID: testAuditAppID},
+			category: providers.EntityCategoryApp,
+			status:   http.StatusBadRequest, actor: app,
 			outcome: audit.OutcomeFailed(constants.ErrorInvalidRequest),
 		},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
-			tc.setup()
+			if tc.form.Get("token") != "" {
+				suite.service.EXPECT().RevokeToken(mock.Anything, tc.form.Get("token"), "", testClientID).
+					Return(tc.result, tc.err).Once()
+			}
 			bus, published := newRecordingBus(suite.T())
 			recorder := httptest.NewRecorder()
 
 			newRevocationHandler(suite.service, bus).HandleRevoke(recorder, revokeRequest(tc.form, tc.category))
 
 			suite.Require().Equal(tc.status, recorder.Code)
+			if tc.status == http.StatusOK {
+				suite.Empty(recorder.Body.String())
+			}
 			events := published()
 			suite.Require().Len(events, 1)
 			event := events[0]
@@ -186,12 +188,17 @@ func (suite *RevocationHandlerAuditTestSuite) TestEveryExitPublishesOneEvent() {
 			suite.Equal(audit.Ref{Type: audit.TargetTypeToken}, event.payload.Target())
 			suite.Equal(tc.actor, event.payload.Actor())
 			suite.Equal(audit.Ref{}, event.payload.OnBehalfOf(), "a bearer token never decides the actor")
-			suite.Equal(audit.Ref{}, event.payload.Subject())
+			suite.Equal(tc.subject, event.payload.Subject())
 			suite.Equal(tc.outcome, event.payload.Outcome())
 			suite.Empty(event.payload.Details())
 			recorded := fmt.Sprintf("%+v", event.payload)
-			for _, value := range []string{testAuditRefresh, "not-a-token", testAuditSecret, testClientID} {
+			for _, value := range []string{
+				userToken, testAuditRefresh, testAuditSecret, testClientID,
+			} {
 				suite.NotContains(recorded, value)
+			}
+			if tc.subject == (audit.Ref{}) {
+				suite.NotContains(recorded, testAuditUserID, "a token without an effect never names its subject")
 			}
 		})
 	}
@@ -200,7 +207,7 @@ func (suite *RevocationHandlerAuditTestSuite) TestEveryExitPublishesOneEvent() {
 // A bus that fails to publish does not change the answer to a revocation request.
 func (suite *RevocationHandlerAuditTestSuite) TestAFailingBusDoesNotChangeTheAnswer() {
 	suite.service.EXPECT().RevokeToken(mock.Anything, testAuditRefresh, "", testClientID).
-		Return(RevokeOutcomeRevoked, nil).Once()
+		Return(RevokeResult{Outcome: RevokeOutcomeRevoked}, nil).Once()
 	bus := eventbusmock.NewEventBusInterfaceMock(suite.T())
 	bus.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("bus closed")).Once()
 	recorder := httptest.NewRecorder()

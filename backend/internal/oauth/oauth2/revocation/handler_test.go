@@ -44,7 +44,7 @@ func newRevokeRequest(body string) *http.Request {
 
 func (s *RevocationHandlerTestSuite) TestHandleRevoke_Success() {
 	s.serviceMock.On("RevokeToken", mock.Anything, "tok", "", testClientID).
-		Return(RevokeOutcomeRevoked, nil)
+		Return(RevokeResult{Outcome: RevokeOutcomeRevoked}, nil)
 
 	rec := httptest.NewRecorder()
 	s.handler.HandleRevoke(rec, newRevokeRequest("token=tok"))
@@ -55,7 +55,7 @@ func (s *RevocationHandlerTestSuite) TestHandleRevoke_Success() {
 
 func (s *RevocationHandlerTestSuite) TestHandleRevoke_PassesTokenTypeHintAndClient() {
 	s.serviceMock.On("RevokeToken", mock.Anything, "tok", "refresh_token", testClientID).
-		Return(RevokeOutcomeRevoked, nil)
+		Return(RevokeResult{Outcome: RevokeOutcomeRevoked}, nil)
 
 	rec := httptest.NewRecorder()
 	s.handler.HandleRevoke(rec, newRevokeRequest("token=tok&token_type_hint=refresh_token"))
@@ -75,7 +75,7 @@ func (s *RevocationHandlerTestSuite) TestHandleRevoke_MissingToken() {
 
 func (s *RevocationHandlerTestSuite) TestHandleRevoke_NotOwnedReturnsInvalidGrant() {
 	s.serviceMock.On("RevokeToken", mock.Anything, "tok", "", testClientID).
-		Return(RevokeOutcomeNotOwned, nil)
+		Return(RevokeResult{Outcome: RevokeOutcomeNotOwned}, nil)
 
 	rec := httptest.NewRecorder()
 	s.handler.HandleRevoke(rec, newRevokeRequest("token=tok"))
@@ -86,7 +86,7 @@ func (s *RevocationHandlerTestSuite) TestHandleRevoke_NotOwnedReturnsInvalidGran
 
 func (s *RevocationHandlerTestSuite) TestHandleRevoke_ServerError() {
 	s.serviceMock.On("RevokeToken", mock.Anything, "tok", "", testClientID).
-		Return(RevokeOutcomeRevoked, errors.New("db down"))
+		Return(RevokeResult{}, errors.New("db down"))
 
 	rec := httptest.NewRecorder()
 	s.handler.HandleRevoke(rec, newRevokeRequest("token=tok"))

@@ -44,6 +44,17 @@ func Initialize(
 		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange), nil
 }
 
+// SetActorProvider lets the revocation service report the local user a revoked token was issued to. The
+// actor provider is built after the revocation service, so it is injected once it exists.
+func SetActorProvider(svc RevocationServiceInterface, provider providers.ActorProvider) error {
+	service, ok := svc.(*revocationService)
+	if !ok {
+		return fmt.Errorf("revocation service does not support actor provider injection")
+	}
+	service.actorProvider = provider
+	return nil
+}
+
 // RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service. Every
 // revocation request and every refused client authentication is audited on bus.
 func RegisterRoutes(
