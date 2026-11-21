@@ -89,7 +89,7 @@ You cannot delete a layout that is currently assigned to an application. Remove 
 
 ## Layouts in Projects
 
-On the control plane, every layout belongs to a project. Create a layout with the `projectId` of its project in the request body of `POST /design/layouts`. A request without `projectId` fails with `LAY-1020`, and a project that does not exist fails it with `LAY-1019`.
+On the control plane, every layout belongs to a project. Create a layout with the `projectId` of its project in the request body of `POST /design/layouts`. A request without `projectId` fails with `LAY-1020`, and a project that does not exist fails it with `LAY-1019`. To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 - **List**: `GET /design/layouts?projectId=<project-id>` returns the layouts of the project. A project that does not exist returns an empty list.
 - **Update**: an update without `projectId` keeps the layout in its current project. A different `projectId` moves the layout to that project.
