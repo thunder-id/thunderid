@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -18,10 +19,32 @@ const loggerComponentName = "VariableStoreHandler"
 
 type handler struct {
 	service ServiceInterface
+	// managementAPIKeyOnly refuses every caller but the management API key.
+	managementAPIKeyOnly bool
 }
 
-func newHandler(service ServiceInterface) *handler {
-	return &handler{service: service}
+func newHandler(service ServiceInterface, managementAPIKeyOnly bool) *handler {
+	return &handler{service: service, managementAPIKeyOnly: managementAPIKeyOnly}
+}
+
+// requireManagementAPIKey serves a request only when the management API key made it, where this
+// store is kept that way. The key is accepted on these paths by authentication, but a token with the
+// root permission is accepted there too; this is what turns the key from accepted into required.
+func (h *handler) requireManagementAPIKey(next http.HandlerFunc) http.HandlerFunc {
+	if !h.managementAPIKeyOnly {
+		return next
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !security.IsManagementAPIKey(r.Context()) {
+			sysutils.WriteErrorResponse(r.Context(), w, http.StatusForbidden, apierror.ErrorResponse{
+				Code:        ErrorManagementAPIKeyRequired.Code,
+				Message:     ErrorManagementAPIKeyRequired.Error,
+				Description: ErrorManagementAPIKeyRequired.ErrorDescription,
+			})
+			return
+		}
+		next(w, r)
+	}
 }
 
 // HandleVariableListRequest lists variables.

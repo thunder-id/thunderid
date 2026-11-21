@@ -507,13 +507,14 @@ func (suite *ImportExportErrorSuite) TestImportResolvesASecretInACredentialField
 	defer func() { _ = testutils.DeleteUserType(typeID) }()
 
 	secretName := "IMPORTED_PASSWORD_" + suffix
-	status, body := suite.postJSON(suite.client, "/secrets",
+	// The secret store answers only the management API key, as what deploys to a Data Plane holds.
+	status, body := suite.postJSON(suite.keyClient, "/secrets",
 		fmt.Sprintf(`{"name":%q,"value":"Imported@%s"}`, secretName, suffix))
 	suite.Require().Equal(http.StatusCreated, status, "body: %s", body)
 	defer func() {
 		req, err := http.NewRequest(http.MethodDelete, testutils.TestServerURL+"/secrets/"+secretName, nil)
 		if err == nil {
-			if resp, err := suite.client.Do(req); err == nil {
+			if resp, err := suite.keyClient.Do(req); err == nil {
 				_ = resp.Body.Close()
 			}
 		}

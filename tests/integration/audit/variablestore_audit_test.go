@@ -32,21 +32,21 @@ var storeKinds = []storeKind{
 }
 
 // Creating a variable or secret, replacing it, storing one under an unused name with PUT and deleting it
-// write one line each, with the admin as actor and the name as target and subject. A PUT that created
+// write one line each, with the management API key as actor and the name as target and subject. A PUT that created
 // the name is recorded as the update the caller attempted. No value and no description appears in any
 // line.
 func (ts *AuditLogTestSuite) TestAVariableAndSecretLifecycleWritesOneLinePerChange() {
-	adminRef := testutils.AuditRef{Type: "user", ID: ts.adminUserID()}
+	keyRef := testutils.AuditRef{Type: "system", ID: "management-api-key"}
 	for _, kind := range storeKinds {
 		name := storeName("LIFE")
 		putName := storeName("PUT")
 
 		created := ts.storeCall(http.MethodPost, kind.path, ts.storeBody(name, "created"), http.StatusCreated)
-		ts.T().Cleanup(func() { ts.send(http.MethodDelete, kind.path+"/"+name, "") })
+		ts.T().Cleanup(func() { ts.storeDelete(kind.path + "/" + name) })
 		replaced := ts.storeCall(http.MethodPut, kind.path+"/"+name, ts.storeBody("", "replaced"), http.StatusOK)
 		putCreated := ts.storeCall(http.MethodPut, kind.path+"/"+putName, ts.storeBody("", "put"),
 			http.StatusCreated)
-		ts.T().Cleanup(func() { ts.send(http.MethodDelete, kind.path+"/"+putName, "") })
+		ts.T().Cleanup(func() { ts.storeDelete(kind.path + "/" + putName) })
 		deleted := ts.storeCall(http.MethodDelete, kind.path+"/"+name, "", http.StatusNoContent)
 
 		lines := ts.linesOf(created, replaced, putCreated, deleted)
@@ -68,7 +68,7 @@ func (ts *AuditLogTestSuite) TestAVariableAndSecretLifecycleWritesOneLinePerChan
 			ts.Equal(tc.action, line.Action, tc.event)
 			ts.Equal(ref, line.Target, "%s: a %s is identified by its name", tc.event, kind.targetType)
 			ts.Equal(ref, line.Subject, "%s: a succeeded change has its target as subject", tc.event)
-			ts.Equal(adminRef, line.Actor, "%s: the admin made the change", tc.event)
+			ts.Equal(keyRef, line.Actor, "%s: the management API key made the change", tc.event)
 			ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, tc.event)
 			ts.Nil(line.Client, "%s: a loopback peer is not recorded", tc.event)
 			ts.requireNoStoreContent(line)
@@ -84,7 +84,7 @@ func (ts *AuditLogTestSuite) TestEveryRefusedVariableAndSecretChangeIsRecordedAs
 		existing := storeName("REFUSED")
 		refCreate := storeName("REFCREATE")
 		ts.storeCall(http.MethodPost, kind.path, ts.storeBody(existing, "existing"), http.StatusCreated)
-		ts.T().Cleanup(func() { ts.send(http.MethodDelete, kind.path+"/"+existing, "") })
+		ts.T().Cleanup(func() { ts.storeDelete(kind.path + "/" + existing) })
 		named := func(name string) testutils.AuditRef {
 			return testutils.AuditRef{Type: kind.targetType, ID: name}
 		}
@@ -231,12 +231,18 @@ func (ts *AuditLogTestSuite) storeReferenceBody(name string) string {
 	return ts.jsonBody(request)
 }
 
-// storeCall makes a variable store call as the admin and requires the status it should get.
+// storeCall makes a variable store call with the management API key, the only caller the store answers
+// where one is configured, and requires the status it should get.
 func (ts *AuditLogTestSuite) storeCall(method, path, body string, status int) *http.Response {
 	ts.T().Helper()
-	resp, read := ts.exchange(testutils.GetHTTPClient(), method, path, body)
+	resp, read := ts.exchange(testutils.GetManagementAPIKeyHTTPClient(), method, path, body)
 	ts.Require().Equal(status, resp.StatusCode, "%s %s: %s", method, path, string(read))
 	return resp
+}
+
+// storeDelete removes what a test stored, whether or not it is still there.
+func (ts *AuditLogTestSuite) storeDelete(path string) {
+	ts.exchange(testutils.GetManagementAPIKeyHTTPClient(), http.MethodDelete, path, "")
 }
 
 // requireNoStoreContent checks that no part of a value or description is in the line.
