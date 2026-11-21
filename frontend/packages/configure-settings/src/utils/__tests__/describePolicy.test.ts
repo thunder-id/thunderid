@@ -4,7 +4,7 @@
 import type {TFunction} from 'i18next';
 import {describe, it, expect} from 'vitest';
 import type {AccountLockForm} from '../accountLockPayload';
-import describePolicy, {formatDurationShort} from '../describePolicy';
+import describePolicy from '../describePolicy';
 
 /**
  * A stand-in for the real catalog, resolving the keys this helper uses. A key without the settings
@@ -14,14 +14,14 @@ const translate = (key: string, options?: Record<string, unknown>): string => {
   const catalog: Record<string, string> = {
     'accountLock.summary.off.user': 'Automatic locking is off. Failed sign-in attempts do not lock users.',
     'accountLock.summary.off.agent': 'Automatic locking is off. Failed authentication attempts do not lock agents.',
-    'accountLock.units.short.second': '{{count}} second',
-    'accountLock.units.short.seconds': '{{count}} seconds',
-    'accountLock.units.short.minute': '{{count}} minute',
-    'accountLock.units.short.minutes': '{{count}} minutes',
-    'accountLock.units.short.hour': '{{count}} hour',
-    'accountLock.units.short.hours': '{{count}} hours',
-    'accountLock.units.short.day': '{{count}} day',
-    'accountLock.units.short.days': '{{count}} days',
+    'units.short.second': '{{count}} second',
+    'units.short.seconds': '{{count}} seconds',
+    'units.short.minute': '{{count}} minute',
+    'units.short.minutes': '{{count}} minutes',
+    'units.short.hour': '{{count}} hour',
+    'units.short.hours': '{{count}} hours',
+    'units.short.day': '{{count}} day',
+    'units.short.days': '{{count}} days',
     'accountLock.summary.trigger.authentication_method.user':
       'After {{count}} failed attempts with no more than {{window}} between them, the affected sign-in method is locked.',
     'accountLock.summary.trigger.authentication_method.agent':
@@ -75,17 +75,6 @@ const form = (overrides: Partial<AccountLockForm> = {}): AccountLockForm => ({
   maxConsecutiveFailures: 50,
   notifyEnabled: false,
   ...overrides,
-});
-
-describe('formatDurationShort', () => {
-  it('inflects the units that inflect and leaves the ones that do not', () => {
-    expect(formatDurationShort(3600, t)).toBe('1 hour');
-    expect(formatDurationShort(7200, t)).toBe('2 hours');
-    expect(formatDurationShort(86400, t)).toBe('1 day');
-    expect(formatDurationShort(172800, t)).toBe('2 days');
-    expect(formatDurationShort(60, t)).toBe('1 minute');
-    expect(formatDurationShort(900, t)).toBe('15 minutes');
-  });
 });
 
 describe('describePolicy', () => {

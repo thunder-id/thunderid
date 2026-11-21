@@ -14,21 +14,24 @@ import useUpdateCspConfig from '../../api/useUpdateCspConfig';
 import useCspDraft from '../../hooks/useCspDraft';
 
 export default function CspSection(): JSX.Element {
-  const {t} = useTranslation();
+  const {t, i18n} = useTranslation();
   const {data, isLoading, error, refetch} = useGetCspConfig();
   const updateCsp = useUpdateCspConfig();
   const csp = useCspDraft(data);
   const {can} = useCapabilitiesContext();
 
-  // Server-config error codes are shared across sections, so they resolve under `csp.errors`.
+  // Server-config error codes are shared across sections, so they resolve under `csp.errors`, or to the
+  // wording every server-config section shares when CSP has none.
   const tForErrors = useCallback(
     (key: string, options?: Record<string, unknown>): string => {
       if (key.includes(':')) {
         return t(key, options);
       }
-      return t(key.startsWith('errors.') ? `settings:csp.${key}` : `settings:${key}`, options);
+      const sectionKey = key.startsWith('errors.') ? `settings:csp.${key}` : `settings:${key}`;
+      const sharedKey = `settings:serverConfig.${key}`;
+      return t(!i18n.exists(sectionKey) && i18n.exists(sharedKey) ? sharedKey : sectionKey, options);
     },
-    [t],
+    [i18n, t],
   );
 
   // A previous save error is stale once the draft changes again.

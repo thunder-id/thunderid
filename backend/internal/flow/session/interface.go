@@ -32,11 +32,12 @@ type sessionStore interface {
 	// version guard, so it never loses to a concurrent slide.
 	TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
 		idleExpiresAt time.Time, properties SessionProperties) error
-	// SlideIdleDeadline moves an active, unexpired session's last-active timestamp to now and its idle
-	// deadline to idleExpiresAt, unless its last refresh is after refreshedBefore. A session it does not
-	// match is left as it is and is not an error.
-	SlideIdleDeadline(ctx context.Context, sessionID string, now, idleExpiresAt,
-		refreshedBefore time.Time) error
+	// SlideIdleDeadline moves an active, unexpired session's last-active timestamp and idle deadline as
+	// slide says, unless the session was refreshed after slide.refreshedBefore. It matches only a session
+	// last active after slide.activeAfter and created after slide.createdAfter, so a timeout shortened
+	// since the stored deadlines were set ends the session rather than letting a refresh extend it. A
+	// session it does not match is left as it is and is not an error.
+	SlideIdleDeadline(ctx context.Context, sessionID string, slide idleSlide) error
 
 	// CreateContext persists (or overwrites) one checkpoint's session context for a session.
 	CreateContext(ctx context.Context, c SessionContext) error

@@ -230,8 +230,8 @@ value:
 	ts.Equal(senderID, layers.ReadOnly.DefaultEmailSenderID, "the declarative layer must name the sender")
 
 	status, raw = ts.call(http.MethodPut, "/server-config/notification", map[string]any{}, nil)
-	ts.Equal(http.StatusBadRequest, status, "a write over a declarative sender must be refused: %s", raw)
-	ts.Contains(string(raw), "SCF-1003", "a write over a declarative sender must be refused as an invalid value")
+	ts.Equal(http.StatusForbidden, status, "a write over a declarative sender must be refused: %s", raw)
+	ts.Contains(string(raw), "SCF-1007", "a write over a declarative sender must be refused as a locked section")
 }
 
 func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {

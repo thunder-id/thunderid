@@ -43,13 +43,23 @@ func (suite *ServiceTestSuite) SetupTest() {
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
 	suite.service = newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, discardingBus{},
-		allowingAuthz(suite.T()))
+		allowingAuthz(suite.T()), false)
+}
+
+// expectNoDefault expects the section's default to be read, and gives the section none.
+func (suite *ServiceTestSuite) expectNoDefault() {
+	suite.mockHandler.EXPECT().Default(mock.Anything).Return(nil)
+}
+
+// expectUnlocked expects the write to check the lock, and leaves the section unlocked.
+func (suite *ServiceTestSuite) expectUnlocked() {
+	suite.mockHandler.EXPECT().IsReadOnly(mock.Anything).Return(false)
 }
 
 // serviceWithoutHandlers builds a service with no registered handlers, sharing the suite store mock.
 func (suite *ServiceTestSuite) serviceWithoutHandlers() ServerConfigService {
 	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{}, nil,
-		discardingBus{}, allowingAuthz(suite.T()))
+		discardingBus{}, allowingAuthz(suite.T()), false)
 }
 
 // Raw (byte) layers shared across the store tests, plus an incoming PUT value.
@@ -90,7 +100,7 @@ func (suite *ServiceTestSuite) TestListConfigNames_NoHandlers() {
 func (suite *ServiceTestSuite) TestListConfigNames_NilHandler() {
 	service := newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
 		ConfigNameCORS: nil,
-	}, nil, discardingBus{}, allowingAuthz(suite.T()))
+	}, nil, discardingBus{}, allowingAuthz(suite.T()), false)
 
 	names, svcErr := service.ListConfigNames(suite.ctx)
 
@@ -130,6 +140,7 @@ func (suite *ServiceTestSuite) TestGetConfig_DecodeError() {
 }
 
 func (suite *ServiceTestSuite) TestGetConfig_OK() {
+	suite.expectNoDefault()
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
 		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
 	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
@@ -144,6 +155,7 @@ func (suite *ServiceTestSuite) TestGetConfig_OK() {
 }
 
 func (suite *ServiceTestSuite) TestGetConfig_Unset() {
+	suite.expectNoDefault()
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
 	suite.mockHandler.EXPECT().Merge(nil, nil).Return(mergedVal)
@@ -232,6 +244,7 @@ func (suite *ServiceTestSuite) TestGetWritableConfig_DecodeError() {
 // --- GetMergedConfig ---
 
 func (suite *ServiceTestSuite) TestGetMergedConfig_OK() {
+	suite.expectNoDefault()
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
 		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
 	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
@@ -303,6 +316,7 @@ func (suite *ServiceTestSuite) TestSetConfig_ReadError() {
 }
 
 func (suite *ServiceTestSuite) TestSetConfig_HandlerRejects() {
+	suite.expectUnlocked()
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
 		Return(storeLayers{ReadOnly: declarative}, nil)
@@ -315,6 +329,7 @@ func (suite *ServiceTestSuite) TestSetConfig_HandlerRejects() {
 }
 
 func (suite *ServiceTestSuite) TestSetConfig_OK() {
+	suite.expectUnlocked()
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
 		Return(storeLayers{ReadOnly: declarative}, nil)
@@ -328,6 +343,7 @@ func (suite *ServiceTestSuite) TestSetConfig_OK() {
 }
 
 func (suite *ServiceTestSuite) TestSetConfig_UpsertError() {
+	suite.expectUnlocked()
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
@@ -346,11 +362,12 @@ func (suite *ServiceTestSuite) auditedService() (ServerConfigService, *[]*provid
 		Run(func(_ context.Context, evt *providers.Event) { published = append(published, evt) })
 	return newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs,
-		discardingBus{}, allowingAuthz(suite.T())), &published
+		discardingBus{}, allowingAuthz(suite.T()), false), &published
 }
 
 // A write is recorded with the section and the outcome, never the value, which may hold secrets.
 func (suite *ServiceTestSuite) TestSetConfig_PublishesTheChange() {
+	suite.expectUnlocked()
 	previous := json.RawMessage(`["https://old.example.com"]`)
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
@@ -390,13 +407,14 @@ func (suite *ServiceTestSuite) TestSetConfig_UnknownNamePublishesNothing() {
 	obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
 	svc := newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{},
-		allowingAuthz(suite.T()))
+		allowingAuthz(suite.T()), false)
 
 	suite.NotNil(svc.SetConfig(suite.ctx, ConfigName("no-such-section"), incomingRaw))
 }
 
 // expectSuccessfulWrite sets up the store and handler for a write that succeeds.
 func (suite *ServiceTestSuite) expectSuccessfulWrite() {
+	suite.expectUnlocked()
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
@@ -406,6 +424,7 @@ func (suite *ServiceTestSuite) expectSuccessfulWrite() {
 
 // A failed store write is recorded as a failure with the server error code.
 func (suite *ServiceTestSuite) TestSetConfig_PublishesAFailedUpsert() {
+	suite.expectUnlocked()
 	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
@@ -460,7 +479,7 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesNothingWithoutObservabilit
 		obs.EXPECT().IsEnabled().Return(false).Once()
 		svc := newServerConfigService(suite.mockStore,
 			map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{},
-			allowingAuthz(suite.T()))
+			allowingAuthz(suite.T()), false)
 
 		suite.Nil(svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
 		obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)
@@ -498,7 +517,8 @@ func (suite *ServiceTestSuite) TestSetConfig_RefusedWithoutWriteAccess() {
 				&sysauthz.ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: "cors"}).
 				Return(false, tt.authzErr).Once()
 			service := newServerConfigService(newServerConfigStoreInterfaceMock(suite.T()),
-				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, discardingBus{}, authz)
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: objectSection(suite.T(), nil)}, nil,
+				discardingBus{}, authz, false)
 
 			suite.Equal(tt.want, service.SetConfig(context.Background(), ConfigNameCORS, json.RawMessage(`{}`)))
 		})
@@ -510,4 +530,80 @@ func allowingAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfa
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	return authz
+}
+
+// sessionService builds a service over the suite store with an object section that has a default.
+func (suite *ServiceTestSuite) sessionService() ServerConfigService {
+	handler := objectSection(suite.T(), map[string]any{
+		"idleTimeoutSeconds": 7200, "absoluteTimeoutSeconds": 28800, "nested": map[string]any{"a": 1, "b": 2},
+	})
+	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
+		ConfigNameSession: handler,
+	}, nil, discardingBus{}, allowingAuthz(suite.T()), false)
+}
+
+// A read shows the default, and lays the configured value over it field by field: a field it leaves
+// unset keeps the default, and a nested object is laid over the default's the same way.
+func (suite *ServiceTestSuite) TestGetConfig_LaysTheConfiguredValueOverTheDefault() {
+	writable := json.RawMessage(`{"idleTimeoutSeconds":900,"nested":{"b":3}}`)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).
+		Return(storeLayers{Writable: writable}, nil)
+
+	layers, svcErr := suite.sessionService().GetConfig(suite.ctx, ConfigNameSession)
+
+	suite.Require().Nil(svcErr)
+	out, err := json.Marshal(layers)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{
+		"readOnly": {},
+		"writable": {"idleTimeoutSeconds": 900, "nested": {"b": 3}},
+		"merged": {"idleTimeoutSeconds": 900, "absoluteTimeoutSeconds": 28800, "nested": {"a": 1, "b": 3}}
+	}`, string(out))
+}
+
+// GetMergedConfig returns the same effective value, read on each call.
+func (suite *ServiceTestSuite) TestGetMergedConfig_LaysTheConfiguredValueOverTheDefault() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).
+		Return(storeLayers{Writable: json.RawMessage(`{"absoluteTimeoutSeconds":3600}`)}, nil)
+
+	merged, svcErr := suite.sessionService().GetMergedConfig(suite.ctx, string(ConfigNameSession))
+
+	suite.Require().Nil(svcErr)
+	out, err := json.Marshal(merged)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{"idleTimeoutSeconds":7200,"absoluteTimeoutSeconds":3600,"nested":{"a":1,"b":2}}`, string(out))
+}
+
+// A declarative document locks the section: the document is laid over the default with the writable
+// layer ignored, and a write is refused before the value is validated.
+func (suite *ServiceTestSuite) TestDeclarativeDocumentLocksTheSection() {
+	stored := storeLayers{
+		ReadOnly: json.RawMessage(`{"idleTimeoutSeconds":1800}`),
+		Writable: json.RawMessage(`{"idleTimeoutSeconds":900,"absoluteTimeoutSeconds":3600}`),
+	}
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).Return(stored, nil)
+	service := suite.sessionService()
+
+	layers, svcErr := service.GetConfig(suite.ctx, ConfigNameSession)
+	suite.Require().Nil(svcErr)
+	out, err := json.Marshal(layers.Merged)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800,"nested":{"a":1,"b":2}}`,
+		string(out))
+
+	suite.Same(&ErrorDeclarativeConfig, service.SetConfig(suite.ctx, ConfigNameSession, json.RawMessage(`{}`)))
+	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+}
+
+// A server that keeps server configuration only in declarative documents refuses every write, as a
+// section a document locks.
+func (suite *ServiceTestSuite) TestDeclarativeOnlyStoreLocksEverySection() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameSession).Return(storeLayers{}, nil)
+	service := suite.sessionService()
+	service.(*serverConfigService).declarativeOnly = true
+
+	suite.Same(&ErrorDeclarativeConfig, service.SetConfig(suite.ctx, ConfigNameSession, json.RawMessage(`{}`)))
+	suite.Same(&ErrorDeclarativeConfig, service.UpdateConfig(suite.ctx, ConfigNameSession, setKey{"a", "1"}))
+	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "ReplaceServerConfigIf", mock.Anything, mock.Anything, mock.Anything)
 }

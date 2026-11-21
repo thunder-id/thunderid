@@ -253,8 +253,8 @@ func (ts *AccountAccessDeclarativeLockTestSuite) TestADeclarativeDocumentLocksTh
 	ts.Equal(lockThreshold, merged.Threshold, "the declarative threshold must win over default.json")
 
 	status, body := putSection(ts.T(), accountAccessSection, string(userThresholdSection(sectionThreshold)))
-	ts.Equal(http.StatusBadRequest, status, "a write over a declarative document must be refused")
-	ts.Contains(body, "SCF-1003")
+	ts.Equal(http.StatusForbidden, status, "a write over a declarative document must be refused")
+	ts.Contains(body, "SCF-1007")
 	ts.Equal(lockThreshold, readMergedDefault(ts.T(), "user").Threshold, "a refused write changes nothing")
 }
 

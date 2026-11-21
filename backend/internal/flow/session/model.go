@@ -96,6 +96,21 @@ type Session struct {
 	Version int
 }
 
+// idleSlide is one refresh of a session's idle deadline: where it moves the deadline, and the bounds a
+// session must be within to be moved.
+type idleSlide struct {
+	// now is the session's new last-active time.
+	now time.Time
+	// idleExpiresAt is the session's new idle deadline.
+	idleExpiresAt time.Time
+	// refreshedBefore throttles writes: a session refreshed after it is not moved.
+	refreshedBefore time.Time
+	// activeAfter and createdAfter keep the idle and absolute timeouts in effect now: a session last
+	// active, or created, before them has ended.
+	activeAfter  time.Time
+	createdAfter time.Time
+}
+
 // Participant records an application that has used (joined) an SSO session. A session is shared
 // across the applications that authenticate through its flow; each such application is tracked so
 // the session's audience is known — the basis for logout and subject-scoped revocation. An application

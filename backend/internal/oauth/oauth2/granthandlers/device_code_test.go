@@ -23,6 +23,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/deviceauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -52,7 +53,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) SetupTest() {
 	suite.attributeCache = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.resourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.handler = newDeviceCodeGrantHandler(
-		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, time.Hour)
+		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, nil)
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID: testGrantClientID,
 		ScopeClaims: map[string][]string{
@@ -176,6 +177,10 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedReturnsThe
 	record.AuthTime = time.Now()
 	record.SubjectID = testGrantSubjectID
 	record.SessionData = sessions
+	ssoSessions := sessionmock.NewServiceMock(suite.T())
+	ssoSessions.EXPECT().AbsoluteTimeout(mock.Anything).Return(time.Hour)
+	suite.handler = newDeviceCodeGrantHandler(
+		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, ssoSessions)
 	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
 	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
 		Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
@@ -549,7 +554,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsAfterRevoc
 	record.Resources = []string{testGrantAudience}
 	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
-		suite.attributeCache, suite.resourceService, enforcement, time.Hour)
+		suite.attributeCache, suite.resourceService, enforcement, nil)
 	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
 	suite.resourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, testGrantAudience).
 		Return(&providers.ResourceServer{ID: "resource-1", Identifier: testGrantAudience,

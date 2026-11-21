@@ -16,7 +16,7 @@ import useAllowedOriginsDraft from '../../hooks/useAllowedOriginsDraft';
 import {toRows} from '../../utils/allowedOriginRows';
 
 export default function CorsSection(): JSX.Element {
-  const {t} = useTranslation();
+  const {t, i18n} = useTranslation();
   const {data, isLoading, error, refetch} = useGetCorsConfig();
   const updateCors = useUpdateCorsConfig();
   const origins = useAllowedOriginsDraft(data);
@@ -25,10 +25,18 @@ export default function CorsSection(): JSX.Element {
 
   // Resolves an error through the `settings` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `settings:`, per
-  // getErrorMessage's namespace-resolution contract.
+  // getErrorMessage's namespace-resolution contract. A key CORS has no wording for resolves to the
+  // wording every server-config section shares, when there is one.
   const tForErrors = useCallback(
-    (key: string, options?: Record<string, unknown>): string => t(key.includes(':') ? key : `settings:${key}`, options),
-    [t],
+    (key: string, options?: Record<string, unknown>): string => {
+      if (key.includes(':')) {
+        return t(key, options);
+      }
+      const sectionKey = `settings:${key}`;
+      const sharedKey = `settings:serverConfig.${key}`;
+      return t(!i18n.exists(sectionKey) && i18n.exists(sharedKey) ? sharedKey : sectionKey, options);
+    },
+    [i18n, t],
   );
 
   const readOnlyEntriesKey = JSON.stringify(data?.readOnly.allowedOrigins ?? []);

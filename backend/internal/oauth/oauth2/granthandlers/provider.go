@@ -5,7 +5,6 @@ package granthandlers
 
 import (
 	"slices"
-	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/session"
@@ -54,7 +53,6 @@ func newGrantHandlerProvider(
 	enforcementService revocation.EnforcementServiceInterface,
 	governance providers.IdentityGovernanceProvider,
 	authzDetails providers.AuthorizationDetailProvider,
-	deviceSecretValidity time.Duration,
 	ssoSession session.Service,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
@@ -67,7 +65,7 @@ func newGrantHandlerProvider(
 	var codeGrant *authorizationCodeGrantHandler
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		codeGrant = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity,
+			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, ssoSession,
 			authzDetails)
 		grantProvider.authorizationCodeGrantHandler = codeGrant
 	}
@@ -88,7 +86,7 @@ func newGrantHandlerProvider(
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeDeviceCode) {
 		grantProvider.deviceCodeGrantHandler = newDeviceCodeGrantHandler(
-			deviceService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity)
+			deviceService, tokenBuilder, attrCacheService, resourceService, enforcementService, ssoSession)
 	}
 	// The jwt-bearer grant accepts only ID-JAGs, so do not serve it while ID-JAG acceptance is off.
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) && cfg.OAuth.IDJAG.Acceptance.IsEnabled() {

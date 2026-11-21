@@ -92,6 +92,7 @@ func TestServerConfigServiceAuditTestSuite(t *testing.T) {
 func (suite *ServerConfigServiceAuditTestSuite) SetupTest() {
 	suite.mockStore = newServerConfigStoreInterfaceMock(suite.T())
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
+	suite.mockHandler.EXPECT().IsReadOnly(mock.Anything).Return(false).Maybe()
 	suite.value = json.RawMessage(`{"allowedOrigins":["` + testAuditOrigin + `"]}`)
 }
 
@@ -103,7 +104,7 @@ func (suite *ServerConfigServiceAuditTestSuite) SetupSubTest() {
 func (suite *ServerConfigServiceAuditTestSuite) service(bus eventbus.EventBusInterface) ServerConfigService {
 	return newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, bus,
-		allowingAuthz(suite.T()))
+		allowingAuthz(suite.T()), false)
 }
 
 // expectWrite arranges a write of the suite value to the CORS section that reaches the store, which
@@ -262,8 +263,8 @@ func (suite *ServerConfigServiceAuditTestSuite) TestUpdateConfig_PublishesOneEve
 			}
 			bus, published := newRecordingBus(suite.T())
 			service := newServerConfigService(tc.store,
-				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, bus,
-				allowingAuthz(suite.T()))
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: objectSection(suite.T(), nil)}, nil, bus,
+				allowingAuthz(suite.T()), false)
 
 			svcErr := service.UpdateConfig(adminContext(), tc.section, tc.updater)
 

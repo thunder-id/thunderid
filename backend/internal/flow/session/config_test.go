@@ -7,128 +7,136 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 )
 
 type ConfigTestSuite struct {
 	suite.Suite
+	handler serverconfig.ServerConfigHandlerInterface
 }
 
 func TestConfigTestSuite(t *testing.T) {
 	suite.Run(t, new(ConfigTestSuite))
 }
 
+func (s *ConfigTestSuite) SetupTest() {
+	s.handler = newConfigHandler(flowconfig.Config{})
+}
+
+func (s *ConfigTestSuite) TestInitializeConfigHandler() {
+	s.IsType(configHandler{}, InitializeConfigHandler(flowconfig.Config{}))
+}
+
+func (s *ConfigTestSuite) validate(value any) error {
+	return s.handler.Validate(context.Background(), value, nil, nil)
+}
+
 func (s *ConfigTestSuite) TestValidate_UnsetUsesDefaults() {
-	s.Require().NoError(Config{}.Validate())
+	s.Require().NoError(s.validate(Config{}))
 }
 
 func (s *ConfigTestSuite) TestValidate_PositiveValues() {
-	s.Require().NoError(Config{IdleTimeoutSeconds: 1800, AbsoluteTimeoutSeconds: 28800}.Validate())
+	s.Require().NoError(s.validate(Config{IdleTimeoutSeconds: 1800, AbsoluteTimeoutSeconds: 28800}))
 }
 
 func (s *ConfigTestSuite) TestValidate_NegativeRejected() {
-	s.Require().Error(Config{IdleTimeoutSeconds: -1}.Validate())
-	s.Require().Error(Config{AbsoluteTimeoutSeconds: -1}.Validate())
+	s.Require().Error(s.validate(Config{IdleTimeoutSeconds: -1}))
+	s.Require().Error(s.validate(Config{AbsoluteTimeoutSeconds: -1}))
 }
 
 func (s *ConfigTestSuite) TestValidate_IdleExceedsAbsolute() {
-	s.Require().Error(Config{IdleTimeoutSeconds: 28801, AbsoluteTimeoutSeconds: 28800}.Validate())
+	s.Require().Error(s.validate(Config{IdleTimeoutSeconds: 28801, AbsoluteTimeoutSeconds: 28800}))
+}
+
+// An idle timeout is compared with an absolute one only when both are set. Otherwise the idle timeout in
+// effect is cut to the absolute one, so an absolute timeout shorter than the default idle timeout is
+// accepted on its own.
+func (s *ConfigTestSuite) TestValidate_IdleIsComparedWithAnAbsoluteSetWithIt() {
+	s.Require().NoError(s.validate(Config{AbsoluteTimeoutSeconds: 3600}))
+	s.Require().NoError(s.validate(Config{IdleTimeoutSeconds: 28801}))
+	s.Require().NoError(s.validate(Config{IdleTimeoutSeconds: 1800, AbsoluteTimeoutSeconds: 3600}))
+}
+
+// The idle timeout in effect is cut to the absolute timeout, so an absolute timeout no longer than the
+// activity refresh interval is rejected even when the idle timeout is left unset.
+func (s *ConfigTestSuite) TestValidate_AbsoluteCutsTheIdleTimeoutInEffect() {
+	s.Require().Error(s.validate(Config{AbsoluteTimeoutSeconds: 60}))
+	s.Require().NoError(s.validate(Config{AbsoluteTimeoutSeconds: 61}))
 }
 
 func (s *ConfigTestSuite) TestValidate_OverflowingSecondsRejected() {
 	// A second value beyond what a time.Duration can hold would wrap negative; it must be rejected
 	// rather than slip past the invariant check.
-	s.Require().Error(Config{IdleTimeoutSeconds: maxTimeoutSeconds + 1}.Validate())
-	s.Require().Error(Config{AbsoluteTimeoutSeconds: maxTimeoutSeconds + 1}.Validate())
-	s.Require().Error(Config{ActivityRefreshIntervalSeconds: maxTimeoutSeconds + 1}.Validate())
+	s.Require().Error(s.validate(Config{IdleTimeoutSeconds: maxTimeoutSeconds + 1}))
+	s.Require().Error(s.validate(Config{AbsoluteTimeoutSeconds: maxTimeoutSeconds + 1}))
 }
 
-func (s *ConfigTestSuite) TestValidate_ActivityRefreshInterval() {
-	// An activity-refresh interval below the idle window is accepted.
-	s.Require().NoError(Config{IdleTimeoutSeconds: 1800, ActivityRefreshIntervalSeconds: 60}.Validate())
-	// A negative activity-refresh interval is rejected.
-	s.Require().Error(Config{ActivityRefreshIntervalSeconds: -1}.Validate())
-	// An activity-refresh interval equal to the idle window is rejected (must be strictly less).
-	s.Require().Error(Config{IdleTimeoutSeconds: 60, ActivityRefreshIntervalSeconds: 60}.Validate())
-	// An activity-refresh interval exceeding the idle window is rejected.
-	s.Require().Error(Config{IdleTimeoutSeconds: 60, ActivityRefreshIntervalSeconds: 120}.Validate())
+// An idle timeout must be longer than the deployment's activity refresh interval, or an active session
+// could expire between two refreshes.
+func (s *ConfigTestSuite) TestValidate_IdleLongerThanTheActivityRefreshInterval() {
+	s.Require().Error(s.validate(Config{IdleTimeoutSeconds: 30}))
+	s.Require().Error(s.validate(Config{IdleTimeoutSeconds: 60}), "the default interval is 60 seconds")
+	s.Require().NoError(s.validate(Config{IdleTimeoutSeconds: 61}))
+
+	handler := newConfigHandler(flowconfig.Config{SessionActivityRefresh: 10 * time.Minute})
+	s.Require().Error(handler.Validate(context.Background(), Config{IdleTimeoutSeconds: 600}, nil, nil))
+	s.Require().NoError(handler.Validate(context.Background(), Config{IdleTimeoutSeconds: 601}, nil, nil))
 }
 
-func (s *ConfigTestSuite) TestValidate_ActivityRefreshInvariantAcrossDefaults() {
-	// A zero means "use the default", so the invariant is checked against the resolved durations.
-
-	// Gap A: a small configured idle with a defaulted (60s) refresh must be rejected, even though the
-	// refresh field itself is left unset.
-	s.Require().Error(Config{IdleTimeoutSeconds: 30}.Validate())
-	// One second above the default refresh is accepted.
-	s.Require().NoError(Config{IdleTimeoutSeconds: 61}.Validate())
-
-	// Gap B: a defaulted (7200s) idle with a large configured refresh must be rejected, even though
-	// the idle field itself is left unset.
-	s.Require().Error(Config{ActivityRefreshIntervalSeconds: 7200}.Validate())
-	// A large refresh below the defaulted idle window is accepted.
-	s.Require().NoError(Config{ActivityRefreshIntervalSeconds: 7199}.Validate())
+func (s *ConfigTestSuite) TestValidate_AnotherTypeRejected() {
+	s.Require().Error(s.validate("not a section"))
 }
 
 func (s *ConfigTestSuite) TestHandler_DecodeEmptyIsZero() {
-	got, err := ConfigHandler{}.Decode(nil)
+	got, err := s.handler.Decode(nil)
 	s.Require().NoError(err)
 	s.Equal(Config{}, got)
 }
 
 func (s *ConfigTestSuite) TestHandler_DecodeJSON() {
-	got, err := ConfigHandler{}.Decode(json.RawMessage(`{"idleTimeoutSeconds":900,"absoluteTimeoutSeconds":3600}`))
+	got, err := s.handler.Decode(json.RawMessage(`{"idleTimeoutSeconds":900,"absoluteTimeoutSeconds":3600}`))
 	s.Require().NoError(err)
 	s.Equal(Config{IdleTimeoutSeconds: 900, AbsoluteTimeoutSeconds: 3600}, got)
 }
 
-func (s *ConfigTestSuite) TestHandler_ValidateRejectsIncoherent() {
-	s.Require().Error(ConfigHandler{}.Validate(context.Background(), Config{IdleTimeoutSeconds: -5}, nil, nil))
+// The activity refresh interval moved to the deployment configuration, so a value stored with it still
+// decodes.
+func (s *ConfigTestSuite) TestHandler_DecodeIgnoresTheActivityRefreshInterval() {
+	got, err := s.handler.Decode(json.RawMessage(`{"idleTimeoutSeconds":900,"activityRefreshIntervalSeconds":30}`))
+	s.Require().NoError(err)
+	s.Equal(Config{IdleTimeoutSeconds: 900}, got)
 }
 
-// TestHandler_MergeResolvesUnsetToDefaults verifies that Merge resolves unset fields to their effective defaults.
-func (s *ConfigTestSuite) TestHandler_MergeResolvesUnsetToDefaults() {
-	merged := ConfigHandler{}.Merge(Config{}, Config{}).(Config)
-	s.Equal(int64(DefaultIdleTimeout.Seconds()), merged.IdleTimeoutSeconds)
-	s.Equal(int64(DefaultAbsoluteTimeout.Seconds()), merged.AbsoluteTimeoutSeconds)
-	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+// A declarative document is the configured value whole, and the writable layer is not used under it.
+func (s *ConfigTestSuite) TestHandler_MergeDeclarativeWins() {
+	readOnly := Config{IdleTimeoutSeconds: 1800}
+	writable := Config{IdleTimeoutSeconds: 600, AbsoluteTimeoutSeconds: 3600}
+
+	s.Equal(readOnly, s.handler.Merge(readOnly, writable))
+	s.Equal(writable, s.handler.Merge(Config{}, writable))
+	s.Equal(Config{}, s.handler.Merge(nil, nil))
 }
 
-// TestHandler_MergePartiallyUnsetResolvesRemainingFields verifies that explicit values are preserved while
-// unset fields resolve to defaults.
-func (s *ConfigTestSuite) TestHandler_MergePartiallyUnsetResolvesRemainingFields() {
-	readOnly := Config{IdleTimeoutSeconds: 900}
-	merged := ConfigHandler{}.Merge(readOnly, Config{}).(Config)
-	s.Equal(int64(900), merged.IdleTimeoutSeconds, "explicitly configured field must be preserved")
-	s.Equal(int64(DefaultAbsoluteTimeout.Seconds()), merged.AbsoluteTimeoutSeconds)
-	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+func (s *ConfigTestSuite) TestHandler_IsReadOnly() {
+	s.True(s.handler.IsReadOnly(Config{AbsoluteTimeoutSeconds: 3600}))
+	s.False(s.handler.IsReadOnly(Config{}))
+	s.False(s.handler.IsReadOnly(nil))
 }
 
-// TestHandler_MergeOnlyAbsoluteSetClampsIdle verifies that a defaulted idle timeout is clamped to a
-// configured absolute timeout smaller than the idle default.
-func (s *ConfigTestSuite) TestHandler_MergeOnlyAbsoluteSetClampsIdle() {
-	merged := ConfigHandler{}.Merge(Config{AbsoluteTimeoutSeconds: 3600}, Config{}).(Config)
-	s.Equal(int64(3600), merged.IdleTimeoutSeconds, "defaulted idle must be clamped to the absolute timeout")
-	s.Equal(int64(3600), merged.AbsoluteTimeoutSeconds)
-	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+func (s *ConfigTestSuite) TestHandler_DefaultIsTheBuiltInTimeouts() {
+	s.Equal(Config{IdleTimeoutSeconds: 7200, AbsoluteTimeoutSeconds: 86400}, s.handler.Default(Config{}))
+	s.Equal(Config{IdleTimeoutSeconds: 7200, AbsoluteTimeoutSeconds: 86400}, s.handler.Default(nil))
 }
 
-// TestHandler_MergeOnlyWritableSetResolvesRemainingFields verifies that writable values apply over an
-// empty read-only layer and the remaining fields resolve to defaults.
-func (s *ConfigTestSuite) TestHandler_MergeOnlyWritableSetResolvesRemainingFields() {
-	merged := ConfigHandler{}.Merge(Config{}, Config{IdleTimeoutSeconds: 900}).(Config)
-	s.Equal(int64(900), merged.IdleTimeoutSeconds)
-	s.Equal(int64(DefaultAbsoluteTimeout.Seconds()), merged.AbsoluteTimeoutSeconds)
-	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
-}
-
-func (s *ConfigTestSuite) TestHandler_MergeWritableWins() {
-	readOnly := Config{IdleTimeoutSeconds: 1800, AbsoluteTimeoutSeconds: 28800, ActivityRefreshIntervalSeconds: 60}
-	writable := Config{IdleTimeoutSeconds: 600, ActivityRefreshIntervalSeconds: 30}
-	merged := ConfigHandler{}.Merge(readOnly, writable).(Config)
-	// A positive writable field overrides read-only; an unset writable field keeps read-only.
-	s.Equal(int64(600), merged.IdleTimeoutSeconds)
-	s.Equal(int64(28800), merged.AbsoluteTimeoutSeconds)
-	s.Equal(int64(30), merged.ActivityRefreshIntervalSeconds)
+// The default idle timeout is cut to an absolute timeout configured shorter than it, as it is in effect.
+func (s *ConfigTestSuite) TestHandler_DefaultIdleIsCutToAShorterAbsolute() {
+	s.Equal(Config{IdleTimeoutSeconds: 3600, AbsoluteTimeoutSeconds: 86400},
+		s.handler.Default(Config{AbsoluteTimeoutSeconds: 3600}))
+	s.Equal(Config{IdleTimeoutSeconds: 7200, AbsoluteTimeoutSeconds: 86400},
+		s.handler.Default(Config{AbsoluteTimeoutSeconds: 28800}))
 }
