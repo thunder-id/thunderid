@@ -86,43 +86,6 @@ func (suite *UtilsTestSuite) TestParseUserAttributes_InvalidJSON() {
 	suite.Nil(result)
 }
 
-func (suite *UtilsTestSuite) TestBuildUserDisplayName_WithName() {
-	attrs := map[string]interface{}{
-		"given_name":  "John",
-		"family_name": "Doe",
-	}
-
-	result := buildWebAuthnDisplayName(testUserID, attrs)
-
-	suite.Equal("John Doe", result)
-}
-
-func (suite *UtilsTestSuite) TestBuildUserDisplayName_WithFirstNameOnly() {
-	attrs := map[string]interface{}{
-		"given_name": "John",
-	}
-
-	result := buildWebAuthnDisplayName(testUserID, attrs)
-
-	suite.Equal("John", result)
-}
-
-func (suite *UtilsTestSuite) TestBuildUserDisplayName_Fallback() {
-	attrs := map[string]interface{}{
-		"email": "john@example.com", // email is not used by buildWebAuthnDisplayName
-	}
-
-	result := buildWebAuthnDisplayName(testUserID, attrs)
-
-	suite.Equal(testUserID, result)
-}
-
-func (suite *UtilsTestSuite) TestBuildUserDisplayName_NilAttributes() {
-	result := buildWebAuthnDisplayName(testUserID, nil)
-
-	suite.Equal(testUserID, result)
-}
-
 func (suite *UtilsTestSuite) TestResolveUserName_WithUsername() {
 	attrs := map[string]interface{}{
 		"username": "johndoe",
@@ -250,7 +213,7 @@ func (suite *UtilsTestSuite) TestExtractCoreUser_WithFullAttributes() {
 
 	displayName, userName := extractWebAuthnIdentity(testEntity)
 
-	suite.Equal("John Doe", displayName)
+	suite.Equal("johndoe", displayName)
 	suite.Equal("johndoe", userName)
 }
 
@@ -264,7 +227,7 @@ func (suite *UtilsTestSuite) TestExtractCoreUser_WithEmailOnly() {
 
 	displayName, userName := extractWebAuthnIdentity(testEntity)
 
-	suite.Equal(testUserID, displayName) // Falls back to ID
+	suite.Equal("john@example.com", displayName)
 	suite.Equal("john@example.com", userName)
 }
 
