@@ -73,6 +73,9 @@ func Run(ctx context.Context, importSvc importer.ImportServiceInterface, opts Op
 			Upsert:          &upsert,
 			ContinueOnError: &continueOnError,
 			Target:          "runtime",
+			// A control plane may have deployed these same defaults, which then stay read only here.
+			// They are left as deployed instead of failing the bootstrap on the refusal.
+			SkipManaged: true,
 		},
 	}
 
