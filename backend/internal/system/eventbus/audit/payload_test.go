@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
@@ -212,6 +213,24 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user credential detail", EventUserCredentialUpdate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"credential_type": "password"}), errDetailNotAllowed},
+		{"a verification request with its attribute", EventUserVerificationRequest,
+			NewPayload(ctx, testTarget, ActionRequest, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAttribute: "email"}), nil},
+		{"a refused verification request", EventUserVerificationRequest,
+			NewPayload(ctx, testTarget, ActionRequest, OutcomeDenied(reasonForbidden)).
+				WithDetails(map[string]string{DetailAttribute: "email"}), nil},
+		{"a verification with its attribute", EventUserVerificationVerify,
+			NewPayload(ctx, testTarget, ActionVerify, OutcomeFailed("avs_1001")).
+				WithDetails(map[string]string{DetailAttribute: "mobile"}), nil},
+		{"a verification invalidation with its attribute", EventUserVerificationInvalidate,
+			NewPayload(ctx, testTarget, ActionInvalidate, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAttribute: "email"}), nil},
+		{"a verification detail other than the attribute", EventUserVerificationVerify,
+			NewPayload(ctx, testTarget, ActionVerify, OutcomeSucceeded).
+				WithDetails(map[string]string{"value": "a@example.com"}), errDetailNotAllowed},
+		{"an invalidation reason is not a detail", EventUserVerificationInvalidate,
+			NewPayload(ctx, testTarget, ActionInvalidate, OutcomeSucceeded).
+				WithDetails(map[string]string{"reason": "value_changed"}), errDetailNotAllowed},
 		{"a user credential enroll without a resolved user", EventUserCredentialEnroll,
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
 		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,
@@ -474,6 +493,20 @@ func (s *PayloadTestSuite) TestAnExplicitActorReplacesTheVerifiedToken() {
 	s.Equal(Actor{Type: ActorTypeAgent, ID: testAgentID}, resolved.Actor(), "the receiver is unchanged")
 	s.Equal(strings.Repeat("ü", maxIDLength),
 		resolved.WithActor(Actor{Type: ActorTypeApplication, ID: strings.Repeat("ü", maxIDLength+1)}).Actor().ID)
+}
+
+// A flow on the server's authority carries whatever bearer token the public request had, so under a runtime
+// context the actor the event names replaces it, and elsewhere the token still decides.
+func (s *PayloadTestSuite) TestARuntimeActorReplacesTheTokenOnlyInARuntimeContext() {
+	ctx := securedCallContext(s.T(), accessToken(s.T(), map[string]interface{}{"sub": testUserID}), "")
+	named := Actor{Type: ActorTypeAnonymous}
+
+	runtime := NewPayload(security.WithRuntimeContext(ctx), testToken, ActionIssue, OutcomeSucceeded).
+		WithRuntimeActor(security.WithRuntimeContext(ctx), named)
+	request := NewPayload(ctx, testToken, ActionIssue, OutcomeSucceeded).WithRuntimeActor(ctx, named)
+
+	s.Equal(named, runtime.Actor())
+	s.Equal(Actor{Type: ActorTypeUser, ID: testUserID}, request.Actor())
 }
 
 func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {

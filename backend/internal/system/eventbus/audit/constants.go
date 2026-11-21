@@ -52,6 +52,12 @@ const (
 	ActionSuspend Action = "suspend"
 	// ActionUnsuspend releases an administrative hold on an identity.
 	ActionUnsuspend Action = "unsuspend"
+	// ActionRequest asks for a challenge that proves an attribute, such as a contact.
+	ActionRequest Action = "request"
+	// ActionVerify records an attribute, such as a contact, as proven.
+	ActionVerify Action = "verify"
+	// ActionInvalidate withdraws a recorded proof of an attribute.
+	ActionInvalidate Action = "invalidate"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit/audittest"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -54,7 +55,8 @@ func (s *ServiceTestSuite) SetupTest() {
 		Run(func(args mock.Arguments) { published = append(published, args.Get(1).(*providers.Event)) }).Maybe()
 	authorizer := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authorizer.EXPECT().IsActionAllowed(mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
-	s.svc = newAttributeVerificationService(s.entities, contactSchema(s.T()), obs, authorizer)
+	s.svc = newAttributeVerificationService(s.entities, contactSchema(s.T()), obs, authorizer,
+		audittest.NewDiscardingBus(s.T()))
 	s.ctx = context.Background()
 	s.testErr = errors.New("store error")
 }

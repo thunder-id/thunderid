@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit/audittest"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/hashmock"
@@ -293,7 +294,8 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_HashesSystem
 			Salt: "salt", Iterations: 1, KeySize: 32,
 		},
 	}, nil).Once()
-	svc := newEntityService(fileStore, nil, hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
+	svc := newEntityService(fileStore, nil, hashService, nil, nil, transaction.NewNoOpTransactioner(),
+		nil, nil, audittest.NewDiscardingBus(s.T()))
 
 	cfg := DeclarativeLoaderConfig{
 		Directory: "applications",
