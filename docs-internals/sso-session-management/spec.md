@@ -176,7 +176,7 @@ ALTER TABLE "SESSION" ADD COLUMN PROPERTIES TEXT;
 
 The administrator routes have their own permissions, as `/applications` and `/roles` do. A `session` resource with the actions `view` and `delete` is added under `system` on the System resource server, giving `system:session:view` for listing and `system:session:delete` for revoking. A role that holds `system`, such as the Administrator role, holds both. Only the Data Plane serves sessions, so the Control Plane declares no session permission and leaves the routes out. The self-service routes take the user from the access token and accept no user id. The permission table maps `GET /users/me/**` and the two `DELETE /users/me/sessions` routes to no permission, and the `DELETE` entries are narrow so they don't open `DELETE /users/me`.
 
-Each session in a response carries `id`, `userId`, `userName` (administrator listing only), `userAgent`, `creationIp`, `lastActiveIp`, `authenticatedAt`, `createdAt`, `lastActiveAt`, `idleExpiresAt`, `absoluteExpiresAt`, `isCurrent` (self-service listing only), and `participants`, each with `appId`, `appName`, `firstJoinedAt` and `lastActiveAt`. A value that wasn't recorded or can't be resolved is left out.
+Each session in a response carries `id`, `userId`, `userName` (administrator listing only), `userAgent`, `creationIp`, `lastActiveIp`, `authenticatedAt`, `createdAt`, `lastActiveAt`, `idleExpiresAt`, `absoluteExpiresAt`, `isCurrent` (self-service listing only), and `participants`, each with `appId`, `appName`, `appLogoUrl`, `firstJoinedAt` and `lastActiveAt`. A value that wasn't recorded or can't be resolved is left out.
 
 Error codes, in the standard error envelope:
 
@@ -359,3 +359,4 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-11-04 | Initial specification, from design discussion #4130 and the session table in #6322, as built in #5575, #6150, #6152 and #6159. |
+| 0.2 | 2026-11-16 | Participants carry the application's logo URL, and the self-service listing resolves application names and logos regardless of the caller's application permissions. |
