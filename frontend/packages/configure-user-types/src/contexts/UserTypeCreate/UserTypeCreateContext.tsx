@@ -41,6 +41,9 @@ export interface UserTypeCreateContextType {
   displayAttribute: string;
   setDisplayAttribute: (displayAttribute: string) => void;
 
+  pictureAttribute: string;
+  setPictureAttribute: (pictureAttribute: string) => void;
+
   error: string | null;
   setError: (error: string | null) => void;
 
