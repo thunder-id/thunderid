@@ -92,8 +92,8 @@ The `aud` claim is always a single string, per [RFC 7519 §4.1.3](https://datatr
 |---|---|
 | Permissions owned by a targeted resource server | ✅ Kept |
 | Permissions owned by a different resource server | ❌ Dropped |
-| OIDC standard scopes (`openid`, `profile`, `email`, `phone`, `address`) | Always kept |
-| Custom scopes mapped via `scopeClaims` | Always kept |
+| `openid` | Always kept |
+| Scopes mapped via `scopeClaims` | Always kept |
 
 ### Resource on Refresh
 

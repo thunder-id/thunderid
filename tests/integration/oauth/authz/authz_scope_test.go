@@ -806,7 +806,7 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_FiltersOIDCScopesByScopeC
 	ts.Require().NotEmpty(tokenResp.AccessToken, "Access token should not be empty")
 
 	tokenResponseScopes := strings.Fields(tokenResp.Scope)
-	ts.Require().ElementsMatch([]string{"openid", "email", "profile"}, tokenResponseScopes,
+	ts.Require().ElementsMatch([]string{"openid", "profile"}, tokenResponseScopes,
 		"Token response scope should drop the unmapped email scope and keep openid")
 
 	claims, err := testutils.DecodeJWT(tokenResp.AccessToken)
@@ -819,7 +819,7 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_FiltersOIDCScopesByScopeC
 	ts.Require().True(ok, "scope claim should be a string")
 
 	accessTokenScopes := strings.Fields(scopeStr)
-	ts.Require().ElementsMatch([]string{"openid", "email", "profile"}, accessTokenScopes,
+	ts.Require().ElementsMatch([]string{"openid", "profile"}, accessTokenScopes,
 		"Access token scope should only include mapped requested OIDC scopes, plus openid")
 	// openid is granted without a mapping entry, so the ID token is still issued; email is not
 	// mapped, so none of its claims can appear.
@@ -829,6 +829,92 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_FiltersOIDCScopesByScopeC
 	ts.Require().NoError(err, "Failed to decode ID token")
 	ts.Require().NotContains(idTokenClaims.Additional, "email",
 		"email claims must not be issued for a scope the mapping does not define")
+}
+
+// TestOAuthAuthzFlow_RemovedStandardScopeReleasesNothing verifies that removing a standard scope
+// from an application's mapping after creation stops it releasing claims, with no fallback to the
+// standard claim set.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_RemovedStandardScopeReleasesNothing() {
+	const (
+		clientID     = "oidc_scope_removed_test_client"
+		clientSecret = "oidc_scope_removed_test_secret"
+	)
+
+	appID, err := ts.createApplicationRaw(map[string]interface{}{
+		"name":                      "OIDCScopeRemovedTestApp",
+		"ouId":                      scopeTestOUID,
+		"authFlowId":                ts.flowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"authz-test-person"},
+		"inboundAuthConfig": []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"clientSecret":            clientSecret,
+					"redirectUris":            []string{scopeTestRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_post",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create OAuth application")
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+
+	// Created without a mapping, so the standard one is seeded; the update removes profile only.
+	app := ts.getApplicationRaw(appID)
+	config := app["inboundAuthConfig"].([]interface{})[0].(map[string]interface{})["config"].(map[string]interface{})
+	scopeClaims := config["scopeClaims"].(map[string]interface{})
+	ts.Require().Contains(scopeClaims, "profile", "profile should be seeded on create")
+	delete(scopeClaims, "profile")
+	ts.putApplicationRaw(appID, app)
+
+	tokenResp, err := ts.obtainTokenWithResource(clientID, clientSecret, "openid profile email",
+		"oauth_authorized_user", scopeTestResourceServerIdentifier)
+	ts.Require().NoError(err, "Failed to obtain access token")
+
+	ts.Require().ElementsMatch([]string{"openid", "email"}, strings.Fields(tokenResp.Scope),
+		"The removed profile scope should be dropped")
+	idTokenClaims, err := testutils.DecodeJWT(tokenResp.IDToken)
+	ts.Require().NoError(err, "Failed to decode ID token")
+	ts.Require().Equal("oauth_authorized@test.com", idTokenClaims.Additional["email"],
+		"email is still mapped and should be released")
+	ts.Require().NotContains(idTokenClaims.Additional, "given_name",
+		"profile claims must not be released after profile is removed")
+	ts.Require().NotContains(idTokenClaims.Additional, "family_name",
+		"profile claims must not be released after profile is removed")
+}
+
+// getApplicationRaw returns an application as the API serves it, for a read-modify-write update.
+func (ts *OAuthAuthzScopeTestSuite) getApplicationRaw(appID string) map[string]interface{} {
+	resp, err := ts.client.Get(testutils.TestServerURL + "/applications/" + appID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var app map[string]interface{}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&app))
+	return app
+}
+
+// putApplicationRaw replaces an application with the given body.
+func (ts *OAuthAuthzScopeTestSuite) putApplicationRaw(appID string, app map[string]interface{}) {
+	raw, err := json.Marshal(app)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPut, testutils.TestServerURL+"/applications/"+appID,
+		bytes.NewReader(raw))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "Failed to update application: %s", string(body))
 }
 
 // TestOAuthAuthzFlow_LegacyUserTypeClaim tests that an app configured with the legacy userType attribute
