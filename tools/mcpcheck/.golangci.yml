@@ -1,0 +1,82 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocritic
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+    - whitespace
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+        - ifElseChain
+        - elseif
+      enabled-tags:
+        - diagnostic
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+    lll:
+      line-length: 140
+      tab-width: 4
+    misspell:
+      locale: US
+      ignore-rules:
+        - cancelled
+        - cancelling
+    revive:
+      rules:
+        - name: var-naming
+        - name: redundant-import-alias
+        - name: comment-spacings
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/thunder-id/thunderid/tools/mcpcheck)
+    goimports:
+      local-prefixes:
+        - github.com/thunder-id/thunderid/tools/mcpcheck
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+output:
+  show-stats: true

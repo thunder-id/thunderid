@@ -1,0 +1,8 @@
+# Spec
+
+### MCP exposure
+
+Decision: required
+
+| Operation | Tool | Tier |
+|---|---|---|

@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: Apps
+  version: "1.0"
+  description: |
+    These lines move every existing operation further down the file, so the
+    comparison with the base branch cannot depend on line numbers.
+paths:
+  /apps:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: list_apps, tier: read}
+  /apps/new:
+    post:
+      operationId: createNew
+  /legacy:
+    get:
+      operationId: legacy
+  /legacy/{id}:
+    delete:
+      x-thunderid-mcp:
+        expose: false
