@@ -339,6 +339,7 @@ type TokenHTTPResult struct {
 type IntrospectionResult struct {
 	Active bool                   `json:"active"`
 	Sub    string                 `json:"sub"`
+	Idp    string                 `json:"idp"`
 	Act    map[string]interface{} `json:"act"`
 }
 

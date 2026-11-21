@@ -126,7 +126,7 @@ Behavior:
 - An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
 - A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
 - Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.
-- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented. If resolving the mapping fails, sign-in still proceeds without it; token exchange and ID-JAG consumption fail the request instead, since there is no already-issued session to fall back to.
+- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented. If resolving the mapping fails, sign-in still proceeds without it; token exchange and ID-JAG consumption fail the request instead, since there is no already-issued session to fall back to. For token exchange and ID-JAG, the mapping is the only source of permission scopes, so a connection without one grants none.
 - To also assign a mapping's roles and groups the moment an account is first created, rather than only computing them at each sign-in, enable **Seed Groups/Roles From Authorization Mapping** on the flow's Provisioning step. See [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes).
 
 ### Account Linking

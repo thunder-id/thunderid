@@ -571,7 +571,9 @@ describe('TrustedIssuerDetailPage', () => {
 
     const section = screen.getByTestId('authz-section');
     expect(section).toHaveAttribute('data-ou-id', 'ou-1');
-    expect(section).toHaveTextContent('When a mapping is set, these tokens carry only the permissions it grants.');
+    expect(section).toHaveTextContent(
+      'Tokens from this issuer carry only the permissions the mapping grants, and none without a mapping.',
+    );
   });
 
   it('should mark dirty and send the edited direct mapping when saved', async () => {

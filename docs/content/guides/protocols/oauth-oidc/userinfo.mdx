@@ -34,6 +34,7 @@ The client presents the access token as a Bearer (or DPoP) credential. <ProductN
 | Custom attributes | Configurable per application via `userInfo.userAttributes` |
 | Invalid or expired token | `401 Unauthorized` |
 | Token missing the `openid` scope | `403 Forbidden` with `insufficient_scope` |
+| Token for an external identity provider's subject, which carries an `idp` claim | `401 Unauthorized` with `invalid_token`. The subject is not a user of this deployment. |
 
 ### Response Formats
 

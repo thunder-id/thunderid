@@ -129,6 +129,7 @@ The issued access token's `sub` claim is the assertion's subject verbatim, an ex
 
 - There is no replay cache. <ProductName /> checks that `jti` is present but does not track previously seen values, so keep assertion expiry short.
 - No local user mapping occurs. The token's `sub` is the external identifier as-is.
+- The token carries an `idp` claim naming the external issuer. <ProductName />'s own APIs, the management APIs and the MCP server, do not accept it, because its `sub` is not a local user. To call those APIs with an identity from an external provider, use the [trusted issuer](../../../../trusted-issuer).
 - <ProductName /> does not advertise ID-JAG or Enterprise-Managed Authorization discovery metadata in its well-known documents.
 
 :::note

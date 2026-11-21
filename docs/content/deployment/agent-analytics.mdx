@@ -184,6 +184,7 @@ So **filter agent traffic on `act_type`, never on `sub_type`.** A query keyed on
 
 - An application's token exchange that presents no actor token reports `is_delegated: false` unless the application has `includeActClaim` on. An agent's exchange without an actor token names the agent as the actor. A request for an ID-JAG reports `is_delegated: false` for every client, because the ID-JAG carries no `act` claim.
 - On token exchange, `jwt-bearer`, and ID-JAG, `sub` and `sub_type` are omitted when the presented subject is a mapped attribute rather than a resource ID, because a mapped attribute resolves to no entity and <ProductName /> omits the field rather than publishing a value it cannot verify.
+- `sub` and `sub_type` are also omitted when the subject belongs to an external identity provider, on `jwt-bearer` and on token exchange of that provider's token or of a token that carries `idp`, even when the identifier equals a local entity's resource ID. `act_sub` is omitted the same way for an actor from an external identity provider.
 
 Note this next to any panel that reports delegation, because a reviewer will act on the number.
 

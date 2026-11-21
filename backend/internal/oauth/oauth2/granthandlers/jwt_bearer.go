@@ -120,7 +120,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	// The granted scopes are always bounded by the ID-JAG's own scope claim (RFC-JAG 4.4.1: "granted
 	// scopes MAY be a subset of the scopes in the ID-JAG"), narrowed by the request when one is given.
 	// An omitted request keeps every assertion scope as the candidate (RFC 6749 3.3 default-scope
-	// convention); RS definition and, when configured, ApplyMappedAuthorization narrow it further below.
+	// convention); RS definition and the connection's authorization mapping narrow it further below.
 	grantedScopes := assertionClaims.Scopes
 	if tokenRequest.Scope != "" {
 		grantedScopes = intersectScopes(grantedScopes, tokenservice.ParseScopes(tokenRequest.Scope))
@@ -171,9 +171,11 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 			return nil, errResp
 		}
 
+		// The assertion's sub names no local account, so its permission scopes come only from the
+		// connection's authorization mapping; without one, none.
 		permissionScopes, errResp = tokenservice.ApplyMappedAuthorization(
 			ctx, h.authzService, h.actorProvider, assertionClaims.Authorization.Targets, targetRS.ID,
-			permissionScopes, assertionClaims.Authorization.Configured, logger)
+			permissionScopes, true, logger)
 		if errResp != nil {
 			return nil, errResp
 		}

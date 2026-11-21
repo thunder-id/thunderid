@@ -77,6 +77,12 @@ func DecodeJWTHeader(jwtToken string) (map[string]interface{}, error) {
 	return header, nil
 }
 
+// IsAccessTokenType reports whether a typ header names an access token. RFC 9068 Section 4 requires
+// both the compact and the media-type spelling to be accepted, compared case-insensitively.
+func IsAccessTokenType(typ string) bool {
+	return strings.EqualFold(typ, TokenTypeAccessToken) || strings.EqualFold(typ, TokenTypeAccessTokenWithPrefix)
+}
+
 // IsRefreshTokenType reports whether a typ header names a refresh token.
 func IsRefreshTokenType(typ string) bool {
 	return strings.EqualFold(typ, TokenTypeRefreshToken)

@@ -758,7 +758,7 @@ paths:
                 type: string
                 description: Signed (JWS) or encrypted (JWE) UserInfo response.
         "401":
-          description: Unauthorized — missing or invalid Bearer token.
+          description: Unauthorized — missing or invalid Bearer token, or a token for an external identity provider's subject (one that carries `idp`).
           headers:
             WWW-Authenticate:
               schema:
@@ -797,7 +797,7 @@ paths:
               schema:
                 type: string
         "401":
-          description: Unauthorized — missing or invalid Bearer token.
+          description: Unauthorized — missing or invalid Bearer token, or a token for an external identity provider's subject (one that carries `idp`).
         "403":
           description: Forbidden — token scope is insufficient.
         "500":
@@ -1607,6 +1607,12 @@ components:
             Identity class of the token subject. Present on tokens issued through the
             `client_credentials` grant, where the OAuth client itself is the subject, so a resource
             server can apply policy that differs by class. Absent for user-subject tokens.
+        idp:
+          type: string
+          description: |
+            Issuer of the external identity provider whose identifier `sub` is. Present on tokens
+            issued for an external subject, through the `jwt-bearer` grant or token exchange of an
+            external token, whose `sub` is not a user of this deployment. Absent otherwise.
         aud:
           description: Audience — may be a string or an array of strings.
           oneOf:

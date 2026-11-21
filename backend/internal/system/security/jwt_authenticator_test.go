@@ -1262,3 +1262,56 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_ChecksATrustedIssuerTok
 	assert.NoError(suite.T(), err)
 	mockJWT.AssertExpectations(suite.T())
 }
+
+// A self-issued access token issued for a subject of an external identity provider carries the idp
+// claim. That subject is not an account of this deployment, so the token does not authenticate here.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RejectsSelfIssuedTokenWithExternalSubject() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{JWT: engineconfig.JWTConfig{Issuer: testLocalIssuer}})
+
+	token := buildFakeJWT(accessTokenHeader(), map[string]interface{}{
+		"sub":   "user-123",
+		"iss":   testLocalIssuer,
+		"idp":   testFederatedIssuer,
+		"scope": "read:docs",
+	})
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil).Maybe()
+	auth := newJWTAuthenticator(mockJWT, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	authCtx, err := auth.Authenticate(req)
+
+	assert.ErrorIs(suite.T(), err, errInvalidToken)
+	assert.Nil(suite.T(), authCtx)
+}
+
+// The idp claim only marks an external subject on a token this deployment issued. A trusted issuer's
+// own claim vocabulary is not interpreted, so its token still authenticates.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_TrustedIssuerTokenWithIDPClaimAuthenticates() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", federatedConfigWithLocalIssuer())
+
+	token := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid"},
+		map[string]interface{}{"sub": "federated-user", "iss": testFederatedIssuer, "idp": "upstream-idp"},
+	)
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, testFederatedJWKSURL, testFederatedAudience,
+		testFederatedIssuer).Return(nil)
+	auth := newJWTAuthenticator(mockJWT, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	authCtx, err := auth.Authenticate(req)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "federated-user", GetSubject(withSecurityContext(context.Background(), authCtx)))
+}
