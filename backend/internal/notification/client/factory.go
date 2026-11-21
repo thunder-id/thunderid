@@ -9,6 +9,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -19,11 +20,13 @@ type ClientFactoryInterface interface {
 }
 
 // clientFactory is the implementation of ClientFactoryInterface.
-type clientFactory struct{}
+type clientFactory struct {
+	clients syshttp.OutboundClientProviderInterface
+}
 
 // newClientFactory returns a new instance of ClientFactoryInterface.
-func newClientFactory() ClientFactoryInterface {
-	return &clientFactory{}
+func newClientFactory(clients syshttp.OutboundClientProviderInterface) ClientFactoryInterface {
+	return &clientFactory{clients: clients}
 }
 
 // GetClient returns the notification client for the given sender.
@@ -37,18 +40,18 @@ func (p *clientFactory) GetClient(ctx context.Context, sender common.Notificatio
 	case common.NotificationSenderTypeMessage:
 		switch sender.Provider {
 		case common.NotificationProviderTypeVonage:
-			_client, err = newVonageClient(ctx, sender)
+			_client, err = newVonageClient(ctx, sender, p.clients)
 		case common.NotificationProviderTypeTwilio:
-			_client, err = newTwilioClient(ctx, sender)
+			_client, err = newTwilioClient(ctx, sender, p.clients)
 		case common.NotificationProviderTypeCustom:
-			_client, err = newCustomClient(ctx, sender)
+			_client, err = newCustomClient(ctx, sender, p.clients)
 		default:
 			return nil, &ErrorInvalidProvider
 		}
 	case common.NotificationSenderTypeEmail:
 		switch sender.Provider {
 		case common.NotificationProviderTypeSMTP:
-			_client, err = newSMTPEmailClient(ctx, sender)
+			_client, err = newSMTPEmailClient(ctx, sender, p.clients)
 		default:
 			return nil, &ErrorInvalidProvider
 		}

@@ -5,14 +5,17 @@ package backchannel
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 )
@@ -38,7 +41,7 @@ func (s *InitTestSuite) TearDownSuite() {
 func (s *InitTestSuite) initialize(cfg oauthconfig.Config) DispatcherInterface {
 	return Initialize(tokenservicemock.NewTokenBuilderInterfaceMock(s.T()),
 		actorprovidermock.NewActorProviderMock(s.T()),
-		observabilityprovidermock.NewObservabilityProviderMock(s.T()), cfg)
+		observabilityprovidermock.NewObservabilityProviderMock(s.T()), cfg, syshttp.Initialize(false))
 }
 
 func oauthConfig(enabled bool) oauthconfig.Config {
@@ -58,4 +61,18 @@ func (s *InitTestSuite) TestInitialize_ReturnsDispatcherWhenEnabled() {
 
 func (s *InitTestSuite) TestInitialize_ReturnsNilWhenDisabled() {
 	assert.Nil(s.T(), s.initialize(oauthConfig(false)))
+}
+
+// Logout tokens are delivered through a client from the given provider.
+func (s *InitTestSuite) TestInitialize_DeliversThroughTheOutboundProvider() {
+	outbound := httpmock.NewOutboundClientProviderInterfaceMock(s.T())
+	client := httpmock.NewHTTPClientInterfaceMock(s.T())
+	outbound.EXPECT().NewHTTPClientWithoutRedirects(5 * time.Second).Return(client)
+
+	d := Initialize(tokenservicemock.NewTokenBuilderInterfaceMock(s.T()),
+		actorprovidermock.NewActorProviderMock(s.T()),
+		observabilityprovidermock.NewObservabilityProviderMock(s.T()), oauthConfig(true), outbound)
+
+	s.Require().NotNil(d)
+	s.Same(client, d.(*dispatcher).http)
 }

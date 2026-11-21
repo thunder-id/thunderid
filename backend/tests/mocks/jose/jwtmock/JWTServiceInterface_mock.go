@@ -565,3 +565,80 @@ func (_c *JWTServiceInterfaceMock_VerifyJWTWithPublicKey_Call) RunAndReturn(run 
 	_c.Call.Return(run)
 	return _c
 }
+
+// VerifyJWTWithTrustedJWKS provides a mock function for the type JWTServiceInterfaceMock
+func (_mock *JWTServiceInterfaceMock) VerifyJWTWithTrustedJWKS(ctx context.Context, jwtToken string, jwksURL string, expectedAud string, expectedIss string) *common.ServiceError {
+	ret := _mock.Called(ctx, jwtToken, jwksURL, expectedAud, expectedIss)
+
+	if len(ret) == 0 {
+		panic("no return value specified for VerifyJWTWithTrustedJWKS")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, jwtToken, jwksURL, expectedAud, expectedIss)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerifyJWTWithTrustedJWKS'
+type JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call struct {
+	*mock.Call
+}
+
+// VerifyJWTWithTrustedJWKS is a helper method to define mock.On call
+//   - ctx context.Context
+//   - jwtToken string
+//   - jwksURL string
+//   - expectedAud string
+//   - expectedIss string
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTWithTrustedJWKS(ctx any, jwtToken any, jwksURL any, expectedAud any, expectedIss any) *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call {
+	return &JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call{Call: _e.mock.On("VerifyJWTWithTrustedJWKS", ctx, jwtToken, jwksURL, expectedAud, expectedIss)}
+}
+
+func (_c *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call) Run(run func(ctx context.Context, jwtToken string, jwksURL string, expectedAud string, expectedIss string)) *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call) Return(serviceError *common.ServiceError) *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call) RunAndReturn(run func(ctx context.Context, jwtToken string, jwksURL string, expectedAud string, expectedIss string) *common.ServiceError) *JWTServiceInterfaceMock_VerifyJWTWithTrustedJWKS_Call {
+	_c.Call.Return(run)
+	return _c
+}

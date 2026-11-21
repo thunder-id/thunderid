@@ -65,7 +65,7 @@ Use the **SMS gateway** connection to connect <ProductName /> to any SMS gateway
 
    | Field                  | Required | Description                                                                                                                       |
    | :--------------------- | :------: | :-------------------------------------------------------------------------------------------------------------------------------- |
-   | **Gateway URL**        |   Yes    | HTTP endpoint <ProductName /> calls to send an SMS. Authenticated remote gateways must use HTTPS. Loopback gateways may use HTTP. |
+   | **Gateway URL**        |   Yes    | HTTP endpoint <ProductName /> calls to send an SMS. Authenticated remote gateways must use HTTPS. Loopback gateways may use HTTP, but are refused unless private addresses are allowed (see below). |
    | **HTTP method**        |    No    | Method used to call the gateway URL: `POST` or `GET`. Defaults to `POST`.                                                         |
    | **Content type**       |    No    | Format of the request body sent to the gateway: `JSON` or `FORM`. Defaults to `JSON`.                                             |
    | **Other HTTP headers** |    No    | Non-credential headers sent with every request, such as `X-Campaign-ID`.                                                          |
@@ -75,6 +75,11 @@ Use the **SMS gateway** connection to connect <ProductName /> to any SMS gateway
 
 Do not configure the same header in both sections. Bearer token and Basic authentication use the `Authorization` header,
 so do not add `Authorization` under **Other HTTP headers** when either method is selected.
+
+By default, <ProductName /> refuses to call a gateway URL whose host is, or resolves to, a loopback, link-local or
+private address, such as `localhost` or `10.0.0.5`. To use a gateway on such an address, set
+`server.allow_private_addresses: true` in `deployment.yaml` and restart the server. See
+[Configuration](../../../deployment/configuration).
 
 #### Customize the Gateway Request Body
 

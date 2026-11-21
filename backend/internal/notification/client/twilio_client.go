@@ -33,7 +33,8 @@ type TwilioClient struct {
 }
 
 // newTwilioClient creates a new instance of TwilioClient.
-func newTwilioClient(ctx context.Context, sender common.NotificationSenderDTO) (MessageClientInterface, error) {
+func newTwilioClient(ctx context.Context, sender common.NotificationSenderDTO,
+	clients syshttp.OutboundClientProviderInterface) (MessageClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, twilioLoggerComponentName))
 
 	client := &TwilioClient{}
@@ -57,7 +58,7 @@ func newTwilioClient(ctx context.Context, sender common.NotificationSenderDTO) (
 		}
 	}
 	client.url = fmt.Sprintf(twilioURL, client.accountSID)
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	client.httpClient = clients.NewHTTPClient(httpClientTimeout)
 
 	return client, nil
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
@@ -56,12 +57,13 @@ func (suite *BuiltInExecutorRegistrationTestSuite) mockFlowFactory() *coremock.F
 
 func (suite *BuiltInExecutorRegistrationTestSuite) depsForBuiltInRegistration() ExecutorDependencies {
 	return ExecutorDependencies{
-		FlowFactory:    suite.mockFlowFactory(),
-		EntityProvider: entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
-		OAuthSvc:       oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
-		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
-		GithubSvc:      githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T()),
-		GoogleSvc:      googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T()),
+		FlowFactory:     suite.mockFlowFactory(),
+		EntityProvider:  entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
+		OAuthSvc:        oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
+		OIDCSvc:         oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
+		GithubSvc:       githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T()),
+		GoogleSvc:       googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T()),
+		OutboundClients: httpmock.NewOutboundClientProviderInterfaceMock(suite.T()),
 	}
 }
 
@@ -134,6 +136,18 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_R
 			reg, newBuiltInExecutorRegistrars(), ExecutorDependencies{}, ExecutorNameInviteExecutor)
 	})
 	assert.False(suite.T(), reg.IsRegistered(ExecutorNameInviteExecutor))
+}
+
+// Without outbound clients the HTTP request executor fails to register, rather than its first step.
+func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_RequiresOutboundClients() {
+	deps := suite.depsForBuiltInRegistration()
+	deps.OutboundClients = nil
+	reg := newExecutorRegistry()
+
+	err := registerBuiltInExecutor(reg, newBuiltInExecutorRegistrars(), deps, ExecutorNameHTTPRequest)
+
+	suite.ErrorContains(err, "failed to register built-in executor")
+	assert.False(suite.T(), reg.IsRegistered(ExecutorNameHTTPRequest))
 }
 
 func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutors_UnknownName() {

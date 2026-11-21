@@ -1636,10 +1636,8 @@ guides:
           file: deployment.yaml
           lang: yaml
           content: |-
-            oauth:
-              logout:
-                backchannel:
-                  reject_private_addresses: false
+            server:
+              allow_private_addresses: true
       - title: Add single sign-on to the sign-in flow
         description: The flow needs the Check SSO Session and Save / Load Session nodes. Without them
           {{ProductName}} records no session, so it sends no logout.

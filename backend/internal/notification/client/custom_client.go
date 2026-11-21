@@ -36,7 +36,8 @@ type CustomClient struct {
 }
 
 // newCustomClient creates a new instance of CustomClient.
-func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (MessageClientInterface, error) {
+func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO,
+	clients syshttp.OutboundClientProviderInterface) (MessageClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
 
 	client := &CustomClient{}
@@ -93,9 +94,9 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 	}
 	client.authenticator = authenticator
 	if config.Enabled() {
-		client.httpClient = syshttp.NewHTTPClientWithoutRedirects(httpClientTimeout, false)
+		client.httpClient = clients.NewHTTPClientWithoutRedirects(httpClientTimeout)
 	} else {
-		client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+		client.httpClient = clients.NewHTTPClient(httpClientTimeout)
 	}
 
 	return client, nil

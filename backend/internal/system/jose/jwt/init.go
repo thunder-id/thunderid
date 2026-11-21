@@ -12,10 +12,16 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the JWT service.
+// jwksFetchTimeout bounds the retrieval of a JWKS.
+const jwksFetchTimeout = 10 * time.Second
+
+// Initialize initializes the JWT service. A JWKS an administrator or a client configures is fetched
+// through a client from outbound; one the deployment configuration sets, such as the trusted
+// issuer's, through outbound's unguarded client.
 func Initialize(
 	runtimeProvider providers.RuntimeCryptoProvider, cfg joseconfig.Config,
+	outbound httpservice.OutboundClientProviderInterface,
 ) (JWTServiceInterface, error) {
-	httpClient := httpservice.NewHTTPClientWithTimeout(10 * time.Second)
-	return newJWTService(httpClient, runtimeProvider, cfg)
+	return newJWTService(outbound.NewHTTPClient(jwksFetchTimeout),
+		outbound.NewUnguardedHTTPClient(jwksFetchTimeout), runtimeProvider, cfg)
 }

@@ -6,12 +6,17 @@ package cimd
 import (
 	"net/http"
 
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
-// Initialize initializes the Client ID Metadata Document service and registers its routes.
+// Initialize initializes the Client ID Metadata Document service and registers its routes. A document's
+// URL is the client identifier itself, which anyone presenting a client_id can name, so documents are
+// retrieved through clients that always refuse private and loopback addresses on the connected
+// address, whatever server.allow_private_addresses says for administrator-configured destinations.
 func Initialize(mux *http.ServeMux) CIMDServiceInterface {
-	cimdService := newCIMDService()
+	cimdService := newCIMDService(syshttp.Initialize(false))
 	registerRoutes(mux, newCIMDHandler(cimdService))
 	return cimdService
 }

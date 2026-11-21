@@ -30,7 +30,8 @@ func KeepingValueReferences() Option {
 	return func(s *inboundClientService) { s.keepsReferences = true }
 }
 
-// Initialize initializes the inbound client service.
+// Initialize initializes the inbound client service. allowPrivateAddresses is
+// server.allow_private_addresses, which decides whether a back-channel logout URI may name a private host.
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	certService cert.CertificateServiceInterface,
@@ -44,6 +45,7 @@ func Initialize(
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	sharedTypes SharedTypeResolver,
+	allowPrivateAddresses bool,
 	options ...Option,
 ) (InboundClientServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
@@ -53,6 +55,7 @@ func Initialize(
 	service := newInboundClientService(store, transactioner, certService, entityProvider,
 		themeMgt, layoutMgt, flowMgt, entityType, cryptoProvider, jweService, cimdService,
 		sharingService, sharedTypes)
+	service.allowPrivateAddresses = allowPrivateAddresses
 	for _, option := range options {
 		option(service)
 	}
