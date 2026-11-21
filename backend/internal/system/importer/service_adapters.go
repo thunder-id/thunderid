@@ -10,6 +10,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -148,8 +149,95 @@ type notificationTemplateDeclarativeYAML struct {
 	} `yaml:"design"`
 }
 
+// ouDefaultFlows are the default flows of an organization unit.
+type ouDefaultFlows struct {
+	auth, registration, recovery, signOut, userOnboarding string
+}
+
+func defaultFlowsOfRequest(r ou.OrganizationUnitRequestWithID) ouDefaultFlows {
+	return ouDefaultFlows{
+		auth: r.AuthFlowID, registration: r.RegistrationFlowID, recovery: r.RecoveryFlowID,
+		signOut: r.SignOutFlowID, userOnboarding: r.UserOnboardingFlowID,
+	}
+}
+
+func defaultFlowsOfUnit(u ou.OrganizationUnit) ouDefaultFlows {
+	return ouDefaultFlows{
+		auth: u.AuthFlowID, registration: u.RegistrationFlowID, recovery: u.RecoveryFlowID,
+		signOut: u.SignOutFlowID, userOnboarding: u.UserOnboardingFlowID,
+	}
+}
+
+// retainedDefaultFlows returns the default flows a document names that the unit already has and that still exist, and
+// none of the rest. A flow that is gone is left out, so the unit's first write is not refused for it, and is set once
+// the flows are imported.
+func (s *importService) retainedDefaultFlows(
+	ctx context.Context, wanted, current ouDefaultFlows,
+) (ouDefaultFlows, *tidcommon.ServiceError) {
+	var retained ouDefaultFlows
+	slots := []struct {
+		wantedID, currentID string
+		flowType            providers.FlowType
+		retained            *string
+	}{
+		{wanted.auth, current.auth, providers.FlowTypeAuthentication, &retained.auth},
+		{wanted.registration, current.registration, providers.FlowTypeRegistration, &retained.registration},
+		{wanted.recovery, current.recovery, providers.FlowTypeRecovery, &retained.recovery},
+		{wanted.signOut, current.signOut, providers.FlowTypeSignOut, &retained.signOut},
+		{wanted.userOnboarding, current.userOnboarding, providers.FlowTypeUserOnboarding, &retained.userOnboarding},
+	}
+	for _, slot := range slots {
+		if slot.wantedID == "" || slot.wantedID != slot.currentID {
+			continue
+		}
+		if s.flowService != nil {
+			valid, svcErr := s.flowService.IsValidFlow(ctx, slot.wantedID, slot.flowType)
+			if svcErr != nil {
+				return ouDefaultFlows{}, svcErr
+			}
+			if !valid {
+				continue
+			}
+		}
+		*slot.retained = slot.wantedID
+	}
+	return retained, nil
+}
+
+func setDefaultFlows(r *ou.OrganizationUnitRequestWithID, f ouDefaultFlows) {
+	r.AuthFlowID = f.auth
+	r.RegistrationFlowID = f.registration
+	r.RecoveryFlowID = f.recovery
+	r.SignOutFlowID = f.signOut
+	r.UserOnboardingFlowID = f.userOnboarding
+}
+
+// ouDefaultFlowsReplay is an organization unit whose default flows are set once the flows are imported. A unit is
+// imported before the flows it owns, and a flow needs the unit that owns it, so the flows the unit names do not
+// exist yet when the unit is written.
+type ouDefaultFlowsReplay struct {
+	unitID      string
+	unitName    string
+	request     ou.OrganizationUnitRequestWithID
+	operation   string
+	resultIndex int
+	// superseded marks a unit a later document of the same import wrote again, so the later one decides its
+	// default flows.
+	superseded bool
+}
+
+// supersedeDefaultFlows marks the default flows still waiting for a unit as replaced by a later document.
+func supersedeDefaultFlows(pending *[]ouDefaultFlowsReplay, unitID string) {
+	for i := range *pending {
+		if (*pending)[i].unitID == unitID {
+			(*pending)[i].superseded = true
+		}
+	}
+}
+
 func (s *importService) importOrganizationUnit(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+	deferred *[]ouDefaultFlowsReplay,
 ) ImportItemOutcome {
 	if s.ouService == nil {
 		return unsupportedAdapterOutcome(resourceTypeOrganizationUnit, "organization unit")
@@ -175,18 +263,22 @@ func (s *importService) importOrganizationUnit(
 		RecoveryFlowID:            req.RecoveryFlowID,
 		IsRecoveryFlowEnabled:     req.IsRecoveryFlowEnabled,
 		SignOutFlowID:             req.SignOutFlowID,
+		UserOnboardingFlowID:      req.UserOnboardingFlowID,
 		LogoURL:                   req.LogoURL,
 		TosURI:                    req.TosURI,
 		PolicyURI:                 req.PolicyURI,
 		CookiePolicyURI:           req.CookiePolicyURI,
 	}
+	fullReq := createReq
 	updateReq := createReq
 
 	// The upsert looks the organization unit up rather than attempting an update, so a create is not
 	// preceded by an audited failed update.
 	exists := false
+	var existing ou.OrganizationUnit
 	if options.IsUpsertEnabled() && req.ID != "" {
-		_, svcErr := s.ouService.GetOrganizationUnit(ctx, req.ID)
+		var svcErr *tidcommon.ServiceError
+		existing, svcErr = s.ouService.GetOrganizationUnit(ctx, req.ID)
 		if svcErr != nil && !isNotFoundServiceError(svcErr) {
 			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
 		}
@@ -200,10 +292,34 @@ func (s *importService) importOrganizationUnit(
 		return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationCreate)
 	}
 
+	// The default flows the document names are set after the flows are imported. Until then the unit keeps only the
+	// ones the document leaves as they are and that still exist, none for a new unit, so a stored flow the document
+	// replaces or that is gone, which the same bundle may restore, cannot refuse the write. A document that names none
+	// is written as it is, which clears them.
+	wanted := defaultFlowsOfRequest(createReq)
+	var retained ouDefaultFlows
+	if exists {
+		var svcErr *tidcommon.ServiceError
+		retained, svcErr = s.retainedDefaultFlows(ctx, wanted, defaultFlowsOfUnit(existing))
+		if svcErr != nil {
+			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
+		}
+	}
+	deferDefaults := wanted != retained && wanted != (ouDefaultFlows{})
+	if deferDefaults {
+		setDefaultFlows(&createReq, retained)
+		setDefaultFlows(&updateReq, retained)
+	}
+
 	if exists {
 		updated, svcErr := s.ouService.UpdateOrganizationUnit(ctx, req.ID, updateReq)
 		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
+		}
+		supersedeDefaultFlows(deferred, updated.ID)
+		if deferDefaults {
+			*deferred = append(*deferred, ouDefaultFlowsReplay{
+				unitID: updated.ID, unitName: updated.Name, request: fullReq, operation: operationUpdate})
 		}
 		return successOutcome(resourceTypeOrganizationUnit, updated.ID, updated.Name, operationUpdate)
 	}
@@ -212,8 +328,112 @@ func (s *importService) importOrganizationUnit(
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationCreate, svcErr)
 	}
+	supersedeDefaultFlows(deferred, created.ID)
+	if deferDefaults {
+		*deferred = append(*deferred, ouDefaultFlowsReplay{
+			unitID: created.ID, unitName: created.Name, request: fullReq, operation: operationCreate})
+	}
 
 	return successOutcome(resourceTypeOrganizationUnit, created.ID, created.Name, operationCreate)
+}
+
+// applyOUDefaultFlows sets the default flows of the organization units imported before their flows, returning how
+// many were refused. The flows are looked up by the id the unit's document names, or by the id the flow was stored
+// under when that differs. A unit that is refused stays imported without the default flow changes.
+func (s *importService) applyOUDefaultFlows(
+	ctx context.Context, pending []ouDefaultFlowsReplay, flowIDAliases map[string]string,
+	results []ImportItemOutcome,
+) int {
+	refused := 0
+	for _, p := range pending {
+		if p.superseded || results[p.resultIndex].Status != statusSuccess {
+			continue
+		}
+		req := p.request
+		wanted := defaultFlowsOfRequest(req)
+		mapped := ouDefaultFlows{
+			auth:           aliasedFlowID(wanted.auth, flowIDAliases),
+			registration:   aliasedFlowID(wanted.registration, flowIDAliases),
+			recovery:       aliasedFlowID(wanted.recovery, flowIDAliases),
+			signOut:        aliasedFlowID(wanted.signOut, flowIDAliases),
+			userOnboarding: aliasedFlowID(wanted.userOnboarding, flowIDAliases),
+		}
+		setDefaultFlows(&req, mapped)
+		if _, svcErr := s.ouService.UpdateOrganizationUnit(ctx, p.unitID, req); svcErr != nil {
+			outcome := serviceErrorOutcome(
+				resourceTypeOrganizationUnit, p.unitID, p.unitName, p.operation, svcErr)
+			if description := svcErr.ErrorDescription.DefaultValue; description != "" {
+				outcome.Message += ": " + description
+			}
+			if flowID := refusedDefaultFlowID(svcErr.Code, mapped); flowID != "" {
+				outcome.Message += " (flow id: " + flowID + ")"
+			}
+			outcome.Message += ". The organization unit was imported, " +
+				"but the requested default-flow changes were not applied"
+			results[p.resultIndex] = outcome
+			refused++
+		}
+	}
+	return refused
+}
+
+// setOUDefaultFlowsBefore sets the default flows of the units waiting for them once the next document is past the
+// flows, so they are in place before the applications and agents that take their flows from those defaults. It
+// returns how many units were refused, and whether the import stops for it.
+func (s *importService) setOUDefaultFlowsBefore(
+	ctx context.Context, pending *[]ouDefaultFlowsReplay, nextResourceType string, flowIDAliases map[string]string,
+	results []ImportItemOutcome, options *ImportOptions,
+) (int, bool) {
+	if len(*pending) == 0 || resourceTypeOrder(nextResourceType) <= resourceTypeOrder(resourceTypeFlow) {
+		return 0, false
+	}
+	refused := s.applyOUDefaultFlows(ctx, *pending, flowIDAliases, results)
+	*pending = nil
+	return refused, refused > 0 && !options.IsContinueOnErrorEnabled()
+}
+
+// settleOUDefaultFlows sets the default flows of the units still waiting for them when the import has gone through
+// every document. When the import stopped the flows may not be in, so each unit is noted as left without them.
+func (s *importService) settleOUDefaultFlows(
+	ctx context.Context, pending []ouDefaultFlowsReplay, flowIDAliases map[string]string,
+	results []ImportItemOutcome, stopped bool,
+) int {
+	if !stopped {
+		return s.applyOUDefaultFlows(ctx, pending, flowIDAliases, results)
+	}
+	for _, p := range pending {
+		if p.superseded {
+			continue
+		}
+		results[p.resultIndex].Message = strings.TrimSpace(results[p.resultIndex].Message +
+			" The default flows were not set because the import stopped")
+	}
+	return 0
+}
+
+// refusedDefaultFlowID returns the default flow an organization unit refusal names, by its error code, or "" for any
+// other refusal.
+func refusedDefaultFlowID(code string, flows ouDefaultFlows) string {
+	switch code {
+	case ou.ErrorInvalidAuthFlowID.Code:
+		return flows.auth
+	case ou.ErrorInvalidRegistrationFlowID.Code:
+		return flows.registration
+	case ou.ErrorInvalidRecoveryFlowID.Code:
+		return flows.recovery
+	case ou.ErrorInvalidSignOutFlowID.Code:
+		return flows.signOut
+	case ou.ErrorInvalidUserOnboardingFlowID.Code:
+		return flows.userOnboarding
+	}
+	return ""
+}
+
+func aliasedFlowID(flowID string, flowIDAliases map[string]string) string {
+	if mapped, ok := flowIDAliases[flowID]; ok {
+		return mapped
+	}
+	return flowID
 }
 
 func (s *importService) importEntityType(
