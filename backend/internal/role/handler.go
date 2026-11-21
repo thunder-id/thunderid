@@ -341,7 +341,7 @@ func handleError(ctx context.Context, w http.ResponseWriter,
 			ErrorInvalidAssignmentID.Code,
 			ErrorSharedRoleCannotMove.Code, ErrorAssigneeNotInOU.Code, ErrorSharedRoleFieldNotEditable.Code,
 			ErrorRoleWithAssignmentsCannotMove.Code, ErrorInvalidFilter.Code, ErrorSharedRoleNotEditable.Code,
-			ErrorInvalidProject.Code, ErrorOUNotInProject.Code:
+			ErrorInvalidProject.Code, ErrorOUNotInProject.Code, ErrorPersonalAgentNotAssignable.Code:
 			statusCode = http.StatusBadRequest
 		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code, ErrorSharedRoleReadOnly.Code:
 			statusCode = http.StatusForbidden

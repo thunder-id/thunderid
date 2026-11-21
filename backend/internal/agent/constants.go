@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	agentcommon "github.com/thunder-id/thunderid/internal/agent/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -30,7 +31,7 @@ const (
 	fieldClientID     = "clientId"
 	fieldClientSecret = authnprovidercm.CredentialTypeClientSecret
 	// fieldKind holds the agent kind, set at creation and preserved across updates.
-	fieldKind = "kind"
+	fieldKind = agentcommon.SystemAttributeKind
 )
 
 // filterAttributeName is the only schema attribute a filter can combine with the kind and the owner.
