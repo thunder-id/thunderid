@@ -78,6 +78,18 @@ const sidebar: SidebarsConfig = {
             },
             {
               type: 'category',
+              label: 'Delegated Admin Components',
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/vue/apis/components/invite-to-organization-unit',
+                  label: '<InviteToOrganizationUnit />',
+                },
+              ],
+            },
+            {
+              type: 'category',
               label: 'User Self-care Components',
               collapsed: true,
               items: [
