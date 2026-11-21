@@ -69,6 +69,8 @@ type CoreAttrRule struct {
 }
 
 // CoreAttrRules is the pre-configured mapping table, one candidate per ThunderID library attribute.
+// When several KindMultiComplex candidates back one field, writes store the value in every candidate the
+// user type declares, while reads take the last one holding a value and filters search the last one.
 //
 // This table is global and static: it applies to whichever single ThunderID user type is
 // designated as SCIMConfig.CoreUserTypeID, the only user type SCIM maps to/from the core User
@@ -98,6 +100,12 @@ var CoreAttrRules = []CoreAttrRule{
 		Kind:        KindSubAttr,
 		ParentField: fieldName,
 		SubAttr:     "familyName",
+	},
+	{
+		Candidate: "mobile_number",
+		SCIMField: fieldPhoneNumbers,
+		Kind:      KindMultiComplex,
+		ValueKey:  "value",
 	},
 	{
 		Candidate: "phone_number",
