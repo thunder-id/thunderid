@@ -1,7 +1,7 @@
 # Control Plane and Data Plane Separation Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.3
 - **Related documents:** [#4281](https://github.com/thunder-id/thunderid/issues/4281) (separate ThunderID into a Control Plane and a Data Plane), [#5602](https://github.com/thunder-id/thunderid/issues/5602) (capture configuration versions and apply them to a gateway), [#5582](https://github.com/thunder-id/thunderid/issues/5582) (default gateway), [#5738](https://github.com/thunder-id/thunderid/issues/5738) (Control Plane and Data Plane out of the box for on-prem), [#6246](https://github.com/thunder-id/thunderid/issues/6246) (a revert on the Control Plane must reach the Data Plane), [#6392](https://github.com/thunder-id/thunderid/issues/6392) (pack naming), [Discussion #5862](https://github.com/thunder-id/thunderid/discussions/5862#discussioncomment-19390966) (projects). User guides: [configuration versions](../../docs/content/guides/declarative-configurations/configuration-versions.mdx), [import resources](../../docs/content/guides/declarative-configurations/import-resources.mdx), [value references](../../docs/content/guides/declarative-configurations/value-references.mdx), [centralized configuration](../../docs/content/use-cases/managed-deployments/centralized-configuration.mdx). API: [gateway](../../api/gateway.yaml), [configuration-version](../../api/configuration-version.yaml), [import](../../api/import.yaml), [variable-store](../../api/variable-store.yaml), [project](../../api/project.yaml). Threat model: not yet written (see Open questions).
 
 ## Summary
@@ -187,7 +187,7 @@ Group members and role assignees are owned one by one: a managed import removes 
 
 ### Upgrade order and compatibility
 
-Upgrade a DP before the CP that deploys to it. A DP on a release without `POST /import/managed` answers `404`. The CP then falls back to the plain `POST /import` and the result carries `"plainImport": true`. That deploy succeeds, but what it writes is editable on that DP, and upgrading the DP later does not mark it read only. A resource is marked only when a managed import next writes it. A DP on a release without assignee or member removal refuses those removals as unsupported. A DP older than the owner reference cannot read an owner resolved from references. A DP older than the Flow Secret reference (v2.0.0-m1 and earlier) refuses an application whose export refers to its Flow Secret, as a misplaced secret (`IMP-1007`).
+Upgrade a DP before the CP that deploys to it. A DP on a release without `POST /import/managed` answers `404`. The CP then falls back to the plain `POST /import` and the result carries `"plainImport": true`. That deploy succeeds, but what it writes is editable on that DP, and upgrading the DP later does not mark it read only. A resource is marked only when a managed import next writes it. A DP on a release without assignee or member removal refuses those removals as unsupported. A DP older than the owner reference cannot read an owner resolved from references. A DP older than the Flow Secret reference (v2.0.0-m1 and earlier) refuses an application whose export refers to its Flow Secret, as a misplaced secret (`IMP-1007`). A DP on a release without the `ou_type` import (v2.0.0-m1 and earlier) fails each organization unit type document in a version as an unsupported resource document, and the rest of the deploy goes ahead.
 
 ### Data model
 
@@ -376,3 +376,4 @@ These are known gaps in what is built, or decisions not yet made. None is a requ
 |---|---|---|
 | 0.1 | 2026-11-13 | Initial specification. |
 | 0.2 | 2026-11-16 | An application's Flow Secret is exported as a secret reference and captured to the first gateway, so a gateway accepts the Flow Secret the CP issued. A DP on v2.0.0-m1 or earlier refuses such an application, so DPs are upgraded first. A deployed application's Flow Secret is not regenerated on the DP. |
+| 0.3 | 2026-11-21 | A configuration version carries organization unit types as `ou_type` documents, deployed to the DP and read only there. A DP on v2.0.0-m1 or earlier fails each of them as an unsupported resource document, so DPs are upgraded first. |

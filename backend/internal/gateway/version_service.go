@@ -149,7 +149,7 @@ func configurationExport() *export.ExportRequest {
 	all := []string{"*"}
 	return &export.ExportRequest{
 		Agents: all, Applications: all, Connections: all, UserTypes: all, AgentTypes: all,
-		Users: all, Groups: all,
+		OUTypes: all, Users: all, Groups: all,
 		OrganizationUnits: all, ResourceServers: all, Roles: all, Flows: all, Translations: all,
 		Layouts: all, Themes: all, ServerConfigs: all, CredentialConfigurations: all,
 		PresentationDefinitions: all, AuthorizationDetailTypes: all, NotificationTemplates: all,
