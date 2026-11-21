@@ -82,6 +82,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/systemapps"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -244,6 +245,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
 		serverconfig.ConfigNameGateway:               gateway.NewSettingsConfigHandler(),
+		serverconfig.ConfigNameAdminApp:              systemapps.NewAppConfigHandler(systemapps.AppTypeAdmin),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc, auditBus, ouAuthzService)

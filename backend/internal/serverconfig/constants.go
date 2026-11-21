@@ -24,6 +24,9 @@ const (
 	ConfigNameNotification ConfigName = "notification"
 	// ConfigNameGateway is the configuration key for how a control plane deploys to its gateways.
 	ConfigNameGateway ConfigName = "gateway"
+	// ConfigNameAdminApp is the configuration key for the Admin App, served at
+	// /server-config/system-apps/admin.
+	ConfigNameAdminApp ConfigName = "adminApp"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -36,6 +39,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameAccountAccess,
 	ConfigNameNotification,
 	ConfigNameGateway,
+	ConfigNameAdminApp,
 }
 
 // IsPortable reports whether the section moves with the configuration: it is exported, captured into

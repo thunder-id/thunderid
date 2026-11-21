@@ -26,6 +26,7 @@ import {
   IdCard,
   Languages,
   Layers,
+  LayoutDashboard,
   LayoutGrid,
   ListChecks,
   LogOut,
@@ -291,13 +292,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             path: RouteConfig.organizationUnits.list(),
           },
           {
-            id: 'flows',
-            resource: 'flow',
-            text: t('navigation:pages.flows'),
-            icon: <Workflow />,
-            path: RouteConfig.flows.list(),
-          },
-          {
             id: 'connections',
             resource: 'connection',
             text: t('navigation:pages.connections'),
@@ -324,6 +318,25 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                 path: RouteConfig.verifiablePresentations.list(),
               },
             ],
+          },
+        ],
+      },
+      {
+        category: t('navigation:categories.build', 'Build'),
+        routes: [
+          {
+            id: 'flows',
+            resource: 'flow',
+            text: t('navigation:pages.flows'),
+            icon: <Workflow />,
+            path: RouteConfig.flows.list(),
+          },
+          {
+            id: 'admin-app',
+            resource: 'serverconfig',
+            text: t('navigation:pages.adminApp', 'Admin App'),
+            icon: <LayoutDashboard />,
+            path: RouteConfig.build.adminApp(),
           },
         ],
       },

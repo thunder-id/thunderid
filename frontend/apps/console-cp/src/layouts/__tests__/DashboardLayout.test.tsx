@@ -630,6 +630,15 @@ describe('DashboardLayout', () => {
     ).toBeInTheDocument();
   });
 
+  it('lists the app builders with the shared sign-in experience', () => {
+    render(<DashboardLayout />);
+
+    const category = screen.getByText('navigation:categories.signInExperience');
+    for (const page of ['navigation:pages.adminApp']) {
+      expect(category.compareDocumentPosition(screen.getByText(page)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
     render(<DashboardLayout collapseSidebar={collapseSidebar} />);
 

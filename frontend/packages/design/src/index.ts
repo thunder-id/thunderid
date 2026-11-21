@@ -11,6 +11,7 @@ export {default as useGetThemeUsages} from './api/useGetThemeUsages';
 
 // Themes
 export {default as DefaultTheme} from './themes/DefaultTheme';
+export {default as createThemeFromDesign} from './utils/createThemeFromDesign';
 
 // Layout API hooks
 export {default as useGetLayouts} from './api/useGetLayouts';
