@@ -422,6 +422,22 @@ func (c *inMemoryCache[T]) deleteEntry(key CacheKey, entry *inMemoryCacheEntry[T
 	}
 }
 
+// contains reports whether a live entry is stored under the key.
+//
+// Unlike Get it records no hit or miss and does not refresh the entry's access order, so an
+// internal caller can probe the cache without altering what it would evict next.
+func (c *inMemoryCache[T]) contains(key CacheKey) bool {
+	if !c.enabled {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, exists := c.cache[key]
+	return exists && !time.Now().After(entry.ExpiryTime)
+}
+
 // CleanupExpired removes all expired entries from the cache.
 func (c *inMemoryCache[T]) CleanupExpired() {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
