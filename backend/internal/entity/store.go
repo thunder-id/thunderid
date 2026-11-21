@@ -1073,16 +1073,31 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		return providers.Entity{}, fmt.Errorf("failed to parse attributes as string")
 	}
 
+	createdAt, err := sysutils.ParseDBTimeField(row["created_at"], "created_at")
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to parse created_at: %w", err)
+	}
+
+	updatedAt, err := sysutils.ParseDBTimeField(row["updated_at"], "updated_at")
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to parse updated_at: %w", err)
+	}
+
 	entity := providers.Entity{
 		ID:        entityID,
 		Category:  providers.EntityCategory(category),
 		Type:      entityType,
 		OUID:      ouID,
 		ProjectID: optionalStringColumn(row["project_id"]),
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 
-	if err := json.Unmarshal([]byte(attributes), &entity.Attributes); err != nil {
-		return providers.Entity{}, fmt.Errorf("failed to unmarshal attributes")
+	// An entity stored without attributes holds the JSON null literal, so treat it as absent.
+	if attributes != "" && attributes != "null" {
+		if err := json.Unmarshal([]byte(attributes), &entity.Attributes); err != nil {
+			return providers.Entity{}, fmt.Errorf("failed to unmarshal attributes")
+		}
 	}
 
 	entity.SystemAttributes = parseJSONColumn(row, "system_attributes")

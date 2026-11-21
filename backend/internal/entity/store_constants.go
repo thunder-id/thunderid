@@ -44,13 +44,15 @@ var (
 	// QueryGetEntityList is the query to get a list of entities by category.
 	QueryGetEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-02",
-		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+			`CREATED_AT, UPDATED_AT FROM "ENTITY" ` +
 			`WHERE CATEGORY = $4 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QuerySearchEntityList is the query to search entities across all categories.
 	QuerySearchEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-03",
-		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+			`CREATED_AT, UPDATED_AT FROM "ENTITY" ` +
 			`WHERE DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QueryCreateEntity is the query to create a new entity.
@@ -64,8 +66,8 @@ var (
 	// QueryGetEntityByID is the query to get an entity by ID.
 	QueryGetEntityByID = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-05",
-		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
-			`FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+			`CREATED_AT, UPDATED_AT FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// QueryUpdateEntity is the query to fully update an entity including system attributes. It does
 	// not write lifecycle state, which lives in ENTITY_RUNTIME_DATA. An update without a project keeps
@@ -115,7 +117,7 @@ var (
 	QueryGetEntityWithCredentials = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-12",
 		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, ` +
-			`SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS ` +
+			`SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS, CREATED_AT, UPDATED_AT ` +
 			`FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// QueryGetGroupCountForEntity is the query to get the count of groups for a given entity.
@@ -156,8 +158,8 @@ var (
 	// queryGetEntityListByType lists up to a limit of the entities of a category that are of the given type.
 	queryGetEntityListByType = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-36",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
-			`WHERE CATEGORY = $1 AND TYPE = $2 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $4`,
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT ` +
+			`FROM "ENTITY" WHERE CATEGORY = $1 AND TYPE = $2 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $4`,
 	}
 )
 
@@ -239,8 +241,8 @@ func buildEntityListQueryByOUIDs(
 	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	queryID := "ASQ-ENTITY_MGT-21"
-	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
-		`FROM "ENTITY" WHERE CATEGORY = $1`
+	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+		`CREATED_AT, UPDATED_AT FROM "ENTITY" WHERE CATEGORY = $1`
 	args := []interface{}{category}
 	var query model.DBQuery
 
@@ -304,8 +306,8 @@ func buildEntityListQueryBySystemAttributes(
 	category string, sysQuery SystemAttributeQuery, indexedAttrs map[string]bool,
 	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
-	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
-		`FROM "ENTITY" WHERE CATEGORY = $1`
+	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+		`CREATED_AT, UPDATED_AT FROM "ENTITY" WHERE CATEGORY = $1`
 	query, args, err := buildSystemAttributeConditions(
 		"ASQ-ENTITY_MGT-33", baseQuery, category, sysQuery, indexedAttrs)
 	if err != nil {
@@ -352,8 +354,8 @@ func buildEntityListQueryBySystemAttributesAndOUIDs(
 	category string, sysQuery SystemAttributeQuery, ouIDs []string, indexedAttrs map[string]bool,
 	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
-	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
-		`FROM "ENTITY" WHERE CATEGORY = $1`
+	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+		`CREATED_AT, UPDATED_AT FROM "ENTITY" WHERE CATEGORY = $1`
 	query, args, err := buildSystemAttributeConditions(
 		"ASQ-ENTITY_MGT-35", baseQuery, category, sysQuery, indexedAttrs)
 	if err != nil {
@@ -550,7 +552,8 @@ func buildEntityListQuery(
 	category string, filters map[string]interface{}, indexedAttrs map[string]bool,
 	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
-	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`
+	baseQuery := `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+		`CREATED_AT, UPDATED_AT FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-25"
 
 	if len(filters) > 0 {
@@ -772,7 +775,8 @@ func buildEntityCountQueryByProject(category, projectID string, ouIDs []string,
 func buildEntityListQueryByProject(category, projectID string, ouIDs []string, limit, offset int,
 	deploymentID string) (model.DBQuery, []interface{}, error) {
 	query, args := buildProjectQuery("ASQ-ENTITY_MGT-37",
-		`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`,
+		`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, `+
+			`CREATED_AT, UPDATED_AT FROM "ENTITY"`,
 		category, projectID, ouIDs, deploymentID)
 	postgresQuery, err := buildPaginatedQuery(query.PostgresQuery, len(args), "$")
 	if err != nil {
@@ -811,8 +815,8 @@ func buildProjectQuery(queryID, baseQuery, category, projectID string, ouIDs []s
 func buildGetEntitiesByIDsQuery(entityIDs []string, deploymentID string) (model.DBQuery, []interface{}, error) {
 	return buildEntityINClauseQuery(
 		"ASQ-ENTITY_MGT-29",
-		`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES `+
-			`FROM "ENTITY" WHERE ID IN (%s) AND DEPLOYMENT_ID = %s`,
+		`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, `+
+			`CREATED_AT, UPDATED_AT FROM "ENTITY" WHERE ID IN (%s) AND DEPLOYMENT_ID = %s`,
 		entityIDs, deploymentID,
 	)
 }
