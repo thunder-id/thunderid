@@ -73,7 +73,7 @@ These expectations scale with the role. An Area Maintainer is expected to have d
 
 Being a maintainer is not a permanent title. A maintainer may be moved to emeritus status when:
 
-* The maintainer violates the OpenWallet Foundation Code of Conduct in a way that warrants removal.  
+* The maintainer violates the [LF Decentralized Trust Code of Conduct](https://lf-decentralized-trust.github.io/governance/governing-documents/code-of-conduct/) in a way that warrants removal.  
 * The maintainer becomes inactive, as defined below.  
 * The maintainer resigns by initializing a self request.  
 * Other circumstances arise, at the discretion of the active maintainers.
