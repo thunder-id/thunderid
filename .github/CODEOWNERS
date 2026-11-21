@@ -66,3 +66,33 @@
 ## sample apps
 
 /samples/apps/ @brionmario @DonOmalVindula
+
+
+## agent files
+## Listed last so they take precedence. A path another section already covers keeps those owners.
+
+/api/agent.yaml @sahandilshan @thiva-k
+/backend/internal/agent/ @sahandilshan @thiva-k
+/backend/internal/agentmgtprovider/ @sahandilshan @thiva-k
+/backend/internal/flow/executor/agent_type_resolver*.go @ThaminduDilshan @sahandilshan @thiva-k
+
+/frontend/packages/configure-agents/ @jeradrutnam @brionmario @DonOmalVindula @sahandilshan @thiva-k
+/frontend/packages/configure-agent-types/ @jeradrutnam @brionmario @DonOmalVindula @sahandilshan @thiva-k
+/frontend/packages/manage-agents/ @jeradrutnam @brionmario @DonOmalVindula @sahandilshan @thiva-k
+/frontend/packages/configure-flows/**/AgentTypeResolverProperties* @jeradrutnam @brionmario @DonOmalVindula @sahandilshan @thiva-k
+
+/tests/integration/**/*agent* @sahandilshan @thiva-k
+/tests/e2e/**/*agent* @sahandilshan @thiva-k
+
+/docs/content/getting-started/connect-your-agent/ @sahandilshan @thiva-k
+/docs/content/guides/agents/ @sahandilshan @thiva-k
+/docs/content/use-cases/ai-agents/ @sahandilshan @thiva-k
+/docs/content/deployment/agent-analytics.mdx @sahandilshan @thiva-k
+/docs/src/components/*Agent* @sahandilshan @thiva-k
+/docs/src/components/PersonalAssistantSolutionDiagram.tsx @sahandilshan @thiva-k
+/docs/static/assets/images/agent/ @sahandilshan @thiva-k
+/docs-internals/agent-*/ @sahandilshan @thiva-k
+
+/samples/apps/agentid-playground/ @brionmario @DonOmalVindula @sahandilshan @thiva-k
+/samples/apps/wayfinder-sample/ai-agent/ @brionmario @DonOmalVindula @sahandilshan @thiva-k
+/samples/observability/agent-analytics/ @sahandilshan @thiva-k
