@@ -1510,6 +1510,28 @@ func (suite *UtilsTestSuite) TestApplyMappedAuthorizationDirectTargetsAreExact()
 	}
 }
 
+// The mapping is the sole authority for an external token: no targets grant nothing, and permission
+// targets are granted without an authorization provider, which only roles and groups need.
+func (suite *UtilsTestSuite) TestApplyMappedAuthorizationWithoutRolesNeedsNoProvider() {
+	for _, tc := range []struct {
+		name    string
+		targets []providers.AuthorizationTarget
+		want    []string
+	}{
+		{"no targets", nil, nil},
+		{"permission target", []providers.AuthorizationTarget{{
+			Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read",
+		}}, []string{"read"}},
+	} {
+		suite.Run(tc.name, func() {
+			granted, err := ApplyMappedAuthorization(
+				context.Background(), nil, nil, tc.targets, "rs-1", []string{"read", "write"}, true, log.GetLogger())
+			suite.Nil(err)
+			suite.Equal(tc.want, granted)
+		})
+	}
+}
+
 func (suite *UtilsTestSuite) TestApplyMappedAuthorizationPreservesRoleAlternatives() {
 	authz := authzmock.NewAuthorizationProviderMock(suite.T())
 	authz.On("EvaluateAccessBatch", mock.Anything, mock.Anything).Return(

@@ -142,14 +142,33 @@ func (ts *IDJAGConsumptionTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create mock OIDC server")
 	ts.mockOIDCServer = mockOIDCServer
 
+	rs := testutils.ResourceServer{
+		Name: "IDJAG Consumption Test RS", Identifier: consumptionRSIdentifier, OUID: ts.ouID,
+	}
+	rsActions := []testutils.Action{
+		{Name: "Read", Handle: "read", Description: "Read permission"},
+		{Name: "Write", Handle: "write", Description: "Write permission"},
+		{Name: "Admin", Handle: "admin", Description: "Admin permission"},
+	}
+	rsID, err := testutils.CreateResourceServerWithActions(rs, rsActions)
+	ts.Require().NoError(err, "create test resource server")
+	ts.resourceServerID = rsID
+
+	// The connection's authorization mapping is the only source of permission scopes for an external
+	// subject, so it maps each value of the assertion's scope claim to the test resource server's
+	// permission of that name.
 	idpID, err := testutils.CreateIDP(testutils.IDP{
 		Name:        fmt.Sprintf("IDJAG Test IdP %d", time.Now().UnixNano()),
 		Description: "Mock OIDC IdP for ID-JAG consumption testing",
 		Type:        "OIDC",
+		OUID:        ts.ouID,
 		Properties: []testutils.IDPProperty{
 			{Name: "issuer", Value: mockOIDCServer.GetURL()},
 			{Name: "jwks_endpoint", Value: mockOIDCServer.GetJWKSURL()},
 			{Name: "id_jag_enabled", Value: "true"},
+		},
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AuthorizationMapping: consumptionAuthorizationMapping(ts.resourceServerID),
 		},
 	})
 	ts.Require().NoError(err, "create test IDP")
@@ -217,17 +236,6 @@ func (ts *IDJAGConsumptionTestSuite) SetupSuite() {
 		}},
 	})
 
-	rs := testutils.ResourceServer{
-		Name: "IDJAG Consumption Test RS", Identifier: consumptionRSIdentifier, OUID: ts.ouID,
-	}
-	rsActions := []testutils.Action{
-		{Name: "Read", Handle: "read", Description: "Read permission"},
-		{Name: "Write", Handle: "write", Description: "Write permission"},
-		{Name: "Admin", Handle: "admin", Description: "Admin permission"},
-	}
-	rsID, err := testutils.CreateResourceServerWithActions(rs, rsActions)
-	ts.Require().NoError(err, "create test resource server")
-	ts.resourceServerID = rsID
 }
 
 func (ts *IDJAGConsumptionTestSuite) TearDownSuite() {
@@ -962,4 +970,73 @@ func (ts *IDJAGConsumptionTestSuite) fetchGrantMetadata(path string) discoveryGr
 	var metadata discoveryGrantMetadata
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&metadata))
 	return metadata
+}
+
+// A jwt-bearer token's sub is the external IdP's identifier, not an account of this deployment, even when
+// it equals a local user's ID: the self-service APIs do not accept the token, and introspection names
+// the IdP.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_ExternalSubjectIsNotLocalAccount() {
+	assertion := ts.buildIDJAGAssertion(func(h, c map[string]interface{}) {
+		c["sub"] = ts.userID
+	})
+
+	resp, statusCode, err := ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+
+	code, err := testutils.StatusWithBearer("/users/me", resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusUnauthorized, code)
+	result, err := testutils.IntrospectTokenResult(
+		resp.AccessToken, consumptionClientID, consumptionClientSecret, false)
+	ts.Require().NoError(err)
+	ts.True(result.Active)
+	ts.Equal(ts.userID, result.Sub)
+	ts.Equal(ts.mockOIDCServer.GetURL(), result.Idp)
+}
+
+// A trusted issuer whose connection has no authorization mapping grants no permission scopes: the
+// assertion's own scope claim is not an authority. OIDC scopes are still granted.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_UnmappedIssuerGetsNoPermissionScopes() {
+	ts.setIDPAuthorizationMapping(nil)
+	ts.T().Cleanup(func() {
+		ts.setIDPAuthorizationMapping(consumptionAuthorizationMapping(ts.resourceServerID))
+	})
+
+	assertion := ts.buildIDJAGAssertion(func(h, c map[string]interface{}) {
+		c["scope"] = "openid read write"
+	})
+	resp, statusCode, err := ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal([]string{"openid"}, strings.Fields(fmt.Sprint(claims.Additional["scope"])),
+		"an unmapped issuer's token carries no permission scopes")
+}
+
+// consumptionAuthorizationMapping maps each value of the assertion's scope claim to the permission of
+// that name on the test resource server.
+func consumptionAuthorizationMapping(resourceServerID string) *testutils.AuthorizationMapping {
+	return &testutils.AuthorizationMapping{
+		Direct: []testutils.AuthorizationDirectMapping{
+			{Claim: "scope", Delimiter: " ", TargetType: testutils.AuthorizationTargetPermission,
+				ResourceServerID: resourceServerID},
+		},
+	}
+}
+
+// setIDPAuthorizationMapping replaces the trusted issuer connection's authorization mapping; nil removes it.
+func (ts *IDJAGConsumptionTestSuite) setIDPAuthorizationMapping(mapping *testutils.AuthorizationMapping) {
+	ts.T().Helper()
+	current, err := testutils.GetIDP("oidc", ts.idpID)
+	ts.Require().NoError(err)
+	ts.Require().NotNil(current)
+	current.Properties = ensureIDJagEnabled(current.Properties)
+	current.AttributeConfiguration = nil
+	if mapping != nil {
+		current.AttributeConfiguration = &testutils.AttributeConfiguration{AuthorizationMapping: mapping}
+	}
+	ts.Require().NoError(testutils.UpdateIDP(ts.idpID, *current))
 }

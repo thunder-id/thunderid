@@ -4236,3 +4236,66 @@ func (suite *TokenValidatorTestSuite) TestValidateDeviceSecret_Rejected() {
 		})
 	}
 }
+
+// An access token issued for an external identity provider's subject carries that provider in idp, which
+// the token builder owns. Exchanging it keeps the provider on the claims. A token for a local subject has
+// none, and neither does an ID token, where idp may be a user attribute.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_SelfIssuedCarriesSourceIDP() {
+	now := time.Now().Unix()
+	for _, tc := range []struct {
+		name string
+		typ  string
+		idp  interface{}
+		want string
+	}{
+		{"ExternalSubject", jwt.TokenTypeAccessToken, "https://partner.example.com", "https://partner.example.com"},
+		{"LocalSubject", jwt.TokenTypeAccessToken, nil, ""},
+		{"IDTokenAttribute", jwt.TokenTypeJWT, "https://partner.example.com", ""},
+	} {
+		suite.Run(tc.name, func() {
+			claims := map[string]interface{}{
+				"sub": "user123",
+				"iss": "https://example.com",
+				"aud": suite.getDefaultAudience(),
+				"exp": float64(now + 3600),
+				"nbf": float64(now - 60),
+			}
+			if tc.idp != nil {
+				claims["idp"] = tc.idp
+			}
+			token := suite.createTestJWTWithTyp(tc.typ, claims)
+			suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+			result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, result.SourceIDP)
+		})
+	}
+}
+
+// An access token whose idp claim is empty or not a string is refused rather than read as a token for a
+// subject of this deployment.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_MalformedSourceIDPRefused() {
+	now := time.Now().Unix()
+	for name, idp := range map[string]interface{}{"Empty": "", "NotAString": 42} {
+		suite.Run(name, func() {
+			token := suite.createTestJWTWithTyp(jwt.TokenTypeAccessToken, map[string]interface{}{
+				"sub": "user123", "iss": "https://example.com", "aud": suite.getDefaultAudience(),
+				"exp": float64(now + 3600), "nbf": float64(now - 60), "idp": idp,
+			})
+			suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+			_, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+			suite.Error(err)
+		})
+	}
+}
+
+// A subject token from an external issuer names that issuer's subject, so the issuer is its source IdP.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIssuerIsSourceIDP() {
+	result := suite.validateConfiguredAudienceSubjectToken(testTrustedTokenAudience)
+
+	assert.Equal(suite.T(), testExternalIssuer, result.SourceIDP)
+}

@@ -2872,7 +2872,7 @@ const translations = {
     'detail.idJag.enabledNote': 'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
     'detail.authorizationMapping.description':
       'Map values in tokens from this issuer to local roles, groups, or permissions. ' +
-      'When a mapping is set, these tokens carry only the permissions it grants.',
+      'Tokens from this issuer carry only the permissions the mapping grants, and none without a mapping.',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.delete.title': 'Delete trusted issuer',
     'detail.dangerZone.delete.description':

@@ -159,6 +159,13 @@ func (s *userInfoService) buildResponseFromClaims(
 		return nil, svcErr
 	}
 
+	// The subject of a token carrying idp is an external identity provider's identifier, not a user of
+	// this deployment, so there is no end-user here to describe.
+	if _, external := tokenClaims[constants.ClaimIDP]; external {
+		s.logger.Debug(ctx, "UserInfo endpoint called with a token for an external subject")
+		return nil, &errorExternalSubjectNotSupported
+	}
+
 	scopes := s.extractScopes(tokenClaims)
 
 	// Validate that the 'openid' scope is present

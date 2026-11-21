@@ -1939,6 +1939,8 @@ var defaultMessages = map[string]string{
 	"error.userinfoservice.client_credentials_not_supported_description": "UserInfo endpoint is not applicable for client_credentials grant type",
 	"error.userinfoservice.dpop_bound_token_bearer_scheme": "Invalid access token",
 	"error.userinfoservice.dpop_bound_token_bearer_scheme_description": "DPoP-bound token must use DPoP scheme",
+	"error.userinfoservice.external_subject_not_supported": "Invalid access token",
+	"error.userinfoservice.external_subject_not_supported_description": "UserInfo endpoint is not applicable for a subject of an external identity provider",
 	"error.userinfoservice.insufficient_scope": "Insufficient scope",
 	"error.userinfoservice.insufficient_scope_description": "The 'openid' scope is required for this request",
 	"error.userinfoservice.invalid_access_token": "Invalid access token",

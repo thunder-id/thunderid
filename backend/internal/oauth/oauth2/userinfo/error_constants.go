@@ -52,6 +52,21 @@ var (
 		},
 	}
 
+	// errorExternalSubjectNotSupported is returned when the access token's subject belongs to an external
+	// identity provider, named by its idp claim, rather than to a user of this deployment
+	errorExternalSubjectNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_token",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.external_subject_not_supported",
+			DefaultValue: "Invalid access token",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userinfoservice.external_subject_not_supported_description",
+			DefaultValue: "UserInfo endpoint is not applicable for a subject of an external identity provider",
+		},
+	}
+
 	// errorInsufficientScope is returned when the access token lacks the required 'openid' scope
 	errorInsufficientScope = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
