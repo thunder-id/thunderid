@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -17,12 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 )
 
@@ -176,6 +180,137 @@ func (s *ImportServiceAuditTestSuite) TestImportResources_PublishesOneEventPerRe
 			s.Equal(map[string]string{audit.DetailDryRun: fmt.Sprint(tc.dryRun)}, event.payload.Details())
 		})
 	}
+}
+
+// serviceWritingApplications returns an import service over an application service that creates the
+// application, publishing the event a real one publishes with the context the importer gave it, and the
+// mock that stands for it.
+func (s *ImportServiceAuditTestSuite) serviceWritingApplications(
+	bus eventbus.EventBusInterface) (ImportServiceInterface, *applicationmock.ApplicationServiceInterfaceMock) {
+	apps := applicationmock.NewApplicationServiceInterfaceMock(s.T())
+	apps.EXPECT().GetApplication(mock.Anything, testAuditAppID).Return(nil, &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType, Code: application.ErrorApplicationNotFound.Code}).Once()
+	apps.EXPECT().CreateApplication(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *tidcommon.ServiceError) {
+			target := audit.Ref{Type: audit.TargetTypeApplication, ID: app.ID}
+			eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, audit.EventApplicationCreate).
+				With(audit.ChangePayload(ctx, target, audit.ActionCreate, nil)))
+			return app, nil
+		}).Once()
+	svc := newImportService(apps,
+		&fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}, nil,
+		&fakeFlowService{byID: map[string]*providers.CompleteFlowDefinition{},
+			byKey: map[string]*providers.CompleteFlowDefinition{}},
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, bus)
+	return svc, apps
+}
+
+// A managed import records the request and not the resources it writes, because the control plane has
+// already recorded each change.
+func (s *ImportServiceAuditTestSuite) TestImportResources_ManagedImportRecordsOnlyTheRequest() {
+	bus, published := newRecordingBus(s.T())
+	svc, _ := s.serviceWritingApplications(bus)
+
+	_, svcErr := svc.ImportResources(adminContext(), &ImportRequest{
+		Content: testAuditAppDocument,
+		Managed: true,
+	})
+
+	s.Require().Nil(svcErr, "the application is written once, as the mock expects")
+	event := s.requireOnlyEvent(published(), audit.EventConfigurationImport, audit.ActionImport,
+		audit.OutcomeSucceeded)
+	s.Equal(map[string]string{audit.DetailDryRun: "false"}, event.payload.Details())
+}
+
+// A plain import records the request and each resource it writes.
+func (s *ImportServiceAuditTestSuite) TestImportResources_PlainImportRecordsEachResource() {
+	bus, published := newRecordingBus(s.T())
+	svc, _ := s.serviceWritingApplications(bus)
+
+	_, svcErr := svc.ImportResources(adminContext(), &ImportRequest{Content: testAuditAppDocument})
+
+	s.Require().Nil(svcErr)
+	events := published()
+	s.Require().Len(events, 2)
+	s.Equal(audit.EventApplicationCreate, events[0].name)
+	s.Equal(audit.EventConfigurationImport, events[1].name)
+	s.Equal(map[string]string{audit.DetailDryRun: "false"}, events[1].payload.Details())
+}
+
+// A managed import names the items that failed by type and ID, with their number, and nothing else
+// about them, because it applies its documents one at a time and can be left partly applied.
+func (s *ImportServiceAuditTestSuite) TestImportResources_ManagedImportNamesTheFailedItems() {
+	s.apps.existing[testAuditAppID] = &providers.Application{ID: testAuditAppID}
+	s.apps.updateErr = &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "APP-1007"}
+	bus, published := newRecordingBus(s.T())
+
+	_, svcErr := s.service(bus).ImportResources(adminContext(), &ImportRequest{
+		Content: testAuditAppDocument + "---\nresource_type: application\nid: other-app\nname: Other\nauthFlowId: flow-1\n",
+		Managed: true,
+	})
+
+	s.Require().Nil(svcErr)
+	events := published()
+	s.Require().Len(events, 1)
+	s.Equal(audit.OutcomeFailed("item_failed"), events[0].payload.Outcome())
+	s.Equal(map[string]string{
+		audit.DetailDryRun:      "false",
+		audit.DetailFailedCount: "1",
+		audit.DetailFailedItems: "application:" + testAuditAppID,
+	}, events[0].payload.Details())
+	s.NotContains(fmt.Sprintf("%+v", events[0].payload), testAuditAppName)
+}
+
+// A plain import records no failed items, and a managed one records none when nothing failed.
+func (s *ImportServiceAuditTestSuite) TestImportResources_FailedItemsAreRecordedOnlyForAManagedImport() {
+	s.apps.existing[testAuditAppID] = &providers.Application{ID: testAuditAppID}
+	s.apps.updateErr = &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "APP-1007"}
+	bus, published := newRecordingBus(s.T())
+
+	_, svcErr := s.service(bus).ImportResources(adminContext(), &ImportRequest{Content: testAuditAppDocument})
+
+	s.Require().Nil(svcErr)
+	events := published()
+	s.Require().Len(events, 1)
+	s.Equal(map[string]string{audit.DetailDryRun: "false"}, events[0].payload.Details())
+}
+
+// A list of failed items too long for a detail value is cut at the last whole entry, and the count is
+// the full number. Each entry is 54 characters, so nine entries and their commas take 494 and a tenth does
+// not fit.
+func (s *ImportServiceAuditTestSuite) TestFailedItemDetails_CutAtAWholeEntry() {
+	var failed []ImportItemOutcome
+	var entries []string
+	for i := 0; i < 40; i++ {
+		id := fmt.Sprintf("app-%038d", i)
+		failed = append(failed, ImportItemOutcome{ResourceType: "application", ResourceID: id, Status: statusFailed})
+		entries = append(entries, "application:"+id)
+	}
+	failed = append(failed, ImportItemOutcome{ResourceType: "application", Status: statusSuccess, ResourceID: "ok"})
+
+	details := failedItemDetails(failed)
+
+	s.Equal("40", details[audit.DetailFailedCount])
+	s.Equal(strings.Join(entries[:9], ","), details[audit.DetailFailedItems])
+}
+
+// An ID from the request cannot read as another entry, and one too long for the list still names the failure.
+func (s *ImportServiceAuditTestSuite) TestFailedItemDetails_AnIDFromTheRequestCannotAddEntries() {
+	details := failedItemDetails([]ImportItemOutcome{
+		{ResourceType: "role", ResourceID: "x,role:admin", Status: statusFailed},
+		{ResourceType: "application", ResourceID: strings.Repeat("a", 600), Status: statusFailed},
+	})
+
+	s.Equal("2", details[audit.DetailFailedCount])
+	s.Equal(`role:x\,role\:admin,application:`+strings.Repeat("a", 128), details[audit.DetailFailedItems])
+}
+
+// A failed item with no ID yet is named by its type alone.
+func (s *ImportServiceAuditTestSuite) TestFailedItemDetails_ATypeAloneWhenThereIsNoID() {
+	details := failedItemDetails([]ImportItemOutcome{{ResourceType: "role", Status: statusFailed}})
+
+	s.Equal(map[string]string{audit.DetailFailedCount: "1", audit.DetailFailedItems: "role"}, details)
+	s.Empty(failedItemDetails([]ImportItemOutcome{{ResourceType: "role", Status: statusSuccess}}))
 }
 
 // A dry run writes nothing, so no resource service is asked to write and the only event is the import's.

@@ -56,6 +56,7 @@ type Payload struct {
 	outcome    Outcome
 	client     Client
 	details    map[string]string
+	suppressed bool
 }
 
 // NewPayload builds the audit payload of an attempt on target. The actor, the principal it acted
@@ -74,6 +75,7 @@ func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome)
 		action:     action,
 		outcome:    outcome,
 		client:     Client{Address: address, UserAgent: userAgent},
+		suppressed: isSuppressed(ctx),
 	}
 }
 
@@ -152,10 +154,13 @@ func (p Payload) WithSubject(subject Ref) Payload {
 	return p
 }
 
-// WithDetails records facts specific to one event. An event whose details carry a key the event does
-// not allow is never written.
+// WithDetails records facts specific to one event, each value cut to its first 512 characters. An event
+// whose details carry a key the event does not allow is never written.
 func (p Payload) WithDetails(details map[string]string) Payload {
 	p.details = maps.Clone(details)
+	for key, value := range p.details {
+		p.details[key] = capDetail(value)
+	}
 	return p
 }
 

@@ -6,6 +6,7 @@ package audit
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -42,4 +43,49 @@ func PrincipalRef(ctx context.Context, principalType, id string) Ref {
 // capID cuts an ID to its first maxIDLength characters.
 func capID(id string) string {
 	return utils.TruncateRunes(id, maxIDLength)
+}
+
+// capDetail cuts a detail value to its first maxDetailLength characters.
+func capDetail(value string) string {
+	return utils.TruncateRunes(value, maxDetailLength)
+}
+
+// listEscaper escapes the characters a list detail uses as separators, and the escape character itself.
+var listEscaper = strings.NewReplacer(`\`, `\\`, ",", `\,`, ":", `\:`)
+
+// ListEntry formats one entry of a list detail from its parts, such as a resource type and its ID, joined
+// with ":". Each part is cut to the length of an ID and has its separators escaped with a backslash, so a
+// value taken from a request can neither add an entry nor split one.
+func ListEntry(parts ...string) string {
+	escaped := make([]string, len(parts))
+	for i, part := range parts {
+		escaped[i] = listEscaper.Replace(capID(part))
+	}
+	return strings.Join(escaped, ":")
+}
+
+// JoinList joins the entries of a list detail with ",", cut after the last whole entry that fits a detail
+// value, so no entry is split. An entry too long to fit on its own is cut, so a list that has an entry is
+// never empty.
+func JoinList(entries []string) string {
+	var list strings.Builder
+	length := 0
+	for i, entry := range entries {
+		size := utf8.RuneCountInString(entry)
+		if i > 0 {
+			size++
+		}
+		if length+size > maxDetailLength {
+			if i == 0 {
+				return capDetail(entry)
+			}
+			break
+		}
+		if i > 0 {
+			list.WriteString(",")
+		}
+		list.WriteString(entry)
+		length += size
+	}
+	return list.String()
 }

@@ -85,6 +85,8 @@ const (
 const (
 	// maxIDLength is the most characters of an actor, subject or target ID an event records.
 	maxIDLength = 128
+	// maxDetailLength is the most characters of a detail value an event records.
+	maxDetailLength = 512
 
 	// reasonForbidden is the reason of an attempt denied because the caller lacks the permission for it.
 	reasonForbidden = "forbidden"
