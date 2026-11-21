@@ -129,6 +129,7 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 					Description: ou.Description,
 					ProjectID:   ou.ProjectID,
 					LogoURL:     ou.LogoURL,
+					IsReadOnly:  true,
 				})
 			}
 		}
@@ -184,6 +185,7 @@ func (f *fileBasedStore) GetOrganizationUnitListByProject(
 			ProjectID:   ou.ProjectID,
 			Parent:      ou.Parent,
 			LogoURL:     ou.LogoURL,
+			IsReadOnly:  true,
 		})
 	}
 
@@ -272,6 +274,7 @@ func (f *fileBasedStore) GetOrganizationUnitsByIDs(
 					ProjectID:   ou.ProjectID,
 					Parent:      ou.Parent,
 					LogoURL:     ou.LogoURL,
+					IsReadOnly:  true,
 				})
 			}
 		}
@@ -422,6 +425,7 @@ func (f *fileBasedStore) childrenInProject(id, projectID string) ([]Organization
 			ProjectID:   ou.ProjectID,
 			Parent:      ou.Parent,
 			LogoURL:     ou.LogoURL,
+			IsReadOnly:  true,
 		})
 	}
 	return children, nil
@@ -447,6 +451,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 					Description: ou.Description,
 					ProjectID:   ou.ProjectID,
 					LogoURL:     ou.LogoURL,
+					IsReadOnly:  true,
 				})
 			}
 		}
