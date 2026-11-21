@@ -56,7 +56,7 @@ func TestDefinitionAuthzTestSuite(t *testing.T) {
 func (s *DefinitionAuthzTestSuite) SetupTest() {
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.store = newDefinitionStoreInterfaceMock(s.T())
-	s.svc = newPresentationDefinitionService(s.store, nil, s.authz, nil, false)
+	s.svc = newPresentationDefinitionService(s.store, nil, s.authz, nil, false, discardingBus{})
 }
 
 func (s *DefinitionAuthzTestSuite) stored(ouID string) {

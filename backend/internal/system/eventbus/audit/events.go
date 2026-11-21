@@ -22,6 +22,12 @@ const (
 	EventAgentTypeUpdate = "agent_type.update"
 	// EventAgentTypeDelete names an attempt to delete an agent type.
 	EventAgentTypeDelete = "agent_type.delete"
+	// EventAuthorizationDetailTypeCreate names an attempt to create an authorization details type.
+	EventAuthorizationDetailTypeCreate = "authorization_detail_type.create"
+	// EventAuthorizationDetailTypeUpdate names an attempt to change an authorization details type.
+	EventAuthorizationDetailTypeUpdate = "authorization_detail_type.update"
+	// EventAuthorizationDetailTypeDelete names an attempt to delete an authorization details type.
+	EventAuthorizationDetailTypeDelete = "authorization_detail_type.delete"
 	// EventUserCreate names an attempt to create a user.
 	EventUserCreate = "user.create"
 	// EventUserUpdate names an attempt to change a user.
@@ -107,6 +113,12 @@ const (
 	EventConnectionUpdate = "connection.update"
 	// EventConnectionDelete names an attempt to delete a connection.
 	EventConnectionDelete = "connection.delete"
+	// EventCredentialConfigurationCreate names an attempt to create a verifiable credential configuration.
+	EventCredentialConfigurationCreate = "credential_configuration.create" //nolint:gosec
+	// EventCredentialConfigurationUpdate names an attempt to change a verifiable credential configuration.
+	EventCredentialConfigurationUpdate = "credential_configuration.update" //nolint:gosec
+	// EventCredentialConfigurationDelete names an attempt to delete a verifiable credential configuration.
+	EventCredentialConfigurationDelete = "credential_configuration.delete" //nolint:gosec
 	// EventConsentCreate names an attempt to record a user's consent decisions as a new consent.
 	EventConsentCreate = "consent.create"
 	// EventConsentUpdate names an attempt to replace the decisions a consent holds.
@@ -209,6 +221,12 @@ const (
 	EventOUUpdate = "ou.update"
 	// EventOUDelete names an attempt to delete an organization unit.
 	EventOUDelete = "ou.delete"
+	// EventPresentationDefinitionCreate names an attempt to create a presentation definition.
+	EventPresentationDefinitionCreate = "presentation_definition.create"
+	// EventPresentationDefinitionUpdate names an attempt to change a presentation definition.
+	EventPresentationDefinitionUpdate = "presentation_definition.update"
+	// EventPresentationDefinitionDelete names an attempt to delete a presentation definition.
+	EventPresentationDefinitionDelete = "presentation_definition.delete"
 	// EventProjectCreate names an attempt to create a project.
 	EventProjectCreate = "project.create"
 	// EventProjectUpdate names an attempt to change a project.
@@ -266,6 +284,9 @@ const (
 	// TargetTypeConnection is the target type of an event about a connection of any kind: an identity
 	// provider, an AuthZEN PDP or an HTTP endpoint.
 	TargetTypeConnection = "connection"
+	// TargetTypeCredentialConfiguration is the target type of an event about a verifiable credential
+	// configuration.
+	TargetTypeCredentialConfiguration = "credential_configuration" //nolint:gosec
 	// TargetTypeConsent is the target type of an event about a consent. It never carries the purposes or
 	// elements the consent holds.
 	TargetTypeConsent = "consent"
@@ -289,6 +310,8 @@ const (
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
 	TargetTypeAgentType = "agent_type"
+	// TargetTypeAuthorizationDetailType is the target type of an event about an authorization details type.
+	TargetTypeAuthorizationDetailType = "authorization_detail_type"
 	// TargetTypeGateway is the target type of an event about a gateway.
 	TargetTypeGateway = "gateway"
 	// TargetTypeNotificationSender is the target type of an event about a notification sender.
@@ -312,6 +335,8 @@ const (
 	TargetTypeTheme = "theme"
 	// TargetTypeOU is the target type of an event about an organization unit.
 	TargetTypeOU = "ou"
+	// TargetTypePresentationDefinition is the target type of an event about a presentation definition.
+	TargetTypePresentationDefinition = "presentation_definition"
 	// TargetTypeProject is the target type of an event about a project.
 	TargetTypeProject = "project"
 )
@@ -353,6 +378,10 @@ var auditedEvents = map[string][]string{
 	EventAgentTypeCreate: nil,
 	EventAgentTypeUpdate: nil,
 	EventAgentTypeDelete: nil,
+
+	EventAuthorizationDetailTypeCreate: nil,
+	EventAuthorizationDetailTypeUpdate: nil,
+	EventAuthorizationDetailTypeDelete: nil,
 
 	EventUserCreate: nil,
 	EventUserUpdate: nil,
@@ -401,6 +430,9 @@ var auditedEvents = map[string][]string{
 	EventConnectionUpdate: nil,
 	EventConnectionDelete: nil,
 
+	EventCredentialConfigurationCreate: nil,
+	EventCredentialConfigurationUpdate: nil,
+	EventCredentialConfigurationDelete: nil,
 	EventConsentCreate:                 nil,
 	EventConsentUpdate:                 nil,
 	EventConnectionSharingPolicyCreate: nil,
@@ -465,6 +497,10 @@ var auditedEvents = map[string][]string{
 	EventOUCreate: nil,
 	EventOUUpdate: nil,
 	EventOUDelete: nil,
+
+	EventPresentationDefinitionCreate: nil,
+	EventPresentationDefinitionUpdate: nil,
+	EventPresentationDefinitionDelete: nil,
 
 	EventProjectCreate: nil,
 	EventProjectUpdate: nil,

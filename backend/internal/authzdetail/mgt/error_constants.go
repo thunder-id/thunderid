@@ -295,4 +295,14 @@ var (
 			DefaultValue: "No project exists with the given project ID",
 		},
 	}
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the authorization details type service needs an event bus")
 )
+
+// errTypeNotFoundNoop is returned by deleteAuthorizationDetailType when the type does not exist.
+// DeleteAuthorizationDetailType turns it into a success, so it never reaches a caller.
+var errTypeNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorTypeNotFound.Code,
+}
