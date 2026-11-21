@@ -74,7 +74,24 @@ func (s *systemAuthorizationService) CanGrantPermissions(
 func (s *systemAuthorizationService) CanGrantMembership(
 	ctx context.Context, principalType PrincipalType, containerID string,
 ) *tidcommon.ServiceError {
+	if !membershipApproved(ctx, principalType, containerID) {
+		s.logger.Debug(ctx, "Grant refused: membership not approved", log.String("target", string(principalType)))
+		return &ErrorGrantNotPermitted
+	}
 	return s.requireCovers(ctx, containerID, string(principalType), s.conferredBy(principalType))
+}
+
+// membershipApproved reports whether a caller limited to the writes it approved approved changing the
+// membership of the group or role. Any other caller is not limited.
+func membershipApproved(ctx context.Context, principalType PrincipalType, containerID string) bool {
+	if !security.IsLimitedToApprovedActions(ctx) {
+		return true
+	}
+	action := security.ActionUpdateGroup
+	if principalType == PrincipalTypeRole {
+		action = security.ActionUpdateRole
+	}
+	return security.IsApprovedOn(ctx, action, containerID)
 }
 
 // CanControlEntity enforces that the caller may only take control of an entity, such as by changing
@@ -122,6 +139,9 @@ func (s *systemAuthorizationService) requireCovers(ctx context.Context, id, what
 func (s *systemAuthorizationService) GrantableMemberships(
 	ctx context.Context, principalType PrincipalType, containerIDs []string,
 ) ([]string, *tidcommon.ServiceError) {
+	containerIDs = slices.DeleteFunc(slices.Clone(containerIDs), func(id string) bool {
+		return !membershipApproved(ctx, principalType, id)
+	})
 	if len(containerIDs) == 0 {
 		return nil, nil
 	}

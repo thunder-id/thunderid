@@ -257,6 +257,8 @@ func (s *AttributeVerificationExecutorTestSuite) TestPrepareTakesTheUserBoundToA
 			s.Require().Equal(providers.ExecComplete, prepared.Status)
 			s.Equal(&verificationEvidence{Pin: pin}, s.decodedEvidence(prepared))
 			s.Equal("user-a", prepared.RuntimeData[userAttributeUserID])
+			s.JSONEq(`[{"action":"user:update","ouId":"","resourceIds":["user-a"]}]`,
+				prepared.EngineData[common.EngineDataKeyApprovedActions], "approves recording for the bound user")
 		})
 	}
 }

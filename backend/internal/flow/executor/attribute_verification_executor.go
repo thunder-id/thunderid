@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -151,6 +153,15 @@ func (e *attributeVerificationExecutor) prepare(ctx *providers.NodeContext) (*pr
 	resp.SharedRuntimeData[common.RuntimeKeyDeliveredRecipients] = ""
 	if pin.Subject != "" {
 		resp.RuntimeData[userAttributeUserID] = pin.Subject
+	}
+	// An administrator approves the record for the user, whose step that records it carries no token.
+	if ctx.FlowType == providers.FlowTypeAdminInitiated && pin.Subject != "" {
+		approved, err := json.Marshal([]security.ApprovedAction{
+			{Action: security.ActionUpdateUser, ResourceIDs: []string{pin.Subject}}})
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode the approved actions: %w", err)
+		}
+		resp.EngineData = map[string]string{common.EngineDataKeyApprovedActions: string(approved)}
 	}
 
 	resp.RuntimeData[common.RuntimeKeyRecipientType] = entitytypemodel.ContactTypeForChannel(pin.Channel)

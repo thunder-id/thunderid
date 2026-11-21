@@ -2066,8 +2066,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
-    - org
+    - system:user:create
+    - org:user:create
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -2414,6 +2414,12 @@ nodes:
       y: 893
 - id: invite_generate_email
   type: TASK_EXECUTION
+  properties:
+    approvedActions:
+    - action: user:create
+      ouId:
+      - "{{ctx(ouId)}}"
+      - "{{ctx(defaultOUID)}}"
   executor:
     name: InviteExecutor
     mode: generate
@@ -2499,6 +2505,12 @@ nodes:
       y: 1618
 - id: invite_generate_manual
   type: TASK_EXECUTION
+  properties:
+    approvedActions:
+    - action: user:create
+      ouId:
+      - "{{ctx(ouId)}}"
+      - "{{ctx(defaultOUID)}}"
   executor:
     name: InviteExecutor
     mode: generate

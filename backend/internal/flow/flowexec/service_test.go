@@ -2709,6 +2709,63 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDLoadsInvitationFlowInTheTokens
 	s.Empty(engineCtx.Application.ID)
 }
 
+// A caller confined to their token's unit onboards users only there, so the flow pins the unit and an input cannot
+// move it. A root system holder, and every caller on the control plane, keeps the choice of unit.
+func (s *ServiceTestSuite) TestLoadNewContext_UserOnboardingPinsTheUnitOfAConfinedCaller() {
+	defer security.InitControlPlanePermissions("")
+	tests := []struct {
+		name        string
+		dataPlane   bool
+		permissions []string
+		wantOUID    string
+	}{
+		{name: "org on the data plane", dataPlane: true, permissions: []string{"org:user:create"}, wantOUID: "ou-1"},
+		{name: "system on the data plane", dataPlane: true, permissions: []string{"system"}},
+		{name: "control plane", permissions: []string{"system:user:create"}},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			if tc.dataPlane {
+				security.InitDataPlanePermissions("")
+			} else {
+				security.InitControlPlanePermissions("")
+			}
+			config.ResetServerRuntime()
+			s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+			flowFactory, _ := core.Initialize(
+				cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+			onboarding := &providers.CompleteFlowDefinition{
+				ID: "onboarding-1", FlowType: providers.FlowTypeUserOnboarding, ActiveVersion: 1}
+			mockFlowProvider := NewFlowProviderMock(s.T())
+			mockFlowProvider.EXPECT().GetFlowByHandle(mock.Anything, testUserOnboardingFlowHandle,
+				providers.FlowTypeUserOnboarding).Return(onboarding, nil)
+			mockFlowProvider.EXPECT().GetFlow(mock.Anything, "onboarding-1").Return(onboarding, nil).Maybe()
+			mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+			mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).
+				Return(flowFactory.CreateGraph("onboarding-1", providers.FlowTypeUserOnboarding, 1), nil)
+			service := &flowExecService{
+				flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+				serverConfigSvc: stubServerConfig{cfg: flowconfig.FlowSectionConfig{
+					UserOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: testUserOnboardingFlowHandle},
+				}},
+			}
+
+			engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext(tc.permissions), "", "",
+				string(providers.FlowTypeUserOnboarding), "", false, "",
+				map[string]string{"ouId": "ou-x"}, "", "", log.GetLogger())
+
+			s.Nil(svcErr)
+			s.Require().NotNil(engineCtx)
+			s.Equal(tc.wantOUID, engineCtx.RuntimeData[common.RuntimeKeyOUID])
+			if tc.wantOUID != "" {
+				s.Equal("true", engineCtx.RuntimeData[common.RuntimeKeyOUFixed])
+			} else {
+				s.Empty(engineCtx.RuntimeData[common.RuntimeKeyOUFixed])
+			}
+		})
+	}
+}
+
 // An organization unit runs an invitation flow only when it owns the flow or was shared it.
 func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationFlowNotSharedWithTheTokensOU() {
 	security.InitControlPlanePermissions("")
@@ -5390,8 +5447,8 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDRecordsANarrowAdminsAuthority(
 
 	s.Require().Nil(svcErr)
 	s.False(security.IsRuntimeContext(engineCtx.Context))
-	s.Equal(&flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system:user:delete"}},
-		engineCtx.authority)
+	s.Equal(&flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system:user:delete"},
+		Approved: []security.ApprovedAction{}}, engineCtx.authority)
 }
 
 func (s *ServiceTestSuite) TestAuthority_PersistedWithTheContext() {
@@ -5399,7 +5456,8 @@ func (s *ServiceTestSuite) TestAuthority_PersistedWithTheContext() {
 	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
 	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
 	graph := flowFactory.CreateGraph("onboarding-1", providers.FlowTypeUserOnboarding, 1)
-	authority := &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system:user:create"}}
+	authority := &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system:user:create"},
+		Approved: []security.ApprovedAction{{Action: security.ActionCreateUser, OUID: "ou-2"}}}
 
 	stored := &FlowContextDB{}
 	s.Require().NoError(stored.FromEngineContext(EngineContext{
@@ -5427,7 +5485,8 @@ func (s *ServiceTestSuite) resolvingService(current security.PermissionSet) *flo
 // startedContext returns a flow of flowType that admin-1 of ou-1 started with permissions.
 func startedContext(flowType providers.FlowType, permissions ...string) *EngineContext {
 	return &EngineContext{ExecutionID: "execution-1", FlowType: flowType,
-		authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: permissions}}
+		authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: permissions,
+			Approved: []security.ApprovedAction{}}}
 }
 
 func (s *ServiceTestSuite) TestContinuationAuthority_RunsAFlowForWhoeverDrivesItWithTheServersAuthority() {
@@ -5531,6 +5590,76 @@ func (s *ServiceTestSuite) TestContinuationAuthority_TokenlessStepRunsWithTheRec
 	s.Equal("admin-1", security.GetSubject(ctx))
 	s.Equal("ou-1", security.GetOUID(ctx))
 	s.Equal([]string{"system:user:create"}, security.GetPermissions(ctx), "only what admin-1 still holds")
+	s.True(security.IsLimitedToApprovedActions(ctx), "writes only what admin-1 approved")
+}
+
+// A tokenless step writes only what steps admin-1 sent approved.
+func (s *ServiceTestSuite) TestContinuationAuthority_TokenlessStepWritesOnlyTheApprovedActions() {
+	security.InitControlPlanePermissions("")
+	service := s.resolvingService(security.PermissionSet{"rs-1": {"system:user:create"}})
+	engineCtx := startedContext(providers.FlowTypeUserOnboarding, "system:user:create")
+	engineCtx.authority.Approved = []security.ApprovedAction{{Action: security.ActionCreateUser, OUID: "ou-2"}}
+
+	ctx, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()), engineCtx,
+		log.GetLogger())
+
+	s.Require().Nil(svcErr)
+	s.True(security.IsApproved(ctx, security.ActionCreateUser, "ou-2", ""))
+	s.False(security.IsApproved(ctx, security.ActionCreateUser, "ou-1", ""), "another unit")
+	s.False(security.IsApproved(ctx, security.ActionDeleteUser, "ou-2", "user-1"), "another action")
+}
+
+// A flow started before approvals were recorded cannot be continued without a token, but its caller can still
+// continue it with theirs.
+func (s *ServiceTestSuite) TestContinuationAuthority_FlowWithoutRecordedApprovalsNeedsARestart() {
+	security.InitControlPlanePermissions("")
+	service := s.continuationService()
+	engineCtx := startedContext(providers.FlowTypeUserOnboarding, "system:user:create")
+	engineCtx.authority.Approved = nil
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()), engineCtx,
+		log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowRestartRequired.Code, svcErr.Code)
+
+	caller := authenticatedAdminContext([]string{"system:user:create"})
+	ctx, svcErr := service.continuationAuthority(caller, engineCtx, log.GetLogger())
+	s.Require().Nil(svcErr)
+	s.Equal(caller, ctx)
+}
+
+// Approvals count only from a step the caller who started the flow sent with their own token.
+func (s *ServiceTestSuite) TestApprove_KeepsOnlyApprovalsFromTheCallersOwnStep() {
+	security.InitControlPlanePermissions("")
+	createInOU2 := security.ApprovedAction{Action: security.ActionCreateUser, OUID: "ou-2"}
+	other := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-2", "ou-1", "token", []string{"system"}, nil))
+
+	for name, tc := range map[string]struct {
+		ctx  context.Context
+		kept bool
+	}{
+		"own token":      {authenticatedAdminContext([]string{"system:user:create"}), true},
+		"tokenless step": {security.WithApprovedActions(context.Background(), "admin-1", "ou-1", nil, nil, nil), false},
+		"runtime":        {security.WithRuntimeContext(context.Background()), false},
+		"another caller": {other, false},
+	} {
+		s.Run(name, func() {
+			engineCtx := startedContext(providers.FlowTypeUserOnboarding, "system:user:create")
+			engineCtx.Context = tc.ctx
+
+			s.Equal(tc.kept, engineCtx.approve([]security.ApprovedAction{createInOU2, createInOU2}))
+			if tc.kept {
+				s.Equal([]security.ApprovedAction{createInOU2}, engineCtx.authority.Approved, "once")
+			} else {
+				s.Empty(engineCtx.authority.Approved)
+			}
+		})
+	}
+
+	s.False((&EngineContext{Context: authenticatedAdminContext(nil)}).approve(
+		[]security.ApprovedAction{createInOU2}), "a flow that records no authority approves nothing")
 }
 
 // An invitation flow runs each step with the request's own context: the admin's token on the admin's steps, and
@@ -5831,7 +5960,8 @@ func (s *ServiceTestSuite) TestExecute_AdminInitiatedFlowContinuesWithTheRecorde
 			s.Require().NoError(stored.FromEngineContext(EngineContext{
 				ExecutionID: existingExecutionID, FlowType: flow.FlowType, Graph: graph,
 				UserInputs: map[string]string{}, RuntimeData: map[string]string{}, boundSubject: "user-1",
-				authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system"}},
+				authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system"},
+					Approved: []security.ApprovedAction{}},
 			}))
 			store := newFlowStoreInterfaceMock(s.T())
 			store.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(stored, nil)

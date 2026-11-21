@@ -112,6 +112,22 @@ func (s *systemAuthorizationService) authorizeCaller(ctx context.Context, action
 		return false, true
 	}
 
+	// Step 2a: A caller rebuilt for a step it did not send writes only what it approved, and updates what it
+	// created under those writes earlier in the flow.
+	if security.IsLimitedToApprovedActions(ctx) && !security.IsReadAction(action) {
+		var ouID, resourceID string
+		var resourceType security.ResourceType
+		if actionCtx != nil {
+			ouID, resourceID, resourceType = actionCtx.OUID, actionCtx.ResourceID, actionCtx.ResourceType
+		}
+		if !security.IsApproved(ctx, action, ouID, resourceID) &&
+			!security.IsUpdateOfCreated(ctx, action, resourceType, resourceID) {
+			logger.Debug(ctx, "Authorization denied: action not approved",
+				log.String("action", string(action)))
+			return false, true
+		}
+	}
+
 	// Step 3: Allow resource owners to access their own resources (self-service).
 	if isResourceOwner(ctx, actionCtx) {
 		if logger.IsDebugEnabled() {
