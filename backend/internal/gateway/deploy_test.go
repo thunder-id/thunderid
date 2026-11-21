@@ -295,7 +295,10 @@ func (s *DeployTestSuite) TestMissingValuesAreCheckedForWhatIsSentAlone() {
 	require.Nil(t, svcErr)
 	assert.Equal(t, []string{"APP_CLIENT_ID"}, dry.Missing.Variables)
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
-	assert.Equal(t, &ErrorMissingValues, svcErr)
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorMissingValues.Code, svcErr.Code)
+	assert.Equal(t, map[string]string{"missing": "variable APP_CLIENT_ID; secret APP_SECRET"},
+		svcErr.ErrorDescription.Params)
 }
 
 // A selection that leaves changes out records the version as partly applied, with how many of its

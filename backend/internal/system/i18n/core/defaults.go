@@ -1156,7 +1156,7 @@ var defaultMessages = map[string]string{
 	"error.gatewayservice.misplaced_secret": "A secret reference stands outside a credential field",
 	"error.gatewayservice.misplaced_secret.description": "A secret reference may only stand in a field that holds a credential",
 	"error.gatewayservice.missing_values": "The gateway does not hold every value this version refers to",
-	"error.gatewayservice.missing_values.description": "Set the missing variables and secrets on the gateway, then apply again. A dry run lists them.",
+	"error.gatewayservice.missing_values.description": "The gateway lacks {{param(missing)}}. Set them on the gateway, then apply again.",
 	"error.gatewayservice.name_required": "A gateway name is required",
 	"error.gatewayservice.name_taken": "Another gateway is already registered under that name",
 	"error.gatewayservice.no_versions": "No configuration version has been captured",

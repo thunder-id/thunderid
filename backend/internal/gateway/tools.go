@@ -265,7 +265,7 @@ func answer(action string, value any, svcErr *tidcommon.ServiceError) (*mcp.Call
 
 // toolError turns a service error into what a tool call reports, with its code, as REST reports it.
 func toolError(action string, svcErr *tidcommon.ServiceError) error {
-	description := svcErr.ErrorDescription.DefaultValue
+	description := svcErr.ErrorDescription.String()
 	if description == "" {
 		description = svcErr.Error.DefaultValue
 	}
