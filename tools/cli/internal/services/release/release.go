@@ -436,6 +436,17 @@ var (
 	downloadRetryDelay = 2 * time.Second
 )
 
+// downloadClient gives up on a server that accepts the connection but never answers, so the attempt
+// can be retried instead of hanging. The timeout covers only the wait for headers, leaving a large
+// body as long as it needs.
+var downloadClient = newDownloadClient(30 * time.Second)
+
+func newDownloadClient(headerTimeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = headerTimeout
+	return &http.Client{Transport: transport}
+}
+
 // isTransientStatus reports whether a status is a server-side hiccup worth retrying, such as the
 // 502 and 504 responses GitHub's release CDN returns now and then.
 func isTransientStatus(code int) bool {
@@ -457,7 +468,7 @@ func getForDownload(url string) (*http.Response, error) {
 		}
 		req.Header.Set("User-Agent", product.Slug+"-cli")
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := downloadClient.Do(req)
 		if err != nil {
 			lastErr = err
 			continue
