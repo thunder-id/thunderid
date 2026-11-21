@@ -56,11 +56,16 @@ type Payload struct {
 	outcome    Outcome
 	client     Client
 	details    map[string]string
+
+	sessionRef string
+	appID      string
+	flowRef    string
+	ouID       string
 }
 
 // NewPayload builds the audit payload of an attempt on target. The actor, the principal it acted
-// for and the client are resolved from ctx, which carries the verified security context and where the
-// request came from. Every ID is cut to 128 characters.
+// for, the client, and the flow and application the attempt ran in are resolved from ctx, which carries
+// the verified security context and where the request came from. Every ID is cut to 128 characters.
 func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome) Payload {
 	actor, onBehalfOf := resolveActor(ctx)
 	actor.ID = capID(actor.ID)
@@ -74,6 +79,8 @@ func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome)
 		action:     action,
 		outcome:    outcome,
 		client:     Client{Address: address, UserAgent: userAgent},
+		appID:      capID(syscontext.GetApplicationID(ctx)),
+		flowRef:    capID(syscontext.GetFlowRef(ctx)),
 	}
 }
 
@@ -152,6 +159,26 @@ func (p Payload) WithSubject(subject Ref) Payload {
 	return p
 }
 
+// WithSessionRef names the session the event belongs to by its public reference. An event never carries the
+// handle the client presents, which is a credential.
+func (p Payload) WithSessionRef(ref string) Payload {
+	p.sessionRef = capID(ref)
+	return p
+}
+
+// WithApplication names the application the event ran for by its ID. NewPayload also reads the application
+// from the context, and an explicit call replaces it, with none when id is empty.
+func (p Payload) WithApplication(id string) Payload {
+	p.appID = capID(id)
+	return p
+}
+
+// WithOU names the organization unit of the subject or the target by its ID.
+func (p Payload) WithOU(id string) Payload {
+	p.ouID = capID(id)
+	return p
+}
+
 // WithDetails records facts specific to one event. An event whose details carry a key the event does
 // not allow is never written.
 func (p Payload) WithDetails(details map[string]string) Payload {
@@ -192,6 +219,26 @@ func (p Payload) Outcome() Outcome {
 // Client returns where the request came from, the zero Client when its peer was not a public address.
 func (p Payload) Client() Client {
 	return p.client
+}
+
+// SessionRef returns the reference of the session the event belongs to, empty when none.
+func (p Payload) SessionRef() string {
+	return p.sessionRef
+}
+
+// Application returns the ID of the application the event ran for, empty when none.
+func (p Payload) Application() string {
+	return p.appID
+}
+
+// FlowRef returns the reference of the flow the event ran in, empty when none.
+func (p Payload) FlowRef() string {
+	return p.flowRef
+}
+
+// OU returns the ID of the organization unit of the subject or the target, empty when none.
+func (p Payload) OU() string {
+	return p.ouID
 }
 
 // Details returns a copy of the facts specific to the event.

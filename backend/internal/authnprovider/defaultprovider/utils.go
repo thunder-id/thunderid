@@ -5,7 +5,6 @@ package defaultprovider
 
 import (
 	"context"
-	"slices"
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
@@ -13,17 +12,6 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
-
-// credentialAuthenticationMethod returns the method a credential comparison is checked under. It is the
-// system credential method only when every credential is a system credential.
-func credentialAuthenticationMethod(credentials map[string]interface{}) providers.AuthenticationMethod {
-	for key := range credentials {
-		if !slices.Contains(authnprovidercm.SystemCredentialTypes, key) {
-			return providers.AuthenticationMethodCredential
-		}
-	}
-	return providers.AuthenticationMethodSystemCredential
-}
 
 // otpFailureOf turns a wrong one-time password into evidence naming the code's recipient.
 func otpFailureOf(failure *otp.VerificationFailure) *attributedFailure {

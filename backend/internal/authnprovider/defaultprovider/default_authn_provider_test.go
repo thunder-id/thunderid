@@ -25,7 +25,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/attributeverificationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/commonmock"
@@ -2430,9 +2429,19 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ChecksTheDispatched
 			},
 			method: providers.AuthenticationMethodOpenID4VP,
 		},
+		{
+			name:        "provisioned entity",
+			credentials: map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: "u1"},
+			expect: func(*magiclinkmock.MagicLinkAuthnServiceInterfaceMock,
+				*openid4vpmock.OpenID4VPServiceInterfaceMock) {
+			},
+			method: providers.AuthenticationMethodFederated,
+		},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
+			suite.Equal(tc.method, authnprovidercm.AuthenticationMethodOf(tc.credentials),
+				"the provider checks under the method the shared helper names")
 			suite.SetupTest()
 			mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
 			mockVP := openid4vpmock.NewOpenID4VPServiceInterfaceMock(suite.T())
@@ -2450,36 +2459,6 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ChecksTheDispatched
 			suite.Require().Nil(svcErr)
 			suite.Equal("u1", result.EntityReference.EntityID)
 		})
-	}
-}
-
-func (suite *DefaultAuthnProviderTestSuite) TestCredentialAuthenticationMethod() {
-	cases := []struct {
-		name        string
-		credentials map[string]interface{}
-		method      providers.AuthenticationMethod
-	}{
-		{name: "password", credentials: map[string]interface{}{"password": "p"},
-			method: providers.AuthenticationMethodCredential},
-		{name: "other schema secrets", credentials: map[string]interface{}{"pin": "1234", "secretAnswer": "blue"},
-			method: providers.AuthenticationMethodCredential},
-		{name: "unknown key", credentials: map[string]interface{}{"somethingNew": "x"},
-			method: providers.AuthenticationMethodCredential},
-		{name: "key named after the account-wide entry",
-			credentials: map[string]interface{}{string(identitygovernance.AuthenticationMethodAccount): "x"},
-			method:      providers.AuthenticationMethodCredential},
-		{name: "system credential beside a password",
-			credentials: map[string]interface{}{authnprovidercm.CredentialTypeClientSecret: "s", "password": "p"},
-			method:      providers.AuthenticationMethodCredential},
-	}
-	for _, tc := range cases {
-		suite.Run(tc.name, func() {
-			suite.Equal(tc.method, credentialAuthenticationMethod(tc.credentials))
-		})
-	}
-	for _, credentialType := range authnprovidercm.SystemCredentialTypes {
-		suite.Equal(providers.AuthenticationMethodSystemCredential,
-			credentialAuthenticationMethod(map[string]interface{}{credentialType: "s"}), credentialType)
 	}
 }
 
