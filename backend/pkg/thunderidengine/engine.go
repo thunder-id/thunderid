@@ -135,9 +135,13 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.runtimeCryptoSvc, systemconfig.GetServerRuntime().Config.AttributeCache.Encryption.Enabled)
 	engineCtx.authAssertGen = assert.Initialize()
 
-	// The engine subscribes nothing to its event bus, so the audit events of its services are dropped
-	// unwritten, no worker starts and the bus needs no stopping.
-	auditBus, _, _ := eventbus.Initialize()
+	// The engine subscribes only the sinks the embedder added. With none, the audit events of its services
+	// are dropped unwritten, no worker starts and the bus needs no stopping. With sinks, each one has its
+	// own worker for the life of the process.
+	auditBus, auditRegistry, _ := eventbus.Initialize()
+	if err := subscribeAuditSinks(auditRegistry, engineCtx.auditSinks); err != nil {
+		logger.Fatal(ctx, "Failed to subscribe the audit sinks", log.Error(err))
+	}
 
 	authnProviderManager, err := authnprovidermgr.Initialize(
 		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus)
@@ -446,6 +450,7 @@ type engineContext struct {
 	identityGovernance        providers.IdentityGovernanceProvider
 	attributeVerification     providers.AttributeVerificationProvider
 	permissionProvider        providers.PermissionProvider
+	auditSinks                []providers.AuditSink
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -593,6 +598,18 @@ func WithPermissionProvider(provider providers.PermissionProvider) Option {
 // WithI18nProvider supplies the i18n provider.
 func WithI18nProvider(provider providers.I18nProvider) Option {
 	return func(c *engineContext) { c.i18nProvider = provider }
+}
+
+// WithAuditSink adds a sink that receives the engine's audit events as plain values. It can be passed more
+// than once, and each sink has its own queue, so a slow sink delays neither a request nor another sink.
+// Without it the engine writes no audit output, and a nil sink is ignored. The engine owns no HTTP layer,
+// so it leaves each event's Client empty, and an embedder that wants the peer reads it in its own HTTP layer.
+func WithAuditSink(sink providers.AuditSink) Option {
+	return func(c *engineContext) {
+		if !isNilAuditSink(sink) {
+			c.auditSinks = append(c.auditSinks, sink)
+		}
+	}
 }
 
 // WithAuthorizationDetailTypeProvider supplies the authorization details type registry. Without it,

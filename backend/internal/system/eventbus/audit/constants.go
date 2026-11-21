@@ -7,79 +7,80 @@ import (
 	"regexp"
 
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // CategoryAudit is the category of audit payloads: who did what to what, and with what outcome.
 const CategoryAudit eventbus.Category = "audit"
 
 // Action is what an actor attempted. The set is open, so a new action needs no change here.
-type Action string
+type Action = providers.AuditAction
 
 const (
 	// ActionAuthenticate proves an identity.
-	ActionAuthenticate Action = "authenticate"
+	ActionAuthenticate = providers.AuditActionAuthenticate
 	// ActionApply applies a configuration version to a resource.
-	ActionApply Action = "apply"
+	ActionApply = providers.AuditActionApply
 	// ActionCreate creates a resource.
-	ActionCreate Action = "create"
+	ActionCreate = providers.AuditActionCreate
 	// ActionExport reads configuration out as declarative resources.
-	ActionExport Action = "export"
+	ActionExport = providers.AuditActionExport
 	// ActionImport writes declarative resources into the configuration.
-	ActionImport Action = "import"
+	ActionImport = providers.AuditActionImport
 	// ActionUpdate changes a resource.
-	ActionUpdate Action = "update"
+	ActionUpdate = providers.AuditActionUpdate
 	// ActionDelete removes a resource.
-	ActionDelete Action = "delete"
+	ActionDelete = providers.AuditActionDelete
 	// ActionAdd adds a principal to a resource, as a role assignee or a group member.
-	ActionAdd Action = "add"
+	ActionAdd = providers.AuditActionAdd
 	// ActionRemove takes a principal off a resource, as a role assignee or a group member.
-	ActionRemove Action = "remove"
+	ActionRemove = providers.AuditActionRemove
 	// ActionRestore brings back an earlier version of a resource.
-	ActionRestore Action = "restore"
+	ActionRestore = providers.AuditActionRestore
 	// ActionIssue issues a credential, such as a token.
-	ActionIssue Action = "issue"
+	ActionIssue = providers.AuditActionIssue
 	// ActionRevoke withdraws a credential, such as a token.
-	ActionRevoke Action = "revoke"
+	ActionRevoke = providers.AuditActionRevoke
 	// ActionRevert returns a resource to the configuration it held before.
-	ActionRevert Action = "revert"
+	ActionRevert = providers.AuditActionRevert
 	// ActionEnroll registers a new credential, such as a passkey, for an identity.
-	ActionEnroll Action = "enroll"
+	ActionEnroll = providers.AuditActionEnroll
 	// ActionLock holds an identity from authenticating.
-	ActionLock Action = "lock"
+	ActionLock = providers.AuditActionLock
 	// ActionUnlock releases the locks on an identity.
-	ActionUnlock Action = "unlock"
+	ActionUnlock = providers.AuditActionUnlock
 	// ActionSuspend places an administrative hold on an identity.
-	ActionSuspend Action = "suspend"
+	ActionSuspend = providers.AuditActionSuspend
 	// ActionUnsuspend releases an administrative hold on an identity.
-	ActionUnsuspend Action = "unsuspend"
+	ActionUnsuspend = providers.AuditActionUnsuspend
 )
 
 // ActorType is the kind of principal that acted. The set is open.
-type ActorType string
+type ActorType = providers.AuditActorType
 
 const (
 	// ActorTypeUser is a person.
-	ActorTypeUser ActorType = "user"
+	ActorTypeUser = providers.AuditActorTypeUser
 	// ActorTypeApplication is an OAuth client acting for itself.
-	ActorTypeApplication ActorType = "application"
+	ActorTypeApplication = providers.AuditActorTypeApplication
 	// ActorTypeAgent is an AI agent.
-	ActorTypeAgent ActorType = "agent"
+	ActorTypeAgent = providers.AuditActorTypeAgent
 	// ActorTypeSystem is the deployment itself, such as its management API key.
-	ActorTypeSystem ActorType = "system"
+	ActorTypeSystem = providers.AuditActorTypeSystem
 	// ActorTypeAnonymous is a caller that presented no verified identity.
-	ActorTypeAnonymous ActorType = "anonymous"
+	ActorTypeAnonymous = providers.AuditActorTypeAnonymous
 )
 
 // Result is how an attempt ended.
-type Result string
+type Result = providers.AuditResult
 
 const (
 	// ResultSucceeded is an attempt that completed.
-	ResultSucceeded Result = "succeeded"
+	ResultSucceeded = providers.AuditResultSucceeded
 	// ResultDenied is an attempt a security decision refused.
-	ResultDenied Result = "denied"
+	ResultDenied = providers.AuditResultDenied
 	// ResultFailed is an attempt that was allowed but did not complete.
-	ResultFailed Result = "failed"
+	ResultFailed = providers.AuditResultFailed
 )
 
 const (

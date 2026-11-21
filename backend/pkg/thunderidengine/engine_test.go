@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thunder-id/thunderid/tests/mocks/auditsinkmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailtypeprovidermock"
 
@@ -449,6 +450,7 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithAuditSink(auditsinkmock.NewAuditSinkMock(t)),
 		// Restrict to built-in executors that only depend on FlowFactory; the others assume
 		// non-nil typed provider dependencies (e.g. the GitHub/Google/OIDC auth executors) that
 		// this minimal test setup does not wire up.
@@ -458,6 +460,7 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 	require.NotNil(t, eng)
 	require.NotNil(t, eng.engineCtx)
 	assert.Nil(t, eng.engineCtx.identityGovernance)
+	assert.Len(t, eng.engineCtx.auditSinks, 1)
 	assert.NotNil(t, eng.engineCtx.runtimeCryptoSvc)
 	assert.NotNil(t, eng.engineCtx.jwtService)
 	assert.NotNil(t, eng.engineCtx.jweService)
