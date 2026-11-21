@@ -10,6 +10,10 @@ import (
 
 // Initialize initializes the GitHub OAuth authentication service.
 func Initialize(oauthSvc authnoauth.OAuthAuthnServiceInterface) GithubOAuthAuthnServiceInterface {
-	httpClient := syshttp.NewHTTPClient()
+	// The user-email endpoint comes from the connection config, so it gets the
+	// same SSRF dial guard as the other OAuth endpoints.
+	httpClient := syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		GuardSSRF: true,
+	})
 	return newGithubOAuthAuthnService(oauthSvc, httpClient)
 }

@@ -32,6 +32,10 @@ func Initialize(cfg config.RestConfig) (providers.AuthnProviderInterface, error)
 	if correlationIDHeader == "" {
 		correlationIDHeader = serverconst.CorrelationIDHeaderName
 	}
-	httpClient := systemhttp.NewHTTPClientWithTimeout(timeout)
+	// The REST provider dials the admin-configured base URL, which may be an
+	// internal host, so it keeps no SSRF dial guard.
+	httpClient := systemhttp.NewHTTPClient(systemhttp.HTTPClientConfig{
+		Timeout: timeout,
+	})
 	return newRestAuthnProvider(cfg.BaseURL, cfg.Security.APIKey, correlationIDHeader, httpClient), nil
 }
