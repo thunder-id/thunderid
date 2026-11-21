@@ -16,7 +16,7 @@ This model covers:
 
 - Publication of the SSO session id as the `sid` claim on ID tokens and refresh tokens.
 - Registration and validation of `backchannel_logout_uri` through the Console, the application management API, and Dynamic Client Registration.
-- Observation of session termination through `session.TerminationListener`, on both the sign-out path (`Terminate`) and the administrative subject-revocation path (`TerminateBySubject`).
+- Observation of session termination through `session.TerminationListener`, on the sign-out path (`Terminate`), the administrative subject-revocation path (`TerminateBySubject`), and the session management API (`RevokeSession` and `RevokeSubjectSessions`).
 - Queueing, dispatch, retry, and graceful-shutdown drain in the back-channel dispatcher.
 - Minting of the logout token, including its signing and optional encryption.
 - The outbound HTTP POST to the relying party's registered endpoint and the handling of its response.
@@ -238,7 +238,7 @@ sequenceDiagram
 
 **Description**
 
-`Terminate` and `TerminateBySubject` notify the listeners registered through the session service's termination hook after their transaction commits, passing the session id, subject id, participant list, and termination reason. The listener performs no I/O. `Terminate` reuses the participant list it already read inside the transaction. `TerminateBySubject` performs one additional bulk participant read inside its transaction, before the deletes, keyed by the set of session ids it is about to delete.
+`Terminate`, `TerminateBySubject`, `RevokeSession`, and `RevokeSubjectSessions` notify the listeners registered through the session service's termination hook after their transaction commits, passing the session id, subject id, participant list, and termination reason. The listener performs no I/O. `Terminate` reuses the participant list it already read inside the transaction. `TerminateBySubject` performs one additional bulk participant read inside its transaction, before the deletes, keyed by the set of session ids it is about to delete. `RevokeSession` and `RevokeSubjectSessions` share the path `Terminate` uses, reading each session's participants inside the transaction before its delete, and notify with the reason `session_revocation`.
 
 **Assets involved**
 

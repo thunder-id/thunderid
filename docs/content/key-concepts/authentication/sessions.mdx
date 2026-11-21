@@ -51,6 +51,8 @@ There are two ways to run the sign-out flow, matching the two [integration model
 - **Redirect-based (OIDC).** A browser-based application redirects the user to the `end_session_endpoint`, which runs the sign-out flow and returns the browser to the application. See [RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout).
 - **App-native.** An application that drives flows directly runs the sign-out flow through the Flow Execution API, sending the session it holds in `sessionData`. Without it, the sign-out ends nothing. See [App-Native Sign-In](../../../guides/flows/single-sign-on#app-native-sign-in) and [Build a Sign-Out Flow](../../../guides/flows/build-a-flow#go-further).
 
+An administrator can also terminate a user's sessions from the Console or the API. See [Manage Sessions](../../../guides/users/manage-sessions).
+
 A session also ends on its own when it passes the idle or absolute timeout, as described above.
 
 When a session ends, through either path or through an administrative action such as deleting the user, <ProductName /> posts a logout token to every application that took part in the session and registered a back-channel logout URI. Expiry sends no notification. See [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout).
