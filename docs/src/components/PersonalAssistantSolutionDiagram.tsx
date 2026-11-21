@@ -55,7 +55,7 @@ const stepSx = {
 } as const;
 const stepTitleSx = {fontSize: '0.82rem', fontWeight: 700, color: 'var(--ifm-font-color-base)'} as const;
 
-const IDENTITY_SUBTITLE = 'Keeps the assistant tied to the customer who brought it in';
+const IDENTITY_SUBTITLE = 'Keeps the agent tied to the customer who brought it in';
 
 /** A numbered flow-step label: a small primary circle carrying the step number, then the text. */
 function StepLabel({n, left, top, width, text, accent = false}: {n: number; left: number; top: number; width: number; text: string; accent?: boolean}) {
@@ -77,15 +77,15 @@ function StepLabel({n, left, top, width, text, accent = false}: {n: number; left
 }
 
 /**
- * The bring-your-own-assistant solution diagram, built to match the agent one.
- * Only the identity layer is accented: the assistant belongs to the customer,
+ * The personal agent solution diagram, built to match the Agent ID one.
+ * Only the identity layer is accented: the agent belongs to the customer,
  * not the reader. The identity layer's box names its jobs in vendor-neutral
- * terms: it records whose assistant it is, lets it act only for that customer,
+ * terms: it records whose agent it is, lets it act only for that customer,
  * issues tokens naming both, and lets both sides govern it. The numbered steps
- * trace one assistant from registration to an API call: the customer
- * registers it (1), the assistant asks for access (2), the identity layer asks
+ * trace one agent from registration to an API call: the customer
+ * registers it (1), the agent asks for access (2), the identity layer asks
  * the customer to sign in and approve, and they do (3), the identity layer mints a token for that customer only
- * (4), and the assistant sends it with each call, where the APIs check it (5).
+ * (4), and the agent sends it with each call, where the APIs check it (5).
  * Built with Oxygen UI + Lucide icons; scales to fit the width, scrolls below
  * MIN_SCALE.
  */
@@ -113,7 +113,7 @@ export function PersonalAssistantSolutionDiagram() {
   return (
     <Box
       component="figure"
-      aria-label="Bring-your-own-assistant solution, as a numbered flow. The identity layer keeps the assistant tied to the customer who brought it in: it records whose assistant it is, lets it act only for that customer, issues tokens naming the customer and the assistant, and lets both the customer and the bank govern it. Step 1: the customer registers the assistant as their own. Step 2: the assistant asks the identity layer for access for its owner. Step 3: the identity layer asks the customer to sign in and approve what the assistant asks for, and the customer does. Step 4: the identity layer issues a signed token for that customer only, naming the customer and the assistant, and returns it to the assistant. Step 5: the assistant sends the token with each call to the bank's APIs, which check it. Separately, the customer uses the assistant for everyday tasks."
+      aria-label="Personal agent solution, as a numbered flow. The identity layer keeps the agent tied to the customer who brought it in: it records whose agent it is, lets it act only for that customer, issues tokens naming the customer and the agent, and lets both the customer and the bank govern it. Step 1: the customer registers the agent as their own. Step 2: the agent asks the identity layer for access for its owner. Step 3: the identity layer asks the customer to sign in and approve what the agent asks for, and the customer does. Step 4: the identity layer issues a signed token for that customer only, naming the customer and the agent, and returns it to the agent. Step 5: the agent sends the token with each call to the bank's APIs, which check it. Separately, the customer uses the agent for everyday tasks."
       sx={{margin: '2rem 0 2.5rem', border: 0, padding: 0, overflow: 'visible'}}
     >
       <Box
@@ -130,18 +130,18 @@ export function PersonalAssistantSolutionDiagram() {
                 <path d="M0,0 L10,5 L0,10 z" fill="var(--ifm-color-emphasis-500)" />
               </marker>
             </defs>
-            {/* 1: customer -> identity layer, registers the assistant */}
+            {/* 1: customer -> identity layer, registers the agent */}
             <Box component="path" d="M865,98 H574" sx={lineSx} markerEnd="url(#pas-arrow)" />
             {/* 3: identity layer <-> customer, asks them to sign in and approve, and they answer */}
             <Box component="path" d="M574,120 H864" sx={lineSx} markerEnd="url(#pas-arrow)" markerStart="url(#pas-arrow)" />
-            {/* customer -> assistant (uses it for everyday tasks) */}
+            {/* customer -> agent (uses it for everyday tasks) */}
             <Box component="path" d="M940,150 V273" sx={lineSx} markerEnd="url(#pas-arrow)" />
-            {/* 2: assistant -> identity layer, asks for access (top lane, above the token) */}
+            {/* 2: agent -> identity layer, asks for access (top lane, above the token) */}
             <Box component="path" d="M820,292 H574" sx={lineSx} markerEnd="url(#pas-arrow)" />
-            {/* 4: identity layer -> token -> assistant (bottom lane: minted here, handed over) */}
+            {/* 4: identity layer -> token -> agent (bottom lane: minted here, handed over) */}
             <Box component="path" d="M570,344 H611" sx={lineSx} markerEnd="url(#pas-arrow)" />
             <Box component="path" d="M790,344 H818" sx={lineSx} markerEnd="url(#pas-arrow)" />
-            {/* 5: assistant <-> Bank's APIs, down the spine */}
+            {/* 5: agent <-> Bank's APIs, down the spine */}
             <Box component="path" d="M940,355 V466" sx={lineSx} markerEnd="url(#pas-arrow)" markerStart="url(#pas-arrow)" />
           </Box>
 
@@ -150,17 +150,17 @@ export function PersonalAssistantSolutionDiagram() {
             <Box aria-hidden sx={iconSx}><User size={26} /></Box>
             <Typography component="span" sx={labelSx}>A customer</Typography>
           </Box>
-          <StepLabel n={1} left={590} top={72} width={270} text="Registers the assistant as their own" />
-          <StepLabel n={3} left={590} top={128} width={270} text="Signs in and approves what the assistant asks for" />
+          <StepLabel n={1} left={590} top={72} width={270} text="Registers the agent as their own" />
+          <StepLabel n={3} left={590} top={128} width={270} text="Signs in and approves what the agent asks for" />
           <Typography component="span" sx={{position: 'absolute', left: 950, top: 196, width: 200, fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.4, color: 'var(--ifm-color-emphasis-700)'}}>
             Uses it for everyday tasks
           </Typography>
 
-          {/* The customer's assistant (not the reader's, so not accented) */}
+          {/* The customer's agent (not the reader's, so not accented) */}
           <Box sx={{...cardSx, left: 820, top: 277, width: 240, height: 78, gap: '0.15rem'}}>
             <Box sx={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
               <Box aria-hidden sx={iconSx}><Bot size={22} /></Box>
-              <Typography component="span" sx={labelSx}>Their AI assistant</Typography>
+              <Typography component="span" sx={labelSx}>Their personal agent</Typography>
             </Box>
             <Typography component="span" sx={subLabelSx}>brought in by the customer</Typography>
           </Box>
@@ -173,7 +173,7 @@ export function PersonalAssistantSolutionDiagram() {
             </Box>
             <Typography component="span" sx={{...subLabelSx, marginBottom: '0.2rem'}}>{IDENTITY_SUBTITLE}</Typography>
             <Box sx={stepSx}>
-              <Typography component="span" sx={stepTitleSx}>Records whose assistant it is</Typography>
+              <Typography component="span" sx={stepTitleSx}>Records whose agent it is</Typography>
               <Typography component="span" sx={subLabelSx}>an identity of its own, owned by one customer</Typography>
             </Box>
             <Box sx={stepSx}>
@@ -182,7 +182,7 @@ export function PersonalAssistantSolutionDiagram() {
             </Box>
             <Box sx={stepSx}>
               <Typography component="span" sx={stepTitleSx}>Issues its tokens</Typography>
-              <Typography component="span" sx={subLabelSx}>naming the customer and the assistant</Typography>
+              <Typography component="span" sx={subLabelSx}>naming the customer and the agent</Typography>
             </Box>
             <Box sx={stepSx}>
               <Typography component="span" sx={stepTitleSx}>Lets both sides govern it</Typography>
@@ -198,7 +198,7 @@ export function PersonalAssistantSolutionDiagram() {
               <Box aria-hidden sx={iconSx}><KeyRound size={18} /></Box>
               <Typography component="span" sx={{...labelSx, fontSize: '0.82rem'}}>Signed token</Typography>
             </Box>
-            <Typography component="span" sx={subLabelSx}>the customer, through the assistant</Typography>
+            <Typography component="span" sx={subLabelSx}>the customer, through the agent</Typography>
           </Box>
 
           {/* Bank's APIs (bottom of the spine) */}
@@ -208,7 +208,7 @@ export function PersonalAssistantSolutionDiagram() {
               <Box aria-hidden sx={iconSx}><Server size={22} /></Box>
               <Typography component="span" sx={labelSx}>{"Bank's APIs"}</Typography>
             </Box>
-            <Typography component="span" sx={subLabelSx}>the services the assistant calls</Typography>
+            <Typography component="span" sx={subLabelSx}>the services the agent calls</Typography>
           </Box>
 
         </Box>
