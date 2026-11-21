@@ -266,7 +266,7 @@ func TestWriteServiceEnvWritesAgentCredentials(t *testing.T) {
 
 	env := readEnv(t, envPath)
 	want := map[string]string{
-		"THUNDER_BASE_URL":     "https://localhost:9443",
+		"THUNDERID_BASE_URL":   "https://localhost:9443",
 		"AGENT_ID":             "WAYFINDER-CONCIERGE",
 		"AGENT_SECRET":         "agent-secret",
 		"UPGRADE_AGENT_ID":     "WAYFINDER-UPGRADE-AGENT",
@@ -320,7 +320,7 @@ func TestWriteServiceEnvPreservesShippedKeys(t *testing.T) {
 	envPath := serviceDir(t, sampleDir, "ai-agent")
 	shipped := "MCP_SERVER_URL=http://localhost:8787/mcp\n" +
 		"UPGRADE_SCHEDULER_ENABLED=false\n" +
-		"THUNDER_BASE_URL=https://localhost:8090\n"
+		"THUNDERID_BASE_URL=https://localhost:8090\n"
 	if err := os.WriteFile(envPath, []byte(shipped), 0o644); err != nil {
 		t.Fatalf("write env: %v", err)
 	}
@@ -337,15 +337,15 @@ func TestWriteServiceEnvPreservesShippedKeys(t *testing.T) {
 	if env["UPGRADE_SCHEDULER_ENABLED"] != "false" {
 		t.Errorf("UPGRADE_SCHEDULER_ENABLED was dropped: %q", env["UPGRADE_SCHEDULER_ENABLED"])
 	}
-	if env["THUNDER_BASE_URL"] != "https://localhost:9443" {
-		t.Errorf("THUNDER_BASE_URL: got %q, want the current URL", env["THUNDER_BASE_URL"])
+	if env["THUNDERID_BASE_URL"] != "https://localhost:9443" {
+		t.Errorf("THUNDERID_BASE_URL: got %q, want the current URL", env["THUNDERID_BASE_URL"])
 	}
 }
 
 func TestWriteFrontendEnv(t *testing.T) {
 	sampleDir := t.TempDir()
 	envPath := serviceDir(t, sampleDir, "frontend")
-	if err := os.WriteFile(envPath, []byte("VITE_THUNDER_APP_ID=wayfinder-app\n"), 0o644); err != nil {
+	if err := os.WriteFile(envPath, []byte("VITE_THUNDER_APP_ID=wayfinder-app\nVITE_THUNDER_CLIENT_ID=old-client\nVITE_THUNDER_BASE_URL=https://old.example\n"), 0o644); err != nil {
 		t.Fatalf("write env: %v", err)
 	}
 
@@ -354,37 +354,37 @@ func TestWriteFrontendEnv(t *testing.T) {
 	}
 
 	env := readEnv(t, envPath)
-	if env["VITE_THUNDER_CLIENT_ID"] != "WAYFINDER" {
-		t.Errorf("client id: got %q, want the id from thunderid.env", env["VITE_THUNDER_CLIENT_ID"])
+	if env["VITE_THUNDERID_CLIENT_ID"] != "WAYFINDER" {
+		t.Errorf("client id: got %q, want the id from thunderid.env", env["VITE_THUNDERID_CLIENT_ID"])
 	}
-	if env["VITE_THUNDER_BASE_URL"] != "https://localhost:9443" {
-		t.Errorf("base URL: got %q", env["VITE_THUNDER_BASE_URL"])
+	if env["VITE_THUNDERID_BASE_URL"] != "https://localhost:9443" {
+		t.Errorf("base URL: got %q", env["VITE_THUNDERID_BASE_URL"])
 	}
 	if env["VITE_AI_FEATURES_ENABLED"] != "true" {
 		t.Errorf("AI flag: got %q, want true", env["VITE_AI_FEATURES_ENABLED"])
 	}
-	if env["VITE_THUNDER_APP_ID"] != "wayfinder-app" {
-		t.Errorf("VITE_THUNDER_APP_ID was dropped: %q", env["VITE_THUNDER_APP_ID"])
+	if env["VITE_THUNDERID_APP_ID"] != "wayfinder-app" {
+		t.Errorf("VITE_THUNDERID_APP_ID was dropped: %q", env["VITE_THUNDERID_APP_ID"])
 	}
 
 	if err := writeFrontendEnv(sampleDir, "https://localhost:9443", nil, false); err != nil {
 		t.Fatalf("writeFrontendEnv without vars: %v", err)
 	}
 	env = readEnv(t, envPath)
-	if env["VITE_THUNDER_CLIENT_ID"] != "WAYFINDER" {
-		t.Errorf("client id fallback: got %q", env["VITE_THUNDER_CLIENT_ID"])
+	if env["VITE_THUNDERID_CLIENT_ID"] != "WAYFINDER" {
+		t.Errorf("client id fallback: got %q", env["VITE_THUNDERID_CLIENT_ID"])
 	}
 	if env["VITE_AI_FEATURES_ENABLED"] != "false" {
 		t.Errorf("AI flag: got %q, want false", env["VITE_AI_FEATURES_ENABLED"])
 	}
 }
 
-// The backend validates tokens against THUNDER_BASE_URL, which ships with the
+// The backend validates tokens against THUNDERID_BASE_URL, which ships with the
 // default port baked in — it has to follow the port the product actually uses.
 func TestWriteBaseURLEnvs(t *testing.T) {
 	sampleDir := t.TempDir()
 	backendEnv := serviceDir(t, sampleDir, "backend")
-	if err := os.WriteFile(backendEnv, []byte("THUNDER_BASE_URL=https://localhost:8090\nAUTHORIZATION_MODE=scope\n"), 0o644); err != nil {
+	if err := os.WriteFile(backendEnv, []byte("THUNDERID_BASE_URL=https://localhost:8090\nAUTHORIZATION_MODE=scope\n"), 0o644); err != nil {
 		t.Fatalf("write env: %v", err)
 	}
 
@@ -393,8 +393,8 @@ func TestWriteBaseURLEnvs(t *testing.T) {
 	}
 
 	env := readEnv(t, backendEnv)
-	if env["THUNDER_BASE_URL"] != "https://localhost:9443" {
-		t.Errorf("THUNDER_BASE_URL: got %q, want the resolved URL", env["THUNDER_BASE_URL"])
+	if env["THUNDERID_BASE_URL"] != "https://localhost:9443" {
+		t.Errorf("THUNDERID_BASE_URL: got %q, want the resolved URL", env["THUNDERID_BASE_URL"])
 	}
 	if env["AUTHORIZATION_MODE"] != "scope" {
 		t.Errorf("AUTHORIZATION_MODE was dropped: %q", env["AUTHORIZATION_MODE"])

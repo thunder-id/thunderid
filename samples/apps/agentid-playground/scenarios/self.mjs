@@ -5,7 +5,7 @@
 //
 // The agent authenticates with its own credentials via the client_credentials grant and asks for a
 // token bound to the booking API. No user is involved, so the subject is the agent and there is no
-// `act` (actor) claim. The scopes it gets back are the ones its Recommender role grants.
+// `act` (actor) claim. The scopes it gets back are the ones its Playground Recommender role grants.
 
 import {story, tokenSection, errorBox, runError} from "../lib/render.mjs";
 import {checkScopes} from "../lib/readiness.mjs";
@@ -35,7 +35,7 @@ export default {
   resourceIds: ["agent-identity-booking-rs", "agent-identity-concierge", "agent-identity-recommender"],
   resource: {
     title: "the Concierge acting as itself",
-    note: "The booking API, the Concierge, and the Recommender role that grants it booking:recommend.",
+    note: "The booking API, the Concierge, and the Playground Recommender role that grants it booking:recommend.",
   },
   run: {
     label: "Request the Concierge's own token",
@@ -49,7 +49,7 @@ export default {
       scope: SCOPES,
       resource: config.resources.booking,
       expect: ["booking:read", "booking:recommend"],
-      role: "Recommender",
+      role: "Playground Recommender",
     }),
 
   explain: () =>
@@ -69,7 +69,7 @@ export default {
         "subject is the agent and there is no actor (<code>act</code>) claim. Because the request " +
         "names a <code>resource</code> (RFC 8707), the token's <code>aud</code> is the booking API " +
         "rather than the agent itself, and it carries only the scopes the Concierge's own " +
-        "Recommender role grants. It can recommend a flight, but it cannot book one.",
+        "Playground Recommender role grants. It can recommend a flight, but it cannot book one.",
     }),
 
   async render({client, config}) {
@@ -91,7 +91,7 @@ export default {
         ? `<div class="warn">This token unexpectedly carries an <code>act</code> claim. For a pure client_credentials token there should be no actor.</div>`
         : `<div class="ok">No customer and no <code>act</code> claim: the token represents the agent itself.` +
           (scope.includes("create")
-            ? ` But it carries <code>booking:create</code>, which the Recommender role should not grant.`
+            ? ` But it carries <code>booking:create</code>, which the Playground Recommender role should not grant.`
             : ` Note that <code>booking:create</code> is absent: the Concierge cannot book on its own.`) +
           `</div>`;
 

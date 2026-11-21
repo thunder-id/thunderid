@@ -12,34 +12,26 @@ Complete the setup once. Every walkthrough below builds on the same starting poi
 
 Before you begin, make sure you have:
 
-- <ProductName /> running locally, with `http://localhost:5173` allowed to call it from the browser. After startup, send `PUT /server-config/cors` with the origin. If you run with declarative resources enabled, you can instead ship the same value as `config/resources/server_configs/cors.yaml` in the distribution. See [Get <ProductName />](../../../../getting-started/get-thunderid).
+- <ProductName /> running locally. Before using the Wayfinder frontend, add `http://localhost:5173` to the existing CORS `allowedOrigins` list. Preserve the Console, Login Gate, and all other configured origins. See [Get <ProductName />](../../../../getting-started/get-thunderid).
 
-  The call needs an access token with the `system` scope. Obtain one for an administrator, export it, then send
-  the origin:
+  Choose the instructions for your deployment:
 
-  ```bash
-  export TOKEN="<access-token>"
+  - **Control Plane-managed deployment:** Open **Settings** → **Allowed origins** in the Control Plane Console and add `http://localhost:5173`. Update the Control Plane configuration because it can synchronize its CORS settings to the Data Plane and overwrite Data Plane-only changes.
+  - **Standalone Data Plane with declarative CORS:** Edit `config/resources/server_configs/cors.yaml`, append `http://localhost:5173` to the existing `value.allowedOrigins` list, and restart <ProductName />. Do not replace the existing list.
+  - **Standalone Data Plane with runtime-managed CORS:** Read the current CORS configuration, append `http://localhost:5173` to its existing `allowedOrigins` list, and submit the complete updated list using `PUT /server-config/cors` with an access token containing the `system` scope. The `PUT` operation replaces the list, so never submit only the new origin unless that is intentionally the entire configuration.
 
-  curl -kL -X PUT https://localhost:8090/server-config/cors \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $TOKEN" \
-    -d '{ "allowedOrigins": ["http://localhost:5173"] }'
-  ```
+- A running **Control Plane console** at <ControlPlaneConsoleUrl /> for importing the Wayfinder configuration. The Data Plane Admin Console alone cannot import applications, resource servers, or flows.
 
-  The declarative equivalent, for instances that run with declarative resources enabled, is
-  `config/resources/server_configs/cors.yaml`:
+  - **Release Artifact:** Download and extract the separate Control Plane distribution from the releases page. In its extracted directory, run `./setup-cp.sh` followed by `./start-cp.sh` on Linux/macOS, or `./setup-cp.ps1` followed by `./start-cp.ps1` in PowerShell on Windows. Keep the Data Plane running as well.
+  - **Docker Compose:** Use the deployment that starts both the Control Plane and Data Plane, and verify the Control Plane console is accessible before importing the sample.
 
-  ```yaml
-  resource_type: server_config
-  name: cors
-  value:
-    allowedOrigins:
-      - "http://localhost:5173"
-  ```
-
-- The Wayfinder sample distribution. The [Get <ProductName />](../../../../getting-started/get-thunderid) step above already pulls the archive that ships it. It contains a `thunderid-config/redirect/` bundle with an importable YAML config and a `thunderid.env` file, plus the Wayfinder web frontend and the Concierge services.
+- The Wayfinder sample distribution, downloaded separately below. It contains a `thunderid-config/redirect/` bundle with an importable YAML config and a `thunderid.env` file, plus the Wayfinder web frontend and the Concierge services.
 - **Node.js 20+** for running the sample's services.
 - **An LLM API key.** One of an Anthropic API key from [console.anthropic.com](https://console.anthropic.com) or a Google Gemini API key from [aistudio.google.com](https://aistudio.google.com).
+
+Download and extract the latest Wayfinder sample distribution before importing its configuration:
+
+<SampleDownload sample="sample-app-wayfinder" />
 
 Import the Wayfinder configuration bundle.
 
@@ -47,7 +39,7 @@ Import the Wayfinder configuration bundle.
 
 2. **Import the bundle into <ProductName />.**
 
-   - Sign in to the <ProductName /> Console at [https://localhost:8090/console](https://localhost:8090/console).
+   - Sign in to the **Control Plane console** at <ControlPlaneConsoleUrl />. Use this console to import the sample configuration. The **Data Plane Admin Console** at [https://localhost:8090/console](https://localhost:8090/console) is for managing users, agents, groups, and roles; it cannot import applications, resource servers, or flows.
    - Click **Import / Export** at the bottom of the sidebar, then click **Import**.
    - Select your `thunderid-config/redirect/thunderid-config.yaml` file from the sample distribution.
    - Select your `thunderid-config/redirect/thunderid.env` file to provide the environment variables referenced in the YAML.

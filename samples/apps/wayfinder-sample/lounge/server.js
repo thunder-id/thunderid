@@ -23,9 +23,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // backend when both run under `npm run dev` and PORT happens to be set.
 const PORT = Number(process.env.LOUNGE_PORT || 8795);
 // Reuse the Wayfinder frontend's tunnel URL when a lounge-specific one isn't set,
-// so one env var (VITE_THUNDER_BASE_URL) points the whole sample at ThunderID.
-const THUNDER_BASE_URL =
-  process.env.THUNDER_BASE_URL || process.env.VITE_THUNDER_BASE_URL || "";
+// so one env var (VITE_THUNDERID_BASE_URL) points the whole sample at ThunderID.
+const THUNDERID_BASE_URL =
+  process.env.THUNDERID_BASE_URL || process.env.VITE_THUNDERID_BASE_URL || "";
 const DEFINITION_ID = process.env.SKYPASS_DEFINITION_ID || "wayfinder-skypass";
 const ALLOWED_TIERS = (process.env.ALLOWED_TIERS || "Gold,Platinum")
   .split(",")
@@ -34,7 +34,7 @@ const ALLOWED_TIERS = (process.env.ALLOWED_TIERS || "Gold,Platinum")
 
 // Local-dev TLS bypass: ThunderID ships a self-signed cert on localhost. Only
 // relax verification when the configured base URL points at localhost.
-if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(THUNDER_BASE_URL)) {
+if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(THUNDERID_BASE_URL)) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   console.warn("[lounge] Local ThunderID detected — TLS verification disabled. Dev only.");
 }
@@ -48,15 +48,15 @@ function decodeJwtPayload(token) {
 }
 
 async function thunderFetch(path, options = {}) {
-  if (!THUNDER_BASE_URL) {
-    const error = new Error("THUNDER_BASE_URL is not configured.");
+  if (!THUNDERID_BASE_URL) {
+    const error = new Error("THUNDERID_BASE_URL is not configured.");
     error.statusCode = 500;
     throw error;
   }
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), 10_000);
   try {
-    const response = await fetch(`${THUNDER_BASE_URL}${path}`, {
+    const response = await fetch(`${THUNDERID_BASE_URL}${path}`, {
       ...options,
       headers: { ...options.headers },
       signal: abort.signal,
@@ -149,7 +149,7 @@ const server = createServer(async (request, response) => {
 
 server.listen(PORT, () => {
   console.log(`Skyline Lounge verifier listening on http://localhost:${PORT}`);
-  console.log(`  ThunderID  : ${THUNDER_BASE_URL || "(set THUNDER_BASE_URL)"}`);
+  console.log(`  ThunderID  : ${THUNDERID_BASE_URL || "(set THUNDERID_BASE_URL)"}`);
   console.log(`  Definition : ${DEFINITION_ID}`);
   console.log(`  Lounge tiers: ${ALLOWED_TIERS.join(", ")}`);
 });

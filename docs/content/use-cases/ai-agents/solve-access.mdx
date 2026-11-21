@@ -43,7 +43,7 @@ A permission grants nothing until something holds it. A **role** bundles permiss
 name is what gets assigned. <ProductName /> assigns a role to an agent the same way it assigns one to a person.
 An agent's authority is therefore described in the same terms as everyone else's.
 
-The playground's Concierge holds one role, `Recommender`, carrying `booking:read` and `booking:recommend`. That
+The playground's Concierge holds one role, `Playground Recommender`, carrying `booking:read` and `booking:recommend`. That
 role is the reason the agent can suggest a flight and cannot book one. Booking is a separate permission, and no
 role the Concierge holds grants it.
 
@@ -92,7 +92,7 @@ asks for a token bound to the booking API, with no customer involved anywhere in
 
 Four claims carry the whole result. `sub` is the agent itself, identified by its resource ID, while
 `client_id` is the OAuth client that authenticated. `aud` is the booking API rather than the agent, because the
-request named a `resource`. `scope` is the two permissions the `Recommender` role grants and nothing more,
+request named a `resource`. `scope` is the two permissions the `Playground Recommender` role grants and nothing more,
 which is what stops this token from booking anything.
 
 There is no `act` claim at all. That claim names the party an agent is acting for, and here the agent is acting

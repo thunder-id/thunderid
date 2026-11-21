@@ -27,9 +27,9 @@ in their wallet.
 Install the dependencies once from the sample root with `npm install` (see the parent README), not from this folder. Then, from here:
 
 ```bash
-cp .env.example .env          # set THUNDER_BASE_URL to your public ThunderID URL
+cp .env.example .env          # set THUNDERID_BASE_URL to your public ThunderID URL
 node --env-file=.env server.js
-# or: THUNDER_BASE_URL=https://thunderid.example.com npm start
+# or: THUNDERID_BASE_URL=https://thunderid.example.com npm start
 ```
 
 Open http://localhost:8795 and present a Sky Pass.
@@ -38,7 +38,7 @@ Open http://localhost:8795 and present a Sky Pass.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `THUNDER_BASE_URL` | — | ThunderID's public HTTPS URL. Required. |
+| `THUNDERID_BASE_URL` | — | ThunderID's public HTTPS URL. Required. |
 | `LOUNGE_PORT` | `8795` | Kiosk port. |
 | `SKYPASS_DEFINITION_ID` | `wayfinder-skypass` | Presentation definition to verify. |
 | `ALLOWED_TIERS` | `Gold,Platinum` | Tiers granted lounge access. |

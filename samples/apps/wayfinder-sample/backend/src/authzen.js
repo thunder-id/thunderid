@@ -35,12 +35,12 @@ export function createAuthzenAuthorizer({
     logger = console,
 } = {}) {
     return async function evaluateAccess({ subject, resource, action }) {
-        const baseUrl = env.THUNDER_BASE_URL;
+        const baseUrl = env.THUNDERID_BASE_URL;
         const directAuthSecret = env.THUNDERID_DIRECT_AUTH_SECRET;
 
         if (!baseUrl || !directAuthSecret) {
             throw new Error(
-                "THUNDER_BASE_URL and THUNDERID_DIRECT_AUTH_SECRET are required in AuthZEN mode",
+                "THUNDERID_BASE_URL and THUNDERID_DIRECT_AUTH_SECRET are required in AuthZEN mode",
             );
         }
 

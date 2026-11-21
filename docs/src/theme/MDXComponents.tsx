@@ -72,7 +72,7 @@ import VueLogo from '@site/src/components/icons/VueLogo';
 import {InfographicTimeline, InfographicStep} from '@site/src/components/InfographicTimeline';
 import IntegrationTypePicker from '@site/src/components/IntegrationTypePicker';
 import {K8sArchDiagram} from '@site/src/components/K8sArchDiagram';
-import {ConsoleUrl, WayFinderSampleUrl, WayFinderMailUrl} from '@site/src/components/LocalUrls';
+import {ConsoleUrl, ControlPlaneConsoleUrl, WayFinderSampleUrl, WayFinderMailUrl} from '@site/src/components/LocalUrls';
 import {McpOAuthFlowDiagram} from '@site/src/components/McpQuickstartFlow';
 import {NextSteps, NextStepsCard} from '@site/src/components/NextSteps';
 import {Pattern, PatternPicker} from '@site/src/components/PatternPicker';
@@ -211,6 +211,7 @@ export default {
   FloatingLogosBackground,
   ProductName,
   ConsoleUrl,
+  ControlPlaneConsoleUrl,
   WayFinderSampleUrl,
   WayFinderMailUrl,
   IntegrationTypePicker,

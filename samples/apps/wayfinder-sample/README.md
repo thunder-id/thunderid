@@ -101,7 +101,11 @@ Each subdirectory has its own README with the environment variables it reads.
 
 The Wayfinder web app runs on `http://localhost:5173` and calls ThunderID directly for `/oauth2/authorize`, `/oauth2/token`, and `/users/me`. Browsers block these calls unless the CORS allow-list includes the frontend origin.
 
-The importable bundle sets the server-config `cors` section to `http://localhost:5173`. An import replaces the section's runtime layer, so origins added earlier with `PUT /server-config/cors` are dropped. Origins from a declarative `server_configs/cors.yaml` file stay. If you serve the frontend from a different host or port, update the `cors` server-config document in `thunderid-config/<mode>/thunderid-config.yaml` before importing, or use `PUT /server-config/cors` after startup.
+The importable Wayfinder bundles intentionally omit the `cors` server-config section, so importing either bundle does not overwrite the server's existing CORS allowed origins.
+
+Before using the frontend, add `http://localhost:5173` to ThunderID's existing `allowedOrigins` list. Preserve all existing origins, including those used by the Console and Login Gate. If CORS is configured declaratively, append the frontend origin to `server_configs/cors.yaml` and restart ThunderID to apply the change. If you manage CORS at runtime, read the current configuration first and update the complete list using `PUT /server-config/cors`; do not replace the list with only the Wayfinder origin. Use your actual frontend origin if it differs from `http://localhost:5173`.
+
+In Control Plane-managed deployments, update the allowed origins on the Control Plane instead of changing only the Data Plane. The Control Plane can synchronize its CORS configuration to the Data Plane and overwrite Data Plane-only changes. The runtime `PUT /server-config/cors` approach applies to setups where CORS is managed directly on the Data Plane.
 
 The bundle's `flow` server-config document makes `wayfinder-onboarding-flow` the user onboarding flow. It repeats every other default flow handle the server ships with, because an import replaces the whole section. Importing the bundle therefore resets any flow defaults you changed before the import.
 
@@ -178,7 +182,13 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
       direct_auth_secret: "file://config/secrets/direct_auth_secret"
   ```
 
-  Create or update `backend/cmd/server/config/secrets/direct_auth_secret` with:
+  Create or update the Direct Auth Secret file for your Data Plane installation:
+
+  - **Source checkout:** `backend/cmd/server/config/secrets/direct_auth_secret`, relative to the repository root.
+  - **Release artifact:** `config/secrets/direct_auth_secret`, relative to the extracted distribution.
+  - **Docker:** `/opt/thunderid/config/secrets/direct_auth_secret` inside the container, backed by its secrets volume.
+
+  For local testing, use this sample value:
 
   ```text
   wayfinder-direct-auth-secret
@@ -240,8 +250,7 @@ AUTHORIZATION_MODE=authzen
 THUNDERID_DIRECT_AUTH_SECRET=wayfinder-direct-auth-secret
 ```
 
-ThunderID loads the matching value from `backend/cmd/server/config/secrets/direct_auth_secret` through the file-backed
-`server.security.direct_auth_secret` setting in `deployment.yaml`.
+ThunderID loads the matching value from the secret file referenced by `server.security.direct_auth_secret` in `deployment.yaml`. The file location depends on the Data Plane installation.
 The backend sends this value in the `Direct-Auth-Secret` header when it calls the AuthZEN PDP. This secret authenticates
 the PDP request; it is not the authorization subject. The user or agent identified by the incoming MCP token remains the
 subject whose role assignments determine the decision.

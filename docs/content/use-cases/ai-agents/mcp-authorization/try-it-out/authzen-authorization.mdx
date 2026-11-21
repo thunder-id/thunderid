@@ -15,11 +15,31 @@ Complete [Set Up Your Environment](../../../try-it-out/setup) before starting th
 
 ## Walk Through the Use Case
 
-### 1. Verify the Direct Auth Secret
+### 1. Configure the Direct Auth Secret
 
-Confirm that `server.security.direct_auth_secret` is set in the <ProductName /> deployment configuration. The local sample uses `wayfinder-direct-auth-secret`.
+For the local sample, keep the file-backed setting in the <ProductName /> deployment configuration:
 
-This secret authenticates the Wayfinder Server when it calls the protected AuthZEN API. It does not replace the signed-in user. The user or agent from the incoming MCP token remains the evaluation subject.
+```yaml
+server:
+  security:
+    direct_auth_secret: "file://config/secrets/direct_auth_secret"
+```
+
+Create or update the Direct Auth Secret file referenced by `deployment.yaml`. Its location depends on how the Data Plane is installed:
+
+- **Source checkout:** `backend/cmd/server/config/secrets/direct_auth_secret`, relative to the repository root.
+- **Release artifact:** `config/secrets/direct_auth_secret`, relative to the extracted Data Plane distribution.
+- **Docker:** `/opt/thunderid/config/secrets/direct_auth_secret` inside the container, backed by its mounted secrets volume.
+
+For local testing, use this sample value:
+
+```text
+wayfinder-direct-auth-secret
+```
+
+Restart <ProductName /> after updating the secret file.
+
+The Direct Auth Secret authenticates the Wayfinder Server when it calls the AuthZEN API. It must match the value configured for the Wayfinder backend in the next step. It does not replace the signed-in user or agent used as the evaluation subject.
 
 ### 2. Enable AuthZEN Mode
 
