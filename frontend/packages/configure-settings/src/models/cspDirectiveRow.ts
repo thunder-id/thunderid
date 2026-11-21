@@ -21,6 +21,8 @@ export interface CspDirectiveDraftRow {
   directive: string;
   /** The directive's full list of sources. */
   sources: string[];
+  /** Whether the directive is in the saved writable layer. */
+  saved?: boolean;
 }
 
 /**
@@ -30,12 +32,14 @@ export interface CspDirectiveDraftRow {
  */
 export interface CspScopeRow {
   directive: string;
-  /** The default value: from the baseline, the read-only layer, or the All pages scope. Empty for a new directive. */
+  /** The default value: from the baseline, the read-only layer, or the Shared scope. Empty for a new directive. */
   base: string[];
   /** The sources the admin set in this scope, replacing `base`. */
   override?: string[];
   /** Id of the draft row holding `override`. */
   draftId?: string;
+  /** Whether the override is in the saved writable layer. */
+  saved?: boolean;
 }
 
 /**

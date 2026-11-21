@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useHiddenResources} from '@thunderid/contexts';
+import {useCapabilitiesContext, useHiddenResources} from '@thunderid/contexts';
 import {
   Alert,
   AlertTitle,
@@ -103,6 +103,7 @@ export default function ApplyPanel({
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
   const {canSetValues} = useGatewayValueAccess();
+  const {can} = useCapabilitiesContext();
   const [target, setTarget] = useState<string>(gatewayId ?? gateways[0]?.id ?? '');
   const gateway = gateways.find((entry: Gateway) => entry.id === target);
   const drawer = variant === 'drawer';
@@ -325,7 +326,13 @@ export default function ApplyPanel({
     ).values(),
   ];
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
+  const canDeploy =
+    can('gateway', 'update') &&
+    Boolean(gateway) &&
+    check.isSuccess &&
+    selected.size > 0 &&
+    unfilled.length === 0 &&
+    !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.

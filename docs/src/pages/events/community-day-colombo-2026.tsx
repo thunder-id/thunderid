@@ -33,6 +33,7 @@ const EVENT: CommunityDayEvent = {
     note: 'In person only',
   },
   cost: 'Free',
+  registrationUrl: 'https://luma.com/2lvipfap',
   heroPartner: LFDT,
   audience: [
     {
@@ -89,10 +90,29 @@ const EVENT: CommunityDayEvent = {
       ],
     },
     {
-      title: '{{ProductName}} Real-World Use Case',
+      title: 'Securing Unified Communications: Deep {{ProductName}} Integration',
       abstract:
-        'See how a team runs {{ProductName}} in production, from the problem it solves to the lessons learned along the way.',
-      speakers: [],
+        'Building Email 2.0 and integrated chat with {{ProductName}} to enable centralized authentication, role-based access control, mailbox delegation, and group management across platforms.',
+      speakers: [
+        {
+          name: 'Aravinda Kankanamge',
+          github: 'Aravinda-HWK',
+          affiliation: 'OpenGovMail Lead, Lanka Software Foundation',
+        },
+      ],
+    },
+    {
+      title: 'One Identity, Many Authorities: OpenNSW on {{ProductName}}',
+      abstract:
+        'Businesses and government officers use a single identity, while each agency controls what they can do. See how OpenNSW built this on {{ProductName}} and how it can evolve into a federated government identity.',
+      speakers: [
+        {
+          name: 'Thanikan Sivatheepan',
+          github: 'sthanikan2000',
+          photo: '/assets/images/events/community-day-colombo-2026/speakers/thanikan-sivatheepan.jpg',
+          affiliation: 'OpenNSW IAM Lead, Lanka Software Foundation',
+        },
+      ],
     },
     {
       title: 'Building Secure MCP Servers with FastMCP',

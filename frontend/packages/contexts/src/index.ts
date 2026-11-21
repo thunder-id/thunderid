@@ -68,3 +68,9 @@ export {default as useProjectScope} from './ProjectScope/useProjectScope';
 export {default as CapabilitiesContext} from './Capabilities/CapabilitiesContext';
 export {default as CapabilitiesProvider, type CapabilitiesProviderProps} from './Capabilities/CapabilitiesProvider';
 export {default as useCapabilitiesContext} from './Capabilities/useCapabilitiesContext';
+export {
+  default as useRecordAccess,
+  isRecordLocked,
+  type AccessibleRecord,
+  type RecordAccess,
+} from './Capabilities/useRecordAccess';

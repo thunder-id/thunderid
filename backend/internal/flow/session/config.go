@@ -23,6 +23,16 @@ type Config struct {
 	ActivityRefreshIntervalSeconds int64 `json:"activityRefreshIntervalSeconds" yaml:"activityRefreshIntervalSeconds"`
 }
 
+// resolved returns a copy of Config with all unset fields replaced by their effective default values.
+func (c Config) resolved() Config {
+	t := NewTimeouts(c.IdleTimeoutSeconds, c.AbsoluteTimeoutSeconds, c.ActivityRefreshIntervalSeconds)
+	return Config{
+		IdleTimeoutSeconds:             int64(t.Idle.Seconds()),
+		AbsoluteTimeoutSeconds:         int64(t.Absolute.Seconds()),
+		ActivityRefreshIntervalSeconds: int64(t.ActivityRefresh.Seconds()),
+	}
+}
+
 // Validate ensures the configured session timeouts are coherent. Unset (zero) values are allowed and
 // fall back to defaults; the activity-refresh/idle invariant is checked against the resolved
 // durations so a defaulted side cannot silently violate it.
@@ -83,7 +93,8 @@ func (ConfigHandler) Validate(_ context.Context, incoming, _, _ any) error {
 }
 
 // Merge overlays the writable (db) layer onto the read-only (declarative) layer: a positive writable
-// value wins for its field, otherwise the read-only value stands.
+// value wins for its field, otherwise the read-only value stands. Fields still unset after the overlay
+// fall back to the built-in defaults (see NewTimeouts), so the merged value reports the timeouts in effect.
 func (ConfigHandler) Merge(readOnly, writable any) any {
 	merged, _ := readOnly.(Config)
 	wr, _ := writable.(Config)
@@ -96,5 +107,5 @@ func (ConfigHandler) Merge(readOnly, writable any) any {
 	if wr.ActivityRefreshIntervalSeconds > 0 {
 		merged.ActivityRefreshIntervalSeconds = wr.ActivityRefreshIntervalSeconds
 	}
-	return merged
+	return merged.resolved()
 }

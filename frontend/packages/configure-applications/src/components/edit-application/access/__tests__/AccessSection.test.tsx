@@ -291,13 +291,7 @@ describe('AccessSection', () => {
     });
 
     it('should disable the toggle for a read-only application', () => {
-      render(
-        <AccessSection
-          application={{...mockApplication, isReadOnly: true}}
-          editedApp={{}}
-          onFieldChange={mockOnFieldChange}
-        />,
-      );
+      render(<AccessSection application={mockApplication} readOnly editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
       expect(agentSignInToggle()).toBeDisabled();
     });
@@ -533,18 +527,13 @@ describe('AccessSection', () => {
   });
 
   describe('Read-Only State', () => {
-    const readOnlyApplication: Application = {
-      ...mockApplication,
-      isReadOnly: true,
-    } as Application;
-
-    it('should disable all inputs when application.isReadOnly is true', () => {
+    it('should disable all inputs when read-only', () => {
       vi.mocked(useGetUserTypes).mockReturnValue({
         data: mockUserTypes,
         isLoading: false,
       } as unknown as MockedUseGetUserTypes);
 
-      render(<AccessSection application={readOnlyApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+      render(<AccessSection application={mockApplication} readOnly editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
       // Application URL input should be disabled
       const urlInput = screen.getByLabelText('Application URL');

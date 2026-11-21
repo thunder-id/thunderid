@@ -114,6 +114,20 @@ describe('useCspDraft', () => {
     expect(result.current.errors[imgId]).toBeUndefined();
   });
 
+  it('blocks emptying a saved directive that has no default value', () => {
+    const {result} = renderHook(() => useCspDraft(makeData()));
+    const frameId = find(result.current.rowsFor(CSP_DEFAULT_SCOPE), 'frame-src').draftId!;
+
+    act(() => result.current.setSources(CSP_DEFAULT_SCOPE, 'frame-src', []));
+
+    expect(result.current.errors[frameId]).toBe('Add at least one source, or remove the directive.');
+    expect(result.current.dirty).toBe(true);
+
+    act(() => result.current.removeRow(CSP_DEFAULT_SCOPE, frameId));
+    expect(result.current.hasErrors).toBe(false);
+    expect(result.current.buildPayload().directives).toBeUndefined();
+  });
+
   it('reverts every edit on reset', () => {
     const {result} = renderHook(() => useCspDraft(makeData()));
 
@@ -125,5 +139,45 @@ describe('useCspDraft', () => {
     expect(result.current.dirty).toBe(false);
     expect(result.current.reportOnly).toBe(false);
     expect(rowSources(find(result.current.rowsFor(CSP_DEFAULT_SCOPE), 'frame-src'))).toEqual(["'self'"]);
+  });
+
+  it('edits and renames one of several added directives', () => {
+    const {result} = renderHook(() => useCspDraft(makeData()));
+
+    act(() => result.current.addRow('/console/'));
+    act(() => result.current.addRow('/console/'));
+    const [first, second] = result.current.rowsFor('/console/').filter((row) => row.base.length === 0);
+    act(() => result.current.changeDirective('/console/', second.draftId!, 'media-src'));
+    act(() => result.current.setSources('/console/', 'media-src', ["'self'"]));
+
+    const rows = result.current.rowsFor('/console/').filter((row) => row.base.length === 0);
+    expect(rows.map((row) => [row.directive, row.override])).toEqual([
+      [first.directive, []],
+      ['media-src', ["'self'"]],
+    ]);
+  });
+
+  it('does not add a directive once the scope has every one', () => {
+    const {result} = renderHook(() => useCspDraft(makeData()));
+
+    while (result.current.availableDirectives(CSP_DEFAULT_SCOPE).length > 0) {
+      act(() => result.current.addRow(CSP_DEFAULT_SCOPE));
+    }
+    const count = result.current.rowsFor(CSP_DEFAULT_SCOPE).length;
+    act(() => result.current.addRow(CSP_DEFAULT_SCOPE));
+
+    expect(result.current.rowsFor(CSP_DEFAULT_SCOPE)).toHaveLength(count);
+  });
+
+  it('ignores a rename or removal of a row that does not exist', () => {
+    const {result} = renderHook(() => useCspDraft(makeData()));
+
+    act(() => result.current.changeDirective(CSP_DEFAULT_SCOPE, 'missing', 'media-src'));
+    act(() => result.current.removeRow(CSP_DEFAULT_SCOPE, 'missing'));
+    act(() => result.current.changeDirective('/unknown/', 'missing', 'media-src'));
+    act(() => result.current.removeRow('/unknown/', 'missing'));
+
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.buildPayload()).toEqual({reportUri: '/csp-report', directives: {'frame-src': ["'self'"]}});
   });
 });

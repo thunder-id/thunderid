@@ -659,6 +659,18 @@ describe('DashboardLayout', () => {
       expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
     });
 
+    it("hides a project's deployment pipeline from admins who cannot view gateways", () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockCapabilities = {can: (resource) => resource !== 'gateway', isLoading: false};
+      mockPathname = '/project/shop/pipeline';
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.deploymentPipeline')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
+    });
+
     it('hides Agent types from admins who cannot view agent types', () => {
       mockCapabilities = {can: (resource) => resource !== 'agenttype', isLoading: false};
       render(<DashboardLayout />);

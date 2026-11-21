@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {ReadOnlyFieldset, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
@@ -56,6 +56,8 @@ export interface VerifiableCredentialFormProps {
   submitLabel: string;
   onSubmit: (data: CreateVerifiableCredentialRequest) => void;
   onDelete?: () => void;
+  /** Whether the form is shown without edit controls. */
+  readOnly?: boolean;
   /** Resolved message from the last failed save, shown in the unsaved-changes bar. */
   error?: string;
   /** Called to clear a stale save error once the user edits a field or resets the form. */
@@ -66,12 +68,17 @@ interface TabPanelProps {
   children: ReactNode;
   value: number;
   index: number;
+  disabled?: boolean;
 }
 
-function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
+function TabPanel({children, value, index, disabled = false}: TabPanelProps): JSX.Element {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{pb: 3}}>{children}</Box>}
+      {value === index && (
+        <Box sx={{pb: 3}}>
+          <ReadOnlyFieldset readOnly={disabled}>{children}</ReadOnlyFieldset>
+        </Box>
+      )}
     </div>
   );
 }
@@ -90,6 +97,7 @@ export default function VerifiableCredentialForm({
   submitLabel,
   onSubmit,
   onDelete = undefined,
+  readOnly = false,
   error = undefined,
   onErrorClear = undefined,
 }: VerifiableCredentialFormProps): JSX.Element {
@@ -390,13 +398,18 @@ export default function VerifiableCredentialForm({
         </Stack>
       </TabPanel>
 
-      <TabPanel value={tab} index={1}>
+      <TabPanel value={tab} index={1} disabled={readOnly}>
         <SettingsCard title={t('form.protocol.title')} description={t('form.protocol.description')}>
           <Stack spacing={3}>
             {text('vc-vct', t('form.vct.label'), vct, handleVctChange, 'urn:eudi:pid:de:1', true, t('form.vct.hint'))}
             <FormControl fullWidth>
               <FormLabel htmlFor="vc-format">{t('form.format.label')}</FormLabel>
-              <Select id="vc-format" value={format} onChange={(e): void => handleFormatChange(e.target.value)}>
+              <Select
+                id="vc-format"
+                value={format}
+                disabled={readOnly}
+                onChange={(e): void => handleFormatChange(e.target.value)}
+              >
                 <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
               </Select>
               <FormHelperText>{t('form.format.hint')}</FormHelperText>
@@ -423,7 +436,7 @@ export default function VerifiableCredentialForm({
         </SettingsCard>
       </TabPanel>
 
-      <TabPanel value={tab} index={2}>
+      <TabPanel value={tab} index={2} disabled={readOnly}>
         <ClaimsEditor claims={claims} onChange={handleClaimsChange} nameErrors={claimNameErrors} />
       </TabPanel>
 
@@ -443,7 +456,7 @@ export default function VerifiableCredentialForm({
         </TabPanel>
       )}
 
-      {dirty && (
+      {dirty && !readOnly && (
         <UnsavedChangesBar
           message={t('form.unsavedChanges')}
           resetLabel={t('common:actions.reset')}

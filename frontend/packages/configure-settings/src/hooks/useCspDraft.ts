@@ -169,7 +169,9 @@ export default function useCspDraft(data: CspConfigResponse | undefined): CspDra
       JSON.stringify(
         scopes.map((scope) =>
           buildScopeRows(data?.readOnly, scoped, scope)
-            .filter((row) => row.override !== undefined && (row.override.length > 0 || row.base.length > 0))
+            .filter(
+              (row) => row.override !== undefined && (row.override.length > 0 || row.base.length > 0 || row.saved),
+            )
             .map((row) => [row.directive, row.override]),
         ),
       );

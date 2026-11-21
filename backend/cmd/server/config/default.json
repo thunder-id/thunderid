@@ -221,9 +221,6 @@
       "criteria": {
         "max_entries_per_change": 10000
       }
-    },
-    "token_exchange": {
-      "token_family": "none"
     }
   },
   "flow": {

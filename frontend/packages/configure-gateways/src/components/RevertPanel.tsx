@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useHiddenResources} from '@thunderid/contexts';
+import {useCapabilitiesContext, useHiddenResources} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -50,6 +50,7 @@ export default function RevertPanel({
   const {t} = useTranslation('deploy');
   const {isHiddenResource} = useHiddenResources();
   const tForErrors = useGatewayErrorTranslator();
+  const canRevert = useCapabilitiesContext().can('gateway', 'update');
   const revert = useRevert();
   // In a project only its own applications and agents go back.
   const project = useProjectScope();
@@ -120,7 +121,7 @@ export default function RevertPanel({
         color="error"
         startIcon={isWriting ? <CircularProgress size={14} color="inherit" /> : <Undo2 size={14} />}
         onClick={() => void confirm()}
-        disabled={!preview || isWriting}
+        disabled={!canRevert || !preview || isWriting}
         sx={{borderRadius: 100}}
       >
         {confirmRemovals

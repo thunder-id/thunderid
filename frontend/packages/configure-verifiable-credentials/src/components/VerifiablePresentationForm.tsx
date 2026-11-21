@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {ReadOnlyFieldset, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
@@ -64,6 +64,8 @@ export interface VerifiablePresentationFormProps {
   onSubmit: (data: CreateVerifiablePresentationRequest) => void;
   /** When provided (edit mode), renders a Danger Zone delete action in the Advanced tab. */
   onDelete?: () => void;
+  /** Whether the form is shown without edit controls. */
+  readOnly?: boolean;
   /** Inline error to show above the save/reset actions when the last save attempt failed. */
   error?: string;
   /** Called whenever a field changes, so a stale save error can be cleared. */
@@ -74,12 +76,17 @@ interface TabPanelProps {
   children: ReactNode;
   value: number;
   index: number;
+  disabled?: boolean;
 }
 
-function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
+function TabPanel({children, value, index, disabled = false}: TabPanelProps): JSX.Element {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{pb: 3}}>{children}</Box>}
+      {value === index && (
+        <Box sx={{pb: 3}}>
+          <ReadOnlyFieldset readOnly={disabled}>{children}</ReadOnlyFieldset>
+        </Box>
+      )}
     </div>
   );
 }
@@ -106,6 +113,7 @@ export default function VerifiablePresentationForm({
   submitLabel,
   onSubmit,
   onDelete = undefined,
+  readOnly = false,
   error = undefined,
   onErrorClear = undefined,
 }: VerifiablePresentationFormProps): JSX.Element {
@@ -446,7 +454,7 @@ export default function VerifiablePresentationForm({
         </Stack>
       </TabPanel>
 
-      <TabPanel value={tab} index={1}>
+      <TabPanel value={tab} index={1} disabled={readOnly}>
         <SettingsCard title={t('form.protocol.title')} description={t('form.protocol.description')}>
           <Stack spacing={3}>
             {text('vp-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true, t('form.vct.hint'))}
@@ -455,6 +463,7 @@ export default function VerifiablePresentationForm({
               <Select
                 id="vp-format"
                 value={format}
+                disabled={readOnly}
                 onChange={(e): void => {
                   onErrorClear?.();
                   setFormat(e.target.value);
@@ -468,8 +477,9 @@ export default function VerifiablePresentationForm({
         </SettingsCard>
       </TabPanel>
 
-      <TabPanel value={tab} index={2}>
+      <TabPanel value={tab} index={2} disabled={readOnly}>
         <ClaimsEditor
+          readOnly={readOnly}
           duplicateNames={duplicateClaimNames}
           claims={claims}
           onChange={(rows: ClaimRow[]): void => {
@@ -479,7 +489,7 @@ export default function VerifiablePresentationForm({
         />
       </TabPanel>
 
-      <TabPanel value={tab} index={3}>
+      <TabPanel value={tab} index={3} disabled={readOnly}>
         <SettingsCard title={t('form.issuerTrust.title')} description={t('form.issuerTrust.description')}>
           <Stack spacing={3}>
             <Box>
@@ -586,7 +596,7 @@ export default function VerifiablePresentationForm({
         onAdd={handleAddCertificate}
       />
 
-      {dirty && (
+      {dirty && !readOnly && (
         <UnsavedChangesBar
           message={t('form.unsavedChanges')}
           resetLabel={t('common:actions.reset')}

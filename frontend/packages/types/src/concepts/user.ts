@@ -62,4 +62,9 @@ export interface User {
    * Whether the user is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+  /**
+   * Whether the organization unit the user is read in owns it. False for a user shared into that unit,
+   * which the unit can read but not change.
+   */
+  isOwnedByOU?: boolean;
 }

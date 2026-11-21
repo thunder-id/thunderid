@@ -185,7 +185,7 @@ describe('ResourceDetailPanel', () => {
     );
   });
 
-  it('disables Save when the admin may not update resource servers', async () => {
+  it('locks the identifier and offers no Save when the admin may not update resource servers', () => {
     const selectedNode: SelectedNode = {
       type: 'server',
       id: 'rs-1',
@@ -198,13 +198,8 @@ describe('ResourceDetailPanel', () => {
       </CapabilitiesProvider>,
     );
 
-    fireEvent.change(screen.getByDisplayValue('https://api.example.com'), {
-      target: {value: 'https://new-api.example.com'},
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', {name: /Save/i})).toBeDisabled();
-    });
+    expect(screen.getByDisplayValue('https://api.example.com')).toBeDisabled();
+    expect(screen.queryByRole('button', {name: /Save/i})).not.toBeInTheDocument();
   });
 
   it('does not save when the server identifier is cleared', async () => {

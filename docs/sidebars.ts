@@ -485,6 +485,11 @@ const sidebars: SidebarsConfig = {
               id: 'guides/applications/application-settings',
               label: 'Application Settings',
             },
+            {
+              type: 'doc',
+              id: 'guides/applications/configure-token-attributes',
+              label: 'Configure Attributes in Tokens',
+            },
           ],
         },
         {

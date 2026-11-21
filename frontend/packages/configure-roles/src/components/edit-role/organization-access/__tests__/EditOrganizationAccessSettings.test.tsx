@@ -29,10 +29,10 @@ describe('EditOrganizationAccessSettings', () => {
     });
   });
 
-  it('passes a declared role on as read-only', () => {
-    const role: Role = {id: 'role-1', name: 'Auditor', ouId: 'acme', isReadOnly: true};
+  it('passes read-only on', () => {
+    const role: Role = {id: 'role-1', name: 'Auditor', ouId: 'acme'};
 
-    render(<EditOrganizationAccessSettings role={role} access={access} />);
+    render(<EditOrganizationAccessSettings role={role} readOnly access={access} />);
 
     expect(vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({readOnly: true}),

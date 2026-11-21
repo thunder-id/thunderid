@@ -67,7 +67,7 @@ describe('cspDirectiveRows', () => {
   });
 
   describe('buildScopeRows', () => {
-    it('shows the baseline and the read-only directives for All pages', () => {
+    it('shows the baseline and the read-only directives for the Shared scope', () => {
       const rows = buildScopeRows(readOnly, {}, CSP_DEFAULT_SCOPE);
 
       expect(rows.map((row) => row.directive)).toEqual([
@@ -98,7 +98,7 @@ describe('cspDirectiveRows', () => {
       expect(row.draftId).toBeDefined();
     });
 
-    it('starts a path from All pages, with its read-only directives replacing inherited ones', () => {
+    it('starts a path from the Shared scope, with its read-only directives replacing inherited ones', () => {
       const rows = buildScopeRows(
         readOnly,
         {[CSP_DEFAULT_SCOPE]: [createCspRow('connect-src', ["'self'", 'https://api.example.com'])]},
@@ -109,6 +109,37 @@ describe('cspDirectiveRows', () => {
       expect(find(rows, 'img-src')?.base).toEqual(["'self'", 'data:']);
       expect(find(rows, 'frame-src')?.base).toEqual(["'self'"]);
       expect(find(rows, 'font-src')).toBeDefined();
+    });
+
+    it('falls back to the longest remaining path when a path is left with no directives', () => {
+      const nested: CspValue = {
+        paths: [
+          {location: '/console/', directives: {'img-src': ['data:']}},
+          {location: '/console/private/', directives: {}},
+        ],
+      };
+      const withOverride = buildScopeRows(
+        nested,
+        {'/console/private/': [createCspRow('font-src', ["'self'"])]},
+        '/console/private/',
+      );
+      expect(find(withOverride, 'img-src')?.base).toEqual(["'self'"]);
+
+      const emptied = buildScopeRows(nested, {'/console/private/': [createCspRow('font-src')]}, '/console/private/');
+      expect(find(emptied, 'img-src')?.base).toEqual(['data:']);
+    });
+
+    it('picks the longest remaining prefix, including a path set only in the draft', () => {
+      const nested: CspValue = {
+        paths: [
+          {location: '/console/', directives: {'img-src': ['data:']}},
+          {location: '/console/private/', directives: {'img-src': ['https:']}},
+        ],
+      };
+      expect(find(buildScopeRows(nested, {}, '/console/private/deep/'), 'img-src')?.base).toEqual(['https:']);
+
+      const fromDraft = buildScopeRows(undefined, {'/app/': [createCspRow('img-src', ['blob:'])]}, '/app/empty/');
+      expect(find(fromDraft, 'img-src')?.base).toEqual(['blob:']);
     });
 
     it('lists a directive with no default value as a row of its own', () => {
@@ -129,6 +160,7 @@ describe('cspDirectiveRows', () => {
     });
 
     expect(draft[CSP_DEFAULT_SCOPE].map((row) => [row.directive, row.sources])).toEqual([['img-src', ['https:']]]);
+    expect(draft[CSP_DEFAULT_SCOPE][0].saved).toBe(true);
     expect(draft['/console/'].map((row) => [row.directive, row.sources])).toEqual([
       ['font-src', ["'self'", 'data:', 'https:']],
     ]);

@@ -1,0 +1,271 @@
+---
+displayed_sidebar: null
+title: FlowVariablesForm
+docType: reference
+description: Jetpack Compose form that lets a delegated admin override the variables a flow shares with their organization unit, with a presentational base composable for custom UI.
+---
+
+# `FlowVariablesForm`
+
+The `FlowVariablesForm` composable lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit, the values the unit has set, and what the unit may change, shows them as a form, and saves the values that differ from their defaults.
+
+For a shared flow, a variable is offered to a unit only when a sharing policy names it. A variable the unit may not set is shown as set by its owner. This form saves the overrides of a unit the flow was shared with, not the owner's defaults. Change the defaults in the flow's `VARIABLES` node.
+
+`FlowVariablesForm` must be called within `ThunderIDProvider`. The signed-in user's access token needs the permissions the server requires to read and update the flow's variables.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.management.FlowVariablesForm
+
+@Composable
+fun FlowSettings(flowId: String, ouId: String) {
+    FlowVariablesForm(
+        flowId = flowId,
+        ouId = ouId,
+        onSaved = { Log.d("Flow", "Saved") },
+    )
+}
+```
+
+To let the admin pick the flow first, pair it with [`SharedFlowList`](../shared-flow-list).
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `flowId` | `String` | ✅ | Identifier of the flow whose variables are configured. |
+| `ouId` | `String` | ✅ | The organization unit the overrides belong to. |
+| `modifier` | `Modifier` | ❌ | Modifier for the root element. |
+| `onSaved` | `((Map<String, Any>) -> Unit)?` | ❌ | Called with the overrides as the server stored them. |
+| `onCancel` | `(() -> Unit)?` | ❌ | Called when the admin taps Cancel. The button appears only when this is set. |
+| `onCreateConnection` | `(() -> Unit)?` | ❌ | Called when the admin asks to create a connection from the hint under a connection variable. Without it, the hint does not offer one. |
+| `ouName` | `String?` | ❌ | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `String?` | ❌ | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `readOnly` | `Boolean` | ❌ | Shows the variables without letting them be changed. Defaults to `false`. |
+| `showScopeNotice` | `Boolean` | ❌ | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. |
+| `title` | `String?` | ❌ | Heading of the form. Pass an empty string to hide it. |
+| `description` | `String?` | ❌ | Text under the heading. |
+| `renderField` | `@Composable (field, definition, index) -> Unit` | ❌ | Wraps or replaces each variable's field. Receives the built-in field, the variable, and its position. |
+| `fieldAction` | `@Composable (definition, index) -> Unit` | ❌ | Controls rendered next to each variable's label. |
+| `content` | `@Composable (FlowVariablesFormState) -> Unit` | ❌ | Renders custom UI in place of the default form. See [Custom Rendering](#custom-rendering). |
+
+Only the values that differ from their defaults are saved. A variable left at its default keeps following the default, even when the owner changes it later.
+
+## Custom Rendering
+
+Pass a `content` lambda to build the form with any UI while keeping the SDK's validation and rules. `FlowVariablesForm` still loads and saves the data, and passes the current state to the lambda as a `FlowVariablesFormState`.
+
+```kotlin
+FlowVariablesForm(flowId = flowId, ouId = ouId) { state ->
+    Column {
+        state.variables.forEach { definition ->
+            val rule = state.getRule(definition)
+            Text(definition.label ?: definition.identifier)
+            if (rule.editable) {
+                OutlinedTextField(
+                    value = state.values[definition.identifier]?.toString().orEmpty(),
+                    onValueChange = { state.onValueChange(definition.identifier, it) },
+                    isError = state.errors.containsKey(definition.identifier),
+                )
+            } else {
+                Text("Set by owner")
+            }
+        }
+        Button(onClick = state.submit, enabled = state.isValid && !state.isSubmitting) {
+            Text("Save")
+        }
+    }
+}
+```
+
+### `FlowVariablesFormState` Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `variables` | `List<FlowVariableDefinition>` | The variables to render. |
+| `values` | `Map<String, Any>` | The current value of each variable, keyed by identifier. |
+| `errors` | `Map<String, String>` | A translated message for each variable whose value is refused, once it was changed or a submission was attempted. |
+| `isValid` | `Boolean` | Whether every variable the unit may set has a value it accepts. |
+| `isSubmitting` | `Boolean` | Whether a submission is in progress. |
+| `error` | `String?` | The form-level error. |
+| `onValueChange` | `(String, Any) -> Unit` | Sets one variable's value, by identifier. |
+| `submit` | `() -> Unit` | Hands the values and the overrides to `onSubmit`. Shows every error instead while a value is refused. |
+| `resetToDefaults` | `() -> Unit` | Puts every variable back to its default. |
+| `onCancel` | `(() -> Unit)?` | The `onCancel` parameter. |
+| `getOptions` | `(FlowVariableDefinition) -> List<FlowVariableOption>` | The choices of a select variable, narrowed to what the unit may pick. |
+| `getRule` | `(FlowVariableDefinition) -> ResolvedFlowVariableRule` | What the unit may do with a variable: whether it can set its own value, and the default it starts from. |
+
+## `BaseFlowVariables`
+
+`BaseFlowVariables` is the presentational form. It holds no data of its own: pass the variables and handle the submission. Use it to preview a flow's variables or to build a form from data you load yourself.
+
+```kotlin
+@Composable
+fun Preview(variables: List<FlowVariableDefinition>) {
+    BaseFlowVariables(variables = variables)
+}
+```
+
+Without `overlay`, every variable is editable. Without `onSubmit`, the form has no save button. The form resets when `variables`, `overlay`, or `initialValues` change.
+
+### `BaseFlowVariables` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `variables` | `List<FlowVariableDefinition>` | ✅ | The variables to render, as the flow declares them. |
+| `modifier` | `Modifier` | ❌ | Modifier for the root element. |
+| `connections` | `List<ConnectionInstance>` | ❌ | The connections a `CONNECTION_SELECT` variable can take. Defaults to none. |
+| `initialValues` | `Map<String, Any>` | ❌ | The values the form starts with, over each variable's default. A variable left out starts at its default. |
+| `overlay` | `ResolvedOverlay?` | ❌ | What the unit may do with each variable, as `client.flows.getOverlayRules` returns it. |
+| `error` | `String?` | ❌ | A translated message shown above the variables. |
+| `isSubmitting` | `Boolean` | ❌ | Disables the form and shows a loading state on the save button. Defaults to `false`. |
+| `onSubmit` | `((values, overrides) -> Unit)?` | ❌ | Called when the form is submitted and valid. `values` holds every value. `overrides` holds the values of the variables the unit may set that differ from their default. |
+| `onChange` | `((Map<String, Any>) -> Unit)?` | ❌ | Called with every value after one changes. |
+| `onCancel` | `(() -> Unit)?` | ❌ | Called when the admin taps Cancel. |
+| `onCreateConnection` | `(() -> Unit)?` | ❌ | Called when the admin asks to create a connection from the hint under a connection variable. |
+| `ouName` | `String?` | ❌ | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `String?` | ❌ | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `readOnly` | `Boolean` | ❌ | Shows the variables without letting them be changed. Defaults to `false`. |
+| `showScopeNotice` | `Boolean` | ❌ | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. |
+| `title` | `String?` | ❌ | Heading of the form. Pass an empty string to hide it. |
+| `description` | `String?` | ❌ | Text under the heading. |
+| `renderField` | `@Composable (field, definition, index) -> Unit` | ❌ | Wraps or replaces each variable's field. |
+| `fieldAction` | `@Composable (definition, index) -> Unit` | ❌ | Controls rendered next to each variable's label. |
+| `content` | `@Composable (FlowVariablesFormState) -> Unit` | ❌ | Renders custom UI in place of the default form. |
+
+## `FlowVariableField`
+
+`FlowVariableField` renders one variable in a card with its label, description, status, and the control its type calls for. `BaseFlowVariables` uses it for each variable, and you can use it to lay out the variables yourself.
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `definition` | `FlowVariableDefinition` | ✅ | The variable to render. |
+| `value` | `Any?` | ✅ | The current value. |
+| `onChange` | `(Any) -> Unit` | ✅ | Called when the value changes. |
+| `modifier` | `Modifier` | ❌ | Modifier for the card. |
+| `defaultValue` | `Any?` | ❌ | The value the variable falls back to. The field is marked customized while `value` differs. |
+| `editable` | `Boolean` | ❌ | Whether the unit may set its own value. A variable it may not set is shown as set by its owner. Defaults to `true`. |
+| `enabled` | `Boolean` | ❌ | Disables the control. Defaults to `true`. |
+| `error` | `String?` | ❌ | A translated message shown under the control. |
+| `options` | `List<FlowVariableOption>` | ❌ | The choices of a `SELECT` or `CONNECTION_SELECT`. |
+| `ownerName` | `String?` | ❌ | Who set the variable, shown while it is not editable. |
+| `hint` | `@Composable () -> Unit` | ❌ | Extra guidance under the control. |
+| `action` | `@Composable () -> Unit` | ❌ | Controls rendered next to the label. |
+
+Each type renders its own control:
+
+| Variable type | Control |
+| :--- | :--- |
+| `TEXT_INPUT`, `EMAIL_INPUT`, `PHONE_INPUT`, `NUMBER_INPUT`, `DATE_INPUT` | Text field with the keyboard the type calls for |
+| `BOOLEAN_INPUT` | Switch |
+| `SELECT`, `CONNECTION_SELECT` | Dropdown. The first entry shows the default, for example "Use the default: Dark", and returns the variable to it. |
+
+## Load the Data Yourself
+
+`rememberFlowVariables` loads the data behind the form, for a screen built entirely by your app. Nothing loads until `flowId` and `ouId` are both set, or while `enabled` is `false`.
+
+```kotlin
+@Composable
+fun CustomSettings(flowId: String, ouId: String) {
+    val state = rememberFlowVariables(flowId, ouId)
+    val scope = rememberCoroutineScope()
+
+    if (!state.isLoaded) {
+        CircularProgressIndicator()
+        return
+    }
+
+    BaseFlowVariables(
+        variables = state.definitions,
+        connections = state.connections,
+        initialValues = state.overrides,
+        overlay = state.overlay,
+        isSubmitting = state.isSaving,
+        onSubmit = { _, overrides -> scope.launch { state.save(overrides) } },
+    )
+}
+```
+
+| Property or function | Description |
+| :--- | :--- |
+| `flow` | The flow as the organization unit sees it. |
+| `definitions` | The variables the flow declares for the unit. |
+| `overrides` | The values the unit has set. A variable it has not set is absent, and its default applies. |
+| `overlay` | What the unit may do with each variable. |
+| `connections` | The connections a `CONNECTION_SELECT` variable can take. Loaded only when a variable needs them. |
+| `isLoaded`, `isLoading`, `error` | Whether everything has arrived, whether a load is in progress, and why it could not be loaded. |
+| `isSaving`, `saveError` | Whether a save is in progress, and why the last one failed. |
+| `save(values)` | Replaces the unit's values. A variable left out returns to its default. Never throws: read `saveError`. Returns the saved values, or `null` when the save failed. |
+
+## Flow Variable Helpers
+
+The form is built on these functions from `dev.thunderid.android.api.management`. Use them with any UI.
+
+| Function | Description |
+| :--- | :--- |
+| `getFlowVariableDefinitions(flow)` | Reads the variables a flow declares. A flow shared with the unit lists them in `variables`. A flow the unit owns declares them on its `VARIABLES` node. Returns an empty list when the flow declares none. |
+| `resolveFlowVariableRule(definition, overlay)` | Works out what the unit may do with a variable. Returns a `ResolvedFlowVariableRule` with `editable`, `defaultValue`, `allowedValues`, and `excludedValues`. Without an `overlay`, every variable is editable. |
+| `getFlowVariableOptions(definition, connections, restriction)` | Lists what a select variable can take. A `SELECT` takes the values it declares. A `CONNECTION_SELECT` takes the connections that match its `category` and `connectionTypes`. Any other type returns an empty list. |
+| `validateFlowVariableValue(definition, value)` | Checks a value against the variable's type, options, and rules. Returns a `FlowVariableValidationError`, or `null` when the value is valid. A `BOOLEAN_INPUT` is valid when it is a boolean or not set. Every other type requires a value. |
+
+```kotlin
+import dev.thunderid.android.api.management.getFlowVariableDefinitions
+import dev.thunderid.android.api.management.resolveFlowVariableRule
+import dev.thunderid.android.api.management.validateFlowVariableValue
+
+val flow = client.flows.get(flowId, ouId = ouId)
+val overlay = client.flows.getOverlayRules(flowId, ouId)
+
+getFlowVariableDefinitions(flow).forEach { definition ->
+    val rule = resolveFlowVariableRule(definition, overlay)
+    val problem = validateFlowVariableValue(definition, rule.defaultValue)
+}
+```
+
+The owning unit does not use these helpers: the server rejects an override saved for it with HTTP 400, so it changes defaults in the flow's `VARIABLES` node.
+
+A `SELECT` value is validated by its text, as the server does, so `"true"` is valid for an option `true`.
+
+The `FlowVariableValidationErrorCode` values are:
+
+| Code | Meaning |
+| :--- | :--- |
+| `REQUIRED` | The value is empty. |
+| `INVALID` | The value is not valid for the type, such as text that is not an email address or a number that is not numeric. |
+| `MIN` | A number is below `min`. |
+| `MAX` | A number is above `max`. |
+| `NOT_OPTION` | A `SELECT` value is not one of its `options`. |
+| `MIN_LENGTH` | Text is shorter than a `minLength` rule allows. |
+| `MAX_LENGTH` | Text is longer than a `maxLength` rule allows. |
+| `PATTERN` | Text does not match a `regex` rule. |
+
+For the three text rules, the error also carries the rule's `message` when it has one. The text rules are checked for `TEXT_INPUT` only, so a value can pass here and still be rejected by the server, which validates again on save. A `regex` rule that cannot be compiled is skipped, and the server judges it.
+
+### `FlowVariableDefinition`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `identifier` | `String` | Name of the variable, which a `{{var(name)}}` placeholder uses. |
+| `type` | `String` | The input the variable is edited with. Use the `FlowVariableType` constants: `TEXT_INPUT`, `EMAIL_INPUT`, `PHONE_INPUT`, `NUMBER_INPUT`, `DATE_INPUT`, `BOOLEAN_INPUT`, `SELECT`, or `CONNECTION_SELECT`. |
+| `label` | `String?` | Display name. |
+| `description` | `String?` | Help text. |
+| `defaultValue` | `Any?` | The value the variable has until another is set: a `String`, a `Number`, or a `Boolean`. |
+| `options` | `List<Any>?` | For a `SELECT`: the values it can take. |
+| `category` | `String?` | For a `CONNECTION_SELECT`: the kind of connection it takes. The server accepts only `IDENTITY_PROVIDER`. |
+| `connectionTypes` | `List<String>?` | For a `CONNECTION_SELECT`: limits it to these vendors. The server accepts `google`, `github`, `oidc`, and `oauth`. |
+| `min`, `max` | `Double?` | For a `NUMBER_INPUT`: the lowest and highest value. |
+| `validation` | `List<FlowVariableValidationRule>?` | Rules a text value has to meet. |
+
+## Cache Keys
+
+`FlowQueryKeys` and `FlowVariableQueryKeys` name flow resources for caching. The composables use them to refetch after a save. Reuse them as keys in your own data fetching cache.
+
+| Constant | Keys |
+| :--- | :--- |
+| `FlowQueryKeys` | `FLOWS` (`"flows"`) |
+| `FlowVariableQueryKeys` | `DEFINITIONS` (`"flow-variable-definitions"`), `VALUES` (`"flow-variable-values"`) |
+
+## Internationalization
+
+The labels, errors, and notices come from the `admin.flowVariables` keys in the SDK's translations, available in all nine locales.

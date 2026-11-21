@@ -391,6 +391,22 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a consent purpose", EventConsentUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeConsent, ID: "consent-1"}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"purpose": "attributes:app-1"}), errDetailNotAllowed},
+		{"a user lock with its authentication method", EventUserLock,
+			NewPayload(ctx, testTarget, ActionLock, OutcomeSucceeded).WithSubject(testTarget).
+				WithDetails(map[string]string{DetailAuthenticationMethod: "credential"}), nil},
+		{"a user unlock", EventUserUnlock,
+			NewPayload(ctx, testTarget, ActionUnlock, OutcomeSucceeded), nil},
+		{"a user suspend", EventUserSuspend,
+			NewPayload(ctx, testTarget, ActionSuspend, OutcomeDenied(reasonForbidden)), nil},
+		{"a user unsuspend failure", EventUserUnsuspend,
+			NewPayload(ctx, Ref{Type: TargetTypeUser, ID: "e-1"}, ActionUnsuspend, OutcomeFailed("igs_1003")),
+			nil},
+		{"a user suspend note", EventUserSuspend,
+			NewPayload(ctx, testTarget, ActionSuspend, OutcomeSucceeded).
+				WithDetails(map[string]string{"operator_note": "fraud"}), errDetailNotAllowed},
+		{"a user unlock method", EventUserUnlock,
+			NewPayload(ctx, testTarget, ActionUnlock, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAuthenticationMethod: "credential"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,

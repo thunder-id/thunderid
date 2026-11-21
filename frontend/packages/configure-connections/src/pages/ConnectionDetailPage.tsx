@@ -9,11 +9,12 @@ import {
   MASKED_SECRET,
   outboundAuthenticationFromFormValues,
   QueryErrorNotice,
+  ReadOnlyFieldset,
   ServiceAuthenticationMethods,
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useCapabilitiesContext, useConfig, useGateCallbackUrl} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig, useGateCallbackUrl, useRecordAccess} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -140,6 +141,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const instancesQuery = useConnectionInstances(connectionType, {enabled: Boolean(meta) && !id});
   const resolvedId: string | undefined = id ?? instancesQuery.data?.[0]?.id;
   const connectionQuery = useConnection(connectionType, resolvedId);
+  const {readOnly, canDelete} = useRecordAccess('connection', connectionQuery.data);
+  const canUpdate = !readOnly;
 
   const [activeTab, setActiveTab] = useState(0);
   const [editedValues, setEditedValues] = useState<ConnectionFormValues>({});
@@ -506,7 +509,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     />
                   </Tooltip>
                 )}
-                {isDefaultReady && !isDefault && (
+                {isDefaultReady && !isDefault && can('serverconfig', 'update') && (
                   <Tooltip
                     title={
                       isDefaultLocked
@@ -604,7 +607,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 data-testid="connection-tab-subject-mapping"
               />
             )}
-            {can('connection', 'delete') && (
+            {canDelete && (
               <Tab
                 label={t('detail.tabs.advanced', 'Advanced')}
                 sx={{textTransform: 'none'}}
@@ -645,20 +648,22 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                       )
                 }
               >
-                <ConnectionForm
-                  type={connectionType}
-                  mode="edit"
-                  values={values}
-                  secretReplacing={secretReplacing}
-                  hasStoredSecret
-                  vendorDisplayName={meta.displayName}
-                  nameError={nameError}
-                  showNameField={isCustom}
-                  excludeFieldNames={supportsAuthentication ? AUTHENTICATION_METHOD_FIELD_NAMES : undefined}
-                  showAuthentication={false}
-                  onFieldChange={handleFieldChange}
-                  onSecretReplacingChange={setSecretReplacing}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <ConnectionForm
+                    type={connectionType}
+                    mode="edit"
+                    values={values}
+                    secretReplacing={secretReplacing}
+                    hasStoredSecret
+                    vendorDisplayName={meta.displayName}
+                    nameError={nameError}
+                    showNameField={isCustom}
+                    excludeFieldNames={supportsAuthentication ? AUTHENTICATION_METHOD_FIELD_NAMES : undefined}
+                    showAuthentication={false}
+                    onFieldChange={handleFieldChange}
+                    onSecretReplacingChange={setSecretReplacing}
+                  />
+                </ReadOnlyFieldset>
                 {credentialsMustBeReentered && (
                   <Alert severity="warning" sx={{mt: 2}}>
                     {connectionType === ConnectionTypes.SMTP
@@ -684,16 +689,18 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   title={t('detail.authentication.title')}
                   description={t('detail.outboundAuthentication.description', {productName})}
                 >
-                  <AuthenticationSection
-                    methods={authenticationMethods}
-                    values={values}
-                    mode="edit"
-                    secretReplacing={outboundSecretReplacing}
-                    hasStoredSecret={hasStoredOutboundCredential && !credentialsMustBeReentered}
-                    showHeading={false}
-                    onFieldChange={handleFieldChange}
-                    onSecretReplacingChange={setSecretReplacing}
-                  />
+                  <ReadOnlyFieldset readOnly={!canUpdate}>
+                    <AuthenticationSection
+                      methods={authenticationMethods}
+                      values={values}
+                      mode="edit"
+                      secretReplacing={outboundSecretReplacing}
+                      hasStoredSecret={hasStoredOutboundCredential && !credentialsMustBeReentered}
+                      showHeading={false}
+                      onFieldChange={handleFieldChange}
+                      onSecretReplacingChange={setSecretReplacing}
+                    />
+                  </ReadOnlyFieldset>
                   {fieldErrors['url'] === HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR && (
                     <Alert severity="error" sx={{mt: 2}}>
                       {t(
@@ -729,35 +736,37 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                       )
                 }
               >
-                <ServiceAuthenticationMethods
-                  method={selectedAuthenticationScheme}
-                  bearerToken={values['bearerToken'] ?? ''}
-                  basicUsername={values['basicUsername'] ?? ''}
-                  basicPassword={values['basicPassword'] ?? ''}
-                  httpHeaders={values['httpHeaders'] ?? ''}
-                  hasStoredHTTPHeaders={hasStoredHTTPHeaders}
-                  storedHTTPHeaders={storedHTTPHeaders}
-                  hasStoredSecret={hasStoredCredentialForSelectedScheme}
-                  replacing={secretReplacing}
-                  errors={authenticationErrors}
-                  onChange={(name, value) => {
-                    clearSaveError();
-                    if (name === 'authenticationScheme') {
-                      setSecretReplacing(false);
-                      setEditedValues((prev) => ({
-                        ...prev,
-                        authenticationScheme: value,
-                        bearerToken: '',
-                        basicUsername: '',
-                        basicPassword: '',
-                        httpHeaders: '',
-                      }));
-                      return;
-                    }
-                    setEditedValues((prev) => ({...prev, [name]: value}));
-                  }}
-                  onReplacingChange={setSecretReplacing}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <ServiceAuthenticationMethods
+                    method={selectedAuthenticationScheme}
+                    bearerToken={values['bearerToken'] ?? ''}
+                    basicUsername={values['basicUsername'] ?? ''}
+                    basicPassword={values['basicPassword'] ?? ''}
+                    httpHeaders={values['httpHeaders'] ?? ''}
+                    hasStoredHTTPHeaders={hasStoredHTTPHeaders}
+                    storedHTTPHeaders={storedHTTPHeaders}
+                    hasStoredSecret={hasStoredCredentialForSelectedScheme}
+                    replacing={secretReplacing}
+                    errors={authenticationErrors}
+                    onChange={(name, value) => {
+                      clearSaveError();
+                      if (name === 'authenticationScheme') {
+                        setSecretReplacing(false);
+                        setEditedValues((prev) => ({
+                          ...prev,
+                          authenticationScheme: value,
+                          bearerToken: '',
+                          basicUsername: '',
+                          basicPassword: '',
+                          httpHeaders: '',
+                        }));
+                        return;
+                      }
+                      setEditedValues((prev) => ({...prev, [name]: value}));
+                    }}
+                    onReplacingChange={setSecretReplacing}
+                  />
+                </ReadOnlyFieldset>
               </SettingsCard>
             </TabPanel>
           )}
@@ -765,15 +774,19 @@ export default function ConnectionDetailPage(): JSX.Element | null {
           {supportsAttributes && (
             <TabPanel value={activeTab} index={attributeMappingTabIndex}>
               <Stack direction="column" spacing={4}>
-                <AttributeMappingSection
-                  key={`attrs-${resolvedId}-${attrsKey}`}
-                  initialConfig={baselineAttr}
-                  onChange={(config, isValid) => {
-                    setEditedAttr(config);
-                    setAttrValid(isValid);
-                  }}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <AttributeMappingSection
+                    key={`attrs-${resolvedId}-${attrsKey}`}
+                    initialConfig={baselineAttr}
+                    onChange={(config, isValid) => {
+                      setEditedAttr(config);
+                      setAttrValid(isValid);
+                    }}
+                  />
+                </ReadOnlyFieldset>
+                {/* Locks its own controls, so the permission tree can still be expanded to read. */}
                 <AuthorizationMappingSection
+                  readOnly={!canUpdate}
                   key={`authz-${resolvedId}-${attrsKey}`}
                   ouId={data?.ouId}
                   initialRuleConfig={baselineAuthzMappings}
@@ -787,28 +800,32 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     setDirectMappingsValid(isValid);
                   }}
                 />
-                <AccountLinkingSection
-                  key={`linking-${resolvedId}-${attrsKey}`}
-                  initialConfig={baselineLinking}
-                  onChange={(linking) => setEditedLinking(linking)}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <AccountLinkingSection
+                    key={`linking-${resolvedId}-${attrsKey}`}
+                    initialConfig={baselineLinking}
+                    onChange={(linking) => setEditedLinking(linking)}
+                  />
+                </ReadOnlyFieldset>
               </Stack>
             </TabPanel>
           )}
 
           {supportsSubjectMapping && (
             <TabPanel value={activeTab} index={subjectMappingTabIndex}>
-              <SubjectMappingSection
-                values={subjectMappingValues}
-                onChange={(field, value) => {
-                  clearSaveError();
-                  setEditedSubjectMapping((prev) => ({...prev, [field]: value}));
-                }}
-              />
+              <ReadOnlyFieldset readOnly={!canUpdate}>
+                <SubjectMappingSection
+                  values={subjectMappingValues}
+                  onChange={(field, value) => {
+                    clearSaveError();
+                    setEditedSubjectMapping((prev) => ({...prev, [field]: value}));
+                  }}
+                />
+              </ReadOnlyFieldset>
             </TabPanel>
           )}
 
-          {can('connection', 'delete') && (
+          {canDelete && (
             <TabPanel value={activeTab} index={advancedTabIndex}>
               <Stack direction="column" spacing={4}>
                 <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
@@ -835,14 +852,14 @@ export default function ConnectionDetailPage(): JSX.Element | null {
             </TabPanel>
           )}
 
-          {dirty && (
+          {dirty && canUpdate && (
             <UnsavedChangesBar
               message={t('detail.saveBar.unsaved', 'You have unsaved changes.')}
               resetLabel={t('detail.saveBar.reset', 'Reset')}
               saveLabel={t('detail.saveBar.save', 'Save changes')}
               savingLabel={t('detail.saveBar.saving', 'Saving changes...')}
               isSaving={updateMutation.isPending}
-              saveDisabled={!valid || !can('connection', 'update')}
+              saveDisabled={!valid}
               onReset={resetEdits}
               onSave={handleSave}
             />
