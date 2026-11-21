@@ -9,7 +9,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -269,18 +271,6 @@ func (d *dbProvider) initializeClient(clientPtr *DBClientInterface, dataSource c
 		return fmt.Errorf("failed to ping database %s: %w", dbName, err)
 	}
 
-	// Enable foreign key constraints for SQLite databases
-	if dbConfig.driverName == dataSourceTypeSQLite {
-		_, err := db.Exec("PRAGMA foreign_keys = ON;")
-		if err != nil {
-			if closeErr := db.Close(); closeErr != nil {
-				return fmt.Errorf("failed to enable foreign key constraints for %s: %w (close error: %w)",
-					dbName, err, closeErr)
-			}
-			return fmt.Errorf("failed to enable foreign key constraints for %s: %w", dbName, err)
-		}
-	}
-
 	var rc retryConfig
 	switch dataSource.Type {
 	case dataSourceTypePostgres:
@@ -314,14 +304,54 @@ func (d *dbProvider) getDBConfig(dataSource config.DataSource) dbConfig {
 	case dataSourceTypeSQLite:
 		sl := dataSource.SQLite
 		dbConfig.driverName = dataSourceTypeSQLite
-		options := sl.Options
-		if options != "" && options[0] != '?' {
-			options = "?" + options
-		}
-		dbConfig.dsn = fmt.Sprintf("%s%s", path.Join(config.GetServerRuntime().ServerHome, sl.Path), options)
+		dbConfig.dsn = sqliteDSN(path.Join(config.GetServerRuntime().ServerHome, sl.Path), sl.Options)
 	}
 
 	return dbConfig
+}
+
+// sqliteForeignKeysPragma turns foreign key enforcement on for a connection, as a DSN parameter.
+const sqliteForeignKeysPragma = "_pragma=foreign_keys(1)"
+
+// sqliteDSN joins a database path, the configured options and foreign key enforcement into one DSN.
+// The path may carry a query of its own, as "file::memory:?cache=shared" does.
+//
+// SQLite keeps foreign keys off unless each connection turns them on, and the schema relies on them:
+// deleting an inbound client, for one, removes its OAuth profile by ON DELETE CASCADE. Turning them on
+// with a statement after opening reaches only the one pooled connection that ran it; any other the
+// pool opens, or opens again once a connection's lifetime ends, would delete the parent and leave the
+// child behind. A DSN parameter is applied to every connection the driver opens.
+func sqliteDSN(dbPath, configured string) string {
+	parameters := strings.TrimPrefix(configured, "?")
+	path, pathParameters, _ := strings.Cut(dbPath, "?")
+	if !setsForeignKeysPragma(parameters) && !setsForeignKeysPragma(pathParameters) {
+		if parameters != "" {
+			parameters += "&"
+		}
+		parameters += sqliteForeignKeysPragma
+	}
+	if parameters == "" {
+		return dbPath
+	}
+	if pathParameters != "" {
+		return path + "?" + pathParameters + "&" + parameters
+	}
+	return path + "?" + parameters
+}
+
+// setsForeignKeysPragma reports whether a DSN's query string carries a foreign_keys pragma, among its
+// parameters rather than anywhere in the text, so a path that happens to spell it is not taken for one.
+func setsForeignKeysPragma(query string) bool {
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		return false
+	}
+	for _, pragma := range values["_pragma"] {
+		if strings.HasPrefix(strings.TrimSpace(pragma), "foreign_keys") {
+			return true
+		}
+	}
+	return false
 }
 
 // Close closes the database connections. This should only be called by the lifecycle manager during shutdown.
