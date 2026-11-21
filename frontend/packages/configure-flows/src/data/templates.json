@@ -13015,10 +13015,19 @@
               ],
               "action": {
                 "ref": "action_agent_details",
-                "nextNode": "agent_provisioning"
+                "nextNode": "agent_attribute_uniqueness"
               }
             }
           ]
+        },
+        {
+          "id": "agent_attribute_uniqueness",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeUniquenessValidator"
+          },
+          "onSuccess": "agent_provisioning",
+          "onIncomplete": "prompt_agent_details"
         },
         {
           "id": "agent_provisioning",

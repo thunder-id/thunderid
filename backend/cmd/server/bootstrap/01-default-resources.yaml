@@ -880,7 +880,7 @@ nodes:
       required: false
     action:
       ref: action_agent_details
-      nextNode: agent_provisioning
+      nextNode: agent_attribute_uniqueness
   layout:
     size:
       width: 350
@@ -888,6 +888,19 @@ nodes:
     position:
       x: 1520
       y: 400
+- id: agent_attribute_uniqueness
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeUniquenessValidator
+  onSuccess: agent_provisioning
+  onIncomplete: prompt_agent_details
+  layout:
+    size:
+      width: 312
+      height: 117
+    position:
+      x: 1520
+      y: 1080
 - id: agent_provisioning
   type: TASK_EXECUTION
   properties:
