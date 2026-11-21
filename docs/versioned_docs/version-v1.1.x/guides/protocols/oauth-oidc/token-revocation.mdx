@@ -107,6 +107,8 @@ Revocation is checked at two independent points, and they do not become consiste
 | **Authorization server** | Introspection, the refresh grant, token exchange, and internal validation | **Immediate.** Reads the denylist directly |
 | **Resource server** | Requests to <ProductName />'s own protected APIs | **Eventually consistent.** Serves an in-memory snapshot refreshed on an interval |
 
+An endpoint that also serves callers without a token handles a revoked token the same way as an expired one. It reads the same snapshot as the protected APIs, so the same delay applies.
+
 :::note
 A revoked token normally stops being accepted by a resource server within `server.security.token_revocation.sync_interval_seconds` (60 seconds by default). For an immediate answer, call [Token Introspection](../token-introspection), which reads current state. Lower the sync interval to shorten the delay, at the cost of more frequent database reads.
 :::
