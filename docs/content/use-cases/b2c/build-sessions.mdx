@@ -80,3 +80,17 @@ Both paths meet at one node, so the token comes out the same either way. Save th
 [Single Sign-On for Flows](../../../guides/flows/single-sign-on).
 
 </Stepper>
+
+## Ending a Session Early
+
+Most sessions end on their own clock or when the customer signs out. Some have to end sooner, such as when a customer
+reports a lost phone.
+
+Once customers sign in through the flow, each session appears on the customer's **Sessions** tab in the Console. Open
+`john.doe` from **Users** to see the browser and operating system each session came from, and when it was last active.
+Click **Revoke** to end one session, or **Revoke All** to end every session the customer has.
+
+Revoking works like a sign-out. <ProductName /> deletes the session, so the next sign-in asks for the password again.
+It also revokes the tokens from each application's latest grant in the session. Tokens from an earlier grant stay valid
+until they expire. An API that verifies tokens locally also accepts a revoked access token until it expires. See
+[Manage Sessions](../../../guides/users/manage-sessions).
