@@ -31,6 +31,7 @@ _How should users update their code/configuration to adapt to the breaking chang
 
 ### Checklist
 - [ ] Followed the contribution guidelines.
+- [ ] The related issue is assigned to me. (Not needed for typo or small documentation fixes)
 - [ ] Manual test round performed and verified.
 - [ ] Documentation provided. (Add links if there are any)
     - [ ] Ran Vale and fixed all errors and warnings
