@@ -4,7 +4,7 @@
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Box, Container} from '@wso2/oxygen-ui';
-import {ArrowRight, Bug, GitPullRequest, Map as MapIcon, MessageSquare} from '@wso2/oxygen-ui-icons-react';
+import {ArrowRight, Bug, GitPullRequest, MessageSquare, MessagesSquare} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {DISPLAY_FONT, useHomeTokens, HOME_MAX_WIDTH} from './homeTheme';
 import {Reveal, Section, SectionHeading} from './shared';
@@ -115,7 +115,8 @@ export default function CommunitySection(): JSX.Element {
   const {siteConfig} = useDocusaurusContext();
   const product = siteConfig.customFields?.product as DocusaurusProductConfig;
   const productName = product.project.name;
-  const {url: githubUrl, discussionsUrl, issuesUrl} = product.project.source.github;
+  const {discussionsUrl, issuesUrl} = product.project.source.github;
+  const {discord} = product.project.community;
 
   const links: CommunityLink[] = [
     {
@@ -137,10 +138,10 @@ export default function CommunitySection(): JSX.Element {
       href: issuesUrl,
     },
     {
-      icon: <MapIcon size={26} strokeWidth={1.6} />,
-      title: 'Follow the roadmap.',
-      description: "See what's planned and weigh in.",
-      href: `${githubUrl}/milestones`,
+      icon: <MessagesSquare size={26} strokeWidth={1.6} />,
+      title: 'Join LFDT Discord.',
+      description: 'Join the server, then get help in #thunderid-user or talk with contributors in #thunderid-dev.',
+      href: discord.inviteUrl,
     },
   ];
 
