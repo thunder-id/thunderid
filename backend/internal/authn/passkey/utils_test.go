@@ -22,35 +22,6 @@ func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(UtilsTestSuite))
 }
 
-func (suite *UtilsTestSuite) TestGetConfiguredOrigins() {
-	origins := getConfiguredOrigins()
-
-	suite.NotNil(origins)
-	suite.NotEmpty(origins)
-}
-
-func (suite *UtilsTestSuite) TestResolveOrigins_WithOverride() {
-	override := []string{"https://app.example.com", "https://mobile.example.com"}
-
-	result := resolveAllowedOrigins(override)
-
-	suite.Equal(override, result)
-}
-
-func (suite *UtilsTestSuite) TestResolveOrigins_FallbackToServerConfig() {
-	result := resolveAllowedOrigins(nil)
-
-	suite.NotNil(result)
-	suite.NotEmpty(result)
-}
-
-func (suite *UtilsTestSuite) TestResolveOrigins_EmptySliceFallsBack() {
-	result := resolveAllowedOrigins([]string{})
-
-	suite.NotNil(result)
-	suite.NotEmpty(result)
-}
-
 func (suite *UtilsTestSuite) TestParseUserAttributes_ValidJSON() {
 	attrs := json.RawMessage(`{"name":"John Doe","email":"john@example.com"}`)
 
@@ -599,15 +570,6 @@ func (suite *UtilsTestSuite) TestBuildRegistrationOptions_WithNeitherOption() {
 
 	// When no options are added, the slice remains nil
 	suite.Len(options, 0)
-}
-
-func (suite *UtilsTestSuite) TestGetConfiguredOrigins_ReturnsDefaultsWhenNoConfig() {
-	origins := getConfiguredOrigins()
-
-	suite.NotNil(origins)
-	suite.NotEmpty(origins)
-	// Should return either configured origins or defaults
-	suite.True(len(origins) >= 1)
 }
 
 func (suite *UtilsTestSuite) TestBuildAuthenticatorSelection_WithAuthenticatorAttachment() {

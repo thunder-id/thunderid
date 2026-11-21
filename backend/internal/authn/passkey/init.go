@@ -4,6 +4,7 @@
 package passkey
 
 import (
+	authnconfig "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -14,6 +15,7 @@ func Initialize(
 	entitySvc entity.EntityServiceInterface,
 	runtimeStore providers.RuntimeStoreProvider,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
+	cfg authnconfig.Config,
 ) PasskeyServiceInterface {
-	return newPasskeyService(entitySvc, newSessionStore(runtimeStore), governance)
+	return newPasskeyService(entitySvc, newSessionStore(runtimeStore), governance, cfg.PasskeyAllowedOrigins)
 }

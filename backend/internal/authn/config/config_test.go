@@ -65,3 +65,44 @@ func (s *ConfigTestSuite) TestFromServerRuntime_Unset() {
 	s.Empty(result.DirectAuthSecret)
 	s.False(result.DirectAPIEnabled, "unset falls back to false; default.json supplies true")
 }
+
+func (s *ConfigTestSuite) TestFromServerRuntime_PasskeyAllowedOrigins() {
+	s.initRuntime(&config.Config{
+		Passkey:    config.PasskeyConfig{AllowedOrigins: []string{"https://app.example.com"}},
+		GateClient: engineconfig.GateClientConfig{Scheme: "https", Hostname: "signin.example.org", Port: 443},
+	})
+
+	s.Equal([]string{"https://app.example.com"}, FromServerRuntime().PasskeyAllowedOrigins)
+}
+
+func (s *ConfigTestSuite) TestFromServerRuntime_PasskeyAllowedOriginsDefaultToTheGate() {
+	s.initRuntime(&config.Config{
+		GateClient: engineconfig.GateClientConfig{Scheme: "https", Hostname: "signin.example.org", Port: 8090},
+	})
+
+	s.Equal([]string{"https://signin.example.org:8090"}, FromServerRuntime().PasskeyAllowedOrigins)
+}
+
+func (s *ConfigTestSuite) TestGateOrigin() {
+	cases := []struct {
+		name string
+		gate engineconfig.GateClientConfig
+		want string
+	}{
+		{"https default port", engineconfig.GateClientConfig{Scheme: "https", Hostname: "a.example.org", Port: 443},
+			"https://a.example.org"},
+		{"http default port", engineconfig.GateClientConfig{Scheme: "http", Hostname: "a.example.org", Port: 80},
+			"http://a.example.org"},
+		{"other port", engineconfig.GateClientConfig{Scheme: "https", Hostname: "a.example.org", Port: 8090},
+			"https://a.example.org:8090"},
+		{"IPv6 other port", engineconfig.GateClientConfig{Scheme: "https", Hostname: "::1", Port: 8090},
+			"https://[::1]:8090"},
+		{"IPv6 default port", engineconfig.GateClientConfig{Scheme: "https", Hostname: "::1", Port: 443},
+			"https://[::1]"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.Equal(tc.want, gateOrigin(tc.gate))
+		})
+	}
+}
