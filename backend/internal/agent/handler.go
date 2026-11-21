@@ -5,11 +5,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -79,6 +82,10 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		var valErr *sysutils.ValidationError
 		if errors.As(err, &valErr) {
 			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		if isOwnerTypeError(err) {
+			writeServiceError(ctx, w, &ErrorInvalidOwner)
 			return
 		}
 		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
@@ -158,6 +165,10 @@ func (h *agentHandler) HandleAgentPutRequest(w http.ResponseWriter, r *http.Requ
 		var valErr *sysutils.ValidationError
 		if errors.As(err, &valErr) {
 			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		if isOwnerTypeError(err) {
+			writeServiceError(ctx, w, &ErrorInvalidOwner)
 			return
 		}
 		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
@@ -546,4 +557,14 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		Description: svcErr.ErrorDescription,
 	}
 	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
+}
+
+// isOwnerTypeError reports whether a body failed to decode because its owner, or a field of it, has the wrong type.
+func isOwnerTypeError(err error) bool {
+	var typeErr *json.UnmarshalTypeError
+	if !errors.As(err, &typeErr) {
+		return false
+	}
+	return typeErr.Field == "owner" || strings.HasPrefix(typeErr.Field, "owner.") ||
+		typeErr.Type == reflect.TypeFor[providers.AgentOwnerLocality]()
 }

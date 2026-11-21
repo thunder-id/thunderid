@@ -365,6 +365,39 @@ func TestHandleAgentPostRequest_InvalidJSONFormat(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestHandleAgentPostRequest_OwnerOfTheWrongType(t *testing.T) {
+	bodies := map[string]string{
+		"owner is a string":      `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":"user-1"}`,
+		"owner id is a number":   `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":{"id":1}}`,
+		"owner idType is a list": `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":{"id":"user-1","idType":[]}}`,
+		"isLocal is a number":    `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":{"id":"user-1","isLocal":1}}`,
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+			w := httptest.NewRecorder()
+
+			handler.HandleAgentPostRequest(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), ErrorInvalidOwner.Code)
+		})
+	}
+}
+
+func TestHandleAgentPostRequest_OtherFieldOfTheWrongType(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	body := `{"ouId":"ou-123","attributes":{"name":"Agent"},"delegated":"yes"}`
+	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPostRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
 func TestHandleAgentPutRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
@@ -448,6 +481,19 @@ func TestHandleAgentPutRequest_InvalidJSONFormat(t *testing.T) {
 
 	handler.HandleAgentPutRequest(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAgentPutRequest_OwnerOfTheWrongType(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	body := `{"attributes":{"name":"Agent"},"owner":"user-1"}`
+	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(body))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPutRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidOwner.Code)
 }
 
 // The handler forwards the kind as given; the agent service refuses an unknown kind and applies the rules
