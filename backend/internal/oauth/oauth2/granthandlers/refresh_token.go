@@ -109,10 +109,10 @@ func (h *refreshTokenGrantHandler) ValidateGrant(ctx context.Context, tokenReque
 	return nil
 }
 
-// resolveRefreshToken validates the presented refresh token and confirms it was issued to the
-// requesting client. ValidateRefreshToken enforces the RFC 7009 deny list, so a revoked token is
-// rejected as invalid_grant like any other invalid token and an unavailable deny list fails closed
-// with a server_error.
+// resolveRefreshToken validates the presented refresh token, confirms it was issued to the requesting
+// client, and confirms the session it was issued under is still live. ValidateRefreshToken enforces the
+// RFC 7009 deny list, so a revoked token is rejected as invalid_grant like any other invalid token and an
+// unavailable deny list fails closed with a server_error.
 func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 	tokenRequest *model.TokenRequest, logger *log.Logger) (
 	*tokenservice.RefreshTokenClaims, *model.ErrorResponse) {
@@ -144,6 +144,10 @@ func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
 		}
+	}
+
+	if errResp := h.verifySessionLive(ctx, refreshTokenClaims.SessionID, logger); errResp != nil {
+		return nil, errResp
 	}
 
 	return refreshTokenClaims, nil
@@ -395,6 +399,35 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	h.recordSessionActivity(ctx, refreshTokenClaims.SessionID, logger)
 
 	return tokenResponse, nil
+}
+
+// verifySessionLive rejects a refresh token issued under a session that has since ended or expired, so a
+// refresh token can't keep issuing tokens after its session's idle or absolute deadline. The check runs
+// before the refresh records activity, so a late refresh can't move the deadline it is checked against.
+// A refresh token with no sid was issued outside a session and isn't checked. An ended, expired or
+// unknown session gets the same response as any other invalid refresh token, so the response says
+// nothing about the session.
+func (h *refreshTokenGrantHandler) verifySessionLive(ctx context.Context, sessionID string,
+	logger *log.Logger) *model.ErrorResponse {
+	if sessionID == "" || h.ssoSession == nil {
+		return nil
+	}
+	live, err := h.ssoSession.IsLive(ctx, sessionID, time.Now().UTC())
+	if err != nil {
+		logger.Error(ctx, "Failed to check the session of the refresh token", log.Error(err))
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Session state could not be verified",
+		}
+	}
+	if !live {
+		logger.Debug(ctx, "Refresh token's session has ended or expired")
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "Invalid refresh token",
+		}
+	}
+	return nil
 }
 
 // recordSessionActivity counts the refresh as a use of the SSO session the grant was issued under, so

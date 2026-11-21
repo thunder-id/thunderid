@@ -55,6 +55,7 @@ Each refresh re-evaluates the subject's authorization rather than replaying the 
 | The user's password is reset | The refresh fails with `invalid_grant` |
 | The client secret is rotated | The refresh fails with `invalid_grant` |
 | The user is deleted | The refresh fails with `invalid_grant` |
+| The single sign-on session the refresh token was issued under passed its idle or absolute timeout, or ended | The refresh fails with `invalid_grant`; see [Configure Session Lifetime](../../../flows/single-sign-on#configure-session-lifetime) |
 
 OIDC scopes such as `openid`, `profile`, and `email` are not permission scopes, so authorization changes never remove them.
 

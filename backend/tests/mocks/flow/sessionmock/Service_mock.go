@@ -223,6 +223,78 @@ func (_c *ServiceMock_FindCheckpoint_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// IsLive provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) IsLive(ctx context.Context, sessionID string, now time.Time) (bool, error) {
+	ret := _mock.Called(ctx, sessionID, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsLive")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (bool, error)); ok {
+		return returnFunc(ctx, sessionID, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) bool); ok {
+		r0 = returnFunc(ctx, sessionID, now)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, sessionID, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ServiceMock_IsLive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsLive'
+type ServiceMock_IsLive_Call struct {
+	*mock.Call
+}
+
+// IsLive is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - now time.Time
+func (_e *ServiceMock_Expecter) IsLive(ctx any, sessionID any, now any) *ServiceMock_IsLive_Call {
+	return &ServiceMock_IsLive_Call{Call: _e.mock.On("IsLive", ctx, sessionID, now)}
+}
+
+func (_c *ServiceMock_IsLive_Call) Run(run func(ctx context.Context, sessionID string, now time.Time)) *ServiceMock_IsLive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_IsLive_Call) Return(b bool, err error) *ServiceMock_IsLive_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *ServiceMock_IsLive_Call) RunAndReturn(run func(ctx context.Context, sessionID string, now time.Time) (bool, error)) *ServiceMock_IsLive_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // LoadCheckpoint provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) LoadCheckpoint(ctx context.Context, in session.LoadCheckpointInput) (*session.Session, *session.SessionContext, error) {
 	ret := _mock.Called(ctx, in)

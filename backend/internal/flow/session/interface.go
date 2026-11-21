@@ -21,6 +21,9 @@ type sessionStore interface {
 	// GetByExecutionID fetches the session established by the given flow execution, or (nil, nil)
 	// when that execution has not established one.
 	GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error)
+	// GetByID fetches a session by its id, the sid its tokens carry. It returns (nil, nil) when no
+	// session matches; liveness checks are the caller's responsibility.
+	GetByID(ctx context.Context, sessionID string) (*Session, error)
 	// ListBySubject returns every SSO session belonging to the subject.
 	ListBySubject(ctx context.Context, subjectID string) ([]Session, error)
 	// Update writes the mutable fields of an existing session under an optimistic-lock guard. It
