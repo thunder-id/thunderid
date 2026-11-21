@@ -158,6 +158,13 @@ func (s *cacheBackedEntityStore) LockEntity(ctx context.Context, id string) (pro
 	return s.store.LockEntity(ctx, id)
 }
 
+// LockEntityWithCredentials passes through to the wrapped store and does not cache what it returns, for
+// the reason LockEntity does not.
+func (s *cacheBackedEntityStore) LockEntityWithCredentials(ctx context.Context,
+	id string) (*entityWithCredentials, error) {
+	return s.store.LockEntityWithCredentials(ctx, id)
+}
+
 // ResolveLinkedAccounts passes through to the wrapped store without caching.
 func (s *cacheBackedEntityStore) ResolveLinkedAccounts(ctx context.Context,
 	idpID, sub string) ([]string, error) {

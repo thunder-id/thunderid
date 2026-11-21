@@ -674,6 +674,32 @@ func (s *PromptOnlyNodeTestSuite) TestExecuteWithFailureReason_ClearsUserInputs(
 	s.NotContains(ctx.UserInputs, "password", "Prompt inputs should be cleared to force re-prompt")
 }
 
+// A value refused for an input an executor forwarded is cleared too, so the prompt asks for it again.
+func (s *PromptOnlyNodeTestSuite) TestExecuteWithFailureReason_ClearsForwardedInputs() {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+		{Inputs: []providers.Input{}, Action: &common.Action{Ref: "submit", NextNode: "next"}},
+	})
+	forwarded := providers.Input{Identifier: "accessCode", Type: providers.InputTypePassword, Required: true}
+	svcErrJSON, _ := json.Marshal(tidcommon.ServiceError{
+		Error: tidcommon.I18nMessage{DefaultValue: "The value does not meet the requirements"},
+	})
+	ctx := &providers.NodeContext{
+		ExecutionID:   "test-flow",
+		UserInputs:    map[string]string{"accessCode": "short", "unrelated": "kept"},
+		RuntimeData:   map[string]string{"failureReasonJSON": string(svcErrJSON)},
+		ForwardedData: map[string]interface{}{common.ForwardedDataKeyInputs: []providers.Input{forwarded}},
+	}
+
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusIncomplete, resp.Status)
+	s.NotContains(ctx.UserInputs, "accessCode", "the refused forwarded value must be cleared")
+	s.Equal("kept", ctx.UserInputs["unrelated"])
+	s.Contains(resp.Inputs, forwarded, "the forwarded input must be asked for again")
+}
+
 func (s *PromptOnlyNodeTestSuite) TestExecuteWithFailureReason_ClearsCurrentAction() {
 	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
 	promptNode := node.(PromptNodeInterface)

@@ -66,6 +66,9 @@ type EntityServiceInterface interface {
 		plaintextUpdates json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		plaintextUpdates json.RawMessage) error
+	// RemoveCredential removes the stored values of one declared credential and returns the credential
+	// marker it wrote.
+	RemoveCredential(ctx context.Context, entityID, credentialType string) (string, error)
 	// SetValidUntil sets the reserved validUntil system attribute alone. Only the service that owns
 	// the entity type calls it, today the agent service, after authorizing and validating the change.
 	SetValidUntil(ctx context.Context, entityID string, validUntil string) error
@@ -547,6 +550,10 @@ func (s *entityService) UpdateEntity(
 			if err := s.store.UpdateCredentials(txCtx, entityID, mergedCreds); err != nil {
 				return err
 			}
+			if err := s.stampCredentialMarker(txCtx, entityID, entity.SystemAttributes,
+				newCredentialMarker()); err != nil {
+				return err
+			}
 		}
 
 		result, err := s.store.GetEntity(txCtx, entityID)
@@ -666,7 +673,11 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 				return getErr
 			}
 			mergedCreds := mergeCredentialJSON(existingWithCreds.SchemaCredentials, schemaCredsJSON)
-			return s.store.UpdateCredentials(txCtx, entityID, mergedCreds)
+			if err := s.store.UpdateCredentials(txCtx, entityID, mergedCreds); err != nil {
+				return err
+			}
+			// Stamped over the system attributes this transaction wrote, so a cleared verification is kept.
+			return s.stampCredentialMarker(txCtx, entityID, invalidated, newCredentialMarker())
 		}
 
 		return nil
@@ -1452,9 +1463,9 @@ func (s *entityService) writeCredentials(ctx context.Context, entityID string,
 		return fmt.Errorf("failed to unmarshal hashed updates: %w", err)
 	}
 
-	// Fetch existing, merge, and store.
+	// Fetch existing under the entity's lock, merge, and store, so a concurrent credential write is kept.
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		existingWithCreds, err := s.store.GetEntityWithCredentials(txCtx, entityID)
+		existingWithCreds, err := s.store.LockEntityWithCredentials(txCtx, entityID)
 		if err != nil {
 			return err
 		}
@@ -1483,9 +1494,100 @@ func (s *entityService) writeCredentials(ctx context.Context, entityID string,
 		// Record the change so the refresh grant can reject tokens established before it. Every
 		// password change lands here, and the marker shares this transaction with the write. The blob
 		// is read under the entity's lock, since a cached copy could drop a concurrent link write.
-		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt,
-			time.Now().UTC().Format(time.RFC3339))
+		return s.stampCredentialMarker(txCtx, entityID, existingWithCreds.Entity.SystemAttributes,
+			newCredentialMarker())
 	})
+}
+
+// validateCredentialRemoval checks that the entity's type declares credentialType as a credential. A
+// type that declares none, or an entity without a type, has nothing to remove.
+func (s *entityService) validateCredentialRemoval(ctx context.Context, entityID, credentialType string) error {
+	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	declared, err := s.declaredCredentialTypes(ctx, existing.Category, existing.Type)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(declared, credentialType) {
+		return fmt.Errorf("%w: %q is not a declared credential", ErrInvalidCredential, credentialType)
+	}
+	return nil
+}
+
+// RemoveCredential removes the stored values of credentialType, keeping every other credential, so the
+// removed value no longer authenticates. As a replaced credential does, it revokes what was issued to the entity
+// before it and ends its sessions. A credential already absent is removed again without error. The
+// credential marker is written with sub-second precision, so a later change in the same second still
+// moves it; the refresh grant reads it to the second.
+func (s *entityService) RemoveCredential(ctx context.Context, entityID, credentialType string) (string, error) {
+	if err := s.validateCredentialRemoval(ctx, entityID, credentialType); err != nil {
+		return "", err
+	}
+
+	var marker string
+	err := s.revokeAround(ctx, entityID, systemFlowCredentialUpdatePre, systemFlowCredentialUpdatePost,
+		func() error {
+			var err error
+			marker, err = s.removeCredential(ctx, entityID, credentialType)
+			return err
+		})
+	if err != nil {
+		return "", err
+	}
+	return marker, nil
+}
+
+// removeCredential deletes the stored values of credentialType and returns the credential marker it wrote. It
+// reads the credentials under the entity's lock, so a concurrent credential write cannot restore the value, and
+// takes the marker under that lock.
+func (s *entityService) removeCredential(ctx context.Context, entityID, credentialType string) (string, error) {
+	var marker string
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := s.store.LockEntityWithCredentials(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+		marker = time.Now().UTC().Format(time.RFC3339Nano)
+
+		creds := make(map[string]any)
+		if len(existing.SchemaCredentials) > 0 {
+			if err := json.Unmarshal(existing.SchemaCredentials, &creds); err != nil {
+				return fmt.Errorf("failed to unmarshal existing credentials: %w", err)
+			}
+		}
+		delete(creds, credentialType)
+
+		remaining, err := json.Marshal(creds)
+		if err != nil {
+			return fmt.Errorf("failed to marshal remaining credentials: %w", err)
+		}
+		if err := s.store.UpdateCredentials(txCtx, entityID, remaining); err != nil {
+			return err
+		}
+		return s.stampCredentialMarker(txCtx, entityID, existing.Entity.SystemAttributes, marker)
+	})
+	if err != nil {
+		return "", err
+	}
+	return marker, nil
+}
+
+// stampCredentialMarker writes marker as the entity's credential marker over systemAttributes, the system
+// attributes it holds under its lock, including any written earlier in the transaction.
+func (s *entityService) stampCredentialMarker(txCtx context.Context, entityID string,
+	systemAttributes json.RawMessage, marker string) error {
+	updated, err := withSystemAttribute(systemAttributes, authnprovidercm.SystemAttrCredentialUpdatedAt, marker)
+	if err != nil {
+		return err
+	}
+	return s.store.UpdateSystemAttributes(txCtx, entityID, updated)
+}
+
+// newCredentialMarker returns the credential marker of a credential written now.
+func newCredentialMarker() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
 
 // ValidateCredentials checks schema-defined credential updates the way UpdateCredentials does, without
