@@ -3796,7 +3796,7 @@ const translations = {
     'edit.general.contacts.error.invalid': 'Please enter a valid email address',
     'edit.general.redirectUris.title': 'Authorized redirect URIs',
     'edit.general.redirectUris.description':
-      'Where ThunderID sends users back after they sign in. Sign-in requests must use one of these URIs.',
+      'Where {{productName}} sends users back after they sign in. Sign-in requests must use one of these URIs.',
     'edit.general.redirectUris.tooltip': 'OAuth2 redirect URIs where users will be redirected after authentication',
     'edit.general.redirectUris.addUri': 'Add URI',
     'edit.general.redirectUris.error.empty': 'Invalid redirect: URI must not be empty.',

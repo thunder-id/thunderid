@@ -27,6 +27,11 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   OrganizationUnitPickerScreen: () => null,
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
+}));
+
 let translationLookup = (key: string): string => key;
 
 vi.mock('react-i18next', async (importOriginal) => ({

@@ -21,12 +21,19 @@ function AllowAll({children}: {children: ReactNode}): JSX.Element {
 const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
   rtlRender(ui, {wrapper: AllowAll, ...options});
 
-let translationLookup = (key: string): string => key;
+type TranslationLookup = (key: string, fallback?: unknown, options?: {productName?: string}) => string;
+
+let translationLookup: TranslationLookup = (key) => key;
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => translationLookup(key),
+    t: (key: string, fallback?: unknown, options?: {productName?: string}) => translationLookup(key, fallback, options),
   }),
+}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
 }));
 
 const renderWithContext = (
@@ -140,6 +147,19 @@ describe('ConfigureRedirectUris', () => {
     vi.clearAllMocks();
     translationLookup = (key: string): string => key;
     user = userEvent.setup();
+  });
+
+  it('names the configured product in the redirect URI help text', () => {
+    translationLookup = (key, fallback, options): string =>
+      typeof fallback === 'string' ? fallback.replace('{{productName}}', options?.productName ?? '') : key;
+
+    renderWithContext({selectedTemplateConfig: expressTemplate});
+
+    expect(
+      screen.getByText(
+        'Where Acme IAM sends users back after they sign in. Sign-in requests must use one of these URIs.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('does not render a dev server banner or CORS section for a template without either', () => {
