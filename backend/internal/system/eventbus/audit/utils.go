@@ -21,7 +21,7 @@ func reasonFromCode(code string) string {
 		return '_'
 	}, strings.ToLower(code))
 	if !reasonPattern.MatchString(reason) {
-		return reasonServerError
+		return ReasonServerError
 	}
 	return reason
 }

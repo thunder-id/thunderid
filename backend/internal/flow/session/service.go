@@ -13,6 +13,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"time"
@@ -20,8 +21,11 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -130,10 +134,12 @@ type SaveCheckpointInput struct {
 }
 
 // SaveCheckpointResult reports the outcome of a save. Handle is the session's handle and SessionID
-// its id; Skipped is true when the save was declined because of a subject mismatch.
+// its id; Created is true only when this call minted the session; Skipped is true when the save was
+// declined because of a subject mismatch.
 type SaveCheckpointResult struct {
 	Handle    string
 	SessionID string
+	Created   bool
 	Skipped   bool
 	// AuthenticatedAt is when the subject authenticated for this session, as the session records
 	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
@@ -158,6 +164,7 @@ type service struct {
 	transactioner    providers.Transactioner
 	criteriaRevoker  CriteriaRevoker
 	ouEligibility    OUEligibility
+	bus              eventbus.EventBusInterface
 	terminationTopic *eventlistener.Topic[TerminatedSession]
 	timeouts         Timeouts
 	logger           *log.Logger
@@ -219,171 +226,22 @@ func (s *service) FindCheckpoint(ctx context.Context, sess *Session, checkpoint 
 
 // SaveCheckpoint implements Service.
 func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (SaveCheckpointResult, error) {
-	target, created, err := s.targetSession(ctx, in)
+	res, err := s.saveCheckpoint(ctx, in)
+	s.publishCreate(ctx, in, res, err)
 	if err != nil {
 		return SaveCheckpointResult{}, err
 	}
-	if target == nil {
-		return SaveCheckpointResult{Skipped: true}, nil
-	}
-
-	// Reaching this point means the subject authenticated during this execution: the SSO-hit path
-	// loads its checkpoint and never saves one. When that happens inside a session that already
-	// existed, it was a re-authentication (prompt=login, or a max_age the previous authentication no
-	// longer satisfied), so the session's authentication time has to move forward with it. Leaving it
-	// stale would make the session claim an older authentication than actually took place, which
-	// under-reports auth_time and makes a later max_age check reject a request it should allow.
-	if !created {
-		now := time.Now().UTC()
-		properties := target.Properties
-		properties.LastActiveIP = s.activeIP(in.ClientInfo, target)
-		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
-			now.Add(s.timeouts.Idle), properties); err != nil {
-			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
-			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
-		} else {
-			target.AuthenticatedAt = now
-			target.Properties = properties
-		}
-	}
-
-	snapshot := SessionContext{
-		SessionID:      target.SessionID,
-		CheckpointID:   in.Checkpoint,
-		RuntimeData:    snapshotRuntimeData(in.RuntimeData),
-		AuthUser:       in.AuthUser,
-		CompletedSteps: in.CompletedSteps,
-		ContextVersion: 1,
-	}
-
-	participantOU, err := s.participantOU(ctx, in.SubjectID, participantOUID(ctx))
-	if err != nil {
-		return SaveCheckpointResult{}, err
-	}
-
-	// Write this checkpoint's context (upsert) and the joining participant in one transaction.
-	now := time.Now().UTC()
-	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		if err := s.store.CreateContext(txCtx, snapshot); err != nil {
-			return err
-		}
-		return s.recordParticipant(txCtx, target.SessionID, in.AppID, participantOU, in.TokenFamilyID, now)
-	}); err != nil {
-		return SaveCheckpointResult{}, err
-	}
-
-	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
-	return SaveCheckpointResult{
-		Handle:            target.HandleID,
-		SessionID:         target.SessionID,
-		AuthenticatedAt:   target.AuthenticatedAt,
-		AbsoluteExpiresAt: target.AbsoluteExpiresAt,
-	}, nil
+	return res, nil
 }
 
 // LoadCheckpoint implements Service.
 func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	*Session, *SessionContext, error) {
-	if in.Handle == "" {
-		return nil, nil, fmt.Errorf("no resolved session handle to load")
-	}
-	// The SSO-Check node resolved the session and read this checkpoint's context to decide routing, and
-	// forwards both here, so this path re-reads neither. The resolver has already applied every liveness,
-	// flow-identity and flow-version check. What the handover gives up is noticing that a concurrent
-	// sign-out deleted the session in between: the idle slide below then matches no row and logs, and the
-	// reuse still completes. That is accepted, since the check node had already committed to skipping.
-	// ForwardedData reaches the immediate next node only, so anything not handed over is read here and a
-	// load still works when the handover did not survive to this node.
-	sess := in.Session
-	if sess != nil && sess.HandleID != in.Handle {
-		sess = nil // forwarded from a different handle; do not trust it
-	}
-	if sess == nil {
-		loaded, err := s.store.GetByHandle(ctx, in.Handle)
-		if err != nil {
-			return nil, nil, err
-		}
-		if loaded == nil {
-			return nil, nil, fmt.Errorf("resolved session no longer exists")
-		}
-		sess = loaded
-	}
-
-	// This checkpoint's durable context, read here only when the check node's row did not reach us.
-	snapshot := in.Context
-	if snapshot != nil && (snapshot.SessionID != sess.SessionID || snapshot.CheckpointID != in.Checkpoint) {
-		snapshot = nil // forwarded for a different session or checkpoint; do not trust it
-	}
-	if snapshot == nil {
-		loaded, err := s.store.GetByCheckpoint(ctx, sess.SessionID, in.Checkpoint)
-		if err != nil {
-			return nil, nil, err
-		}
-		if loaded == nil {
-			return nil, nil, fmt.Errorf("session context for checkpoint %q no longer exists", in.Checkpoint)
-		}
-		snapshot = loaded
-	}
-
-	// Refresh last-active and slide the idle deadline under the optimistic-lock guard — touches
-	// SESSION only. The absolute deadline is left unchanged so it keeps capping total lifetime. A
-	// conflict here is non-fatal: the session loaded successfully.
-	//
-	// Throttle the write: within ActivityRefresh of the last persisted activity refresh, skip it. This
-	// hot path fires on every session reuse, and an unthrottled UPDATE per reuse is the dominant write
-	// load (and, on Postgres, the main source of dead tuples) on the session table. The persisted idle
-	// deadline then lags real activity by at most ActivityRefresh; config validation keeps that below
-	// the idle window so an active session is never skipped past its idle deadline.
-	now := time.Now().UTC()
-	if now.Sub(sess.LastActiveAt) >= s.timeouts.ActivityRefresh {
-		sess.LastActiveAt = now
-		sess.Properties.LastActiveIP = s.activeIP(in.ClientInfo, sess)
-		sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
-		if updErr := s.store.Update(ctx, sess); updErr != nil {
-			s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
-		}
-	}
-
-	// A sign-in that decided no organization unit follows the one the reuse does, which reaches the flow through
-	// the replayed runtime data.
-	followedOUID, reusable, err := s.reuseOU(ctx, sess)
+	sess, snapshot, err := s.loadCheckpoint(ctx, in)
+	s.publishReuse(ctx, in.AppID, sess, err)
 	if err != nil {
 		return nil, nil, err
 	}
-	if !reusable {
-		return nil, nil, fmt.Errorf("the sign-in can no longer reuse the session")
-	}
-	if followedOUID != "" {
-		followed := *snapshot
-		followed.RuntimeData = maps.Clone(snapshot.RuntimeData)
-		if followed.RuntimeData == nil {
-			followed.RuntimeData = map[string]string{}
-		}
-		followed.RuntimeData[common.RuntimeKeyOUID] = followedOUID
-		snapshot = &followed
-	}
-
-	// Record the joining application as a participant. When this reused session issues a token family,
-	// its SESSION_ID -> tfid mapping is security-critical: logout resolves the families to revoke from
-	// these rows, so a token stamped with a tfid that has no persisted mapping would be unrevocable.
-	// Fail closed in that case so the reuse does not issue an unrevocable family (the caller aborts the
-	// load before publishing the tfid, forcing full re-authentication). Without a tfid there is nothing
-	// to revoke, so the write stays best-effort. Either way it is not throttled with the activity
-	// refresh above: the upsert also registers an application joining the session for the first time.
-	participantOU := followedOUID
-	if fixed := participantOUID(ctx); fixed != "" {
-		if participantOU, err = s.participantOU(ctx, sess.SubjectID, fixed); err != nil {
-			return nil, nil, err
-		}
-	}
-	if partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, participantOU, in.TokenFamilyID,
-		now); partErr != nil {
-		if in.TokenFamilyID != "" {
-			return nil, nil, fmt.Errorf("failed to record SSO session participant for token family: %w", partErr)
-		}
-		s.logger.Warn(ctx, "Failed to record SSO session participant", log.Error(partErr))
-	}
-
 	return sess, snapshot, nil
 }
 
@@ -529,6 +387,7 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	// rows are gone after commit. The read is skipped when neither is wired. A failed read is fatal
 	// only when the revoker needs it; for the listener alone it just drops the notification.
 	var participants []Participant
+	var ended bool
 	notify := s.terminationTopic.HasListeners()
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if s.criteriaRevoker != nil || notify {
@@ -552,16 +411,21 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 			return delErr
 		}
 		// A concurrent termination already removed the row; only the node that removed it notifies.
+		ended = removed
 		notify = notify && removed
 		if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 			return delErr
 		}
 		return s.store.DeleteBySessionID(txCtx, sess.SessionID)
 	}); txErr != nil {
+		s.publishEnd(ctx, TerminationReasonSignOut, sess.SubjectID, "", audit.OutcomeFailed(audit.ReasonServerError))
 		return nil, fmt.Errorf("failed to terminate session: %w", txErr)
 	}
 
 	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowID", sess.FlowID))
+	if ended {
+		s.publishEnd(ctx, TerminationReasonSignOut, sess.SubjectID, sess.SessionID, audit.OutcomeSucceeded)
+	}
 	if notify {
 		s.terminationTopic.Notify(ctx, TerminatedSession{
 			SessionID:    sess.SessionID,
@@ -621,10 +485,18 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 		}
 		return nil
 	}); txErr != nil {
+		s.publishEnd(ctx, TerminationReasonSubjectRevocation, subjectID, "",
+			audit.OutcomeFailed(audit.ReasonServerError))
 		return fmt.Errorf("failed to terminate subject sessions: %w", txErr)
 	}
 
 	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	for _, sess := range sessions {
+		if removed[sess.SessionID] {
+			s.publishEnd(ctx, TerminationReasonSubjectRevocation, sess.SubjectID, sess.SessionID,
+				audit.OutcomeSucceeded)
+		}
+	}
 	if participantsBySession != nil {
 		for _, sess := range sessions {
 			if !removed[sess.SessionID] {
@@ -657,7 +529,9 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 		return nil
 	}
 
+	var ended []Participant
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		ended = nil
 		for _, participation := range participations {
 			if s.criteriaRevoker != nil {
 				if revErr := s.criteriaRevoker.RevokeTokenFamily(txCtx, participation.TokenFamilyID); revErr != nil {
@@ -675,8 +549,12 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 			if len(remaining) > 0 {
 				continue
 			}
-			if _, delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
+			removed, delErr := s.store.DeleteSession(txCtx, participation.SessionID)
+			if delErr != nil {
 				return delErr
+			}
+			if removed {
+				ended = append(ended, participation)
 			}
 			if delErr := s.store.Delete(txCtx, participation.SessionID); delErr != nil {
 				return delErr
@@ -687,6 +565,13 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 		return fmt.Errorf("failed to remove session for the application: %w", txErr)
 	}
 
+	// A failed detachment publishes nothing: an application-wide detachment has no single user or session to
+	// name. A session whose row was gone before the listing has no subject, and is still recorded.
+	for _, participation := range ended {
+		s.publishEnd(ctx, terminationReasonApplicationDetached, participation.SubjectID, participation.SessionID,
+			audit.OutcomeSucceeded)
+	}
+
 	if s.logger.IsDebugEnabled() {
 		sessionIDs := make(map[string]struct{}, len(participations))
 		for _, participation := range participations {
@@ -695,6 +580,296 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 		s.logger.Debug(ctx, "Detached application from SSO sessions", log.Int("sessionCount", len(sessionIDs)))
 	}
 	return nil
+}
+
+// saveCheckpoint attaches the checkpoint without publishing the audit event. A session this execution has none
+// of yet is established in the same transaction that writes its first checkpoint, so a failed save leaves no
+// session behind for a retry to find, and Created is true on the one save that commits it. On an error after
+// an existing session is known it still returns the session's ID, so the caller can tell a session that
+// failed to establish from one that only failed to take a checkpoint.
+func (s *service) saveCheckpoint(ctx context.Context, in SaveCheckpointInput) (SaveCheckpointResult, error) {
+	existing, err := s.existingSession(ctx, in.HandleHint, in.ExecutionID)
+	if err != nil {
+		return SaveCheckpointResult{}, err
+	}
+	if existing != nil && existing.SubjectID != in.SubjectID {
+		s.logger.Warn(ctx, "Authenticated subject differs from the SSO session subject; not attaching checkpoint")
+		return SaveCheckpointResult{Skipped: true}, nil
+	}
+
+	// Reaching this point means the subject authenticated during this execution: the SSO-hit path
+	// loads its checkpoint and never saves one. When that happens inside a session that already
+	// existed, it was a re-authentication (prompt=login, or a max_age the previous authentication no
+	// longer satisfied), so the session's authentication time has to move forward with it. Leaving it
+	// stale would make the session claim an older authentication than actually took place, which
+	// under-reports auth_time and makes a later max_age check reject a request it should allow.
+	if existing != nil {
+		now := time.Now().UTC()
+		properties := existing.Properties
+		properties.LastActiveIP = s.activeIP(in.ClientInfo, existing)
+		if err := s.store.TouchAuthenticatedAt(ctx, existing.SessionID, now,
+			now.Add(s.timeouts.Idle), properties); err != nil {
+			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
+			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
+		} else {
+			existing.AuthenticatedAt = now
+			existing.Properties = properties
+		}
+	}
+
+	var known SaveCheckpointResult
+	if existing != nil {
+		known.SessionID = existing.SessionID
+	}
+	participantOU, err := s.participantOU(ctx, in.SubjectID, participantOUID(ctx))
+	if err != nil {
+		return known, err
+	}
+
+	// Establish the session when there is none, and write this checkpoint's context (upsert) and the joining
+	// participant, in one transaction.
+	target, created := existing, false
+	now := time.Now().UTC()
+	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if target == nil {
+			var establishErr error
+			if target, created, establishErr = s.establishSession(txCtx, in); establishErr != nil {
+				return establishErr
+			}
+		}
+		snapshot := SessionContext{
+			SessionID:      target.SessionID,
+			CheckpointID:   in.Checkpoint,
+			RuntimeData:    snapshotRuntimeData(in.RuntimeData),
+			AuthUser:       in.AuthUser,
+			CompletedSteps: in.CompletedSteps,
+			ContextVersion: 1,
+		}
+		if err := s.store.CreateContext(txCtx, snapshot); err != nil {
+			return err
+		}
+		return s.recordParticipant(txCtx, target.SessionID, in.AppID, participantOU, in.TokenFamilyID, now)
+	}); err != nil {
+		return known, err
+	}
+
+	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
+	return SaveCheckpointResult{
+		Handle:            target.HandleID,
+		SessionID:         target.SessionID,
+		Created:           created,
+		AuthenticatedAt:   target.AuthenticatedAt,
+		AbsoluteExpiresAt: target.AbsoluteExpiresAt,
+	}, nil
+}
+
+// loadCheckpoint restores the checkpoint without publishing the audit event. It returns the session even
+// with an error once the session is known, so the failed event can name its user.
+func (s *service) loadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
+	*Session, *SessionContext, error) {
+	if in.Handle == "" {
+		return nil, nil, fmt.Errorf("no resolved session handle to load")
+	}
+	// The SSO-Check node resolved the session and read this checkpoint's context to decide routing, and
+	// forwards both here, so this path re-reads neither. The resolver has already applied every liveness,
+	// flow-identity and flow-version check. What the handover gives up is noticing that a concurrent
+	// sign-out deleted the session in between: the idle slide below then matches no row and logs, and the
+	// reuse still completes. That is accepted, since the check node had already committed to skipping.
+	// ForwardedData reaches the immediate next node only, so anything not handed over is read here and a
+	// load still works when the handover did not survive to this node.
+	sess := in.Session
+	if sess != nil && sess.HandleID != in.Handle {
+		sess = nil // forwarded from a different handle; do not trust it
+	}
+	if sess == nil {
+		loaded, err := s.store.GetByHandle(ctx, in.Handle)
+		if err != nil {
+			return nil, nil, err
+		}
+		if loaded == nil {
+			return nil, nil, errSessionNotFound
+		}
+		sess = loaded
+	}
+
+	// This checkpoint's durable context, read here only when the check node's row did not reach us.
+	snapshot := in.Context
+	if snapshot != nil && (snapshot.SessionID != sess.SessionID || snapshot.CheckpointID != in.Checkpoint) {
+		snapshot = nil // forwarded for a different session or checkpoint; do not trust it
+	}
+	if snapshot == nil {
+		loaded, err := s.store.GetByCheckpoint(ctx, sess.SessionID, in.Checkpoint)
+		if err != nil {
+			return sess, nil, err
+		}
+		if loaded == nil {
+			return sess, nil, fmt.Errorf("session context for checkpoint %q no longer exists", in.Checkpoint)
+		}
+		snapshot = loaded
+	}
+
+	// Refresh last-active and slide the idle deadline under the optimistic-lock guard — touches
+	// SESSION only. The absolute deadline is left unchanged so it keeps capping total lifetime. A
+	// conflict here is non-fatal: the session loaded successfully.
+	//
+	// Throttle the write: within ActivityRefresh of the last persisted activity refresh, skip it. This
+	// hot path fires on every session reuse, and an unthrottled UPDATE per reuse is the dominant write
+	// load (and, on Postgres, the main source of dead tuples) on the session table. The persisted idle
+	// deadline then lags real activity by at most ActivityRefresh; config validation keeps that below
+	// the idle window so an active session is never skipped past its idle deadline.
+	now := time.Now().UTC()
+	if now.Sub(sess.LastActiveAt) >= s.timeouts.ActivityRefresh {
+		sess.LastActiveAt = now
+		sess.Properties.LastActiveIP = s.activeIP(in.ClientInfo, sess)
+		sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
+		if updErr := s.store.Update(ctx, sess); updErr != nil {
+			s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
+		}
+	}
+
+	// A sign-in that decided no organization unit follows the one the reuse does, which reaches the flow through
+	// the replayed runtime data.
+	followedOUID, reusable, err := s.reuseOU(ctx, sess)
+	if err != nil {
+		return sess, nil, err
+	}
+	if !reusable {
+		return sess, nil, errOUNotEligible
+	}
+	if followedOUID != "" {
+		followed := *snapshot
+		followed.RuntimeData = maps.Clone(snapshot.RuntimeData)
+		if followed.RuntimeData == nil {
+			followed.RuntimeData = map[string]string{}
+		}
+		followed.RuntimeData[common.RuntimeKeyOUID] = followedOUID
+		snapshot = &followed
+	}
+
+	// Record the joining application as a participant. When this reused session issues a token family,
+	// its SESSION_ID -> tfid mapping is security-critical: logout resolves the families to revoke from
+	// these rows, so a token stamped with a tfid that has no persisted mapping would be unrevocable.
+	// Fail closed in that case so the reuse does not issue an unrevocable family (the caller aborts the
+	// load before publishing the tfid, forcing full re-authentication). Without a tfid there is nothing
+	// to revoke, so the write stays best-effort. Either way it is not throttled with the activity
+	// refresh above: the upsert also registers an application joining the session for the first time.
+	participantOU := followedOUID
+	if fixed := participantOUID(ctx); fixed != "" {
+		if participantOU, err = s.participantOU(ctx, sess.SubjectID, fixed); err != nil {
+			return sess, nil, err
+		}
+	}
+	if partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, participantOU, in.TokenFamilyID,
+		now); partErr != nil {
+		if in.TokenFamilyID != "" {
+			return sess, nil, fmt.Errorf("failed to record SSO session participant for token family: %w", partErr)
+		}
+		s.logger.Warn(ctx, "Failed to record SSO session participant", log.Error(partErr))
+	}
+
+	return sess, snapshot, nil
+}
+
+// publishCreate publishes the audit event of an attempt to establish a session for in.SubjectID, from what
+// saveCheckpoint returned. A sign-in that joins an existing session writes no session event, whether the join
+// succeeds or fails. The actor is the authenticated user, set explicitly since the login flow keeps the bearer
+// token of the request it came in on.
+//
+// A session is established in the transaction that writes its first checkpoint, so Created is true only for a
+// session that committed, and a session found for the execution was created, and audited, with a checkpoint.
+// The failed event names no session, since none was left behind.
+func (s *service) publishCreate(ctx context.Context, in SaveCheckpointInput, res SaveCheckpointResult, err error) {
+	record := sessionAudit{
+		event:       eventSessionCreate,
+		userID:      in.SubjectID,
+		actor:       audit.Actor{Type: audit.ActorTypeUser, ID: in.SubjectID},
+		application: in.AppID,
+	}
+	switch {
+	case err != nil && res.SessionID != "" && !res.Created:
+		return
+	case err != nil:
+		record.outcome = audit.OutcomeFailed(audit.ReasonServerError)
+	case res.Skipped:
+		record.outcome = audit.OutcomeDenied(auditReasonSubjectMismatch)
+	case res.Created:
+		record.outcome = audit.OutcomeSucceeded
+		record.sessionID = res.SessionID
+	default:
+		return
+	}
+	s.publish(ctx, record)
+}
+
+// publishReuse publishes the audit event of an attempt by appID to reuse sess, which is nil when the session
+// was not found. The actor is the session's user, set explicitly since the login flow keeps the bearer token of
+// the request it came in on, or anonymous when no session was found.
+func (s *service) publishReuse(ctx context.Context, appID string, sess *Session, err error) {
+	record := sessionAudit{
+		event:       eventSessionReuse,
+		actor:       audit.Actor{Type: audit.ActorTypeAnonymous},
+		outcome:     audit.OutcomeSucceeded,
+		application: appID,
+	}
+	if sess != nil {
+		record.userID = sess.SubjectID
+		record.sessionID = sess.SessionID
+		record.actor = audit.Actor{Type: audit.ActorTypeUser, ID: sess.SubjectID}
+	}
+	switch {
+	case err == nil:
+	case errors.Is(err, errOUNotEligible):
+		record.outcome = audit.OutcomeDenied(auditReasonOUNotEligible)
+	case errors.Is(err, errSessionNotFound):
+		record.outcome = audit.OutcomeFailed(auditReasonSessionNotFound)
+	default:
+		record.outcome = audit.OutcomeFailed(audit.ReasonServerError)
+	}
+	s.publish(ctx, record)
+}
+
+// publishEnd publishes the audit event of an attempt to end the session sessionID of userID, which is empty
+// when the owner is unknown. A sign-out is made by the session's user. Any other end in a runtime flow is made
+// by the system, since those flows keep the bearer token of the request they came in on. Outside a runtime flow
+// the actor is the caller the context resolves.
+func (s *service) publishEnd(ctx context.Context, reason TerminationReason, userID, sessionID string,
+	outcome audit.Outcome) {
+	record := sessionAudit{
+		event:     eventSessionEnd,
+		userID:    userID,
+		outcome:   outcome,
+		sessionID: sessionID,
+		endReason: reason,
+	}
+	switch {
+	case reason == TerminationReasonSignOut:
+		record.actor = audit.Actor{Type: audit.ActorTypeUser, ID: userID}
+	case security.IsRuntimeContext(ctx):
+		record.actor = audit.Actor{Type: audit.ActorTypeSystem}
+	}
+	s.publish(ctx, record)
+}
+
+// publish publishes the audit event record describes. The target is the user, which has no ID when none was
+// known, and then there is no subject either. A failed attempt names no subject and no session, so a failed line
+// never suggests a session the client can use.
+func (s *service) publish(ctx context.Context, record sessionAudit) {
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: record.userID}
+	payload := audit.NewPayload(ctx, target, record.event.action, record.outcome)
+	if record.actor.Type != "" {
+		payload = payload.WithActor(record.actor)
+	}
+	if record.outcome.Result != audit.ResultFailed {
+		if record.userID != "" {
+			payload = payload.WithSubject(target)
+		}
+		payload = payload.WithSessionRef(record.sessionID)
+	}
+	payload = payload.WithApplication(record.application)
+	if record.endReason != "" {
+		payload = payload.WithDetails(map[string]string{audit.DetailEndReason: string(record.endReason)})
+	}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, record.event.name).With(payload))
 }
 
 // revokeFamilies revokes each participant's token family, so signing out drops all of the login's
@@ -732,26 +907,6 @@ func (s *service) participantsForTermination(ctx context.Context, sessions []Ses
 		grouped[p.SessionID] = append(grouped[p.SessionID], p)
 	}
 	return grouped
-}
-
-// targetSession returns the session this execution's checkpoints attach to, establishing one when
-// none exists yet. The bool reports whether this call minted the session. It returns (nil, false,
-// nil) when an existing session belongs to a different subject than the one just authenticated, so
-// the caller skips the save rather than cross-attaching.
-func (s *service) targetSession(ctx context.Context, in SaveCheckpointInput) (*Session, bool, error) {
-	existing, err := s.existingSession(ctx, in.HandleHint, in.ExecutionID)
-	if err != nil {
-		return nil, false, err
-	}
-	if existing != nil {
-		if existing.SubjectID != in.SubjectID {
-			s.logger.Warn(ctx,
-				"Authenticated subject differs from the SSO session subject; not attaching checkpoint")
-			return nil, false, nil
-		}
-		return existing, false, nil
-	}
-	return s.establishSession(ctx, in)
 }
 
 // existingSession returns the session already backing this execution: the one referenced by the

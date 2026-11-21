@@ -455,7 +455,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
 	sessionService, terminationHook, sessionCfg := initSessionService(ctx, serverConfigService,
-		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, logger)
+		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, auditBus, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
@@ -776,12 +776,13 @@ func unregisterServices() {
 // builds the session service, returning the service, its termination hook, and the config so the caller
 // can thread the config into flowexec too.
 func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility, logger *log.Logger,
+	criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility,
+	auditBus eventbus.EventBusInterface, logger *log.Logger,
 ) (flowsession.Service, flowsession.TerminationHook, flowsession.Config) {
 	cfg := readSessionConfig(ctx, svc, logger)
 	sessionService, terminationHook, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
 		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds,
-			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility)
+			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
 	return sessionService, terminationHook, cfg
 }
