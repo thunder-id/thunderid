@@ -2089,7 +2089,7 @@ Sends a transactional email using a configured template. Runs in the background:
 - Template rendering error
 - SMTP server unreachable or rejecting the message (server error)
 
-When the step fails because the provider is not configured or no recipient resolves, and the flow generated an invite link, the step's response carries the link in `additionalData.inviteLink`, for a screen that shows it instead.
+In a user onboarding or invitation flow, when the step fails because the provider is not configured or no recipient resolves, and the flow generated an invite link, the step's response carries the link in `additionalData.inviteLink`, for the admin's screen that shows it instead. Other flows, such as recovery and self-registration, deliver the link by email only: their response never carries it.
 
 With `bestEffort` set to `true`, none of these fail the step.
 

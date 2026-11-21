@@ -524,6 +524,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilTemplateRenderer() 
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientError() {
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
+		FlowType:     providers.FlowTypeUserOnboarding,
 		ExecutorMode: ExecutorModeSend,
 		NodeInputs: []providers.Input{
 			{Identifier: "email", Type: providers.InputTypeEmail, Required: true},
@@ -848,15 +849,35 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_R
 	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
-// An undelivered link reaches the onboarding administrator's screen, never an administrator-initiated flow's
-// administrator, who could finish the flow in the user's place.
+// undeliveredLinkByFlowType maps each flow type to the invite link a failed send returns: only the user onboarding
+// and invitation administrators get one, for the screen that shows it instead.
+func undeliveredLinkByFlowType(link string) map[providers.FlowType]string {
+	return map[providers.FlowType]string{
+		providers.FlowTypeUserOnboarding: link,
+		providers.FlowTypeInvitation:     link,
+		providers.FlowTypeAdminInitiated: "",
+		providers.FlowTypeRecovery:       "",
+		providers.FlowTypeRegistration:   "",
+		providers.FlowTypeSelf:           "",
+		providers.FlowTypeAuthentication: "",
+		"":                               "",
+	}
+}
+
+// flowTypeTestName names a subtest after its flow type, or "no flow type" when it has none.
+func flowTypeTestName(flowType providers.FlowType) string {
+	if flowType == "" {
+		return "no flow type"
+	}
+	return string(flowType)
+}
+
+// An undelivered link reaches only the screen of the administrator who sends a user onboarding or invitation
+// invite; every other flow delivers its link by email alone.
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_UndeliveredLink() {
 	link := "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc"
-	for flowType, want := range map[providers.FlowType]string{
-		providers.FlowTypeUserOnboarding: link,
-		providers.FlowTypeAdminInitiated: "",
-	} {
-		suite.Run(string(flowType), func() {
+	for flowType, want := range undeliveredLinkByFlowType(link) {
+		suite.Run(flowTypeTestName(flowType), func() {
 			suite.SetupTest()
 			ctx := &providers.NodeContext{
 				ExecutionID:  "test-execution-id",
@@ -879,7 +900,38 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_U
 
 			suite.Require().NoError(err)
 			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
 			suite.Equal(want, resp.AdditionalData[common.DataInviteLink])
+		})
+	}
+}
+
+// With no recipient to send to, the invite link likewise reaches only the user onboarding and invitation
+// administrators.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_MissingRecipient_UndeliveredLink() {
+	link := "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc"
+	for flowType, want := range undeliveredLinkByFlowType(link) {
+		suite.Run(flowTypeTestName(flowType), func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-execution-id",
+				FlowType:     flowType,
+				ExecutorMode: ExecutorModeSend,
+				NodeInputs:   []providers.Input{{Identifier: "email", Type: providers.InputTypeEmail, Required: true}},
+				UserInputs:   map[string]string{},
+				RuntimeData:  map[string]string{common.RuntimeKeyInviteLink: link},
+				NodeProperties: map[string]interface{}{
+					"emailTemplate": emailUserInviteProperty,
+				},
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrEmailRecipientMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
+			suite.Equal(want, resp.AdditionalData[common.DataInviteLink])
+			suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
 		})
 	}
 }

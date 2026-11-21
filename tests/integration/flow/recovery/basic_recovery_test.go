@@ -471,6 +471,89 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_RecoveryDisa
 	ts.Require().Error(err, "Expected error when recovery is disabled for the app")
 }
 
+// TestBasicRecoveryFlow_EmailNotSentWithoutSender tests that a recovery flow whose send step names no email
+// provider reaches email_sent_status with emailSent=false, and that the recovery link travels only by email:
+// the step carries none.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_EmailNotSentWithoutSender() {
+	ts.mockSMTP.ClearEmails()
+	flow := buildEmailLinkPasswordRecoveryFlow("")
+	flow.Name = "Email Link Password Recovery Flow Without Sender Test"
+	flow.Handle = "email-link-based-password-recovery-without-sender-test"
+	for _, node := range flow.Nodes.([]map[string]interface{}) {
+		if node["id"] == "send_recovery_email" {
+			delete(node["properties"].(map[string]interface{}), "senderId")
+		}
+	}
+	flowID, err := testutils.CreateFlow(flow)
+	ts.Require().NoError(err, "Failed to create the recovery flow without a sender")
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("Failed to delete the recovery flow without a sender: %v", err)
+		}
+	}()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.testOUID,
+		Name:                  "Recovery Without Sender App",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "recovery_without_sender_client",
+		ClientSecret:          "recovery_without_sender_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{basicRecoveryUserSchema.Handle},
+		AuthFlowID:            ts.authFlowID,
+		RecoveryFlowID:        flowID,
+	})
+	ts.Require().NoError(err, "Failed to create the recovery app without a sender")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the recovery app without a sender: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateRecoveryFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"username": ts.testUsername},
+		"action_submit_username", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Expected email_sent_status: %+v", flowStep)
+	ts.Equal("false", flowStep.Data.AdditionalData["emailSent"], "No email can be sent without a provider")
+	ts.Empty(flowStep.Data.AdditionalData["inviteLink"], "The recovery link travels only by email")
+	time.Sleep(500 * time.Millisecond)
+	ts.Nil(ts.mockSMTP.GetLastEmail(), "No email is sent without a provider")
+}
+
+// TestBasicRecoveryFlow_EmailNotSentWithoutAddress tests that recovery for a user who has no email address
+// reaches email_sent_status without sending anything, and that the step carries no recovery link.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_EmailNotSentWithoutAddress() {
+	ts.mockSMTP.ClearEmails()
+	username := common.GenerateUniqueUsername("recoverynoemail")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ts.testOUID,
+		Type: basicRecoveryUserSchema.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "NoEmailOld123!"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user without an email address")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user without an email address: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"username": username},
+		"action_submit_username", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Expected email_sent_status: %+v", flowStep)
+	ts.Empty(flowStep.Data.AdditionalData["inviteLink"], "The recovery link travels only by email")
+	time.Sleep(500 * time.Millisecond)
+	ts.Nil(ts.mockSMTP.GetLastEmail(), "No email is sent to a user without an address")
+}
+
 // buildEmailLinkPasswordRecoveryFlow returns the email-link password recovery flow definition.
 // Flow: prompt_username → identify_user → generate_recovery_token → send_recovery_email →
 //
