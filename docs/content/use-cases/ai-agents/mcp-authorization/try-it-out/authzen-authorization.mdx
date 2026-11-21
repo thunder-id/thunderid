@@ -26,8 +26,13 @@ server:
     direct_auth_secret: "file://config/secrets/direct_auth_secret"
 ```
 
-Create or update `backend/cmd/server/config/secrets/direct_auth_secret`
-relative to the repository root with this sample value:
+Create or update the Direct Auth Secret file referenced by `deployment.yaml`. Its location depends on how the Data Plane is installed:
+
+- **Source checkout:** `backend/cmd/server/config/secrets/direct_auth_secret`, relative to the repository root.
+- **Release artifact:** `config/secrets/direct_auth_secret`, relative to the extracted Data Plane distribution.
+- **Docker:** `/opt/thunderid/config/secrets/direct_auth_secret` inside the container, backed by its mounted secrets volume.
+
+For local testing, use this sample value:
 
 ```text
 wayfinder-direct-auth-secret

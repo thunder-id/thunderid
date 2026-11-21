@@ -182,7 +182,13 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
       direct_auth_secret: "file://config/secrets/direct_auth_secret"
   ```
 
-  Create or update `backend/cmd/server/config/secrets/direct_auth_secret` with:
+  Create or update the Direct Auth Secret file for your Data Plane installation:
+
+  - **Source checkout:** `backend/cmd/server/config/secrets/direct_auth_secret`, relative to the repository root.
+  - **Release artifact:** `config/secrets/direct_auth_secret`, relative to the extracted distribution.
+  - **Docker:** `/opt/thunderid/config/secrets/direct_auth_secret` inside the container, backed by its secrets volume.
+
+  For local testing, use this sample value:
 
   ```text
   wayfinder-direct-auth-secret
@@ -244,8 +250,7 @@ AUTHORIZATION_MODE=authzen
 THUNDERID_DIRECT_AUTH_SECRET=wayfinder-direct-auth-secret
 ```
 
-ThunderID loads the matching value from `backend/cmd/server/config/secrets/direct_auth_secret` through the file-backed
-`server.security.direct_auth_secret` setting in `deployment.yaml`.
+ThunderID loads the matching value from the secret file referenced by `server.security.direct_auth_secret` in `deployment.yaml`. The file location depends on the Data Plane installation.
 The backend sends this value in the `Direct-Auth-Secret` header when it calls the AuthZEN PDP. This secret authenticates
 the PDP request; it is not the authorization subject. The user or agent identified by the incoming MCP token remains the
 subject whose role assignments determine the decision.
