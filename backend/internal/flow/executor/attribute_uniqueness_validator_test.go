@@ -28,6 +28,9 @@ const (
 	testUniquenessUserType  = "INTERNAL"
 	testUniquenessAgentType = "AGENT"
 	testExistingUserID      = "user-existing"
+	testTargetOUID          = "ou-sales"
+	testOtherOUID           = "ou-marketing"
+	testCrossOUEmail        = "bob@example.com"
 )
 
 type AttributeUniquenessValidatorTestSuite struct {
@@ -511,6 +514,200 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_SignInBoundary_L
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+// crossOUNodeCtx builds a node context for a user flow with cross-OU provisioning enabled.
+func crossOUNodeCtx(runtimeData map[string]string) *providers.NodeContext {
+	runtimeData[categoryNameKey] = string(entitytype.TypeCategoryUser)
+	runtimeData[categoryTypeKey] = testUniquenessUserType
+	return &providers.NodeContext{
+		ExecutionID:    "flow-1",
+		UserInputs:     map[string]string{userAttributeEmail: testCrossOUEmail},
+		RuntimeData:    runtimeData,
+		NodeProperties: map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true},
+	}
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_EmailInTargetOU() {
+	tests := []struct {
+		name           string
+		runtimeData    map[string]string
+		match          *providers.Entity
+		notFound       bool
+		expectedStatus providers.ExecutorStatus
+	}{
+		{
+			name:        "user with the email in the target OU is rejected",
+			runtimeData: map[string]string{ouIDKey: testTargetOUID},
+			match: &providers.Entity{
+				ID: testExistingUserID, Category: providers.EntityCategoryUser, OUID: testTargetOUID,
+			},
+			expectedStatus: providers.ExecUserInputRequired,
+		},
+		{
+			name:        "user with the email in the default OU is rejected when no OU is selected",
+			runtimeData: map[string]string{defaultOUIDKey: testTargetOUID},
+			match: &providers.Entity{
+				ID: testExistingUserID, Category: providers.EntityCategoryUser, OUID: testTargetOUID,
+			},
+			expectedStatus: providers.ExecUserInputRequired,
+		},
+		{
+			name:        "user with the email in another OU is allowed",
+			runtimeData: map[string]string{ouIDKey: testTargetOUID},
+			match: &providers.Entity{
+				ID: testExistingUserID, Category: providers.EntityCategoryUser, OUID: testOtherOUID,
+			},
+			expectedStatus: providers.ExecComplete,
+		},
+		{
+			name:        "agent with the email in the target OU is allowed",
+			runtimeData: map[string]string{ouIDKey: testTargetOUID},
+			match: &providers.Entity{
+				ID: testExistingUserID, Category: providers.EntityCategoryAgent, OUID: testTargetOUID,
+			},
+			expectedStatus: providers.ExecComplete,
+		},
+		{
+			name:           "email held by nobody is allowed",
+			runtimeData:    map[string]string{ouIDKey: testTargetOUID},
+			notFound:       true,
+			expectedStatus: providers.ExecComplete,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			ctx := crossOUNodeCtx(tt.runtimeData)
+
+			suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryUser,
+				testUniquenessUserType).Return([]string{"username"}, nil).Once()
+
+			if tt.notFound {
+				suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+					map[string]interface{}{userAttributeEmail: testCrossOUEmail}).
+					Return(nil, entityprovider.NewEntityProviderError(
+						entityprovider.ErrorCodeEntityNotFound, "not found", "")).Once()
+			} else {
+				suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+					map[string]interface{}{userAttributeEmail: testCrossOUEmail}).
+					Return([]*providers.Entity{tt.match}, nil).Once()
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tt.expectedStatus, resp.Status)
+			if tt.expectedStatus == providers.ExecUserInputRequired {
+				assert.Equal(suite.T(), ErrEntityAlreadyExistsInTargetOU.Code, resp.Error.Code)
+				assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), resp.Error.Error.Params["entity"])
+				// The prompt only re-offers inputs that are missing, so the email has to be cleared.
+				assert.Len(suite.T(), resp.Inputs, 1)
+				assert.Equal(suite.T(), userAttributeEmail, resp.Inputs[0].Identifier)
+				assert.NotContains(suite.T(), ctx.UserInputs, userAttributeEmail)
+			}
+			suite.mockEntityProvider.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_UniqueEmailInAnotherOU_SkipsGlobalLookup() {
+	ctx := crossOUNodeCtx(map[string]string{ouIDKey: testTargetOUID})
+
+	// The schema marks email unique, but cross-OU provisioning scopes it to the target OU instead.
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryUser,
+		testUniquenessUserType).Return([]string{userAttributeEmail}, nil).Once()
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+		map[string]interface{}{userAttributeEmail: testCrossOUEmail}).
+		Return([]*providers.Entity{{
+			ID: testExistingUserID, Category: providers.EntityCategoryUser, OUID: testOtherOUID,
+		}}, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: testCrossOUEmail})
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_NoTargetOU_ReturnsFailure() {
+	ctx := crossOUNodeCtx(map[string]string{})
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryUser,
+		testUniquenessUserType).Return([]string{}, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), resp)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_SearchSystemError_ReturnsFailure() {
+	ctx := crossOUNodeCtx(map[string]string{ouIDKey: testTargetOUID})
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryUser,
+		testUniquenessUserType).Return([]string{}, nil).Once()
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+		map[string]interface{}{userAttributeEmail: testCrossOUEmail}).
+		Return(nil, entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "db error", "")).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), resp)
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOUDisabled_SkipsTargetOUCheck() {
+	ctx := crossOUNodeCtx(map[string]string{ouIDKey: testTargetOUID})
+	ctx.NodeProperties = map[string]interface{}{}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryUser,
+		testUniquenessUserType).Return([]string{}, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOUInAgentCategory_SkipsTargetOUCheck() {
+	ctx := crossOUNodeCtx(map[string]string{ouIDKey: testTargetOUID})
+	ctx.RuntimeData[categoryNameKey] = string(entitytype.TypeCategoryAgent)
+	ctx.RuntimeData[categoryTypeKey] = testUniquenessAgentType
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryAgent,
+		testUniquenessAgentType).Return([]string{}, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_UserTypePlacementUsesDefaultOU() {
+	// With the user type placement, provisioning creates the user in the type's own OU, so the
+	// validator has to check that one rather than the OU the flow resolved.
+	ctx := crossOUNodeCtx(map[string]string{ouIDKey: testOtherOUID, defaultOUIDKey: testTargetOUID})
+	ctx.NodeProperties[propertyKeyProvisioningOU] = string(provisioningOUUserType)
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryUser,
+		testUniquenessUserType).Return([]string{}, nil).Once()
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything,
+		map[string]interface{}{userAttributeEmail: testCrossOUEmail}).
+		Return([]*providers.Entity{{
+			ID: testExistingUserID, Category: providers.EntityCategoryUser, OUID: testTargetOUID,
+		}}, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), ErrEntityAlreadyExistsInTargetOU.Code, resp.Error.Code)
 }
 
 func TestAttributeUniquenessValidatorSuite(t *testing.T) {

@@ -5,6 +5,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -94,9 +95,17 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			category, entityType, svcErr.Error.DefaultValue)
 	}
 
+	// Cross-OU provisioning gives one user an account per OU, so the same email legitimately recurs
+	// across OUs. A deployment-wide email lookup would reject those, so email is checked against the
+	// target OU instead. Every other unique attribute stays deployment-wide.
+	scopeEmailToTargetOU := category == entitytype.TypeCategoryUser && isCrossOUProvisioningAllowed(ctx)
+
 	// Uniqueness is deployment-wide: a holder outside the sign-in boundary must still be found.
 	identifyCtx := security.WithRuntimeContext(context.Background())
 	for _, attr := range uniqueAttrs {
+		if scopeEmailToTargetOU && attr == userAttributeEmail {
+			continue
+		}
 		value, exists := ctx.UserInputs[attr]
 		if !exists || value == "" {
 			continue
@@ -123,8 +132,72 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		}
 	}
 
+	if scopeEmailToTargetOU {
+		inTargetOU, err := e.emailExistsInTargetOU(identifyCtx, ctx)
+		if err != nil {
+			return nil, err
+		}
+		if inTargetOU {
+			logger.Debug(ctx.Context, "User with the provided email already exists in the target OU")
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Error = errForEntityCategory(ErrEntityAlreadyExistsInTargetOU, category)
+			// Ask for the value again: a dynamic prompt only offers inputs that are still missing.
+			delete(ctx.UserInputs, userAttributeEmail)
+			execResp.RuntimeData[userAttributeEmail] = ""
+			execResp.Inputs = []providers.Input{e.reaskInput(svcCtx, category, entityType, userAttributeEmail)}
+			execResp.ForwardedData = map[string]interface{}{common.ForwardedDataKeyInputs: execResp.Inputs}
+			return execResp, nil
+		}
+	}
+
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// emailExistsInTargetOU reports whether a user with the provided email already belongs to the OU the
+// flow provisions into. Users holding the same email in other OUs are allowed, since cross-OU
+// provisioning gives one user an account per OU. It fails when no target OU has been resolved,
+// because the check cannot rule out a duplicate without one.
+func (e *attributeUniquenessValidator) emailExistsInTargetOU(identifyCtx context.Context,
+	ctx *providers.NodeContext) (bool, error) {
+	email := ctx.UserInputs[userAttributeEmail]
+	if email == "" {
+		return false, nil
+	}
+	targetOUID := targetOUIDForNode(ctx)
+	if targetOUID == "" {
+		return false, errors.New("cannot check the email against the target OU: no target OU is resolved")
+	}
+
+	matches, svcErr := e.entityProvider.SearchEntities(identifyCtx,
+		map[string]interface{}{userAttributeEmail: email})
+	if svcErr != nil {
+		if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to search users by email: %s", svcErr.Message)
+	}
+
+	for _, m := range matches {
+		if m != nil && m.Category == providers.EntityCategoryUser && m.OUID == targetOUID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// targetOUIDForNode resolves the organization unit a new entity would be created in, mirroring the
+// placement rule the provisioning executor applies in getOUID so both read the same unit: the entity
+// type's own unit when the node asks for that placement, and the unit resolved by the flow otherwise.
+func targetOUIDForNode(ctx *providers.NodeContext) string {
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	if provisioningOU(placement) == provisioningOUUserType {
+		return ctx.RuntimeData[defaultOUIDKey]
+	}
+	if ouID := ctx.RuntimeData[ouIDKey]; ouID != "" {
+		return ouID
+	}
+	return ctx.RuntimeData[defaultOUIDKey]
 }
 
 // reaskInput builds the input that asks for a conflicting value again. It takes the display name, type

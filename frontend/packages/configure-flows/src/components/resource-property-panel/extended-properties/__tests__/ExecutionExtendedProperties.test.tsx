@@ -1847,12 +1847,25 @@ describe('ExecutionExtendedProperties', () => {
       },
     } as unknown as Resource;
 
-    // The category comes from the type resolver earlier in the flow, so there is nothing to set here.
-    it('should show that no configuration is needed', () => {
+    // The category comes from the type resolver earlier in the flow, so only the cross-OU option is set here.
+    it('should render the allowCrossOUProvisioning checkbox', () => {
       render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
 
-      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.federation.allowCrossOUProvisioning.label')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.noConfig.description')).not.toBeInTheDocument();
       expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    });
+
+    it('should call onChange when the allowCrossOUProvisioning checkbox is toggled', () => {
+      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
+
+      fireEvent.click(screen.getByRole('checkbox'));
+
+      expect(mockOnChange).toHaveBeenCalledWith(
+        'data.properties.allowCrossOUProvisioning',
+        true,
+        attributeUniquenessResource,
+      );
     });
   });
 
