@@ -41,3 +41,23 @@ var (
 		},
 	}
 )
+
+// Consent provider errors. The runtime branches on these codes, so a ConsentProvider
+// implementation must return them for the corresponding conditions; any other client error
+// is surfaced to the user as a generic failure.
+var (
+	// ErrorEssentialConsentDenied is the error a ConsentProvider returns from RecordConsent when
+	// the user denied one or more essential consent attributes.
+	ErrorEssentialConsentDenied = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "AUTH-CES-1006",
+		Error: common.I18nMessage{
+			Key:          "error.consentenforcerservice.essential_consent_denied",
+			DefaultValue: "Essential consent denied",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.consentenforcerservice.essential_consent_denied_description",
+			DefaultValue: "One or more essential consent attributes were denied",
+		},
+	}
+)
