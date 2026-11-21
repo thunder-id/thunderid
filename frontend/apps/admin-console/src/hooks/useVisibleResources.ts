@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useCapabilitiesContext} from '@thunderid/contexts';
+import type {AppPageConfig} from '@thunderid/system-apps';
+import useAdminAppConfig from './useAdminAppConfig';
 import {MANAGED_RESOURCES, type ManagedResource} from '../configs/RouteConfig';
 
 /**
@@ -27,24 +29,32 @@ export interface VisibleResources {
    */
   canRunLifecycle: boolean;
   /**
-   * Whether the admin's permissions are still loading.
+   * Whether the admin's permissions or the Admin App configuration are still loading.
    */
   isLoading: boolean;
   /**
-   * The pages this admin may see, in navigation order.
+   * The pages this admin may see, in the Admin App's navigation order.
    */
   visible: ManagedResource[];
 }
 
+const isManaged = (page: AppPageConfig): boolean => (MANAGED_RESOURCES as string[]).includes(page.key);
+
 /**
- * Decides which pages the signed-in admin sees, from the server's capabilities endpoint.
+ * Decides which pages the signed-in admin sees: the pages the Admin App turns on, in its order, that
+ * the server's capabilities endpoint lets the admin view. A page the admin may not view stays hidden
+ * whatever the configuration's visibility says, since every request on it would be refused.
  */
 export default function useVisibleResources(): VisibleResources {
-  const {can, isLoading} = useCapabilitiesContext();
+  const {can, isLoading: isCapabilitiesLoading} = useCapabilitiesContext();
+  const {config, isLoading: isConfigLoading} = useAdminAppConfig();
 
   return {
     canRunLifecycle: can(LIFECYCLE_RESOURCE),
-    isLoading,
-    visible: MANAGED_RESOURCES.filter((resource: ManagedResource) => can(CATALOG_RESOURCES[resource])),
+    isLoading: isCapabilitiesLoading || isConfigLoading,
+    visible: config.pages
+      .filter(isManaged)
+      .filter((page: AppPageConfig) => page.enabled && can(CATALOG_RESOURCES[page.key as ManagedResource]))
+      .map((page: AppPageConfig) => page.key as ManagedResource),
   };
 }

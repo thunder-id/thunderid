@@ -668,6 +668,9 @@ importers:
       '@thunderid/react-router':
         specifier: 'catalog:'
         version: 1.18.1(@thunderid/browser@1.23.0)(@thunderid/react@1.25.0(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2))(react-router@8.3.0(react-dom@19.2.9(react@19.2.9))(react@19.2.9))(react@19.2.9)
+      '@thunderid/system-apps':
+        specifier: workspace:^
+        version: link:../../packages/system-apps
       '@thunderid/utils':
         specifier: workspace:^
         version: link:../../packages/utils
@@ -846,6 +849,9 @@ importers:
       '@thunderid/configure-applications':
         specifier: workspace:^
         version: link:../../packages/configure-applications
+      '@thunderid/configure-apps':
+        specifier: workspace:^
+        version: link:../../packages/configure-apps
       '@thunderid/configure-connections':
         specifier: workspace:^
         version: link:../../packages/configure-connections
@@ -1135,6 +1141,9 @@ importers:
       '@thunderid/configure-applications':
         specifier: workspace:^
         version: link:../../packages/configure-applications
+      '@thunderid/configure-apps':
+        specifier: workspace:^
+        version: link:../../packages/configure-apps
       '@thunderid/configure-connections':
         specifier: workspace:^
         version: link:../../packages/configure-connections
@@ -1476,6 +1485,130 @@ importers:
       rollup-plugin-visualizer:
         specifier: 'catalog:'
         version: 6.0.5(rolldown@1.1.5)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 8.1.6
+        version: 8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
+      vite-plugin-svgr:
+        specifier: 'catalog:'
+        version: 5.2.0(supports-color@10.2.2)(typescript@5.9.3)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.12)(@vitest/coverage-istanbul@4.1.12)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+
+  frontend/apps/myaccount:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 5.2.8
+        version: 5.2.8
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.9)
+      '@thunderid/components':
+        specifier: workspace:^
+        version: link:../../packages/components
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../../packages/contexts
+      '@thunderid/design':
+        specifier: workspace:^
+        version: link:../../packages/design
+      '@thunderid/i18n':
+        specifier: workspace:^
+        version: link:../../packages/i18n
+      '@thunderid/logger':
+        specifier: workspace:^
+        version: link:../../packages/logger
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.25.0(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2)
+      '@thunderid/react-router':
+        specifier: 'catalog:'
+        version: 1.18.1(@thunderid/browser@1.23.0)(@thunderid/react@1.25.0(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2))(react-router@8.3.0(react-dom@19.2.9(react@19.2.9))(react@19.2.9))(react@19.2.9)
+      '@thunderid/system-apps':
+        specifier: workspace:^
+        version: link:../../packages/system-apps
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../../packages/utils
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.23.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.9))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.23.1(react@19.2.9))(dayjs@1.11.18)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.23.1(react@19.2.9)
+      i18next:
+        specifier: 25.6.0
+        version: 25.6.0(typescript@5.9.3)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.9
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.9(react@19.2.9)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(typescript@5.9.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.9(react@19.2.9))(react@19.2.9)
+    devDependencies:
+      '@rolldown/plugin-babel':
+        specifier: 'catalog:'
+        version: 0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/build-plugins':
+        specifier: workspace:^
+        version: link:../../packages/build-plugins
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../../packages/eslint-plugin
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../../packages/prettier-config
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../../packages/test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.14)
+      '@vitejs/plugin-basic-ssl':
+        specifier: 'catalog:'
+        version: 2.3.0(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.12(supports-color@10.2.2)(vitest@4.1.12)
+      babel-plugin-react-compiler:
+        specifier: 'catalog:'
+        version: 19.1.0-rc.3
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      jsdom:
+        specifier: 'catalog:'
+        version: 27.0.1(supports-color@10.2.2)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.4
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -2012,6 +2145,114 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.6
+
+  frontend/packages/configure-apps:
+    devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.60.0
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.9)
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/components':
+        specifier: workspace:^
+        version: link:../components
+      '@thunderid/configure-design':
+        specifier: workspace:^
+        version: link:../configure-design
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../contexts
+      '@thunderid/design':
+        specifier: workspace:^
+        version: link:../design
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../eslint-plugin
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../hooks
+      '@thunderid/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.25.0(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2)
+      '@thunderid/system-apps':
+        specifier: workspace:^
+        version: link:../system-apps
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../test-utils
+      '@thunderid/types':
+        specifier: workspace:^
+        version: link:../types
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@vitest/browser-playwright':
+        specifier: 'catalog:'
+        version: 4.1.12(playwright@1.60.0)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.12)
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.12(supports-color@10.2.2)(vitest@4.1.12)
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.23.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.9))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.23.1(react@19.2.9))(dayjs@1.11.18)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.23.1(react@19.2.9)
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      prettier:
+        specifier: 'catalog:'
+        version: 3.6.2
+      react:
+        specifier: 'catalog:'
+        version: 19.2.9
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.9(react@19.2.9)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(typescript@5.9.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.9(react@19.2.9))(react@19.2.9)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.4
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.0.0-beta.45(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.12)(@vitest/coverage-istanbul@4.1.12)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-connections:
     dependencies:
@@ -4906,6 +5147,87 @@ importers:
         specifier: 'catalog:'
         version: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.12)(@vitest/coverage-istanbul@4.1.12)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
+  frontend/packages/system-apps:
+    devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.60.0
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.9)
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../contexts
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../eslint-plugin
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.25.0(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2)
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@vitest/browser-playwright':
+        specifier: 'catalog:'
+        version: 4.1.12(playwright@1.60.0)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.12)
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.12(supports-color@10.2.2)(vitest@4.1.12)
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.23.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.9)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.9))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.23.1(react@19.2.9))(dayjs@1.11.18)(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.23.1(react@19.2.9)
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      prettier:
+        specifier: 'catalog:'
+        version: 3.6.2
+      react:
+        specifier: 'catalog:'
+        version: 19.2.9
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.9(react@19.2.9)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(typescript@5.9.3)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.4
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.0.0-beta.45(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.12)(@vitest/coverage-istanbul@4.1.12)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+
   frontend/packages/test-utils:
     dependencies:
       '@testing-library/jest-dom':
@@ -5095,7 +5417,7 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -5153,7 +5475,7 @@ importers:
         version: 2.3.0(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -9737,7 +10059,7 @@ packages:
     resolution: {integrity: sha512-fKShNpKZzupWZuY0z7egydvL0sqW4INEZBEExMBMAa6izlENEVHwoXgdaTCaBZ5fwlr4xf2o1wXC83n9RpO+NA==}
     peerDependencies:
       msw: ^2.4.9
-      vite: '>=8.0.16'
+      vite: 8.1.6
     peerDependenciesMeta:
       msw:
         optional: true
@@ -15712,7 +16034,7 @@ packages:
       '@vitest/ui': 4.1.12
       happy-dom: '*'
       jsdom: '*'
-      vite: '>=8.0.16'
+      vite: 8.1.6
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -20477,7 +20799,6 @@ snapshots:
       '@babel/plugin-transform-runtime': 7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)
       '@babel/runtime': 7.29.13
       vite: 8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
-    optional: true
 
   '@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))':
     dependencies:
@@ -21940,12 +22261,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))':
+  '@vitejs/plugin-react@6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
     optionalDependencies:
       '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.13)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      babel-plugin-react-compiler: 19.1.0-rc.3
 
   '@vitejs/plugin-react@6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.1.5)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))':
     dependencies:

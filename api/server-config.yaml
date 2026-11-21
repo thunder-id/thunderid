@@ -156,6 +156,64 @@ paths:
         "500":
           $ref: '#/components/responses/InternalServerError'
 
+  /server-config/system-apps/{app}:
+    parameters:
+      - $ref: '#/components/parameters/SystemApp'
+    get:
+      tags:
+        - management
+      summary: Get a system app's configuration
+      description: |
+        Returns the configuration of the Admin App (`admin`, the `adminApp` section) or MyAccount, the Account App
+        (`account`, the `accountApp` section) as its three layers. `merged` is always a complete
+        configuration: the app's defaults when nothing is set, with every page the app has. Any
+        signed-in user can read it, since the app itself reads it to decide what to show.
+      operationId: getSystemAppConfig
+      security:
+        - OAuth2: []
+      responses:
+        "200":
+          description: The app's configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemAppConfigLayers'
+        "400":
+          $ref: '#/components/responses/UnsupportedConfigName'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - management
+      summary: Update a system app's configuration
+      description: |
+        Replaces the writable layer of the app's section with the request body, after checking that it
+        names only the app's own pages and actions and uses supported values. Returns the recomputed
+        layers.
+      operationId: updateSystemAppConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppConfig'
+      responses:
+        "200":
+          description: The recomputed configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemAppConfigLayers'
+        "400":
+          $ref: '#/components/responses/UnsupportedConfigName'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     OAuth2:
@@ -179,6 +237,15 @@ components:
       description: The configuration section name.
       schema:
         type: string
+
+    SystemApp:
+      name: app
+      in: path
+      required: true
+      description: The system app.
+      schema:
+        type: string
+        enum: [admin, account]
 
   responses:
     Unauthorized:
@@ -239,8 +306,9 @@ components:
       description: >
         The value of a configuration section. Its concrete shape is section-specific and may be any
         valid JSON value (object, array, or scalar). See `AccountAccessConfig` for the shape of the
-        `accountAccess` section, `NotificationConfig` for the `notification` section and
-        `GatewaySettingsConfig` for the `gateway` section.
+        `accountAccess` section, `NotificationConfig` for the `notification` section,
+        `GatewaySettingsConfig` for the `gateway` section, and `AppConfig` for the `adminApp` and
+        `accountApp` sections.
 
     GatewaySettingsConfig:
       type: object
@@ -281,6 +349,138 @@ components:
               firstGateway:
                 type: string
                 description: The id of the gateway the project's pipeline starts at.
+
+    SystemAppConfigLayers:
+      type: object
+      required: [readOnly, writable, merged]
+      properties:
+        readOnly:
+          allOf:
+            - $ref: '#/components/schemas/AppConfig'
+          nullable: true
+          description: The declarative configuration, or null when there is none.
+        writable:
+          allOf:
+            - $ref: '#/components/schemas/AppConfig'
+          nullable: true
+          description: The configuration set through PUT, or null when none is set.
+        merged:
+          $ref: '#/components/schemas/AppConfig'
+
+    AppConfig:
+      type: object
+      description: The configuration of a system app, the value of its `adminApp` or `accountApp` section.
+      required: [pages, navigation, branding]
+      properties:
+        type:
+          type: string
+          enum: [ADMIN, ACCOUNT]
+          readOnly: true
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppPage'
+        navigation:
+          type: object
+          required: [layout]
+          properties:
+            layout:
+              type: string
+              enum: [TOP_BAR, SIDE_BAR]
+        content:
+          type: object
+          description: How the app lays out its pages. When omitted, the pages are centered in a frame (CONTAINED).
+          properties:
+            width:
+              type: string
+              enum: [CONTAINED, FULL]
+        themeId:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,64}$'
+          description: The Design theme the app takes. When omitted, the app follows the Gate theme of the application it signs in with.
+        branding:
+          type: object
+          required: [showSecuredBy]
+          properties:
+            logo:
+              $ref: '#/components/schemas/AppImage'
+              description: The logo the app shows in its header. When omitted, the app shows the logo of the application it signs in with.
+            favicon:
+              $ref: '#/components/schemas/AppImage'
+              description: The icon the browser shows for the app. When omitted, the app shows its own.
+            title:
+              type: string
+            showSecuredBy:
+              type: boolean
+            links:
+              type: array
+              maxItems: 5
+              description: The pages the app links to at the foot of every page, such as privacy and terms.
+              items:
+                type: object
+                required: [label, url]
+                properties:
+                  label:
+                    type: string
+                    maxLength: 60
+                  url:
+                    type: string
+                    format: uri
+                    maxLength: 2048
+                    description: An http or https URL.
+        languages:
+          type: object
+          description: The app's language menu. When omitted, the app has none.
+          required: [menu]
+          properties:
+            menu:
+              type: boolean
+              description: Shows a menu in the app's header to switch its language.
+            offered:
+              type: array
+              maxItems: 20
+              uniqueItems: true
+              description: The language tags the menu lists, such as `en-US`.
+              items:
+                type: string
+                pattern: '^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8}){0,3}$'
+            default:
+              type: string
+              description: The language the app opens in until its user picks another. One of `offered`.
+
+    AppImage:
+      type: object
+      description: A branding image for each color scheme. When `dark` is omitted, the dark scheme takes `light`.
+      properties:
+        light:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: An http or https URL.
+        dark:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: An http or https URL.
+
+    AppPage:
+      type: object
+      required: [key, enabled, visibility, actions]
+      properties:
+        key:
+          type: string
+          description: The page. The Admin App has `users`, `groups`, `roles` and `agents`. The Account App has `profile` and `security`.
+        enabled:
+          type: boolean
+        visibility:
+          type: string
+          enum: [ALL, BY_PERMISSION]
+          description: "`ALL` shows the page to every admin of the organization unit. `BY_PERMISSION` shows it only to admins whose token carries the page's view permission."
+        actions:
+          type: object
+          additionalProperties:
+            type: boolean
+          description: "The actions the page offers, keyed by action name. Users: invite, create, edit, delete. Groups: create, members, delete. Roles: create, assign, delete. Agents: create, delete. Profile: edit. Security: password."
 
     AccountAccessConfig:
       type: object

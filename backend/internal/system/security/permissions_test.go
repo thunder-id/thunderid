@@ -1352,6 +1352,8 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
 		"GET /capabilities":  true,
 		"POST /flow/execute": true,
+		// The Admin App and the Account App read their own configuration as the signed-in user.
+		"GET /server-config/system-apps/**": true,
 	}
 	root := map[string]bool{
 		"GET /variables": true, "POST /variables": true, "GET /variables/**": true,

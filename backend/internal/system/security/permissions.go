@@ -44,6 +44,7 @@ var publicPaths = []string{
 	"/.well-known/oauth-protected-resource",
 	"/gate/**",
 	"/console/**",
+	"/myaccount/**",
 	"/error/**",
 	"/design/resolve/**",
 	"/i18n/languages",
@@ -863,6 +864,10 @@ func activatePermissions(p *SystemPermissions) {
 		{"GET /notification-templates/**", p.NotificationTemplateView},
 		{"PUT /notification-templates/**", p.NotificationTemplateUpdate},
 		{"DELETE /notification-templates/**", p.NotificationTemplateDelete},
+
+		// System app configuration. The Admin App and the Account App read their own section, so any
+		// signed-in user may read it; saving it keeps the root permission every server config needs.
+		{"GET /server-config/system-apps/**", ""},
 
 		// Import and export APIs.
 		{"POST /import", p.Root},

@@ -54,6 +54,7 @@
     "@thunderid/design": "workspace:^",
     "@thunderid/i18n": "workspace:^",
     "@thunderid/hooks": "workspace:^",
+    "@thunderid/system-apps": "workspace:^",
     "@thunderid/utils": "workspace:^",
     "@wso2/oxygen-ui": "catalog:",
     "@wso2/oxygen-ui-icons-react": "catalog:",

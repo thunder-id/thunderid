@@ -14,10 +14,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/csp"
 )
 
-// cspAppPathPrefixes are the only paths CSP is emitted for: the Gate and Console apps, the only
-// responses that render as documents a browser enforces CSP against. Everything else (API, OAuth2) is
-// JSON or a redirect, where a CSP header would be inert.
-var cspAppPathPrefixes = []string{"/gate/", "/console/"}
+// cspAppPathPrefixes are the only paths CSP is emitted for: the Gate, Console and MyAccount apps, the
+// only responses that render as documents a browser enforces CSP against. Everything else (API,
+// OAuth2) is JSON or a redirect, where a CSP header would be inert.
+var cspAppPathPrefixes = []string{"/gate/", "/console/", "/myaccount/"}
 
 // SecurityHeadersMiddleware applies X-Frame-Options: DENY to every response and the deny-first
 // Content-Security-Policy to Gate and Console responses. The effective CSP policy is resolved per
@@ -44,7 +44,7 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-// isCSPAppPath reports whether path belongs to the Gate or Console application.
+// isCSPAppPath reports whether path belongs to the Gate, Console or MyAccount application.
 func isCSPAppPath(path string) bool {
 	for _, prefix := range cspAppPathPrefixes {
 		if strings.HasPrefix(path, prefix) {
