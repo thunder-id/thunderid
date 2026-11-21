@@ -30,10 +30,15 @@ func newLine(env eventbus.Envelope, payload audit.Payload) line {
 		Target:        refLine{Type: target.Type, ID: target.ID},
 		Action:        string(payload.Action()),
 		Outcome:       outcomeLine{Result: string(outcome.Result), Reason: outcome.Reason},
+		SessionRef:    payload.SessionRef(),
+		FlowRef:       payload.FlowRef(),
 		Details:       payload.Details(),
 	}
 	if client := payload.Client(); client != (audit.Client{}) {
 		l.Client = &clientLine{Address: client.Address, UserAgent: client.UserAgent}
+	}
+	if id := payload.Application(); id != "" {
+		l.Application = &applicationLine{ID: id}
 	}
 	return l
 }
@@ -61,6 +66,7 @@ func largestDetail(details map[string]string) string {
 func capFields(l *line) {
 	fields := []*string{
 		&l.TraceID, &l.Actor.Type, &l.Actor.ID, &l.Target.Type, &l.Target.ID, &l.Action, &l.Outcome.Reason,
+		&l.SessionRef, &l.FlowRef,
 	}
 	for _, ref := range []*refLine{l.OnBehalfOf, l.Subject} {
 		if ref != nil {
@@ -69,6 +75,9 @@ func capFields(l *line) {
 	}
 	if l.Client != nil {
 		fields = append(fields, &l.Client.Address, &l.Client.UserAgent)
+	}
+	if l.Application != nil {
+		fields = append(fields, &l.Application.ID)
 	}
 	for _, field := range fields {
 		*field = truncateBytes(*field, maxFieldBytes)

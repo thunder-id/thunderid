@@ -4709,6 +4709,45 @@ func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 	}
 }
 
+func (s *ServiceTestSuite) TestInitContext_MintsAFlowRefDistinctFromTheExecutionID() {
+	first, svcErr := s.newBoundaryFixture(providers.FlowTypeRegistration).
+		initContext(context.Background(), providers.FlowTypeRegistration)
+	s.Require().Nil(svcErr)
+	second, svcErr := s.newBoundaryFixture(providers.FlowTypeRegistration).
+		initContext(context.Background(), providers.FlowTypeRegistration)
+	s.Require().Nil(svcErr)
+
+	s.NotEmpty(first.flowRef)
+	s.NotEqual(first.ExecutionID, first.flowRef)
+	s.NotEqual(first.flowRef, second.flowRef)
+	s.Regexp(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, first.flowRef)
+}
+
+func (s *ServiceTestSuite) TestRecordFlowOnContext() {
+	forged := sysContext.WithApplicationID(sysContext.WithFlowRef(context.Background(), "forged-ref"), "forged-app")
+	cases := []struct {
+		name    string
+		engine  EngineContext
+		wantRef string
+		wantApp string
+	}{
+		{"the resolved application", EngineContext{Context: forged, flowRef: "ref-1", AppID: "app-1",
+			Application: providers.Application{ID: "app-1"}}, "ref-1", "app-1"},
+		{"a requested application that never resolved", EngineContext{Context: forged, flowRef: "ref-1",
+			AppID: "made-up-app"}, "ref-1", ""},
+		{"a flow stored before references existed", EngineContext{Context: forged, AppID: "app-1",
+			Application: providers.Application{ID: "app-1"}}, "", "app-1"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			recordFlowOnContext(&tc.engine)
+
+			s.Equal(tc.wantRef, sysContext.GetFlowRef(tc.engine.Context), "an inbound value never survives")
+			s.Equal(tc.wantApp, sysContext.GetApplicationID(tc.engine.Context))
+		})
+	}
+}
+
 // A unit the application is not accessible from is refused at every entry point before any flow
 // context exists, with one answer whether the unit is not shared with or does not exist.
 func (s *ServiceTestSuite) TestBoundSignIn_RefusesAUnitTheApplicationIsNotAccessibleFrom() {

@@ -31,6 +31,12 @@ const (
 
 	// RequestMetadataKey is the context key for the client metadata of a request.
 	RequestMetadataKey contextKey = "request_metadata"
+
+	// FlowRefKey is the context key for the public reference of the flow a request runs in.
+	FlowRefKey contextKey = "flow_ref"
+
+	// ApplicationIDKey is the context key for the application the request is made for.
+	ApplicationIDKey contextKey = "application_id"
 )
 
 // ============================================================================
@@ -159,6 +165,33 @@ func GetClient(ctx context.Context) (address, userAgent string) {
 // middleware records them only for a public peer.
 func WithClient(ctx context.Context, address, userAgent string) context.Context {
 	return context.WithValue(context.WithValue(ctx, ClientAddressKey, address), ClientUserAgentKey, userAgent)
+}
+
+// ============================================================================
+// Flow Functions
+// ============================================================================
+
+// GetFlowRef retrieves the public reference of the flow the request runs in, or "" when it runs in none.
+func GetFlowRef(ctx context.Context) string {
+	ref, _ := ctx.Value(FlowRefKey).(string)
+	return ref
+}
+
+// WithFlowRef records the public reference of the flow the request runs in. It is not the execution ID, which
+// is a capability the client presents to continue the flow.
+func WithFlowRef(ctx context.Context, ref string) context.Context {
+	return context.WithValue(ctx, FlowRefKey, ref)
+}
+
+// GetApplicationID retrieves the ID of the application the request is made for, or "" when it names none.
+func GetApplicationID(ctx context.Context) string {
+	id, _ := ctx.Value(ApplicationIDKey).(string)
+	return id
+}
+
+// WithApplicationID records the ID of the application the request is made for.
+func WithApplicationID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, ApplicationIDKey, id)
 }
 
 // ============================================================================
