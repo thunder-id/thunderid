@@ -285,7 +285,7 @@ func resolveAndSetMappedAuthorizationTargets(
 		ctx, idpDTO, federatedAttributes, idpService.ResolveDirectAuthorizationTargets)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
-			log.String("idpId", idpID), log.String("error", svcErr.ErrorDescription.String()))
+			log.String(log.LoggerKeyIDPID, idpID), log.String("error", svcErr.ErrorDescription.String()))
 	}
 
 	if execResp.RuntimeData == nil {
@@ -323,7 +323,7 @@ func expandMappedGroupAncestors(
 		ancestors, err := entityProvider.GetTransitiveGroupAncestors(groupID)
 		if err != nil {
 			logger.Warn(ctx, "Failed to resolve ancestors of a mapped group, continuing without them",
-				log.String("groupId", groupID), log.Error(err))
+				log.String("groupID", groupID), log.Error(err))
 			continue
 		}
 		expanded = systemutils.MergeUniqueStrings(expanded, ancestors)

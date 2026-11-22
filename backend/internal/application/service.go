@@ -354,7 +354,7 @@ func (as *applicationService) GetOAuthApplication(
 	entity, epErr := as.entityProvider.GetEntity(client.ID)
 	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
-			log.String("entityID", client.ID), log.Error(epErr))
+			log.MaskedString(log.LoggerKeyEntityID, client.ID), log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	if entity == nil || entity.Category != providers.EntityCategoryApp {

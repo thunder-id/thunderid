@@ -80,7 +80,7 @@ func (e *sessionSignOutExecutor) Execute(ctx *providers.NodeContext) (*providers
 	// concern — the OAuth layer resolves it on the sign-out completion callback.
 	execResp.EngineData[common.RuntimeKeySSOSessionCleared] = dataValueTrue
 
-	logger.Debug(ctx.Context, "Terminated SSO session on sign-out", log.String("flowId", in.FlowID))
+	logger.Debug(ctx.Context, "Terminated SSO session on sign-out", log.String("flowID", in.FlowID))
 	return execResp, nil
 }
 

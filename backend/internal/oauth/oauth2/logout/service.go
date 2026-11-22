@@ -197,9 +197,9 @@ func (s *logoutService) Resolve(ctx context.Context, req LogoutRequest) (*Logout
 	if svcErr != nil {
 		// An unresolvable client is the caller's fault (unknown client id); log at debug, not error.
 		if svcErr.Type == tidcommon.ClientErrorType {
-			s.logger.Debug(ctx, "Client not found for logout", log.String("clientId", clientID))
+			s.logger.Debug(ctx, "Client not found for logout", log.String("clientID", clientID))
 		} else {
-			s.logger.Error(ctx, "Failed to resolve client for logout", log.String("clientId", clientID))
+			s.logger.Error(ctx, "Failed to resolve client for logout", log.String("clientID", clientID))
 		}
 		return nil, errInvalidClient
 	}
