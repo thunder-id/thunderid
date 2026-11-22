@@ -11,7 +11,7 @@ import SchemaComposer from './SchemaComposer';
 import SchemaJsonEditor from './SchemaJsonEditor';
 import type {AuthorizationDetailTypeForm, SchemaMode} from '../../hooks/useAuthorizationDetailTypeForm';
 import type {SchemaField} from '../../models/authorization-detail-type';
-import {MAX_SCHEMA_BYTES, schemaKeywordIssues} from '../../utils/authorization-detail-schema';
+import {composerUnsupportedPath, MAX_SCHEMA_BYTES, schemaKeywordIssues} from '../../utils/authorization-detail-schema';
 
 export interface FieldsSectionProps {
   form: AuthorizationDetailTypeForm;
@@ -54,6 +54,11 @@ export default function FieldsSection({
     if (schemaMode !== 'json' || jsonInvalid || fieldsKnown) return [];
     const parsed = JSON.parse(form.jsonText) as Record<string, unknown>;
     return schemaKeywordIssues(parsed);
+  }, [schemaMode, jsonInvalid, fieldsKnown, form.jsonText]);
+  // Names the first field the composer cannot show, so the reason for editing as JSON is clear.
+  const unsupportedPath = useMemo(() => {
+    if (schemaMode !== 'json' || jsonInvalid || fieldsKnown) return null;
+    return composerUnsupportedPath(JSON.parse(form.jsonText));
   }, [schemaMode, jsonInvalid, fieldsKnown, form.jsonText]);
 
   // A save the server refused for the schema is reported here; one refused for the summary is reported
@@ -157,10 +162,16 @@ export default function FieldsSection({
             ) : (
               !fieldsKnown && (
                 <Alert severity="info">
-                  {t(
-                    'authorizationDetailTypes:schema.builderUnavailable',
-                    'This schema uses features the composer cannot show, so it can be edited only as JSON. It is checked when you save.',
-                  )}
+                  {unsupportedPath
+                    ? t(
+                        'authorizationDetailTypes:schema.builderUnavailableAt',
+                        'The field {{path}} uses features the composer cannot show, such as a list of objects, so this schema can be edited only as JSON. It is checked when you save.',
+                        {path: unsupportedPath, interpolation: {escapeValue: false}},
+                      )
+                    : t(
+                        'authorizationDetailTypes:schema.builderUnavailable',
+                        'This schema uses features the composer cannot show, so it can be edited only as JSON. It is checked when you save.',
+                      )}
                 </Alert>
               )
             )}

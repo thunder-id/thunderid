@@ -388,7 +388,12 @@ function CanvasRowElement({
       aria-level={level}
       aria-selected={selected}
       aria-label={heading}
-      aria-describedby={`${field.key}-row-description`}
+      // The caption under the label is read after the summary of the field's settings.
+      aria-describedby={
+        field.description?.trim()
+          ? `${field.key}-row-description ${field.key}-row-caption`
+          : `${field.key}-row-description`
+      }
       data-testid={`field-row-${field.key}`}
       onClick={(e) => {
         e.stopPropagation();
@@ -404,13 +409,21 @@ function CanvasRowElement({
         },
       ]}
     >
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={[layout.label, {fontStyle: field.name.trim() ? 'normal' : 'italic'}]}
-      >
-        {field.name.trim() ? row.label : heading}
-      </Typography>
+      {/* The description sits below the label, as the consent screen shows it. */}
+      <Box sx={[layout.label, {display: 'flex', flexDirection: 'column'}]}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{lineHeight: 'inherit', fontStyle: field.name.trim() ? 'normal' : 'italic'}}
+        >
+          {field.name.trim() ? row.label : heading}
+        </Typography>
+        {field.description?.trim() && (
+          <Typography id={`${field.key}-row-caption`} variant="caption" color="text.secondary" sx={{lineHeight: 1.4}}>
+            {field.description}
+          </Typography>
+        )}
+      </Box>
       {notShown ? (
         <Typography variant="caption" color="text.secondary" sx={[layout.value, {fontStyle: 'italic'}]}>
           {t('authorizationDetailTypes:composer.canvas.notShown', 'Not shown on the consent screen')}

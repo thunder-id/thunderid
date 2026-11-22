@@ -413,7 +413,10 @@ describe('authorization details type sections', () => {
   it('names where in the JSON a schema error is, without the server text', () => {
     const schema = {
       type: 'object',
-      properties: {payee: {type: 'object', properties: {iban: {type: 'string', pattern: '^[A-Z0-9]+$'}}}},
+      // A list whose items carry a rule is one the composer cannot show, so the schema opens as JSON.
+      properties: {
+        payee: {type: 'object', properties: {iban: {type: 'array', items: {type: 'string', pattern: '^[A-Z0-9]+$'}}}},
+      },
     };
     renderWithProviders(<FormHarness detailType={{...paymentType, consentTemplate: '', schema}} />);
     const refuse = (path: string): void =>
@@ -533,12 +536,16 @@ describe('authorization details type sections', () => {
       type: 'object',
       properties: {
         amount: {type: 'number', enum: [10, 20]},
-        payee: {type: 'object', properties: {iban: {type: 'string', pattern: '^[A-Z0-9]+$'}}},
+        payee: {type: 'object', properties: {iban: {type: 'array', items: {type: 'string', pattern: '^[A-Z0-9]+$'}}}},
       },
     };
     renderWithProviders(<FormHarness detailType={{...paymentType, schema}} />);
 
     expect(screen.getByText(/features the composer cannot show/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/The field payee\.iban uses features/),
+      'the field it cannot show is named',
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Summary'), {
       target: {value: 'Pay {{amount}} to {{payee.iban}} as {{type}}'},
     });
@@ -724,7 +731,13 @@ describe('authorization details type sections', () => {
 
   it('opens a schema the composer cannot show as JSON, and saves it as it is', async () => {
     const user = userEvent.setup();
-    const schema = {type: 'object', properties: {amount: {type: 'number', enum: [10, 20]}}};
+    const schema = {
+      type: 'object',
+      properties: {
+        amount: {type: 'number', enum: [10, 20]},
+        tags: {type: 'array', items: {type: 'string', minLength: 1}},
+      },
+    };
     renderWithProviders(<FormHarness detailType={{...paymentType, schema}} />);
 
     expect(screen.getByText(/features the composer cannot show/)).toBeInTheDocument();

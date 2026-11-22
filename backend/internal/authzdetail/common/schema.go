@@ -299,6 +299,43 @@ func itemOptionsOf(root *jsonschema.Schema) map[string][]any {
 	return options
 }
 
+// schemaProperty is one property of a registered schema as the consent screen describes it: its description
+// and its keywords, read from the raw JSON so each number keeps the text the type declares.
+type schemaProperty struct {
+	description string
+	keywords    map[string]json.RawMessage
+}
+
+// schemaPropertiesOf returns every property of a registered schema, keyed by its dot-separated path.
+func schemaPropertiesOf(raw json.RawMessage) map[string]schemaProperty {
+	properties := map[string]schemaProperty{}
+	collectSchemaProperties(raw, "", properties)
+	return properties
+}
+
+// collectSchemaProperties records each property of the object schema at prefix, and of the objects it holds.
+func collectSchemaProperties(schema json.RawMessage, prefix string, found map[string]schemaProperty) {
+	_, members, ok := objectMembers(schema)
+	if !ok {
+		return
+	}
+	names, properties, ok := objectMembers(members["properties"])
+	if !ok {
+		return
+	}
+	for _, name := range names {
+		path := joinPath(prefix, name)
+		_, keywords, ok := objectMembers(properties[name])
+		if !ok {
+			continue
+		}
+		property := schemaProperty{keywords: keywords}
+		_ = json.Unmarshal(keywords["description"], &property.description)
+		found[path] = property
+		collectSchemaProperties(properties[name], path, found)
+	}
+}
+
 // SchemaFieldPaths returns the dot-separated path of every property of a registered schema.
 func SchemaFieldPaths(raw json.RawMessage) map[string]bool {
 	paths := map[string]bool{FieldType: true}
@@ -530,8 +567,9 @@ func numberOrder(a, b json.Number) (int, bool) {
 	return order, err == nil
 }
 
-// CheckTypeValue checks that a schema allows the type value it is registered under: a const or enum on its
-// type member must include it, or no detail of the type could be valid.
+// CheckTypeValue checks that a schema allows the type value it is registered under: a const and an enum on
+// its type member must each include it, since a detail must satisfy both, or no detail of the type could be
+// valid.
 func CheckTypeValue(raw json.RawMessage, typ string) error {
 	decoded, err := decodeJSON(raw)
 	if err != nil {
@@ -545,10 +583,7 @@ func CheckTypeValue(raw json.RawMessage, typ string) error {
 	}
 	values, hasEnum := member["enum"].([]any)
 	c, hasConst := member["const"]
-	if hasConst {
-		values = append(values, c)
-	}
-	if (hasEnum || hasConst) && !slices.Contains(values, any(typ)) {
+	if (hasEnum && !slices.Contains(values, any(typ))) || (hasConst && c != any(typ)) {
 		return fieldError(FieldType, "type allows no detail of the type %q; its const or enum must include it", typ)
 	}
 	return nil

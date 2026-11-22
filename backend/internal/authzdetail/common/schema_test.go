@@ -327,7 +327,7 @@ func (s *SchemaTestSuite) TestCompileSchema_RefusesUnsatisfiableLimits() {
 	s.NoError(err, "equal bounds and a positive multipleOf are satisfiable")
 }
 
-// A const or enum on the type member must include the value the type is registered under.
+// A const and an enum on the type member must each include the value the type is registered under.
 func (s *SchemaTestSuite) TestCheckTypeValue() {
 	s.NoError(CheckTypeValue(json.RawMessage(`{"type":"object"}`), "payment"))
 	s.NoError(CheckTypeValue(json.RawMessage(`{"type":"object","properties":{"type":{"const":"payment"}}}`),
@@ -339,6 +339,12 @@ func (s *SchemaTestSuite) TestCheckTypeValue() {
 	s.Require().ErrorAs(err, &fieldErr)
 	s.Equal(FieldType, fieldErr.Path)
 	s.Error(CheckTypeValue(json.RawMessage(`{"type":"object","properties":{"type":{"enum":["a"]}}}`), "payment"))
+	s.NoError(CheckTypeValue(json.RawMessage(`{"type":"object","properties":{"type":{"enum":["payment"],`+
+		`"const":"payment"}}}`), "payment"))
+	s.Error(CheckTypeValue(json.RawMessage(`{"type":"object","properties":{"type":{"enum":["payment"],`+
+		`"const":"other"}}}`), "payment"), "a detail must satisfy both the enum and the const")
+	s.Error(CheckTypeValue(json.RawMessage(`{"type":"object","properties":{"type":{"enum":["other"],`+
+		`"const":"payment"}}}`), "payment"), "a detail must satisfy both the enum and the const")
 	s.Error(CheckTypeValue(json.RawMessage(`{`), "payment"))
 }
 

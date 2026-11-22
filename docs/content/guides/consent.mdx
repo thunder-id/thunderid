@@ -126,13 +126,15 @@ Without **Check Intents**, **User Consent** fails the flow with `FET-1130` when 
 The consent screen shows one card for each detail that needs approval:
 
 - The card heading is the intent's [consent summary](./intents.mdx#consent-summary), filled in with the requested values.
-- Below it, the card lists the detail's fields with their display names. A value the processor supplied, such as an account number, appears as a value the user cannot edit.
+- Below it, the card lists the detail's fields with their display names, and the intent's description of a field below its name. A value the processor supplied, such as an account number, appears as a value the user cannot edit.
 - A field the intent lets the user change appears as an input: a number box, a date picker, or a list whose items the user can remove or add.
 - Each card has its own **Approve** switch. A detail whose switch is off is left out of the grant.
 
 ### Narrow a Detail
 
 The user can change a field only in the direction its [field policy](./intents.mdx#field-policies) allows, such as lowering an amount or removing an account from a list. The consent screen does not accept a wider value. For an amount of 45 that can only go down, entering 50 shows `Enter 45 or less.` and disables the approve action. The token carries the narrowed value.
+
+The changed value must also keep the limits the intent's schema sets for the field. For a quantity with a minimum of 5 and a step of 5, the number box moves 20, 15, 10, 5, and entering 19 shows `Enter a multiple of 5.` A number also keeps its exclusive limits, a date the minimum and maximum of its field policy, and a list the fewest items it must keep (`minItems`) or the most it may hold (`maxItems`).
 
 <ProductName /> checks every change again when it records the decision. A change the intent does not allow fails the flow with `FET-1129`, and the client receives `access_denied` with `The change made to the authorization details is not allowed`.
 
