@@ -1,7 +1,7 @@
 # Authorization support for federated entities
 
 - **Status:** Final
-- **Version:** 1.2
+- **Version:** 1.3
 - **Related documents:** [Discussion #5197: Authorization support for federated entities](https://github.com/thunder-id/thunderid/discussions/5197), Issue #5192
 
 ## Summary
@@ -76,7 +76,7 @@ A list-valued claim is detected structurally from the JSON the identity provider
 
 ### Combining rule-based and direct mapping
 
-A connection may configure rule-based mapping, direct mapping, both, or neither, independently. Every matching rule's targets and every direct mapping's resolved targets union into one set, then split by kind: role and group references fold into the subject the authorization engine evaluates, while permission references combine directly with the engine's decision rather than going through it, since a permission target is already the answer. The connection's mapping counts as configured, and is therefore the sole authority for scopes in preference to the token's own asserted scope claim, once either mode has at least one entry.
+A connection may configure rule-based mapping, direct mapping, both, or neither, independently. Every matching rule's targets and every direct mapping's resolved targets union into one set, then split by kind: role and group references fold into the subject the authorization engine evaluates, while permission references combine directly with the engine's decision rather than going through it, since a permission target is already the answer. For token exchange of an external token and for the jwt-bearer grant, the connection's mapping is the only authority for permission scopes: the presented token's own `scope` claim never grants one, and a connection with neither mode configured grants none, so the token carries only OIDC scopes.
 
 Rule-based and direct resolution are combined independently at token issuance (token exchange and ID-JAG) and at federated login, rather than through one shared step, because the two entry points' failure handling genuinely differs: token issuance must produce a definitive answer, so a resolution failure there is fatal to the request; federated login is best-effort, so the same kind of failure there is not.
 
@@ -115,6 +115,8 @@ sequenceDiagram
 
 Resolving the issuer to a connection and applying its mapping already happens as part of validating the incoming token, so this adds no additional lookup beyond the shared evaluate-and-combine step. This path needs no local record; it is where authorization for externally managed entities without a ThunderID record works end to end. For ID-JAG, the assertion is minted at issuance with the client's requested scopes, unfiltered by mapping at that point; mapping is what determines the granted access at consumption, when the assertion is presented on the jwt-bearer grant and its own claims are resolved fresh against the connection's mapping.
 
+A token issued for an external subject, through token exchange of an external token or through the jwt-bearer grant, carries an `idp` claim naming the connection's issuer, and token introspection returns it. Its `sub` is the provider's identifier and is never resolved to a local entity, even when it equals one's ID. ThunderID's own APIs, the management APIs, the MCP server, the UserInfo endpoint, and credential issuance, do not accept such a token; a trusted issuer is how an external identity calls them. Exchanging the token again keeps `idp`. Presented as the `actor_token` of an exchange, the token makes the provider the actor's issuer: the new token's `act.iss` names the provider rather than ThunderID, and when the subject token's delegation chain is carried over, its head is dropped as a repeat of the current actor only when both its `sub` and its issuer match, so the provider's subject and a local entity with the same identifier stay distinct actors.
+
 Neither token exchange nor the jwt-bearer grant issues a refresh token, so mapping is never re-consulted this way. A refresh token issued from the federated login path carries only its granted scopes forward, not the mapping decision that produced them: on renewal, those scopes are re-checked against the subject's own current group memberships, not against the connection's mapping. A scope granted only through mapping (with no matching direct role or group assignment) is therefore dropped on the next refresh, the same as a scope backed by a real assignment that has since been revoked.
 
 Exchanging an external identity token for a ThunderID access token, against a connection configured with `tokenExchangeEnabled: true` and a matching `trustedTokenAudience`:
@@ -129,7 +131,7 @@ curl -X POST https://<thunderid-host>/oauth2/token \
   --data-urlencode "resource=https://api.example.com"
 ```
 
-The response's `scope` reflects only what the connection's mapping and the subject's own claims permit, narrowed further by whatever subset was requested:
+The response's `scope` reflects only what the connection's mapping permits, narrowed further by whatever subset was requested:
 
 ```json
 {
@@ -278,6 +280,7 @@ An Advanced Rules toggle switches the row to explicit value-to-target rules inst
 - **AC3.1:** Given the presented token carries its own scopes, when those scopes are not covered by the connection's mapping, then they are not granted.
 - **AC3.2:** Given a client presents its own identity alongside the entity's, when a token is issued, then the granted scopes do not exceed the client's own authorization.
 - **AC3.3:** Given an identity assertion is exchanged for a token, then the granted scopes reflect the mapping evaluated from the assertion's own claims at that point, not from whatever was resolved when the assertion was issued.
+- **AC3.4:** Given a connection has no mapping, when its external token or identity assertion is exchanged for a token, then no permission scope is granted, whatever the presented token's own scopes.
 
 ### R4. Assigning roles and groups at provisioning
 
@@ -295,6 +298,7 @@ An Advanced Rules toggle switches the row to explicit value-to-target rules inst
 **Acceptance criteria:**
 
 - **AC5.1:** Given no local record exists for the federated identity, when a client presents it through token exchange, then ThunderID authorizes the request from the connection's mapping.
+- **AC5.2:** Given a federated identity's `sub` equals a local entity's ID, when a token is issued for it, then the token names its provider in `idp`, introspection returns `idp`, and ThunderID never treats the token as that local entity, including after the token is exchanged again, at the UserInfo endpoint, and as the actor of a further exchange, where `act.iss` names the provider.
 
 ### R6. Authorization from an external policy decision point (out of scope)
 
@@ -309,3 +313,4 @@ Not covered by this specification. Tracked separately in [Discussion #5126](http
 | 1.0 | 2026-09-07 | Initial specification, covering rule-based mapping, direct name-based mapping, and their combination across federated login, token exchange, and ID-JAG. |
 | 1.1 | 2026-09-24 | Corrected the refresh token renewal behavior: mapping is never re-consulted on refresh, and neither token exchange nor the jwt-bearer grant issues a refresh token. |
 | 1.2 | 2026-11-07 | Bounded mapped roles, groups, and permissions to the organization unit that owns the connection: rule targets are validated against it at save time only, direct name lookups match only within it, and the console pickers list only it (AC1.6, AC1.7). |
+| 1.3 | 2026-11-21 | Made the mapping the only authority for permission scopes on token exchange of an external token and on the jwt-bearer grant, with no fallback to the presented token's own scopes (AC3.4). Tokens issued for an external subject carry `idp`, returned by introspection and kept on a further exchange, and are never treated as a local entity, at the UserInfo endpoint or as the actor of a further exchange, where `act.iss` names the provider (AC5.2). |

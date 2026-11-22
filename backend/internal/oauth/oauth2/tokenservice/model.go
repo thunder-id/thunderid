@@ -60,8 +60,9 @@ type AccessTokenBuildContext struct {
 	// The token receives a `cnf.jkt` claim and is issued with `token_type=DPoP`.
 	DPoPJkt string
 	// SourceIDP, when set, records the issuer of the external identity provider that authenticated the
-	// subject (used by the jwt-bearer/ID-JAG grant). It is emitted as the `idp` claim so downstream
-	// consumers can distinguish a federated principal from a local one.
+	// subject (the jwt-bearer/ID-JAG grant, and token exchange of such a subject). It is emitted as the
+	// `idp` claim so downstream consumers can distinguish a federated principal from a local one, and the
+	// subject is never resolved to a local entity.
 	SourceIDP string
 	// TokenFamilyID, when set, is stamped as the `tfid` claim so the token can be revoked as part of
 	// its authorization grant's family. It is constant across refresh rotation.
@@ -228,11 +229,9 @@ type grantedTypeVersion struct {
 // MappedAuthorization is server-resolved authorization context for a subject token's issuing
 // connection, not claims from the token itself. Zero value when self-issued or unmapped.
 type MappedAuthorization struct {
-	// Targets are the resolved roles, groups, and permissions. Empty if unconfigured or unmatched.
+	// Targets are the resolved roles, groups, and permissions. Empty if unconfigured or unmatched, and
+	// then an external token is granted no permission scopes.
 	Targets []providers.AuthorizationTarget
-	// Configured distinguishes "configured but unmatched" (grants nothing) from "no mapping at all"
-	// (falls back to the token's own scope claim) — both leave Targets empty.
-	Configured bool
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).
@@ -262,6 +261,10 @@ type SubjectTokenClaims struct {
 	// Authorization is server-resolved context, not a claim from the token itself — see
 	// MappedAuthorization.
 	Authorization MappedAuthorization
+	// SourceIDP is the external identity provider whose identifier Sub is: the issuer of an external
+	// token, or the idp claim of a self-issued access token. Empty when Sub is a subject of this
+	// deployment.
+	SourceIDP string
 }
 
 // IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the

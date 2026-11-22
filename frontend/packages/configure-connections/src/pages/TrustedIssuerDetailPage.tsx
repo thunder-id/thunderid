@@ -528,7 +528,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               description={t(
                 'trustedIssuers:detail.authorizationMapping.description',
                 'Map values in tokens from this issuer to local roles, groups, or permissions. ' +
-                  'When a mapping is set, these tokens carry only the permissions it grants.',
+                  'Tokens from this issuer carry only the permissions the mapping grants, and none without a mapping.',
               )}
               onRuleChange={(mappings, isValid) => {
                 clearUpdateError();

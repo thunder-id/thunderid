@@ -2740,6 +2740,71 @@ func TestResolveSubjectIdentity_AgentSubjectOfAnExchange(t *testing.T) {
 	assert.Equal(t, string(providers.EntityCategoryAgent), category)
 }
 
+// An external identity provider's subject names no local entity even when it equals one's ID, so it is
+// neither looked up nor reported.
+func TestResolveSubjectIdentity_ExternalSubjectIsNotResolved(t *testing.T) {
+	actors := actorprovidermock.NewActorProviderMock(t)
+	tb := &tokenBuilder{actorProvider: actors}
+
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
+		Subject:   subjectIdentityUserID,
+		SourceIDP: "https://idp.example.com",
+		OAuthApp:  &providers.OAuthClient{ID: subjectIdentityClientID},
+	})
+
+	assert.Empty(t, id)
+	assert.Empty(t, category)
+
+	// Nor is it taken for the client when it equals the client's ID.
+	id, category = tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
+		Subject:   subjectIdentityClientID,
+		SourceIDP: "https://idp.example.com",
+		OAuthApp:  &providers.OAuthClient{ID: subjectIdentityClientID, EntityCategory: providers.EntityCategoryApp},
+	})
+
+	assert.Empty(t, id)
+	assert.Empty(t, category)
+	actors.AssertNotCalled(t, "GetActor", mock.Anything, mock.Anything)
+}
+
+// An actor token issued here for an external identity provider's subject names that provider as the
+// actor's issuer, so the act claim does not present the external sub as a local one, and the actor is
+// not resolved to a local entity.
+func TestBuildAccessToken_ExternalSubjectActorNamesItsIdP(t *testing.T) {
+	actors := actorprovidermock.NewActorProviderMock(t)
+	jwtService := jwtmock.NewJWTServiceInterfaceMock(t)
+	tb := &tokenBuilder{
+		cfg: oauthconfig.Config{
+			JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600},
+		},
+		jwtService:    jwtService,
+		actorProvider: actors,
+	}
+	actors.On("GetActor", mock.Anything, mock.Anything).
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Code: "ENTITY-404"}).Maybe()
+	jwtService.On("GenerateJWT", mock.Anything, "user123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			act, ok := claims["act"].(map[string]interface{})
+			return ok && act["sub"] == subjectIdentityUserID && act["iss"] == "https://idp.example.com"
+		}), mock.Anything, mock.Anything).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := tb.BuildAccessToken(context.Background(), &AccessTokenBuildContext{
+		Subject:   "user123",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		GrantType: string(providers.GrantTypeTokenExchange),
+		OAuthApp:  &providers.OAuthClient{ID: subjectIdentityClientID},
+		ActorClaims: &SubjectTokenClaims{
+			Sub: subjectIdentityUserID, Iss: "https://example.com", SourceIDP: "https://idp.example.com",
+		},
+	})
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.ActorSub)
+	assert.True(t, result.Delegated)
+	actors.AssertNotCalled(t, "GetActor", mock.Anything, subjectIdentityUserID)
+}
+
 // On an exchange the subject arrives as the presented token's sub, which is a mapped attribute when
 // the issuing application configured one. It resolves to no entity, and both fields are left empty
 // so the attribute — an email address here — is never published.
@@ -2819,6 +2884,19 @@ func TestResolveActorIdentity_MappedAttributeIsNotReported(t *testing.T) {
 	id := tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
 	}, "svc@example.com")
+
+	assert.Empty(t, id)
+}
+
+// An actor from an external identity provider names no local entity, even when its sub equals the
+// client's ID.
+func TestResolveActorIdentity_ExternalActorIsNotReported(t *testing.T) {
+	tb := &tokenBuilder{}
+
+	id := tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{
+		OAuthApp:    &providers.OAuthClient{ID: subjectIdentityClientID},
+		ActorClaims: &SubjectTokenClaims{Sub: subjectIdentityClientID, SourceIDP: "https://idp.example.com"},
+	}, subjectIdentityClientID)
 
 	assert.Empty(t, id)
 }

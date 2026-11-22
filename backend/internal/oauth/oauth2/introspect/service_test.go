@@ -248,6 +248,35 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesSubType
 	}
 }
 
+// A token issued for an external identity provider's subject names that provider in idp, so an
+// introspecting resource server can tell its sub from a subject of this deployment.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesSourceIDP() {
+	token := accessTokenFor("external-subject-token")
+	s.stubAccessToken(token, map[string]interface{}{
+		"sub":       "partner-user-42",
+		"idp":       "https://partner.example.com",
+		"client_id": "client123",
+	})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), "partner-user-42", response.Sub)
+	assert.Equal(s.T(), "https://partner.example.com", response.Idp)
+}
+
+// A token for a subject of this deployment carries no idp, and introspection reports none.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSourceIDP() {
+	token := accessTokenFor("local-subject-token")
+	s.stubAccessToken(token, map[string]interface{}{"sub": "user123", "client_id": "client123"})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.Empty(s.T(), response.Idp)
+}
+
 // A token without the claim reports no subject type rather than a guessed one.
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSubType() {
 	token := accessTokenFor("no-sub-type")

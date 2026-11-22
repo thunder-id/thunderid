@@ -1024,6 +1024,32 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_ClientCredentialsGrant_Reject
 	s.mockTokenValidator.AssertExpectations(s.T())
 }
 
+// TestGetUserInfo_ExternalSubject_Rejected tests that a token whose subject belongs to an external
+// identity provider, named by idp, gets no UserInfo response
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_ExternalSubject_Rejected() {
+	claims := map[string]interface{}{
+		"exp":        float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":        float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":        "external-user-1",
+		"scope":      "openid",
+		"grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+		"client_id":  "client123",
+		"idp":        "https://idp.example.com",
+	}
+	token := s.createToken(claims)
+
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "external-user-1", Claims: claims}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), errorExternalSubjectNotSupported.Code, svcErr.Code)
+	assert.Equal(s.T(), errorExternalSubjectNotSupported.ErrorDescription.DefaultValue,
+		svcErr.ErrorDescription.DefaultValue)
+	assert.Nil(s.T(), response)
+	s.mockInboundClient.AssertNotCalled(s.T(), "GetOAuthClientByClientID", mock.Anything, mock.Anything)
+}
+
 // testGetUserInfoAllowedGrantType is a helper function for testing allowed grant types
 func (s *UserInfoServiceTestSuite) testGetUserInfoAllowedGrantType(grantTypeValue interface{}, description string) {
 	claims := map[string]interface{}{

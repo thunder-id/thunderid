@@ -44,11 +44,13 @@ const (
 	testTokenExchangeJWT = "test-token-exchange-jwt" //nolint:gosec
 	testScopeReadWrite   = "read write"
 	testCustomIssuer     = "https://custom.issuer.com"
-	testUserEmail        = "user@example.com"
-	testClientID         = "client123"
-	testUserID           = "user123"
-	testScopeRead        = "read"
-	testScopeWrite       = "write"
+	// testExternalSubjectIssuer issues subject tokens as a trusted external identity provider.
+	testExternalSubjectIssuer = "https://external-idp.example.com"
+	testUserEmail             = "user@example.com"
+	testClientID              = "client123"
+	testUserID                = "user123"
+	testScopeRead             = "read"
+	testScopeWrite            = "write"
 	// testTokenExchangeDefaultRSID / testTokenExchangeDefaultRSAudience model the
 	// deployment-configured default resource server used when a request carries no explicit
 	// resource parameter.
@@ -961,6 +963,13 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestExtendDelegationChain() {
 			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: otherIssuer},
 			subjectAct: map[string]interface{}{"sub": "actor"},
 			expected:   map[string]interface{}{"sub": "actor"}},
+		// The act claim names an external identity provider's subject by that provider, so the same
+		// actor presented again is recognized at the head of the chain.
+		{name: "ExternalSubjectActorMatchesHeadNamingItsIdP",
+			actor: &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: serverIssuer, SourceIDP: otherIssuer},
+			subjectAct: map[string]interface{}{
+				"sub": "actor", "iss": otherIssuer, "act": priorChain},
+			expected: priorChain},
 	}
 
 	for _, tc := range testCases {
@@ -2682,6 +2691,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_Defa
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testCustomIssuer,
 			Scopes:         []string{"read"},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
@@ -2749,6 +2759,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceParamIg
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testCustomIssuer,
 			Scopes:         []string{"read"},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
@@ -2923,6 +2934,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testCustomIssuer,
 			Scopes:         []string{"read", "write"},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
@@ -3834,6 +3846,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoReso
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testCustomIssuer,
 			Scopes:         []string{"openid"},
 			UserAttributes: map[string]interface{}{},
 		}, nil)
@@ -3883,12 +3896,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrant
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testExternalSubjectIssuer,
 			UserAttributes: map[string]interface{}{},
 			Authorization: tokenservice.MappedAuthorization{
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
@@ -3949,12 +3962,12 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            testUserID,
+			Iss:            testExternalSubjectIssuer,
 			UserAttributes: map[string]interface{}{},
 			Authorization: tokenservice.MappedAuthorization{
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetPermission, ResourceServerID: testRS01URI, Permission: "read"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -4777,4 +4790,90 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestGetScopes_NarrowsWithinTheS
 			suite.Equal(tt.want, scopes)
 		})
 	}
+}
+
+// A self-issued subject token issued for an external identity provider's subject keeps naming that
+// provider on the exchanged token, and its sub is not resolved to a local entity.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SelfIssuedExternalSubjectKeepsSourceIDP() {
+	actors, attrCache := suite.withLifespanMocks()
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer, "idp": testExternalSubjectIssuer, "aud": "app123",
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	req := suite.createBasicTokenRequest(subjectToken)
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:       testUserID,
+			Iss:       testCustomIssuer,
+			Scopes:    []string{testScopeRead},
+			SourceIDP: testExternalSubjectIssuer,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SourceIDP == testExternalSubjectIssuer && ctx.SubjectEntityID == "" &&
+				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	suite.Nil(errResp)
+	actors.AssertNotCalled(suite.T(), "GetActor", mock.Anything, mock.Anything)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// An external subject token whose connection has no authorization mapping gets no permission scopes,
+// whatever its own scope claim and the request ask for; OIDC scopes are kept. The exchanged token names
+// the external issuer as its source IdP.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_UnmappedExternalSubjectGetsOnlyOIDCScopes() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testExternalSubjectIssuer, "aud": "app123",
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	req := suite.createBasicTokenRequest(subjectToken)
+	req.Scope = "openid read"
+	req.Resources = []string{testRS01URI}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:       testUserID,
+			Iss:       testExternalSubjectIssuer,
+			Scopes:    []string{constants.ScopeOpenID, testScopeRead},
+			SourceIDP: testExternalSubjectIssuer,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SourceIDP == testExternalSubjectIssuer &&
+				tokenservice.JoinScopes(ctx.Scopes) == constants.ScopeOpenID &&
+				len(ctx.Audiences) == 1 && ctx.Audiences[0] == testRS01URI
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	suite.Nil(errResp)
+}
+
+// An actor token issued for an external identity provider's subject names no local entity, so the actor
+// is not resolved, while the local subject still is.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExternalSubjectActorIsNotResolved() {
+	actors, _ := suite.withLifespanMocks()
+	req := suite.exchangeRequest(true)
+	actors.On("GetActor", mock.Anything, testMappedSub).
+		Return(&providers.Entity{ID: testMappedSub, Category: providers.EntityCategoryUser}, nil).Once()
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, testActorToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:       testUserID,
+			Iss:       testCustomIssuer,
+			SourceIDP: testExternalSubjectIssuer,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectEntityID == testMappedSub && ctx.ActorClaims != nil &&
+				ctx.ActorClaims.EntityID == "" && ctx.ActorClaims.SourceIDP == testExternalSubjectIssuer
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	suite.Nil(errResp)
+	actors.AssertNotCalled(suite.T(), "GetActor", mock.Anything, testUserID)
 }
