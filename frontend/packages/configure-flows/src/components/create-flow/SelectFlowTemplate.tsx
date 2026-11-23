@@ -61,6 +61,8 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
     'assets/images/icons/mobile-message.svg',
   ],
   SMS_OTP: ['assets/images/icons/mobile-message.svg'],
+  BASIC_SMS_OTP_MFA: ['assets/images/icons/password.svg', 'assets/images/icons/mobile-message.svg'],
+  BASIC_EMAIL_OTP_MFA: ['assets/images/icons/password.svg', 'assets/images/icons/email-down.svg'],
   PASSKEY: ['assets/images/icons/fingerprint.svg'],
   BASIC_PASSKEY: ['assets/images/icons/password.svg', 'assets/images/icons/fingerprint.svg'],
   BASIC: ['assets/images/icons/password.svg'],

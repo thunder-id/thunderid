@@ -642,6 +642,42 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithUsername() {
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 }
 
+func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithUsername_UserWithoutMobile() {
+	err := common.UpdateAppConfig(smsAuthTestAppID, smsAuthFlowUsernameID, "")
+	ts.Require().NoError(err, "Failed to update app config for SMS flow with username")
+	defer func() {
+		_ = common.UpdateAppConfig(smsAuthTestAppID, smsAuthFlowMobileID, "")
+	}()
+
+	username := common.GenerateUniqueUsername("smsnomobile")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: smsAuthTestOU.ID,
+		Type: smsAuthEntityType.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "testpassword"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user without a mobile number")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user without a mobile number: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateAuthenticationFlow(smsAuthTestAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+	ts.mockServer.ClearMessages()
+
+	finalStep, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"username": username, "mobile_number": "+94770000000"}, "action_001",
+		flowStep.ChallengeToken)
+	ts.Require().NoError(err, "The missing number should be reported in band, not as a failed request")
+	ts.Require().NotEqual("COMPLETE", finalStep.FlowStatus, "The flow must not complete")
+	ts.Require().Empty(finalStep.Assertion, "No assertion should be issued")
+	ts.Require().Nil(ts.mockServer.GetLastMessage(), "No SMS should be sent")
+}
+
 func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowInvalidOTP() {
 	// Step 1: Initialize the flow and provide mobile number
 	var userAttrs map[string]interface{}

@@ -139,6 +139,8 @@ func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, 
 			}
 		}
 
+		n.consumeActionInputs(ctx)
+
 		// Forward the action type to the next node
 		if actionType := n.getActionTypeForRef(ctx.CurrentAction); actionType != "" {
 			if nodeResp.ForwardedData == nil {
@@ -320,6 +322,7 @@ func (n *promptNode) finalizeLoginOptionsAction(ctx *providers.NodeContext, node
 		return nodeResp, nil
 	}
 	nodeResp.NextNodeID = nextNode
+	n.consumeActionInputs(ctx)
 	for authClass, ref := range authClassToAction {
 		if ref == ctx.CurrentAction {
 			nodeResp.RuntimeData[common.RuntimeKeySelectedAuthClass] = authClass
@@ -624,6 +627,14 @@ func (n *promptNode) tryAutoSelectSingleAction(ctx *providers.NodeContext) bool 
 		return true
 	}
 	return false
+}
+
+// consumeActionInputs consumes the inputs of the action taken. Inputs only another action asks for are not
+// consumed.
+func (n *promptNode) consumeActionInputs(ctx *providers.NodeContext) {
+	for _, input := range n.getInputsForCurrentAction(ctx.CurrentAction) {
+		ctx.ConsumeInput(input.Identifier)
+	}
 }
 
 // getInputsForCurrentAction returns the inputs of the prompt whose action matches

@@ -5,6 +5,7 @@ package flowexec
 
 import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 )
 
 const (
@@ -29,6 +30,13 @@ const (
 	// adminInitiatedSubjectInput is the start input naming the user an administrator-initiated flow is for.
 	adminInitiatedSubjectInput = "subject"
 )
+
+// authorizationParams are the inputs that name the permissions the authorization step evaluates. A flow takes
+// them only from the request that starts it. A protocol that starts the flow sets them as runtime data.
+var authorizationParams = []string{
+	common.RuntimeKeyRequestedPermissions,
+	common.RuntimeKeyResourceServerIdentifier,
+}
 
 // flowInitiationMode classifies how an application is permitted to initiate a new authentication
 // flow directly over HTTP. It is derived at runtime from the application's inbound protocol

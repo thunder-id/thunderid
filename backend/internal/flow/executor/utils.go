@@ -18,6 +18,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -693,4 +694,87 @@ func orderByDisplayOrder(inputs []providers.Input, attrs []entitytype.AttributeI
 			return 0
 		}
 	})
+}
+
+// isEmptyAttribute reports whether a profile attribute holds no value, so the collector treats it as missing.
+func isEmptyAttribute(value any) bool {
+	return value == nil || value == ""
+}
+
+// resolveKnownRecipient returns the recipient the flow already knows. known is false when it knows none.
+func resolveKnownRecipient(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager, entityProvider entityprovider.EntityProviderInterface,
+	recipientType, attribute string, logger *log.Logger) (recipient string, known bool, err error) {
+	if ctx.RuntimeData[common.RuntimeKeyRecipientType] == recipientType {
+		if expected := ctx.RuntimeData[common.RuntimeKeyExpectedRecipient]; expected != "" {
+			return expected, true, nil
+		}
+	}
+
+	if isConstantNodeInput(ctx, attribute) && ctx.UserInputs[attribute] != "" {
+		return ctx.UserInputs[attribute], true, nil
+	}
+
+	userID := ctx.RuntimeData[userAttributeUserID]
+	signedInUserID, signedInResolved := "", false
+	if userID == "" {
+		if signedInUserID, err = resolveSignedInUserID(ctx, execResp, authnProvider); err != nil {
+			return "", true, err
+		}
+		userID, signedInResolved = signedInUserID, true
+	}
+	if userID == "" {
+		return "", false, nil
+	}
+
+	if entityProvider == nil {
+		return "", true, errors.New("entity provider is not configured for recipient resolution")
+	}
+	user, providerErr := entityProvider.GetEntityProfile(ctx.Context, userID)
+	if providerErr != nil {
+		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return "", true, nil
+		}
+		return "", true, fmt.Errorf("failed to fetch user from entity provider: %w", providerErr)
+	}
+	if recipient, attrErr := GetUserAttribute(user, attribute); attrErr == nil {
+		return recipient, true, nil
+	}
+	if claim, ok := core.GetExternalClaim(ctx.RuntimeData, attribute); ok && claim != "" {
+		return claim, true, nil
+	}
+	if submitted := ctx.UserInputs[attribute]; submitted != "" {
+		if !signedInResolved {
+			if signedInUserID, err = resolveSignedInUserID(ctx, execResp, authnProvider); err != nil {
+				return "", true, err
+			}
+		}
+		if signedInUserID == userID {
+			return submitted, true, nil
+		}
+	}
+	logger.Debug(ctx.Context, "Recipient attribute not found on user entity", log.String("attribute", attribute))
+	return "", true, nil
+}
+
+// resolveSignedInUserID returns the ID of the user signed in to the flow, or an empty ID when no user is signed in
+// or the signed in user has no account. Unlike GetUserIDFromContext it skips userID in runtime data, since the
+// caller compares the two, and it fails on a server error.
+func resolveSignedInUserID(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager) (string, error) {
+	if authnProvider == nil || !ctx.AuthUser.IsAuthenticated() {
+		return "", nil
+	}
+	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return "", fmt.Errorf("failed to resolve the authenticated user: %s", svcErr.Code)
+		}
+		return "", nil
+	}
+	execResp.AuthUser = authUser
+	if entityRef == nil {
+		return "", nil
+	}
+	return entityRef.EntityID, nil
 }

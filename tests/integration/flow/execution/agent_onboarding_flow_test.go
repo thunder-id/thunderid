@@ -65,17 +65,19 @@ const (
 // and a shared field would leave the agents it was overwritten with behind on the server.
 type AgentOnboardingFlowTestSuite struct {
 	suite.Suite
-	flowID          string
-	createdAgent    string
-	bareAgent       string
-	takenNameAgent  string
-	secondAgent     string
-	ownedAgent      string
-	delegatedAgent  string
-	ownerCheckAgent string
-	ownerUserID     string
-	authFlowID      string
-	multiURIAgent   string
+	flowID string
+	// delegationFlowID is a copy of the shipped flow whose agent details prompt asks for the delegation inputs.
+	delegationFlowID string
+	createdAgent     string
+	bareAgent        string
+	takenNameAgent   string
+	secondAgent      string
+	ownedAgent       string
+	delegatedAgent   string
+	ownerCheckAgent  string
+	ownerUserID      string
+	authFlowID       string
+	multiURIAgent    string
 }
 
 func TestAgentOnboardingFlowTestSuite(t *testing.T) {
@@ -92,6 +94,53 @@ func (ts *AgentOnboardingFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to resolve the seeded authentication flow")
 	ts.Require().NotEmpty(authFlowID, "The seeded authentication flow must be present")
 	ts.authFlowID = authFlowID
+
+	delegationFlowID, err := copyFlowAskingForDelegation(flowID)
+	ts.Require().NoError(err, "Failed to create the agent onboarding flow that asks for delegation")
+	ts.delegationFlowID = delegationFlowID
+}
+
+// delegationInputs are the inputs a flow carrying the delegation widget asks for on the agent details prompt.
+var delegationInputs = []string{agentDelegatedInput, agentRedirectURIsInput, agentAuthFlowIDInput, agentUserTypesInput}
+
+// copyFlowAskingForDelegation copies the shipped agent onboarding flow with the delegation inputs added to its
+// agent details prompt, and returns the copy's ID.
+func copyFlowAskingForDelegation(shippedID string) (string, error) {
+	flow, err := testutils.GetFlow(shippedID)
+	if err != nil {
+		return "", err
+	}
+	err = testutils.ModifyFlowNode(&flow, "prompt_agent_details", func(node map[string]interface{}) {
+		prompts, _ := node["prompts"].([]interface{})
+		prompt, _ := prompts[0].(map[string]interface{})
+		inputs, _ := prompt["inputs"].([]interface{})
+		meta, _ := node["meta"].(map[string]interface{})
+		components, _ := meta["components"].([]interface{})
+		for _, c := range components {
+			block, _ := c.(map[string]interface{})
+			if block["id"] != "block_agent_details" {
+				continue
+			}
+			blockComponents, _ := block["components"].([]interface{})
+			action := blockComponents[len(blockComponents)-1]
+			blockComponents = blockComponents[:len(blockComponents)-1]
+			for _, identifier := range delegationInputs {
+				ref := "input_agent_" + identifier
+				blockComponents = append(blockComponents, map[string]interface{}{
+					"id": ref, "ref": identifier, "type": "TEXT_INPUT", "label": identifier, "required": false})
+				inputs = append(inputs, map[string]interface{}{
+					"ref": ref, "identifier": identifier, "type": "TEXT_INPUT", "required": false})
+			}
+			block["components"] = append(blockComponents, action)
+		}
+		prompt["inputs"] = inputs
+	})
+	if err != nil {
+		return "", err
+	}
+	flow.Name += " with delegation"
+	flow.Handle = agentOnboardingFlowHandle + "-delegation"
+	return testutils.CreateFlow(flow)
 }
 
 func (ts *AgentOnboardingFlowTestSuite) TearDownSuite() {
@@ -107,6 +156,11 @@ func (ts *AgentOnboardingFlowTestSuite) TearDownSuite() {
 	if ts.ownerUserID != "" {
 		if err := testutils.DeleteUser(ts.ownerUserID); err != nil {
 			ts.T().Logf("Failed to delete the owner user during teardown: %v", err)
+		}
+	}
+	if ts.delegationFlowID != "" {
+		if err := testutils.DeleteFlow(ts.delegationFlowID); err != nil {
+			ts.T().Logf("Failed to delete the delegation flow during teardown: %v", err)
 		}
 	}
 }
@@ -459,10 +513,11 @@ func (ts *AgentOnboardingFlowTestSuite) createOwnerUser() string {
 
 // runToCompletion drives the flow from the owner prompt to the credentials screen, submitting the
 // given owner and detail inputs. It returns the provisioned agent id.
-func (ts *AgentOnboardingFlowTestSuite) runToCompletion(name, owner string, details map[string]string) string {
+func (ts *AgentOnboardingFlowTestSuite) runToCompletion(flowID, name, owner string,
+	details map[string]string) string {
 	ts.T().Helper()
 
-	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
+	_, step, _ := startAgentOnboarding(&ts.Suite, flowID)
 	executionID := step.ExecutionID
 
 	ownerInputs := map[string]string{}
@@ -486,7 +541,7 @@ func (ts *AgentOnboardingFlowTestSuite) runToCompletion(name, owner string, deta
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_SelectedOwnerIsRecorded() {
 	ts.ownerUserID = ts.createOwnerUser()
 
-	ts.ownedAgent = ts.runToCompletion(
+	ts.ownedAgent = ts.runToCompletion(ts.flowID,
 		common.GenerateUniqueUsername("integration_agent_owned"), ts.ownerUserID, map[string]string{})
 
 	agent, err := testutils.GetAgent(ts.ownedAgent)
@@ -500,7 +555,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_SelectedOwnerIsR
 // category is refused here and the prompt is shown again rather than the run failing outright.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnOwnerThatIsNotAUser() {
 	// An agent's own identifier is the nearest thing to a user id that is not one.
-	ts.ownerCheckAgent = ts.runToCompletion(
+	ts.ownerCheckAgent = ts.runToCompletion(ts.flowID,
 		common.GenerateUniqueUsername("integration_agent_owner_probe"), "", map[string]string{})
 
 	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
@@ -518,10 +573,10 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnOwnerTh
 // A delegated agent signs a user in, so it needs a callback to return them to. The flow asks for
 // one rather than provisioning an agent that cannot complete the exchange.
 //
-// The shipped flow collects no delegation inputs, so they are submitted directly here, which is
-// what a flow carrying the delegation widget would do.
+// The shipped flow collects no delegation inputs, so this runs a copy that asks for them, as a flow
+// carrying the delegation widget does.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegationRequiresARedirectURI() {
-	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.delegationFlowID)
 	executionID := step.ExecutionID
 
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
@@ -543,7 +598,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegationRequir
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKeepsItsRedirectURI() {
 	const callback = "https://agent.example.com/callback"
 
-	ts.delegatedAgent = ts.runToCompletion(
+	ts.delegatedAgent = ts.runToCompletion(ts.delegationFlowID,
 		common.GenerateUniqueUsername("integration_agent_delegated"), "",
 		map[string]string{
 			agentDelegatedInput:    "true",
@@ -570,7 +625,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKeepsEveryCommaSeparatedRedirectURI() {
 	const first, second = "https://agent.example.com/callback", "https://agent.example.com/other"
 
-	ts.multiURIAgent = ts.runToCompletion(
+	ts.multiURIAgent = ts.runToCompletion(ts.delegationFlowID,
 		common.GenerateUniqueUsername("integration_agent_multi_uri"), "",
 		map[string]string{
 			agentDelegatedInput:    "true",
@@ -588,7 +643,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 
 // A login flow that does not exist is refused, and the run ends with that error.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnUnknownLoginFlow() {
-	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.delegationFlowID)
 	executionID := step.ExecutionID
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
 	_, step, body := ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{

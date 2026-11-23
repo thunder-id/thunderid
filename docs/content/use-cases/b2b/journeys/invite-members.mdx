@@ -108,7 +108,7 @@ curl -X POST https://localhost:8090/flow/execute \
   }'
 ```
 
-The roles are checked as they are on the prompt, as the caller of `/flow/execute`. The backend client holds the root `system` permission, so that check limits nothing, and the allow-list in your backend is what keeps an admin to the roles your application offers. An email that names no account still stops once at the **No Account Found** confirmation before the new-user branch continues.
+The roles are checked as they are on the prompt, as the caller of `/flow/execute`. The backend client holds the root `system` permission, so that check limits nothing, and the allow-list in your backend is what keeps an admin to the roles your application offers. An email that names no account stops at the **No Account Found** confirmation, and the flow then asks for the roles.
 
 | Refusal | Cause |
 |---|---|

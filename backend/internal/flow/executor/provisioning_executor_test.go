@@ -664,6 +664,70 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.NotContains(suite.T(), result, "userID")
 	assert.NotContains(suite.T(), result, "code")
+	assert.Equal(suite.T(), []string{"username"}, ctx.GetConsumedInputs(),
+		"Only the submitted schema attributes are consumed")
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestApplyPinnedValue() {
+	schema := []entitytype.AttributeInfo{{Attribute: attributeEmail, Type: "email"}}
+	pinned := func(subject string) map[string]string {
+		shared, err := sharedVerificationEvidence(verificationEvidence{Pin: &providers.AttributeVerificationPin{
+			Subject: subject, Attribute: attributeEmail, Value: "alice@example.com",
+			Channel: providers.VerificationChannelEmail,
+		}})
+		suite.Require().NoError(err)
+		return shared
+	}
+	tests := []struct {
+		name      string
+		shared    map[string]string
+		collected string
+		expected  string
+	}{
+		{"a different value is replaced by the pinned one", pinned(""), "mallory@example.com",
+			"alice@example.com"},
+		{"the same address in another form is kept", pinned(""), "alice@EXAMPLE.com", "alice@EXAMPLE.com"},
+		{"a pin on an existing user changes nothing", pinned("user-1"), "mallory@example.com",
+			"mallory@example.com"},
+		{"no pin changes nothing", nil, "mallory@example.com", "mallory@example.com"},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			ctx := &providers.NodeContext{SharedRuntimeData: tt.shared}
+			attrs := map[string]interface{}{attributeEmail: tt.collected}
+
+			suite.Require().NoError(applyPinnedValue(ctx, schema, attrs))
+			suite.Equal(tt.expected, attrs[attributeEmail])
+		})
+	}
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestCollectedValue_ConsumesTheSubmittedValueItReturns() {
+	tests := []struct {
+		name       string
+		nodeInputs []providers.Input
+		runtime    map[string]string
+		expected   string
+		consumed   []string
+	}{
+		{"submitted value", nil, map[string]string{}, "submitted", []string{"description"}},
+		{"resolved value wins", nil, map[string]string{"description": "resolved"}, "resolved", nil},
+		{"constant input is read first",
+			[]providers.Input{{Identifier: "description", Constant: true}},
+			map[string]string{"description": "resolved"}, "submitted", []string{"description"}},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			ctx := &providers.NodeContext{
+				NodeInputs:  tt.nodeInputs,
+				UserInputs:  map[string]string{"description": "submitted"},
+				RuntimeData: tt.runtime,
+			}
+
+			assert.Equal(suite.T(), tt.expected, collectedValue(ctx, "description"))
+			assert.Equal(suite.T(), tt.consumed, ctx.GetConsumedInputs())
+		})
+	}
 }
 
 // TestGetAttributesForProvisioning_RequiredAttrsFromMultipleSources verifies that required schema
@@ -3659,6 +3723,27 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredCreden
 	assert.True(suite.T(), ok)
 	assert.Len(suite.T(), fwdInputs, 1)
 	assert.Equal(suite.T(), providers.InputTypePassword, fwdInputs[0].Type)
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_ConsumesSubmittedAttributes() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: attributeEmail, DisplayName: "Email", Required: true},
+			{Attribute: attributePassword, DisplayName: "Password", Required: true, Credential: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{attributePassword: "secret"},
+		RuntimeData: map[string]string{categoryTypeKey: testUserType},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	result := suite.executor.HasRequiredInputs(ctx, execResp)
+
+	assert.False(suite.T(), result)
+	assert.Equal(suite.T(), []string{attributePassword}, ctx.GetConsumedInputs())
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredCredentialSatisfied_ReturnsTrue() {

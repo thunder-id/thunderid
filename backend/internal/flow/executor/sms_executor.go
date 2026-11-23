@@ -34,13 +34,15 @@ type smsExecutor struct {
 	notifSenderSvc   notification.NotificationSenderServiceInterface
 	templateRenderer notificationTemplateRenderer
 	entityProvider   entityprovider.EntityProviderInterface
+	authnProvider    providers.AuthnProviderManager
 }
 
 // newSMSExecutor creates a new instance of smsExecutor.
 func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateRenderer notificationTemplateRenderer,
-	entityProvider entityprovider.EntityProviderInterface) *smsExecutor {
+	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManager) *smsExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SMSExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameSMSExecutor,
@@ -62,10 +64,11 @@ func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 		notifSenderSvc:   notifSenderSvc,
 		templateRenderer: templateRenderer,
 		entityProvider:   entityProvider,
+		authnProvider:    authnProvider,
 	}
 }
 
-// Execute resolves the recipient from user inputs or runtime data and the sender ID from node properties,
+// Execute resolves the recipient and the sender ID from node properties,
 // then renders the SMS body from a template and sends it.
 func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -90,7 +93,10 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 
 	phoneAttr := resolveInputIdentifierByType(ctx, providers.InputTypePhone, common.AttributeMobileNumber)
 
-	recipient := e.resolveRecipientMobile(ctx, phoneAttr)
+	recipient, err := e.resolveRecipientMobile(ctx, execResp, phoneAttr, logger)
+	if err != nil {
+		return nil, err
+	}
 	if recipient == "" {
 		logger.Debug(ctx.Context, "SMS recipient not found in user inputs or runtime data")
 		execResp.Status = providers.ExecFailure
@@ -206,33 +212,24 @@ func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) map[string
 	return templateData
 }
 
-// resolveRecipientMobile retrieves the recipient mobile number from the mobile recipient an earlier node
-// set, user inputs, runtime data, or the entity provider (via RuntimeData["userID"]), in that order.
-func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAttr string) string {
-	if ctx.RuntimeData[common.RuntimeKeyRecipientType] == entitytypemodel.TypeMobile {
-		if mobile := ctx.RuntimeData[common.RuntimeKeyExpectedRecipient]; mobile != "" {
-			return mobile
-		}
+// resolveRecipientMobile resolves the number the SMS is sent to.
+func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	phoneAttr string, logger *log.Logger) (string, error) {
+	if mobile, known, err := resolveKnownRecipient(ctx, execResp, e.authnProvider, e.entityProvider,
+		entitytypemodel.TypeMobile, phoneAttr, logger); known || err != nil {
+		return mobile, err
 	}
 	if mobile, ok := ctx.UserInputs[phoneAttr]; ok && mobile != "" {
-		return mobile
+		return mobile, nil
 	}
 	if mobile, ok := ctx.RuntimeData[phoneAttr]; ok && mobile != "" {
-		return mobile
+		return mobile, nil
 	}
 	// External claims are only a fallback and must never take priority over runtime data.
 	if mobile, ok := core.GetExternalClaim(ctx.RuntimeData, phoneAttr); ok && mobile != "" {
-		return mobile
+		return mobile, nil
 	}
-	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" && e.entityProvider != nil {
-		user, err := e.entityProvider.GetEntityProfile(ctx.Context, userID)
-		if err == nil {
-			if mobile, attrErr := GetUserAttribute(user, phoneAttr); attrErr == nil {
-				return mobile
-			}
-		}
-	}
-	return ""
+	return "", nil
 }
 
 // isValidPhoneNumber returns true if the given phone number matches an acceptable format.

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,17 @@ func newFlowEngine(
 
 // Execute executes a step in the flow
 func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
+	flowStep, svcErr := fe.executeRequest(ctx)
+	if svcErr == nil && flowStep.Status != providers.FlowStatusComplete {
+		requested := fe.pausedStepInputs(ctx, &flowStep)
+		fe.dropUnusedInputs(ctx, requested)
+		fe.recordRequestedInputs(ctx, &flowStep, requested)
+	}
+	return flowStep, svcErr
+}
+
+// executeRequest runs the flow from the current node until it needs the user, ends, or fails.
+func (fe *flowEngine) executeRequest(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
 	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	flowStep := FlowStep{
@@ -262,6 +274,10 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		}
 		return nextNode, false, nil
 	}
+	if ctx.executedNodes == nil {
+		ctx.executedNodes = make(map[core.NodeInterface]struct{})
+	}
+	ctx.executedNodes[currentNode] = struct{}{}
 
 	if svcErr := fe.setNodeExecutor(ctx.Context, currentNode, logger); svcErr != nil {
 		return nil, false, svcErr
@@ -295,9 +311,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	}
 	executionEndTime := time.Now().UnixMilli()
 
-	if consumed := nodeCtx.GetConsumedInputs(); len(consumed) > 0 {
-		ctx.consumedInputs = append(ctx.consumedInputs, consumed...)
-	}
+	ctx.recordConsumedInputs(nodeCtx.GetConsumedInputs())
 
 	// Clear sensitive inputs from context after executor has consumed them
 	fe.clearSensitiveInputs(ctx, currentNode)
@@ -415,9 +429,7 @@ func (fe *flowEngine) runInterceptors(
 		return false, svcErr
 	}
 
-	if consumed := execCtx.GetConsumedInputs(); len(consumed) > 0 {
-		ctx.consumedInputs = append(ctx.consumedInputs, consumed...)
-	}
+	ctx.recordConsumedInputs(execCtx.GetConsumedInputs())
 	fe.updateContextWithInterceptorResponse(ctx, resp)
 
 	continueExecution := fe.processInterceptorResponse(resp, flowStep)
@@ -712,56 +724,106 @@ func (fe *flowEngine) clearSensitiveInputs(ctx *EngineContext, node core.NodeInt
 	}
 }
 
-// collectOneTimeUseIdentifiers appends identifiers declared as OneTimeUse from inputs into set.
-func (fe *flowEngine) collectOneTimeUseIdentifiers(inputs []providers.Input, set map[string]struct{}) {
+// pausedStepInputs returns the inputs the step the flow pauses on asks for: those of the step's response,
+// of its node package, and of the request interceptors.
+func (fe *flowEngine) pausedStepInputs(ctx *EngineContext, flowStep *FlowStep) map[string]struct{} {
+	requested := make(map[string]struct{})
+	addInputs(requested, flowStep.Data.Inputs)
+	if ctx.CurrentNode != nil {
+		// Without an executor only the node's declared inputs count. The next request fails on the same call
+		// before the node runs, so nothing it sends is used.
+		if svcErr := fe.setNodeExecutor(ctx.Context, ctx.CurrentNode, fe.logger); svcErr != nil {
+			fe.logger.Debug(ctx.Context, "Taking only the declared inputs of the paused node",
+				log.String(log.LoggerKeyExecutionID, ctx.ExecutionID),
+				log.String(log.LoggerKeyNodeID, ctx.CurrentNode.GetID()))
+		}
+		addInputs(requested, fe.nodePackageInputs(ctx, ctx.CurrentNode))
+	}
+	addInputs(requested, fe.interceptorInputs(ctx, providers.InterceptorModePreRequest,
+		providers.InterceptorModePostRequest))
+	return requested
+}
+
+// dropUnusedInputs removes the inputs this request added that nothing in it used, so the paused flow does not
+// hold them for a later step. An input is used when the paused step asks for it, it was consumed, or a node that
+// executed declares it. A prompt consumes the inputs of the action taken, so its declared inputs do not count. The
+// authorization params are kept, since only the request that starts a flow can set them and the authorization
+// step may run after a pause.
+func (fe *flowEngine) dropUnusedInputs(ctx *EngineContext, requested map[string]struct{}) {
+	if len(ctx.additionalInputs) == 0 {
+		return
+	}
+
+	used := maps.Clone(requested)
+	maps.Copy(used, ctx.consumedInputs)
+	for node := range ctx.executedNodes {
+		if _, ok := node.(core.PromptNodeInterface); !ok {
+			addInputs(used, fe.nodeOwnInputs(node))
+		}
+	}
+	for _, identifier := range authorizationParams {
+		used[identifier] = struct{}{}
+	}
+
+	for identifier := range ctx.additionalInputs {
+		if _, ok := used[identifier]; !ok {
+			delete(ctx.UserInputs, identifier)
+		}
+	}
+}
+
+// recordRequestedInputs records the inputs the next request may carry: those the paused step asks for, and those
+// of every node interceptor of the flow and its calling flows, since one can run on a node the next request
+// reaches past the paused step. A calling flow's POST_REQUEST interceptors count too, since they run when the
+// called flow returns in that request. A
+// redirection step is not limited, since its callback carries the external party's parameters.
+func (fe *flowEngine) recordRequestedInputs(ctx *EngineContext, flowStep *FlowStep,
+	requested map[string]struct{}) {
+	if flowStep.Type == common.StepTypeRedirection {
+		ctx.requestedInputs = nil
+		return
+	}
+	ctx.requestedInputs = maps.Clone(requested)
+	addInputs(ctx.requestedInputs,
+		fe.interceptorInputs(ctx, providers.InterceptorModePreNode, providers.InterceptorModePostNode))
+	for _, callerFrame := range ctx.frameStack {
+		addInputs(ctx.requestedInputs, graphInterceptorInputs(callerFrame.graph, providers.InterceptorModePreNode,
+			providers.InterceptorModePostNode, providers.InterceptorModePostRequest))
+	}
+}
+
+// addInputs adds the identifiers of inputs to set.
+func addInputs(set map[string]struct{}, inputs []providers.Input) {
 	for _, input := range inputs {
-		if input.OneTimeUse {
-			set[input.Identifier] = struct{}{}
-		}
+		set[input.Identifier] = struct{}{}
 	}
 }
 
-// clearOneTimeUseInputsScope removes identifiers from ctx.consumedInputs that are declared
-// OneTimeUse in scoped, deleting each matched identifier from ctx.UserInputs. Unmatched
-// entries are preserved in ctx.consumedInputs for a later scope to handle.
-func (fe *flowEngine) clearOneTimeUseInputsScope(ctx *EngineContext,
-	scoped map[string]struct{}) {
-	if len(ctx.consumedInputs) == 0 || len(scoped) == 0 {
-		return
-	}
-
-	remaining := ctx.consumedInputs[:0]
-	for _, id := range ctx.consumedInputs {
-		if _, ok := scoped[id]; ok {
-			delete(ctx.UserInputs, id)
-			continue
-		}
-		remaining = append(remaining, id)
-	}
-	ctx.consumedInputs = remaining
+// interceptorInputs returns the inputs of the graph's interceptors that run in the given modes.
+func (fe *flowEngine) interceptorInputs(ctx *EngineContext, modes ...providers.InterceptorMode) []providers.Input {
+	return graphInterceptorInputs(ctx.Graph, modes...)
 }
 
-// clearNodePackageOneTimeUseInputs removes any consumed identifier declared OneTimeUse on the
-// node or on an applicable PRE_NODE/POST_NODE interceptor from ctx.UserInputs, and drops it
-// from the shared consumed list.
-func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node core.NodeInterface) {
-	if len(ctx.consumedInputs) == 0 || node == nil {
-		return
-	}
+// nodePackageInputs returns the inputs of a node package: the node's own inputs and those of the PRE_NODE and
+// POST_NODE interceptors that apply to it.
+func (fe *flowEngine) nodePackageInputs(ctx *EngineContext, node core.NodeInterface) []providers.Input {
+	return append(fe.nodeOwnInputs(node), fe.nodeInterceptorInputs(ctx, node)...)
+}
 
-	scoped := make(map[string]struct{})
-	if execNode, ok := node.(core.ExecutorBackedNodeInterface); ok {
-		// Use the node's declared inputs when present, falling back to the executor's default
-		// inputs otherwise.
-		inputs := execNode.GetInputs()
-		if len(inputs) == 0 {
-			if executor := execNode.GetExecutor(); executor != nil {
-				inputs = executor.GetDefaultInputs()
-			}
+// nodeOwnInputs returns the inputs a node declares, or its executor's default inputs when it declares none.
+func (fe *flowEngine) nodeOwnInputs(node core.NodeInterface) []providers.Input {
+	inputs := slices.Clone(getNodeInputs(node))
+	if execNode, ok := node.(core.ExecutorBackedNodeInterface); ok && len(inputs) == 0 {
+		if executor := execNode.GetExecutor(); executor != nil {
+			inputs = slices.Clone(executor.GetDefaultInputs())
 		}
-		fe.collectOneTimeUseIdentifiers(inputs, scoped)
 	}
+	return inputs
+}
 
+// nodeInterceptorInputs returns the inputs of the PRE_NODE and POST_NODE interceptors that apply to a node.
+func (fe *flowEngine) nodeInterceptorInputs(ctx *EngineContext, node core.NodeInterface) []providers.Input {
+	var inputs []providers.Input
 	if ctx.Graph != nil {
 		nodeID := node.GetID()
 		skipInterceptors := extractSkipInterceptors(node)
@@ -773,46 +835,44 @@ func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node 
 				if !shouldApplyToNode(unit, nodeID, skipInterceptors) {
 					continue
 				}
-				ic := unit.GetInterceptor()
-				if ic == nil {
-					continue
+				if ic := unit.GetInterceptor(); ic != nil {
+					inputs = append(inputs, ic.GetInputs()...)
 				}
-				fe.collectOneTimeUseIdentifiers(ic.GetInputs(), scoped)
 			}
 		}
 	}
-
-	fe.clearOneTimeUseInputsScope(ctx, scoped)
+	return inputs
 }
 
-// clearRequestPackageOneTimeUseInputs removes any remaining consumed identifier declared
-// OneTimeUse on a PRE_REQUEST/POST_REQUEST interceptor from ctx.UserInputs, then drains the
-// consumed list.
+// clearConsumedOneTimeUseInputs removes each of inputs declared OneTimeUse that was consumed within the current
+// request from ctx.UserInputs.
+func (fe *flowEngine) clearConsumedOneTimeUseInputs(ctx *EngineContext, inputs []providers.Input) {
+	for _, input := range inputs {
+		if _, consumed := ctx.consumedInputs[input.Identifier]; consumed && input.OneTimeUse {
+			delete(ctx.UserInputs, input.Identifier)
+		}
+	}
+}
+
+// clearNodePackageOneTimeUseInputs removes each consumed input declared OneTimeUse on the node or on an
+// applicable PRE_NODE/POST_NODE interceptor from ctx.UserInputs.
+func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node core.NodeInterface) {
+	if len(ctx.consumedInputs) == 0 || node == nil {
+		return
+	}
+
+	fe.clearConsumedOneTimeUseInputs(ctx, fe.nodePackageInputs(ctx, node))
+}
+
+// clearRequestPackageOneTimeUseInputs removes each consumed input declared OneTimeUse on a
+// PRE_REQUEST/POST_REQUEST interceptor from ctx.UserInputs.
 func (fe *flowEngine) clearRequestPackageOneTimeUseInputs(ctx *EngineContext) {
 	if len(ctx.consumedInputs) == 0 {
 		return
 	}
 
-	if ctx.Graph != nil {
-		scoped := make(map[string]struct{})
-		for _, mode := range []providers.InterceptorMode{
-			providers.InterceptorModePreRequest,
-			providers.InterceptorModePostRequest,
-		} {
-			for _, unit := range ctx.Graph.GetInterceptors(mode) {
-				ic := unit.GetInterceptor()
-				if ic == nil {
-					continue
-				}
-				fe.collectOneTimeUseIdentifiers(ic.GetInputs(), scoped)
-			}
-		}
-		fe.clearOneTimeUseInputsScope(ctx, scoped)
-	}
-
-	// Drop anything left over. Non-OneTimeUse signals are ignored by design; leftover entries
-	// have no declared scope in this graph and would otherwise leak across requests.
-	ctx.consumedInputs = nil
+	fe.clearConsumedOneTimeUseInputs(ctx, fe.interceptorInputs(ctx, providers.InterceptorModePreRequest,
+		providers.InterceptorModePostRequest))
 }
 
 // updateContextWithNodeResponse updates the engine context with the node response and authenticated user.
@@ -1916,4 +1976,20 @@ func ssoFlowID(ctx *EngineContext) string {
 		return ""
 	}
 	return ctx.Graph.GetID()
+}
+
+// graphInterceptorInputs returns the inputs of the graph's interceptors of the given modes.
+func graphInterceptorInputs(graph core.GraphInterface, modes ...providers.InterceptorMode) []providers.Input {
+	if graph == nil {
+		return nil
+	}
+	var inputs []providers.Input
+	for _, mode := range modes {
+		for _, unit := range graph.GetInterceptors(mode) {
+			if ic := unit.GetInterceptor(); ic != nil {
+				inputs = append(inputs, ic.GetInputs()...)
+			}
+		}
+	}
+	return inputs
 }

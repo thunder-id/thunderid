@@ -1079,6 +1079,7 @@ var defaultMessages = map[string]string{
 	"error.flowmgtservice.project_required": "Project required",
 	"error.flowmgtservice.project_required_description": "Set projectId to the project the flow belongs to",
 	"error.flowmgtservice.prompt_input_held_constant_description": "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' is a constant input of node '{{param(constantNodeID)}}'. Remove it from the prompt or remove the constant",
+	"error.flowmgtservice.prompt_input_one_time_use_description": "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' cannot be one time use. Mark it one time use on the executor node that uses it",
 	"error.flowmgtservice.prompt_missing_action_description": "PROMPT node '{{param(nodeID)}}': prompt at index {{param(index)}} must have an action with nextNode",
 	"error.flowmgtservice.prompt_node_has_both_prompts_and_next_description": "PROMPT node '{{param(nodeID)}}' must have either prompts or next, not both",
 	"error.flowmgtservice.prompt_node_missing_prompts_or_next_description": "PROMPT node '{{param(nodeID)}}' must have either prompts or next",

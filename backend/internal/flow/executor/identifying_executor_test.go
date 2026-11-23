@@ -464,6 +464,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_LoginHintAttributeIgnored
 	suite.Equal(providers.ExecUserInputRequired, resp.Status)
 	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
 	suite.Equal([]providers.Input{{Identifier: "username", Type: "string", Required: true}}, resp.Inputs)
+	suite.NotContains(ctx.GetConsumedInputs(), userInputLoginHint, "an ignored login hint is not consumed")
 }
 
 // Outside a CIBA request, resolve mode searches on the step's inputs and leaves the login hint out of the filters.
@@ -821,6 +822,49 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_FilteredToOne() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "user-2", resp.RuntimeData[userAttributeUserID])
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_ConsumesDisambiguationInputs() {
+	candidates := []*providers.Entity{
+		{ID: "user-1", Type: "Person", Attributes: attrsAlexJohnson},
+		{ID: "user-2", Type: "Person", Attributes: attrsAlexSmith},
+	}
+	candidatesJSON, _ := json.Marshal(candidates)
+
+	ctx := &providers.NodeContext{
+		ExecutionID:  "flow-123",
+		ExecutorMode: ExecutorModeResolve,
+		UserInputs:   map[string]string{"given_name": "Alex", "family_name": "Smith", "password": "secret"},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyCandidateUsers: string(candidatesJSON),
+		},
+	}
+
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
+	})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), "user-2", resp.RuntimeData[userAttributeUserID])
+	assert.Equal(suite.T(), []string{"family_name"}, ctx.GetConsumedInputs())
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_IsConsumed() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&userID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Contains(suite.T(), ctx.GetConsumedInputs(), userInputLoginHint)
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_StillAmbiguous() {
@@ -1297,6 +1341,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_PickBindsHolde
 	suite.Equal("holder-support", resp.RuntimeData[userAttributeUserID])
 	suite.Equal(entityStateExists, resp.RuntimeData[common.RuntimeKeyEntityState])
 	suite.True(resp.AuthUser.IsAuthenticated())
+	suite.Contains(ctx.GetConsumedInputs(), "ouHandle")
+	suite.NotContains(ctx.GetConsumedInputs(), "code")
 }
 
 // Candidates an attribute-based resolve left behind are not link holders. They are never offered or

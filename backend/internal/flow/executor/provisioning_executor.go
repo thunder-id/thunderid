@@ -18,6 +18,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
@@ -887,7 +888,7 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 // never taken from claims, so a claim never stands in for one.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extIdentity *core.ExternalIdentity,
 	attr entitytype.AttributeInfo) bool {
-	if val, ok := ctx.UserInputs[attr.Attribute]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(attr.Attribute); ok && val != "" {
 		return true
 	}
 	if val, ok := ctx.RuntimeData[attr.Attribute]; ok && val != "" {
@@ -927,14 +928,14 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, a := range schemaAttrs {
 		if a.Credential {
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				credentialAttrs[a.Attribute] = value
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
 			// External claims are only a fallback and must never take priority over runtime data.
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
@@ -945,6 +946,9 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		}
 	}
 
+	if err := applyPinnedValue(ctx, schemaAttrs, identifyingAttrs); err != nil {
+		return nil, nil, err
+	}
 	return identifyingAttrs, credentialAttrs, nil
 }
 
@@ -1187,13 +1191,15 @@ func tokenIssuedToApplication(nodeCtx *providers.NodeContext) bool {
 // over what the caller submitted. Submitted values are unfiltered, so a resolved one wins. A constant
 // input of the node is read first.
 func collectedValue(ctx *providers.NodeContext, key string) string {
-	if isConstantNodeInput(ctx, key) && ctx.UserInputs[key] != "" {
-		return ctx.UserInputs[key]
+	if isConstantNodeInput(ctx, key) {
+		if val, _ := ctx.ConsumeInput(key); val != "" {
+			return val
+		}
 	}
 	if val, ok := ctx.RuntimeData[key]; ok && val != "" {
 		return val
 	}
-	if val, ok := ctx.UserInputs[key]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(key); ok && val != "" {
 		return val
 	}
 	return ""
@@ -1516,4 +1522,27 @@ func (p *provisioningExecutor) selfRegistrableEntityTypes(ctx *providers.NodeCon
 		}
 	}
 	return types, nil
+}
+
+// applyPinnedValue sets the value a verification pin made before the user existed holds. The flow proved that
+// value, so a different one it collected since does not replace it.
+func applyPinnedValue(ctx *providers.NodeContext, schemaAttrs []entitytype.AttributeInfo,
+	identifyingAttrs map[string]interface{}) error {
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil || proof == nil || proof.Pin.Subject != "" {
+		return err
+	}
+
+	pin := proof.Pin
+	contactType := entitytypemodel.ContactTypeForChannel(pin.Channel)
+	for _, a := range schemaAttrs {
+		if a.Credential || a.Attribute != pin.Attribute {
+			continue
+		}
+		collected := systemutils.ConvertInterfaceValueToString(identifyingAttrs[a.Attribute])
+		if entitytypemodel.CanonicalContactValue(contactType, collected) != pin.Value {
+			identifyingAttrs[a.Attribute] = convertToSchemaType(pin.Value, a.Type)
+		}
+	}
+	return nil
 }

@@ -17,9 +17,21 @@ import (
 // OTP flow, with the send half swapped for the EmailExecutor, which exercises the email side of the
 // channel agnostic OTPExecutor. An empty senderID leaves the email step without a provider.
 func buildEmailOTPFlow(handle, senderID string) testutils.Flow {
+	return buildEmailOTPFlowIdentifiedBy(handle, senderID, "email", "EMAIL_INPUT")
+}
+
+// buildEmailOTPFlowIdentifiedBy is buildEmailOTPFlow with the user identified by the given input.
+func buildEmailOTPFlowIdentifiedBy(handle, senderID, identifier, inputType string) testutils.Flow {
 	emailProperties := map[string]interface{}{"emailTemplate": "otp"}
 	if senderID != "" {
 		emailProperties["senderId"] = senderID
+	}
+	identifyingInput := map[string]interface{}{
+		"ref": "input_" + identifier, "identifier": identifier, "type": inputType, "required": true,
+	}
+	emailInput := map[string]interface{}{"identifier": "email", "type": "EMAIL_INPUT", "required": true}
+	if identifier == "email" {
+		emailInput = identifyingInput
 	}
 
 	return testutils.Flow{
@@ -27,16 +39,14 @@ func buildEmailOTPFlow(handle, senderID string) testutils.Flow {
 		FlowType: "AUTHENTICATION",
 		Handle:   handle,
 		Nodes: []map[string]interface{}{
-			{"id": "start", "type": "START", "onSuccess": "prompt_email"},
+			{"id": "start", "type": "START", "onSuccess": "prompt_" + identifier},
 			{
-				"id":   "prompt_email",
+				"id":   "prompt_" + identifier,
 				"type": "PROMPT",
 				"prompts": []map[string]interface{}{
 					{
-						"inputs": []map[string]interface{}{
-							{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
-						},
-						"action": map[string]interface{}{"ref": "action_email", "nextNode": "generate_otp"},
+						"inputs": []map[string]interface{}{identifyingInput},
+						"action": map[string]interface{}{"ref": "action_" + identifier, "nextNode": "generate_otp"},
 					},
 				},
 			},
@@ -44,11 +54,9 @@ func buildEmailOTPFlow(handle, senderID string) testutils.Flow {
 				"id":   "generate_otp",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "OTPExecutor",
-					"mode": "generate",
-					"inputs": []map[string]interface{}{
-						{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
-					},
+					"name":   "OTPExecutor",
+					"mode":   "generate",
+					"inputs": []map[string]interface{}{identifyingInput},
 				},
 				"onSuccess": "email_send",
 			},
@@ -57,11 +65,9 @@ func buildEmailOTPFlow(handle, senderID string) testutils.Flow {
 				"type":       "TASK_EXECUTION",
 				"properties": emailProperties,
 				"executor": map[string]interface{}{
-					"name": "EmailExecutor",
-					"mode": "send",
-					"inputs": []map[string]interface{}{
-						{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
-					},
+					"name":   "EmailExecutor",
+					"mode":   "send",
+					"inputs": []map[string]interface{}{emailInput},
 				},
 				"onSuccess": "prompt_otp",
 			},
@@ -420,6 +426,44 @@ func (ts *EmailOTPAuthFlowTestSuite) TestEmailOTPAuthFlow_STARTTLSIsNotDowngrade
 	// Absence cannot be signalled, so allow the window in which a send would have happened.
 	time.Sleep(500 * time.Millisecond)
 	ts.Require().Nil(ts.mockSMTP.GetLastEmail(), "No email may be delivered over a downgraded connection")
+}
+
+func (ts *EmailOTPAuthFlowTestSuite) TestEmailOTPAuthFlow_UsernameSendsToStoredEmail() {
+	flowID, err := testutils.CreateFlow(buildEmailOTPFlowIdentifiedBy("auth_flow_username_email_otp_test",
+		ts.senderID, "username", "TEXT_INPUT"))
+	ts.Require().NoError(err, "Failed to create the username email OTP flow")
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("Failed to delete the username email OTP flow: %v", err)
+		}
+	}()
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                      emailOTPTestOU.ID,
+		Name:                      "Username Email OTP Test Application",
+		Description:               "Application for testing email OTP after identifying by username",
+		IsRegistrationFlowEnabled: false,
+		ClientID:                  "username_email_otp_test_client",
+		ClientSecret:              "username_email_otp_test_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{emailOTPEntityType.Handle},
+		AuthFlowID:                flowID,
+	})
+	ts.Require().NoError(err, "Failed to create the username email OTP test application")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the username email OTP test application: %v", err)
+		}
+	}()
+
+	ts.mockSMTP.ClearEmails()
+	step, err := common.InitiateAuthenticationFlow(appID, false,
+		map[string]string{"username": "emailotpuser", "email": "other@example.com"}, "action_username")
+	ts.Require().NoError(err, "Failed to submit the username")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "otp"), "OTP input should be requested")
+
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	ts.Equal([]string{ts.testEmail}, email.To, "The OTP goes to the email on the user's profile")
 }
 
 // TestEmailOTPAuthFlow_NoEmailProvider confirms an email step that names no provider stops the flow
