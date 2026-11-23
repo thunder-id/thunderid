@@ -15,22 +15,22 @@ var (
 	QueryCreateConsent = dbmodel.DBQuery{
 		ID: "CNQ-CONSENT_MGT-01",
 		Query: `INSERT INTO "CONSENT" ` +
-			`(ID, GROUP_ID, STATUS, VALIDITY_TIME, PURPOSES, DEPLOYMENT_ID, CREATED_AT, UPDATED_AT) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			`(ID, GROUP_ID, STATUS, VALIDITY_TIME, PURPOSES, PROPERTIES, DEPLOYMENT_ID, CREATED_AT, UPDATED_AT) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 	}
 
 	// QueryGetConsentByID is the query to get a consent record by id.
 	QueryGetConsentByID = dbmodel.DBQuery{
 		ID: "CNQ-CONSENT_MGT-02",
-		Query: `SELECT ID, GROUP_ID, STATUS, VALIDITY_TIME, PURPOSES FROM "CONSENT" ` +
+		Query: `SELECT ID, GROUP_ID, STATUS, VALIDITY_TIME, PURPOSES, PROPERTIES FROM "CONSENT" ` +
 			`WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
 	// QueryUpdateConsent is the query to update an existing consent record.
 	QueryUpdateConsent = dbmodel.DBQuery{
 		ID: "CNQ-CONSENT_MGT-03",
-		Query: `UPDATE "CONSENT" SET STATUS = $2, VALIDITY_TIME = $3, PURPOSES = $4, UPDATED_AT = $5 ` +
-			`WHERE ID = $1 AND DEPLOYMENT_ID = $6`,
+		Query: `UPDATE "CONSENT" SET STATUS = $2, VALIDITY_TIME = $3, PURPOSES = $4, PROPERTIES = $5, ` +
+			`UPDATED_AT = $6 WHERE ID = $1 AND DEPLOYMENT_ID = $7`,
 	}
 
 	// QueryDeleteConsentAuthorizations is the query to delete all authorization records of a consent.
@@ -105,9 +105,9 @@ func buildSearchConsentsQuery(
 ) (dbmodel.DBQuery, []interface{}) {
 	joinAuthorization := filters.UserID != ""
 
-	selectClause := `SELECT C.ID, C.GROUP_ID, C.STATUS, C.VALIDITY_TIME, C.PURPOSES FROM "CONSENT" C`
+	selectClause := `SELECT C.ID, C.GROUP_ID, C.STATUS, C.VALIDITY_TIME, C.PURPOSES, C.PROPERTIES FROM "CONSENT" C`
 	if joinAuthorization {
-		selectClause = `SELECT DISTINCT C.ID, C.GROUP_ID, C.STATUS, C.VALIDITY_TIME, C.PURPOSES ` +
+		selectClause = `SELECT DISTINCT C.ID, C.GROUP_ID, C.STATUS, C.VALIDITY_TIME, C.PURPOSES, C.PROPERTIES ` +
 			`FROM "CONSENT" C ` +
 			`INNER JOIN "CONSENT_AUTHORIZATION" A ON A.CONSENT_ID = C.ID AND A.DEPLOYMENT_ID = C.DEPLOYMENT_ID`
 	}

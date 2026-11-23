@@ -14,6 +14,8 @@ export interface SubmitButtonAdapterProps {
   resolve: (template: string | undefined) => string | undefined;
   /** When provided, the button fires its own action via onClick instead of form submit */
   onClick?: () => void;
+  /** Whether the button directly follows another submit button, which the form's gap already separates it from. */
+  followsSubmit?: boolean;
 }
 
 export default function SubmitButtonAdapter({
@@ -21,6 +23,7 @@ export default function SubmitButtonAdapter({
   disabled,
   resolve,
   onClick = undefined,
+  followsSubmit = false,
 }: SubmitButtonAdapterProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -37,7 +40,7 @@ export default function SubmitButtonAdapter({
       variant={component.variant === 'PRIMARY' ? 'contained' : 'outlined'}
       disabled={disabled}
       onClick={onClick}
-      sx={{mt: 2}}
+      sx={{mt: followsSubmit ? 0 : 2}}
     >
       {t(resolve(component.label)!)}
     </Button>
