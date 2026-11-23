@@ -1091,6 +1091,20 @@ func (suite *FlowMgtAPITestSuite) TestListFlows_FilterByFlowType() {
 	}
 }
 
+func (suite *FlowMgtAPITestSuite) TestListFlows_PersonalAgentFlowsInDefaultProject() {
+	response := suite.listFlows(map[string]string{
+		"projectId": "01900000-0000-7000-8000-000000000002",
+		"limit":     "200",
+	})
+
+	handles := make([]string, 0, len(response.Flows))
+	for _, flow := range response.Flows {
+		handles = append(handles, flow.Handle)
+	}
+	suite.Contains(handles, "default-personal-agent-auth-flow")
+	suite.Contains(handles, "user-and-personal-assistant-registration-flow")
+}
+
 func (suite *FlowMgtAPITestSuite) TestUpdateFlow_Success() {
 	createdFlow := suite.createFlow(cloneFlowWithUniqueHandle(testAuthFlow))
 	suite.trackFlow(createdFlow.ID)
