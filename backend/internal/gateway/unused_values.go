@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -645,15 +646,17 @@ func (s *unusedValueSweeper) versionReferences(ctx context.Context, seq int, has
 	return true, nil
 }
 
-// namesIn is every name a configuration refers to, as a variable or a secret.
+// namesIn is every name a configuration refers to, as a variable or a secret. Each name is a copy:
+// those referencesIn returns are slices of the content, and a set the sweep caches would otherwise keep
+// the whole configuration it was read from in memory.
 func namesIn(content string) map[string]struct{} {
 	variables, secrets := referencesIn(content)
 	set := make(map[string]struct{}, len(variables)+len(secrets))
 	for _, name := range variables {
-		set[name] = struct{}{}
+		set[strings.Clone(name)] = struct{}{}
 	}
 	for _, name := range secrets {
-		set[name] = struct{}{}
+		set[strings.Clone(name)] = struct{}{}
 	}
 	return set
 }
