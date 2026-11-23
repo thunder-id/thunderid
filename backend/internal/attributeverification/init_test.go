@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit/audittest"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
@@ -23,8 +24,10 @@ func TestInitTestSuite(t *testing.T) {
 
 // The service is built over the given entity type service, so a collected value is pinned by its schema.
 func (s *InitTestSuite) TestInitializeBuildsTheService() {
-	var provider providers.AttributeVerificationProvider = Initialize(
-		entitymock.NewEntityServiceInterfaceMock(s.T()), contactSchema(s.T()), nil, nil)
+	service, err := Initialize(entitymock.NewEntityServiceInterfaceMock(s.T()), contactSchema(s.T()), nil, nil,
+		audittest.NewDiscardingBus(s.T()))
+	s.Require().NoError(err)
+	var provider providers.AttributeVerificationProvider = service
 
 	pin, svcErr := provider.PrepareAttributeVerification(context.Background(),
 		pendingRequest("person", "workEmail", " User@Example.com "))

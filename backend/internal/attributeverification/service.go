@@ -16,6 +16,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -41,18 +43,21 @@ type attributeVerificationService struct {
 	entityTypeService entitytype.EntityTypeServiceInterface
 	observability     providers.ObservabilityProvider
 	authorizer        sysauthz.SystemAuthorizationServiceInterface
+	bus               eventbus.EventBusInterface
 	logger            *log.Logger
 }
 
 // newAttributeVerificationService creates the attribute verification service.
 func newAttributeVerificationService(entityService entity.EntityServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface, observability providers.ObservabilityProvider,
-	authorizer sysauthz.SystemAuthorizationServiceInterface) *attributeVerificationService {
+	authorizer sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface) *attributeVerificationService {
 	return &attributeVerificationService{
 		entityService:     entityService,
 		entityTypeService: entityTypeService,
 		observability:     observability,
 		authorizer:        authorizer,
+		bus:               bus,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AttributeVerificationService")),
 	}
 }
@@ -70,6 +75,13 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 	}
 
 	contact, svcErr := s.readStoredContact(ctx, request.EntityID, request.Attribute)
+	// The attribute is typed by the caller, so it is recorded only once it resolved to a contact.
+	var auditedAttribute string
+	if svcErr == nil {
+		auditedAttribute = request.Attribute
+	}
+	s.publishAuditEvent(ctx, audit.EventUserVerificationRequest, audit.ActionRequest, request.EntityID,
+		auditedAttribute, svcErr)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -86,7 +98,23 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 // contact that changed or is no longer eligible, is refused.
 func (s *attributeVerificationService) RecordAttributeVerification(ctx context.Context,
 	pin providers.AttributeVerificationPin) *tidcommon.ServiceError {
+	resolved, svcErr := s.recordAttributeVerification(ctx, pin)
+	// The method takes any pin, so the attribute is recorded only once it resolved to a contact.
+	var auditedAttribute string
+	if resolved {
+		auditedAttribute = pin.Attribute
+	}
+	s.publishAuditEvent(ctx, audit.EventUserVerificationVerify, audit.ActionVerify, pin.Subject,
+		auditedAttribute, svcErr)
+	return svcErr
+}
+
+// recordAttributeVerification records a pinned contact as verified and publishes its observability event.
+// It reports whether the pin's attribute resolved to a contact of the user.
+func (s *attributeVerificationService) recordAttributeVerification(ctx context.Context,
+	pin providers.AttributeVerificationPin) (bool, *tidcommon.ServiceError) {
 	contact, svcErr := s.readStoredContact(ctx, pin.Subject, pin.Attribute)
+	resolved := svcErr == nil
 	if svcErr == nil && contact.pin != pin {
 		svcErr = &ErrorAttributeNotVerifiable
 	}
@@ -96,7 +124,7 @@ func (s *attributeVerificationService) RecordAttributeVerification(ctx context.C
 			s.publishEvent(ctx, event.EventTypeAttributeVerificationRefused, pin, pin.Subject, providers.StatusFailure)
 		}
 
-		return svcErr
+		return resolved, svcErr
 	}
 
 	// The entity service compares the canonical value again under the entity lock.
@@ -104,16 +132,16 @@ func (s *attributeVerificationService) RecordAttributeVerification(ctx context.C
 		EntityID: pin.Subject, EntityCategory: contact.category, EntityType: contact.entityType,
 		Attribute: pin.Attribute, Value: pin.Value, VerifiedAt: time.Now()})
 	if err != nil {
-		return s.serverError(ctx, "Failed to record attribute verification", pin.Subject, err)
+		return resolved, s.serverError(ctx, "Failed to record attribute verification", pin.Subject, err)
 	}
 
 	if !applied {
 		s.publishEvent(ctx, event.EventTypeAttributeVerificationRefused, pin, pin.Subject, providers.StatusFailure)
-		return &ErrorAttributeNotVerifiable
+		return resolved, &ErrorAttributeNotVerifiable
 	}
 
 	s.publishEvent(ctx, event.EventTypeAttributeVerificationVerified, pin, pin.Subject, providers.StatusSuccess)
-	return nil
+	return resolved, nil
 }
 
 // GetVerifiedAttributes returns the verifications recorded in the system attributes of a mutable user,
@@ -249,6 +277,27 @@ func (s *attributeVerificationService) publishEvent(ctx context.Context, eventTy
 		WithData(event.DataKey.Attribute, pin.Attribute).
 		WithData(event.DataKey.ActorSub, actor)
 	s.observability.PublishEvent(ctx, evt)
+}
+
+// publishAuditEvent publishes the audit event of an attempt on a user's attribute that ended with svcErr,
+// setting the attribute detail only when one is given, never its value. A flow on the server's authority
+// may carry any bearer token sent to a public path, so under a runtime context the actor is set explicitly:
+// the user for a verification that succeeded, anonymous for every other outcome and for a request.
+func (s *attributeVerificationService) publishAuditEvent(ctx context.Context, name string, action audit.Action,
+	entityID, attribute string, svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: entityID}
+	payload := audit.ChangePayload(ctx, target, action, svcErr)
+	if attribute != "" {
+		payload = payload.WithDetails(map[string]string{audit.DetailAttribute: attribute})
+	}
+
+	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+	if action == audit.ActionVerify && svcErr == nil {
+		actor = audit.Actor{Type: audit.ActorTypeUser, ID: entityID}
+	}
+	payload = payload.WithRuntimeActor(ctx, actor)
+
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).With(payload))
 }
 
 // serverError logs an attribute verification server failure and returns the server error.
