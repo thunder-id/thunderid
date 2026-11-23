@@ -1177,7 +1177,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_FailOnDeny_Essentia
 	// The essential-denied branch runs before the failOnDeny check
 	suite.mockConsentEnforcer.On("RecordConsent", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return((*providers.Consent)(nil), &consentauthn.ErrorEssentialConsentDenied)
+		Return((*providers.Consent)(nil), &providers.ErrorEssentialConsentDenied)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1285,7 +1285,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_EssentialDenied() {
 	// RecordConsent persists the denial and returns an essential-denied error
 	suite.mockConsentEnforcer.On("RecordConsent", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return((*providers.Consent)(nil), &consentauthn.ErrorEssentialConsentDenied)
+		Return((*providers.Consent)(nil), &providers.ErrorEssentialConsentDenied)
 
 	resp, err := suite.executor.Execute(ctx)
 
