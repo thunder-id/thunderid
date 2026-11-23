@@ -216,6 +216,14 @@ func (s *PayloadTestSuite) TestValidate() {
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
 		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeDenied("account_suspended")), nil},
+		{"a user linked account create with its connection", EventUserLinkedAccountCreate,
+			NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailConnection: "idp-1"}), nil},
+		{"a user linked account create without a resolved user", EventUserLinkedAccountCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionCreate, OutcomeFailed("authn_mgr_1008")), nil},
+		{"a user linked account detail other than the connection", EventUserLinkedAccountCreate,
+			NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded).
+				WithDetails(map[string]string{"sub": "external-subject-123"}), errDetailNotAllowed},
 		{"an agent type create", EventAgentTypeCreate,
 			NewPayload(ctx, Ref{Type: TargetTypeAgentType}, ActionCreate, OutcomeFailed("usrs_1003")), nil},
 		{"an agent type update", EventAgentTypeUpdate,

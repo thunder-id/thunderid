@@ -5,7 +5,6 @@ package audit
 
 import (
 	"encoding/json"
-	"net/http"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
@@ -102,25 +101,6 @@ func (ts *AuditLogTestSuite) TestAPasswordResetThroughRecoveryNamesTheResetUserA
 	for _, other := range written {
 		ts.requireNoCredentialValue(other, "a password reset through recovery")
 	}
-}
-
-// executeFlow posts one flow request with the bearer token and the application's Flow Secret, and
-// returns the response and the step it got after checking the request was accepted.
-func (ts *AuditLogTestSuite) executeFlow(token, appID string, request map[string]interface{}) (
-	*http.Response, *common.FlowStep) {
-	ts.T().Helper()
-	payload, err := json.Marshal(request)
-	ts.Require().NoError(err)
-	header := http.Header{"Authorization": {"Bearer " + token}}
-	if secret := testutils.GetFlowSecret(appID); secret != "" {
-		header.Set(testutils.FlowSecretHeaderName, secret)
-	}
-	response, body := ts.post(testutils.GetRawHTTPClient(), "/flow/execute", payload, header)
-	ts.Require().Equal(http.StatusOK, response.StatusCode, string(body))
-	var step common.FlowStep
-	ts.Require().NoError(json.Unmarshal(body, &step))
-	ts.Require().NotEqual("ERROR", step.FlowStatus, string(body))
-	return response, &step
 }
 
 // emailLinkRecoveryFlow is a recovery flow that identifies the user by username, emails a recovery link,
