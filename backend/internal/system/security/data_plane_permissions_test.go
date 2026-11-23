@@ -337,6 +337,22 @@ func (s *DataPlanePermissionsTestSuite) TestAControlPlaneTokenNeedsNoUnit() {
 		NewSecurityContextForTest("user-1", "", "", []string{"system:user"}, nil))))
 }
 
+// Only an organization permission is confined to the token's unit on the data plane; the root system permission
+// reaches the whole deployment, and the control plane confines nothing.
+func (s *DataPlanePermissionsTestSuite) TestIsConfinedToOrganizationUnit() {
+	callerWith := func(permissions ...string) context.Context {
+		return WithSecurityContextTest(context.Background(),
+			NewSecurityContextForTest("user-1", "ou-1", "", permissions, nil))
+	}
+	s.True(IsConfinedToOrganizationUnit(callerWith("org")))
+	s.True(IsConfinedToOrganizationUnit(callerWith("org:user:create")))
+	s.False(IsConfinedToOrganizationUnit(callerWith("system")))
+	s.False(IsConfinedToOrganizationUnit(callerWith("system", "org")))
+
+	InitControlPlanePermissions("")
+	s.False(IsConfinedToOrganizationUnit(callerWith("system:user:create")))
+}
+
 // process authenticates a GET of path as a caller holding permissions in ouID, and returns the refusal, if any.
 func (s *DataPlanePermissionsTestSuite) process(ouID string, permissions []string, path string) error {
 	auth := &AuthenticatorInterfaceMock{}

@@ -434,6 +434,9 @@ func (us *userService) CreateUser(
 	ctx context.Context, user *providers.User,
 ) (*providers.User, *tidcommon.ServiceError) {
 	created, svcErr := us.createUser(ctx, user)
+	if svcErr == nil {
+		security.RecordCreated(ctx, security.ResourceTypeUser, created.ID)
+	}
 	return us.publishCreate(ctx, created, svcErr)
 }
 

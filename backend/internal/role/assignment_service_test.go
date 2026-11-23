@@ -781,6 +781,31 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_UnsharedOU(
 	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
 }
 
+// A caller limited to its approved writes is checked in the unit each assignment is made in, though the grant
+// check that provisioning relies on does not hold the approval to a unit.
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_ChecksACallerLimitedToApprovals() {
+	suite.ownedRole("role1")
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).Return(
+		[]providers.Entity{{ID: testUserID1, Category: providers.EntityCategoryUser, OUID: testShareeOU}}, nil)
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
+		Return((*tidcommon.ServiceError)(nil))
+	authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateRole, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeRole, OUID: testShareeOU, ResourceID: "role1"}).
+		Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	service := newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService, discardingBus{})
+	ctx := security.WithApprovedActions(context.Background(), "admin-1", testOwnerOU, nil,
+		[]security.ApprovedAction{{Action: security.ActionUpdateRole, OUID: testOwnerOU,
+			ResourceIDs: []string{"role1"}}}, nil)
+
+	err := service.AddAssigneesToRoles(ctx, []RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}},
+		[]string{"role1"})
+
+	suite.Require().NotNil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneesToRoles_NothingToAdd() {
 	suite.Nil(suite.service.AddAssigneesToRoles(context.Background(), nil, []string{"role1"}))
 }

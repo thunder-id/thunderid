@@ -362,7 +362,8 @@ func (ts *AdminVerificationFlowTestSuite) TestTheLinkCannotRetargetTheVerificati
 }
 
 // A continuation after a prompt never names the user: the flow verifies the user bound at the start, and
-// only the administrator's token continues it.
+// only the administrator's token continues it. A step sent without a token makes only the writes the
+// administrator approved, and nothing is approved before preparation, so it cannot prepare.
 func (ts *AdminVerificationFlowTestSuite) TestAContinuationCannotNameAnotherUser() {
 	handle := "verification-admin-prompted-" + ts.fixture.suffix
 	createFlow(ts.T(), testutils.Flow{Name: "Attribute Verification Prompted Admin",
@@ -373,15 +374,16 @@ func (ts *AdminVerificationFlowTestSuite) TestAContinuationCannotNameAnotherUser
 	other := ts.fixture.newUser(ts.T(), "admin_prompted_other")
 
 	for name, test := range map[string]struct {
-		token   string
-		subject string
-		refused bool
+		token    string
+		subject  string
+		refused  bool
+		declined bool
 	}{
-		"no token, naming another user":          {"", other.id, false},
-		"the administrator, naming another user": {adminToken(ts.T()), other.id, false},
-		"the administrator, naming no one":       {adminToken(ts.T()), "", false},
-		"the user's token, naming the user":      {ts.fixture.token(ts.T(), user), user.id, true},
-		"another user's token, naming that user": {ts.fixture.token(ts.T(), other), other.id, true},
+		"no token, naming another user":          {"", other.id, false, true},
+		"the administrator, naming another user": {adminToken(ts.T()), other.id, false, false},
+		"the administrator, naming no one":       {adminToken(ts.T()), "", false, false},
+		"the user's token, naming the user":      {ts.fixture.token(ts.T(), user), user.id, true, false},
+		"another user's token, naming that user": {ts.fixture.token(ts.T(), other), other.id, true, false},
 	} {
 		ts.Run(name, func() {
 			ts.fixture.smtp.ClearEmails()
@@ -402,6 +404,12 @@ func (ts *AdminVerificationFlowTestSuite) TestAContinuationCannotNameAnotherUser
 			if test.refused {
 				requireStartRefused(ts.T(), result, http.StatusForbidden, errCodeFlowStartedByAnotherCaller,
 					"another caller's token must not continue the administrator's flow")
+				ts.fixture.requireNoEmail(ts.T(), "nothing may be sent")
+				return
+			}
+			if test.declined {
+				requireRefused(ts.T(), result, errCodeVerificationRefused,
+					"a step without a token must not prepare with the administrator's authority")
 				ts.fixture.requireNoEmail(ts.T(), "nothing may be sent")
 				return
 			}

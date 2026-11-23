@@ -4,8 +4,10 @@
 package executor
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -14,6 +16,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -42,6 +45,7 @@ func newInviteExecutor(flowFactory core.FlowFactoryInterface) *inviteExecutor {
 			SupportedModes: []string{ExecutorModeGenerate, ExecutorModeVerify},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyInviteBaseURL},
+				{Property: propertyKeyApprovedActions},
 			},
 		},
 	)
@@ -84,6 +88,14 @@ func (e *inviteExecutor) executeGenerate(ctx *providers.NodeContext) (*providers
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		ForwardedData:  make(map[string]interface{}),
+	}
+
+	approved, err := approvedActions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if approved != "" {
+		execResp.EngineData = map[string]string{common.EngineDataKeyApprovedActions: approved}
 	}
 
 	inviteToken, err := e.getOrGenerateToken(ctx)
@@ -212,4 +224,71 @@ func (e *inviteExecutor) generateInviteLink(ctx *providers.NodeContext, inviteTo
 		gateConfig.Path)
 
 	return fmt.Sprintf("%s/invite?%s", gateAppURL, queryParams.Encode())
+}
+
+// approvedActions resolves, as JSON, the writes the node approves for the steps its flow's caller does not send,
+// or "" when it approves none. Each entry names an action and the organization unit it acts in, and may name the
+// only resources it acts on, space-separated. Units and resources resolve from the runtime data alone. A unit may
+// list candidates, of which the first that resolves is taken. An entry whose resources resolve to none approves
+// nothing.
+func approvedActions(ctx *providers.NodeContext) (string, error) {
+	raw, ok := ctx.NodeProperties[propertyKeyApprovedActions]
+	if !ok || raw == nil {
+		return "", nil
+	}
+	entries, ok := raw.([]interface{})
+	if !ok {
+		return "", fmt.Errorf("property %q must be a list", propertyKeyApprovedActions)
+	}
+
+	approved := make([]security.ApprovedAction, 0, len(entries))
+	for _, entry := range entries {
+		fields, ok := entry.(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("property %q must list objects", propertyKeyApprovedActions)
+		}
+		action, _ := fields["action"].(string)
+		if action == "" {
+			return "", fmt.Errorf("property %q has an entry without an action", propertyKeyApprovedActions)
+		}
+		ouID := firstResolved(ctx, fields["ouId"])
+		if ouID == "" {
+			return "", fmt.Errorf("property %q: the unit of %q did not resolve from the runtime data",
+				propertyKeyApprovedActions, action)
+		}
+		approval := security.ApprovedAction{Action: security.Action(action), OUID: ouID}
+		if resources, named := fields["resourceIds"]; named {
+			if approval.ResourceIDs = uniqueFields(firstResolved(ctx, resources)); len(approval.ResourceIDs) == 0 {
+				continue
+			}
+		}
+		approved = append(approved, approval)
+	}
+	if len(approved) == 0 {
+		return "", nil
+	}
+
+	encoded, err := json.Marshal(approved)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode the approved actions: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// firstResolved returns the first of a value or list of values that resolves from the runtime data alone to
+// something other than blank, or "".
+func firstResolved(ctx *providers.NodeContext, value interface{}) string {
+	candidates := []interface{}{value}
+	if list, ok := value.([]interface{}); ok {
+		candidates = list
+	}
+	for _, candidate := range candidates {
+		text, _ := candidate.(string)
+		resolved := core.ResolvePlaceholder(&providers.NodeContext{RuntimeData: ctx.RuntimeData},
+			text, nil, nil, false, log.GetLogger())
+		if !strings.Contains(resolved, "{{") && strings.TrimSpace(resolved) != "" {
+			return resolved
+		}
+	}
+	return ""
 }

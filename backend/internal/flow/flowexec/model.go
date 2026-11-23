@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // frame captures the per-call execution state saved when a CALL node pushes execution
@@ -115,11 +117,33 @@ type EngineContext struct {
 }
 
 // flowAuthority is the authority a flow that acts for its caller runs with: the caller who started it, as their
-// token named them.
+// token named them, the writes they approved for the steps they do not send, and the entities those steps created
+// under the approved writes. Approved is never nil in a flow started on this release, so a nil one marks a flow
+// started before it.
 type flowAuthority struct {
-	Subject     string   `json:"subject"`
-	OUID        string   `json:"ouId"`
-	Permissions []string `json:"permissions"`
+	Subject     string                    `json:"subject"`
+	OUID        string                    `json:"ouId"`
+	Permissions []string                  `json:"permissions"`
+	Approved    []security.ApprovedAction `json:"approved"`
+	Created     []security.CreatedEntity  `json:"created,omitempty"`
+}
+
+// approve records the writes a step the recorded caller sent with their own token approved. Approvals from any
+// other step are ignored, so a step that caller does not send cannot widen what it may do.
+func (ec *EngineContext) approve(approved []security.ApprovedAction) bool {
+	authority := ec.authority
+	if authority == nil || len(approved) == 0 || security.IsRuntimeContext(ec.Context) ||
+		security.IsRecordedCaller(ec.Context) || security.GetSubject(ec.Context) != authority.Subject {
+		return false
+	}
+	for _, action := range approved {
+		if !slices.ContainsFunc(authority.Approved, func(a security.ApprovedAction) bool {
+			return a.Action == action.Action && a.OUID == action.OUID && slices.Equal(a.ResourceIDs, action.ResourceIDs)
+		}) {
+			authority.Approved = append(authority.Approved, action)
+		}
+	}
+	return true
 }
 
 // rootFlowType returns the type of the flow the execution started, which a call into another flow does not change.

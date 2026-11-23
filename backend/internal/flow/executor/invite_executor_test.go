@@ -83,6 +83,50 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode() {
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "executionId=test-flow-id")
 	assert.Contains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "applicationId=test-app-id")
 	assert.Empty(suite.T(), resp.AdditionalData[common.DataInviteLink])
+	assert.Empty(suite.T(), resp.EngineData[common.EngineDataKeyApprovedActions], "approves nothing unasked")
+}
+
+// The node approves the writes its approvedActions property names, resolved from the runtime data alone: a unit
+// takes the first candidate that resolves, and an entry whose resources resolve to none approves nothing.
+func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_ApprovesTheNamedActions() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow-id", ExecutorMode: ExecutorModeGenerate, UserInputs: map[string]string{"ouId": "ou-x"},
+		RuntimeData: map[string]string{"defaultOUID": "ou-type", "selectedRoles": "role-1 role-2 role-1"},
+		NodeProperties: map[string]interface{}{propertyKeyApprovedActions: []interface{}{
+			map[string]interface{}{"action": "user:create",
+				"ouId": []interface{}{"{{ctx(ouId)}}", "{{ctx(defaultOUID)}}"}},
+			map[string]interface{}{"action": "role:update", "ouId": "{{ctx(defaultOUID)}}",
+				"resourceIds": "{{ctx(selectedRoles)}}"},
+			map[string]interface{}{"action": "group:update", "ouId": "{{ctx(defaultOUID)}}",
+				"resourceIds": "{{ctx(selectedGroups)}}"},
+		}},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.JSONEq(`[{"action":"user:create","ouId":"ou-type"},
+		{"action":"role:update","ouId":"ou-type","resourceIds":["role-1","role-2"]}]`,
+		resp.EngineData[common.EngineDataKeyApprovedActions])
+}
+
+func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_RefusesAMalformedApproval() {
+	for name, property := range map[string]interface{}{
+		"not a list":        "user:create",
+		"not an object":     []interface{}{"user:create"},
+		"no action":         []interface{}{map[string]interface{}{"ouId": "ou-1"}},
+		"unresolved unit":   []interface{}{map[string]interface{}{"action": "user:create", "ouId": "{{ctx(ouId)}}"}},
+		"no unit candidate": []interface{}{map[string]interface{}{"action": "user:create"}},
+	} {
+		suite.Run(name, func() {
+			_, err := suite.executor.Execute(&providers.NodeContext{ExecutorMode: ExecutorModeGenerate,
+				RuntimeData: map[string]string{}, NodeProperties: map[string]interface{}{
+					propertyKeyApprovedActions: property}})
+
+			suite.Error(err)
+		})
+	}
 }
 
 // The admin who sends an onboarding link gets it back, for a screen that shows it when no email can be sent.

@@ -6,6 +6,7 @@ package execution
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -439,6 +440,31 @@ func (ts *UserOnboardingTestSuite) initiateOnboarding(inputs map[string]string) 
 	return &step
 }
 
+// completeAsAdmin continues the onboarding flow as the admin who started it, with their token. A step sent
+// without one runs as the invitee's, which may only make the writes an invite step approved.
+func (ts *UserOnboardingTestSuite) completeAsAdmin(executionID string, inputs map[string]string, action string,
+	challengeToken string) (*common.FlowStep, error) {
+	token, err := testutils.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+	request := map[string]interface{}{"executionId": executionID, "challengeToken": challengeToken}
+	if len(inputs) > 0 {
+		request["inputs"] = inputs
+	}
+	if action != "" {
+		request["action"] = action
+	}
+	result, err := common.ExecuteFlowWithToken(token, request)
+	if err != nil {
+		return nil, err
+	}
+	if result.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d: %s", result.StatusCode, string(result.Body))
+	}
+	return result.Step, nil
+}
+
 // findOnboardedUser locates a provisioned user so the OU and type it landed in can be asserted,
 // and tracks it for cleanup.
 func (ts *UserOnboardingTestSuite) findOnboardedUser(username string) *testutils.User {
@@ -463,7 +489,7 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_RootOUAutoSelectsItsOnlyUserTy
 	ts.Require().True(common.HasInput(step.Data.Inputs, "ouId"),
 		"The promptAll strategy must request an OU selection")
 
-	step, err := common.CompleteFlow(step.ExecutionID,
+	step, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should continue after the OU is chosen")
@@ -473,7 +499,7 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_RootOUAutoSelectsItsOnlyUserTy
 		"The flow should move on to collecting user details")
 
 	username := common.GenerateUniqueUsername("onboard_root")
-	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+	completed, err := ts.completeAsAdmin(step.ExecutionID, map[string]string{
 		"username": username,
 		"email":    username + "@onboarding.test",
 	}, "action_details", step.ChallengeToken)
@@ -491,20 +517,20 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_ChildOUPromptsForUserType() {
 	step := ts.initiateOnboarding(nil)
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Onboarding should pause to select an OU")
 
-	step, err := common.CompleteFlow(step.ExecutionID,
+	step, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": ts.childOUID}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should pause to select a user type")
 	ts.Require().True(common.HasInput(step.Data.Inputs, "userType"),
 		"Two valid user types must be offered for selection")
 
-	step, err = common.CompleteFlow(step.ExecutionID,
+	step, err = ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"userType": ts.childTypeName}, "action_usertype", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the user type selection")
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should move on to user details")
 
 	username := common.GenerateUniqueUsername("onboard_child")
-	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+	completed, err := ts.completeAsAdmin(step.ExecutionID, map[string]string{
 		"username": username,
 		"email":    username + "@onboarding.test",
 	}, "action_details", step.ChallengeToken)
@@ -522,7 +548,7 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_UnknownOURejected() {
 	step := ts.initiateOnboarding(nil)
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Onboarding should pause to select an OU")
 
-	rejected, err := common.CompleteFlow(step.ExecutionID,
+	rejected, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": "019ff000-0000-7000-8000-000000000000"}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "An unknown OU should still return a flow step")
 	ts.Require().NotNil(rejected.Error, "An unknown OU must be reported as an error")
@@ -535,13 +561,13 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_UnknownOURejected() {
 // property is the narrower of the two constraints.
 func (ts *UserOnboardingTestSuite) TestOnboarding_UserTypeOutsideAllowedListRejected() {
 	step := ts.initiateOnboarding(nil)
-	step, err := common.CompleteFlow(step.ExecutionID,
+	step, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": ts.childOUID}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().True(common.HasInput(step.Data.Inputs, "userType"),
 		"Two valid user types must be offered for selection")
 
-	rejected, err := common.CompleteFlow(step.ExecutionID,
+	rejected, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"userType": "not-an-allowed-type"}, "action_usertype", step.ChallengeToken)
 	ts.Require().NoError(err, "A disallowed user type should still return a flow step")
 	ts.Require().NotNil(rejected.Error, "A disallowed user type must be reported as an error")
@@ -578,15 +604,15 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_ExistingUserInAnotherOUIsFound
 	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, userID)
 
 	step := ts.initiateOnboarding(nil)
-	step, err = common.CompleteFlow(step.ExecutionID,
+	step, err = ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": ts.childOUID}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
-	step, err = common.CompleteFlow(step.ExecutionID,
+	step, err = ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"userType": ts.childTypeName}, "action_usertype", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the user type selection")
 	ts.Require().True(common.HasInput(step.Data.Inputs, "username"), "The flow should ask for the user details")
 
-	refused, err := common.CompleteFlow(step.ExecutionID,
+	refused, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"username": username, "email": email}, "action_details", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit user details")
 
@@ -630,7 +656,7 @@ func (ts *UserOnboardingTestSuite) userAttribute(user *testutils.User, name stri
 // flow asks for neither and the new user still ends up with both.
 func (ts *UserOnboardingTestSuite) TestOnboarding_DefaultAndConstantAreAppliedWithoutPrompting() {
 	step := ts.initiateOnboarding(nil)
-	step, err := common.CompleteFlow(step.ExecutionID,
+	step, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
@@ -639,7 +665,7 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_DefaultAndConstantAreAppliedWi
 	ts.False(common.HasInput(step.Data.Inputs, "faculty"), "A constant must not be prompted for")
 
 	username := common.GenerateUniqueUsername("onboard_defaults")
-	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+	completed, err := ts.completeAsAdmin(step.ExecutionID, map[string]string{
 		"username": username,
 		"email":    username + "@onboarding.test",
 	}, "action_details", step.ChallengeToken)
@@ -654,14 +680,14 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_DefaultAndConstantAreAppliedWi
 // A value the flow already holds wins over a default, but never over a constant.
 func (ts *UserOnboardingTestSuite) TestOnboarding_SuppliedValueBeatsDefaultButNotConstant() {
 	step := ts.initiateOnboarding(map[string]string{"department": "Mathematics", "faculty": "Arts"})
-	step, err := common.CompleteFlow(step.ExecutionID,
+	step, err := ts.completeAsAdmin(step.ExecutionID,
 		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
 		"The flow should move on to collecting user details")
 
 	username := common.GenerateUniqueUsername("onboard_supplied")
-	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+	completed, err := ts.completeAsAdmin(step.ExecutionID, map[string]string{
 		"username": username,
 		"email":    username + "@onboarding.test",
 	}, "action_details", step.ChallengeToken)
@@ -720,7 +746,7 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_SubmittedConstantNeverReachesA
 		"The flow should move on to collecting user details")
 
 	username := common.GenerateUniqueUsername("onboard_constant")
-	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+	completed, err := ts.completeAsAdmin(step.ExecutionID, map[string]string{
 		"username": username,
 		"email":    username + "@onboarding.test",
 	}, "action_details", step.ChallengeToken)
@@ -743,7 +769,7 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_DynamicInputsOrderedByAttribut
 		step := ts.initiateOnboarding(nil)
 		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "Onboarding should pause to select an OU")
 
-		step, err := common.CompleteFlow(step.ExecutionID,
+		step, err := ts.completeAsAdmin(step.ExecutionID,
 			map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
 		ts.Require().NoError(err, "Failed to submit the OU selection")
 		ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should ask for the schema attributes")

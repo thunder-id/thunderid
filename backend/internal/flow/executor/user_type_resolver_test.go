@@ -1515,6 +1515,38 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_Filte
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 
+// With the unit pinned to the admin's own, the types offered are those owned by that unit or an ancestor; a type of
+// a sibling unit is left out.
+func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_PinnedOU_OffersOwnAndAncestorTypes() {
+	suite.SetupTest()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeUserOnboarding,
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{ouIDKey: "admin-ou"},
+	}
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
+		Return(&entitytype.EntityTypeListResponse{Types: []entitytype.EntityTypeListItem{
+			{Handle: "own", OUID: "admin-ou"},
+			{Handle: "inherited", OUID: "root-ou"},
+			{Handle: "sibling", OUID: "sibling-ou"},
+		}}, nil)
+	suite.mockOUService.On("IsParent", mock.Anything, "admin-ou", "admin-ou").
+		Return(true, (*tidcommon.ServiceError)(nil))
+	suite.mockOUService.On("IsParent", mock.Anything, "root-ou", "admin-ou").
+		Return(true, (*tidcommon.ServiceError)(nil))
+	suite.mockOUService.On("IsParent", mock.Anything, "sibling-ou", "admin-ou").
+		Return(false, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Len(suite.T(), result.Inputs, 1)
+	assert.ElementsMatch(suite.T(), []string{"own", "inherited"}, result.Inputs[0].Options)
+}
+
 func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_FiltersSchemasToSingle_AutoSelect() {
 	suite.SetupTest()
 
