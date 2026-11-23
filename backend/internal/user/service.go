@@ -851,7 +851,7 @@ func (us *userService) updateUser(
 	// If the user is moving to a different OU, require authorization for the destination OU as well.
 	if user.OUID != existingUser.OUID {
 		if svcErr := us.checkUserAccess(
-			ctx, security.ActionUpdateUser, user.OUID, userID); svcErr != nil {
+			ctx, security.ActionUpdateUser, user.OUID, ""); svcErr != nil {
 			return nil, svcErr
 		}
 	}
