@@ -116,6 +116,9 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 			}
 		case removal:
 			entry.State = EntryRemoved
+			if held, ok := documents[key]; ok {
+				entry.Project = ownerOf(bundleResource{Type: resource.Type, ID: resource.ID, Content: held})
+			}
 			delete(documents, key)
 		default:
 			entry.State = EntryDeployed

@@ -162,6 +162,31 @@ func (s *MasterTestSuite) TestARefusedUpdateKeepsTheDocumentTheGatewayRuns() {
 	s.Equal(unit("ou-a"), next.Resources)
 }
 
+// A removed resource keeps the project its last document named, so the removal still counts as that
+// project's; one that named no project keeps none.
+func (s *MasterTestSuite) TestARemovalKeepsTheProjectItsDocumentNamed() {
+	agent := "resource_type: agent\nid: ag-1\nname: ag-1\nprojectId: shop"
+	version := &Version{Hash: "v1", Resources: joinBundle([]string{agent, unit("ou-a")})}
+	previous := masterOfVersion("gw-1", version, nil, masterAt, &Actor{ID: "u-1"})
+
+	next := nextMaster(previous, masterWrite{
+		deletions: []gatewayDeletion{{ResourceType: "agent", ID: "ag-1"},
+			{ResourceType: "organization_unit", ID: "ou-a"}},
+		answer: answerOf(importOutcome{ResourceType: "agent", ResourceID: "ag-1", Operation: operationDeleted,
+			Status: outcomeSuccess}, removed("ou-a")),
+		source: "v2", by: &Actor{ID: "u-2"}, at: masterAt.Add(time.Hour),
+	})
+
+	byKey := map[string]MasterEntry{}
+	for _, entry := range next.Entries {
+		byKey[entry.Key] = entry
+	}
+	s.Equal(EntryRemoved, byKey["agent/ag-1"].State)
+	s.Equal("shop", byKey["agent/ag-1"].Project, "the removal lost the project its document named")
+	s.Equal(EntryRemoved, byKey["organization_unit/ou-a"].State)
+	s.Empty(byKey["organization_unit/ou-a"].Project, "a removal of no project was given one")
+}
+
 // A role whose update the gateway refused keeps that refusal, whatever became of its member removal, and a
 // removal the answer does not name is failed when the gateway refused something it did not name.
 func (s *MasterTestSuite) TestAMemberRemovalFailsItsRoleUnlessTheRoleAlreadyFailed() {

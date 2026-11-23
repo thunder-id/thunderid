@@ -212,15 +212,20 @@ const (
 	actionRolledBack = "rolledBack"
 )
 
-// lastWriteOf is when the project's own resources on the gateway were last written, by whom, and how.
-// A write is a promotion when it named the gateway it came from. The project's rollback, when it is the
+// lastWriteOf is when the project's own resources on the gateway were last written, by whom, and how,
+// counting the removal of one of them, which keeps the project its last document named. A write is a
+// promotion when it named the gateway it came from. The project's rollback, when it is the
 // last write, is reported at its own time, even when it only removed the project's resources.
 func lastWriteOf(projectID string, master *Master, latest *Master) (*time.Time, *Actor, string) {
 	owners := ownersOf(parseBundle(master.Resources))
 	var last *MasterEntry
 	for i := range master.Entries {
 		entry := &master.Entries[i]
-		if entry.State != EntryDeployed || owners[entry.Key] != projectID || entry.At.IsZero() {
+		owner := owners[entry.Key]
+		if entry.State == EntryRemoved {
+			owner = entry.Project
+		}
+		if (entry.State != EntryDeployed && entry.State != EntryRemoved) || owner != projectID || entry.At.IsZero() {
 			continue
 		}
 		if last == nil || entry.At.After(last.At) {

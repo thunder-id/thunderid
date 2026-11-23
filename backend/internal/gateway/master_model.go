@@ -65,6 +65,9 @@ type MasterEntry struct {
 	Origin  string        `json:"origin,omitempty"`
 	State   EntryState    `json:"state"`
 	Failure *EntryFailure `json:"failure,omitempty"`
+	// Project is, for a removed resource, the project its last document named. A removal keeps no
+	// document, so this is how a project's status still counts the removal as the project's.
+	Project string `json:"project,omitempty"`
 	// At and By are when the entry was last written and by whose apply.
 	At time.Time `json:"at,omitzero"`
 	By *Actor    `json:"by,omitempty"`

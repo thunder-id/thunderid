@@ -1819,6 +1819,11 @@ components:
             deployed under its key again.
         failure:
           $ref: '#/components/schemas/EntryFailure'
+        project:
+          type: string
+          description: >-
+            For a `removed` resource, the project its last document named, so the removal counts as that
+            project's in its status. Left out for a resource of no project and for other states.
         at:
           type: string
           format: date-time
