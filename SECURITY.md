@@ -1,6 +1,6 @@
 # Security Policy
 
-ThunderID follows the [OpenWallet Foundation's Security Vulnerability Disclosure Policy](https://tac.openwallet.foundation/governance/security/).
+ThunderID is an [LF Decentralized Trust](https://www.lfdecentralizedtrust.org/) project and follows the [LF Decentralized Trust Security Vulnerability Disclosure Policy](https://lf-decentralized-trust.github.io/governance/governing-documents/security/).
 
 
 ## Reporting a Vulnerability
