@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.10
+- **Version:** 0.11
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -10,6 +10,8 @@
   [#5354](https://github.com/thunder-id/thunderid/discussions/5354),
   [#5162](https://github.com/thunder-id/thunderid/issues/5162),
   [#5155](https://github.com/thunder-id/thunderid/issues/5155),
+  [#7035](https://github.com/thunder-id/thunderid/issues/7035),
+  [#7036](https://github.com/thunder-id/thunderid/discussions/7036),
   [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
   [RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396),
@@ -346,6 +348,12 @@ this table already covers.
 | `organizationHandle` | String | No | None | Organization identifier, required when a custom domain is configured. |
 | `organizationChain` | Object | No | None | Chained authentication across organization contexts. |
 
+**Telemetry**
+
+| Key | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `telemetry` | Object | No | Off | Usage events reported to an endpoint the application configures: page or screen views, API events, auth events and links that leave the application. Off until `telemetry.endpoint` is set. `endpoint` MUST use HTTPS, except a path on the application's own origin in a browser SDK. See [Telemetry](#telemetry) for the keys inside it and what is sent. An SDK that cannot report one kind documents that kind as unsupported. |
+
 **Presentation**
 
 | Key | Type | Required | Default | Notes |
@@ -593,6 +601,187 @@ components render the server's consent step renders each authorization details e
    field path, and nothing else.
 
 An SDK that does not render consent needs only the request and response behaviour above.
+
+#### Telemetry
+
+An application often needs to know how people use it: which pages they open, what they create
+and deploy, where requests fail, and which links take them elsewhere. Without SDK support each
+application wraps its HTTP client and wires its own events, and the events of two applications
+cannot be compared. The `telemetry` key turns on reporting that needs no application code. It is
+an optional capability: an SDK that implements it implements all of the rules below.
+
+**What is reported.** Once `telemetry.endpoint` is set, the SDK reports four kinds of event by
+itself, and one more on request:
+
+| Kind | Reported | Name |
+|---|---|---|
+| Page views | On each navigation. A browser SDK names the page from its matched route pattern. A mobile SDK does the same where its navigation library exposes a route pattern (a Navigation Compose route, a Flutter route name or `go_router` path), and otherwise takes the screen name from a view modifier or a call to `trackPageView`. | `<type>.<action>-view`: `/applications` is `application.list-view`, `/applications/:id` is `application.detail-view`, `/applications/create` is `application.create-view` |
+| API events | From every change (`POST`, `PUT`, `PATCH`, `DELETE`) through the SDK's own HTTP client, including the [management operations](#management-operations), whatever the transport: on success, and on failure as `<name>-failed`. | See [API event names](#api-event-names): `application.create`, `connection.update`, `application.share`, `member.add`, `deployment.deploy`, and `api.call` for a change no rule names |
+| Auth events | From the SDK's own sign-in and sign-out, including its embedded sign-in flow, whose `ERROR` status is `auth.sign-in-failed`. | `auth.sign-in`, `auth.sign-in-failed`, `auth.sign-out`, `auth.session-expired` |
+| Links that leave the application | A browser SDK listens for clicks on links to another origin. A mobile SDK reports links its own components open, links passed to `trackLink`, and links opened through its platform helper (a SwiftUI `openURL` action, a Compose `UriHandler`, or `openExternalLink` in Flutter); a URL the application opens some other way is not visible to it. | `link.open` |
+| Application events | `track(name, data)`, for what is none of the above. | The name given |
+
+API events cover the SDK's API and any other API listed in `telemetry.apiEvents.apis`, with the
+same rules. When a URL falls under more than one of these base URLs, its path is read below the
+longest one. The requests the SDK sends to `telemetry.endpoint` are never API events, and neither are
+the SDK's own sign-in, token, refresh and sign-out requests. Reads (`GET`, `HEAD`, `OPTIONS`) are
+never reported. A request or response body is never sent: the SDK reads a request body only for the
+fields `skipWhen` and `names` name, and a response only for its status, its error code and the
+`X-Telemetry-Event` header. `auth.sign-in` is reported once per sign-in session of the application:
+not again on a reload, a token refresh or a silent sign-in within that session, and never for a
+switch of organization. A silent sign-in that starts the application's session without a sign-in
+page, such as one from the server's single sign-on session, is that session's `auth.sign-in`. The
+SDK keys the session on the ID token's user claim (the one `telemetry.identity` names, `sub` by
+default) with `auth_time` or `sid`. When the embedded sign-in flow ends with an `ERROR` status,
+`auth.sign-in-failed` carries `error_code` only when the flow's error code is well formed
+(`APP-1023`), and never the flow's message.
+
+##### API event names
+
+The SDK knows no particular API. Every rule below reads only the method and the shape of the path,
+so the SDK names any REST API, an application's own included; what is particular to one API comes
+from configuration or from the API itself.
+
+An API event is skipped when a `telemetry.apiEvents.skipWhen` field is set in its request body, or
+when the API answers with `X-Telemetry-Event: none`. Otherwise it takes the first name that applies:
+
+1. A name the application configures in `telemetry.apiEvents.names` for the call's method and path
+   below the API, where `*` matches one segment and `**` the rest, such as
+   `"POST /import": "configuration.import"`. The key may end with `?<field>` to apply only when the
+   request body sets that field, such as `"POST /gateways/*/apply ?origin": "deployment.promote"`;
+   a key with a condition is tried before one without. The event's path template is then the key's
+   path with each `*` as `{id}`.
+2. A name configured in `telemetry.apiEvents.names` for the name the rules below give, such as
+   `"group.create": "team.create"`.
+3. The name the API gives in its `X-Telemetry-Event` response header, when it is a valid event name,
+   renamed in turn when `telemetry.apiEvents.names` has a key for that name. A browser SDK reads the
+   header only when the API exposes it to the application's origin. Configuration always comes
+   before the header.
+4. The name from the rules below.
+5. `api.call`, for a change no rule names, so a path of a shape no rule knows is still reported. It
+   carries the method in `data`, and a path template that keeps only the first segment, when it is
+   a word (a letter, then letters, digits and `-`, at most 40 characters); every later segment is
+   `{id}`, so `POST /import/a/b` is `/import/{id}/{id}`.
+
+The event is then skipped when `telemetry.apiEvents.exclude` matches any of: its URL without the
+query, its path below the API as called (lower case, no value replaced), that path with every value
+replaced by `{id}`, the rules' name, or the name the steps above chose. `-failed` is added after
+this check, so excluding `group.create` also stops `group.create-failed`.
+
+| Call | Name | `data` |
+|---|---|---|
+| `POST /<collection>` | `<type>.create` | `resource_type` |
+| `PUT` or `PATCH /<collection>/{id}` | `<type>.update` | `resource_type` |
+| `DELETE /<collection>/{id}`, or `DELETE /<collection>` for all of them | `<type>.delete` | `resource_type` |
+| `POST /<collection>/{id}`, a create at an id the caller chose | `<type>.create` | `resource_type` |
+| Words before the first collection, as in `POST /design/themes` | Skipped: `theme.create` | `resource_type` |
+| A word right after a top-level collection listed in `telemetry.apiEvents.kinds`, such as `["connections"]`: `POST /connections/google`, `PUT /connections/google/{id}` | `connection.create`, `connection.update`; the route keeps the kind: `/connections/google` | `resource_type`, `kind` |
+| A word right after a top-level collection not listed in `kinds` is an item value: `POST /users/alice`, or `POST /connections/google` with no `kinds` | `user.create`, `connection.create`; the route is `/users/{id}` | `resource_type` |
+| A word listed in `telemetry.apiEvents.addressWords`, such as `["tree"]`, right after a collection, with any segments after it: `PUT /organization-units/tree/engineering/operations` | The collection's change (`POST` create, `PUT` or `PATCH` update, `DELETE` delete): `organization-unit.update`; the route is `/<collection>/<word>/{path}`, `/organization-units/tree/{path}`, even when the word is the last segment, and no word of the address is part of a name or of `data` | `resource_type` |
+| A sub-resource: `POST /resource-servers/{id}/actions` | `action.create` | `resource_type`, `parent_type` |
+| A sub-collection named in `telemetry.apiEvents.parentActions`, such as `{"sharing-policies": {"create": "share", "update": "share-update", "delete": "unshare"}}` | `<parent>.share` and so on | `resource_type` (the parent) |
+| A change word (`add`, `create`, `delete`, `remove`, `update`) or a word listed in `telemetry.apiEvents.actions`, such as `["suspend"]`, ending a `POST` to a sub-collection: `POST /groups/{id}/members/add` | `group.member-add` | `resource_type` (the parent), `sub_type` |
+| Any other word ending a `POST` to a sub-collection is an id the caller chose: `POST /groups/{id}/members/alice` | `member.create`; the route is `/groups/{id}/members/{id}` | `resource_type`, `parent_type` |
+| Words after an id: `POST /applications/{id}/client-secret/regenerate`, `PUT /projects/{id}/auto-sync` | `application.client-secret-regenerate`, `project.auto-sync-update` | `resource_type` |
+| Words after an item that is itself a word, such as the handles in `PUT /organization-units/root/engineering/operations` with no `addressWords` | The item's change: `organization-unit.update`, route `/organization-units/{id}/{path}`; the words are never part of the name | `resource_type` |
+| A label and its value before a sub-collection: `POST /i18n/languages/{id}/translations/ns/{id}/keys` | `key.create`; the label is kept and its value is not | `resource_type`, `parent_type` |
+| Only words, no collection: `POST /import/managed`, `PUT /maintenance` | `api.import-managed`, `api.maintenance-update` | |
+
+A collection is a plural word of at least three letters (`applications`, `policies`), read by
+English spelling with no list of words: `-ies` is `-y`, `-sses` and `-xes` lose `-es`, any other
+final `-s` is dropped, and a word ending in `-ss` (`access`) or `-us` (`status`) is not a plural;
+it is not a collection when it starts with a change word (`create`, `update`, `delete`, `add`, `remove`), as `update-credentials`
+does. A word is letters and `-` only; a segment with a digit, such as a UUID or a client id, is a
+value and never part of a name. Names are lower case, so `/scim/v2/Users` is `user.create`.
+
+**Page view names.** A page is named from the last segment of its route pattern. A parameter
+(`:id`, `{id}` or `*`) gives `detail-view` on the nearest segment before it that is not a
+parameter. A collection gives `<type>.list-view` for that collection. Any other word is the action,
+as `<word>-view`, on the nearest segment before it that is not a parameter. So
+`/applications/:id/edit` is `application.edit-view`, `/applications/:id/settings` is
+`setting.list-view`, and `/organizations/:org/home` is `organization.home-view`. A pattern with no
+segment, `/`, is `app.home-view`, and a pattern with no word before its last segment uses `app` as
+the type.
+
+**Names.** Every event is named `[prefix.]<type>.<action>`. The type is singular and the
+action is a hyphenated word or words. A failure ends in `-failed` and a page view in `-view`. A
+collection's path segment gives the type: `applications` is `application`, `organization-units`
+is `organization-unit`, `policies` is `policy`. `telemetry.prefix` adds a product prefix to every
+name, so two products reporting to one endpoint stay apart.
+
+**What an event carries.** Codes only: the name; the time; the user's and organization's ids,
+read from the ID token's `sub` and `ouId` claims unless `telemetry.identity` names others; the
+route pattern of a page or the path template of an API call (`/applications/{id}`); the
+application's `telemetry.context` codes; and the user agent, or on mobile the operating system
+and its version. An id whose claim the token does not carry is left out of the event; the SDK
+does not read it from anywhere else. A failure adds the HTTP status and the API's error code when
+it matches the server's code format (`APP-1023`), never the error message, which can quote what
+the user typed. A link adds the target's host and its path with only the first segment kept, when it
+is a plain word (letters, `-` and `_` only, at most 40 characters), and every other segment
+replaced by `{id}`: `https://docs.acme.com/guides/getting-started` gives `/guides/{id}`, so a name
+or a token in the path, such as in a reset link, is never sent; never its query or fragment. An event MUST NOT carry a URL
+with its query, a name, an email address, a token, or any value a user typed.
+
+Every SDK builds the same event, which the `json` format sends as it is (a batch is one request
+whose body is a JSON array of events) and the `mapping` format reads:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String | A random UUID. |
+| `name` | String | The full name, with the prefix. |
+| `kind` | String | `page`, `api`, `auth`, `link` or `custom`. |
+| `timestamp` | String | ISO 8601 in UTC, with milliseconds: `2026-01-02T03:04:05.000Z`. |
+| `attributes.data` | Object of strings | The event's codes: `resource_type`, `parent_type`, `kind`, `method`, `status`, `error_code`, `host`, `path`, or the `data` given to `track`. Always present, possibly empty. |
+| `attributes.route` | String | The route pattern or path template, when there is one. |
+| `attributes.user.id` | String | When known. |
+| `attributes.organization.id` | String | When known. |
+| `attributes.userAgent` | String | Browser SDKs. |
+| `attributes.os.name`, `attributes.os.version` | String | Mobile SDKs. |
+| `context` | Object of strings | `telemetry.context`. |
+
+In `otlp`, a batch is one request, and each event is one log record named by `event.name`, its
+`timestamp` as the record's `timeUnixNano`, with the attributes `event.id`,
+`event.kind`, `url.template`, `user.id`, `organization.id`, `user_agent.original` or `os.name` and
+`os.version`, and `event.data.<key>` for each code, and `context` as resource attributes.
+
+**Configuration.**
+
+| Key | Default | Notes |
+|---|---|---|
+| `endpoint` | None | Where events go. Unset: telemetry is off. |
+| `format` | `otlp` | `otlp`: OpenTelemetry log records over OTLP/HTTP with JSON encoding, the event name as `event.name`. `json`: each batch as a JSON array of the events as they are, in one request. `mapping`: each event reshaped by `mapping`. |
+| `mapping` | None | A JSON template for an API that does not take OTLP. A string value holds `{{path \| filter}}` expressions: `path` is a dot-separated path into the event above, and filters apply left to right. `uuid` keeps a UUID, lower-cased, and drops anything else. `lookup: <table>` replaces the value with its entry in `mapping.tables.<table>`, or drops it when there is none. `date` turns an ISO 8601 time into milliseconds since the epoch, as a number. A string that is a single expression keeps the value's type; in a longer string a value is inserted as text. A key starting with `...` spreads an object value into its parent, and an expression that reads nothing leaves its key out. `batch` sends a batch as one array (`array`, the default) or one request per event (`each`). |
+| `prefix` | None | Product prefix on every name. |
+| `context` | Empty | Codes added to every event. |
+| `consent` | None | A function. When set, nothing is sent until it returns true; events wait in memory, bounded, and are dropped if consent never comes. |
+| `identity` | `sub`, `ouId` | The claims the user's and organization's ids come from. |
+| `token` | See below | The token the endpoint gets, or `false` for none. |
+| `pages`, `apiEvents`, `authEvents`, `links` | All on | Per kind: `enabled`, `exclude` and `names`. `exclude` lists what is never reported: route patterns for pages; for API events, URLs (without query), paths below the API, or names, matched as in [API event names](#api-event-names); for auth events, the action exactly as the SDK names it (`sign-in`, `session-expired`), with no pattern; URLs for links. In a pattern `*` matches one path segment and `**` the rest. `exclude` is matched before the prefix and `-failed` are added. `names` renames, and the prefix is added last. For API events, a `names` key may also be a method and a path, with an optional body condition (`"POST /gateways/*/apply ?origin"`), as in [API event names](#api-event-names). Further `apiEvents` keys: `apis` lists more APIs to watch; `parentActions` names sub-collections reported as an action on their parent; `skipWhen` lists request body fields that mean a call changes nothing (`dryRun`, `preview`); `kinds` lists top-level collections whose next word is a kind (`["connections"]`); `addressWords` lists words that, right after a collection, start an address (`["tree"]`); `actions` lists words that, ending a `POST` to a sub-collection, are an action on the parent besides the change words (`["suspend"]`). `kinds`, `addressWords` and `actions` are empty by default. |
+
+**Which token is sent.** A configured `token` is the only token sent; the application's own
+token never is. `token: false` sends none. Otherwise a browser SDK sends the application's
+access token only to an endpoint on the application's own origin, and none when the application
+runs behind a backend that holds its tokens. A mobile SDK sends the application's access token
+only to an endpoint that shares the origin of `baseUrl` or matches an `allowedExternalUrls`
+entry. Every other endpoint gets no token.
+
+**Sending.** Events are batched and sent in the background. A batch is sent when it is full,
+after a short interval, when a browser page is hidden, and when a mobile application moves to
+the background. At most one batch is in flight at a time, and a send that has not completed within
+10 seconds is abandoned. A failed or abandoned send is dropped, and while a send is in flight new
+events wait in the same bounded queue: telemetry MUST NOT delay, fail or change any operation of
+the application, MUST NOT retry, and MUST NOT let an endpoint that never answers accumulate
+requests. Nothing is written to the application's logs.
+
+**Operations.** `track(name, data)` reports an application event, `trackPageView(pattern)` a
+page view and `trackLink(url)` a link that leaves the application; all three do nothing while
+telemetry is off. `track` takes `data` as string values only, which appear in `attributes.data`.
+It drops an event whose name is not lower-case `<type>.<action>` words (letters, digits and `-`,
+separated by `.`), so a name cannot carry an email address or other text, and drops any `data`
+value that could be personal: one longer than 64 characters, or containing `@`, `://`, `?`, `#`
+or whitespace. They are reached through the platform's
+primary entry point, as every other operation is. A router integration, or a mobile navigation
+integration, calls `trackPageView` itself.
 
 ### Framework integration
 
@@ -1240,6 +1429,85 @@ server recorded and nothing else.
 - **AC10.6:** Given a changed email address or mobile number, when the profile saves it, then
   it shows the stored value and its reported status and waits for Verify before starting a flow.
 
+### R11. Usage reported without application code, and only as codes
+
+**Requirement:** As a developer who wants to know how people use my application, I want the SDK
+to report page views, the changes my users make and their sign-ins once I configure an endpoint,
+so I do not wrap my HTTP client and every product names the same action the same way.
+
+**Acceptance criteria:**
+
+- **AC11.1:** Given no `telemetry.endpoint`, when the application runs, then the SDK sends no
+  telemetry request.
+- **AC11.2:** Given an endpoint, when the application creates, updates or deletes a resource
+  through the SDK, including through a management operation, then one event named
+  `<type>.create`, `<type>.update` or `<type>.delete` is reported, unless a configured name, an
+  `X-Telemetry-Event` header or `parentActions` (AC11.10, AC11.12) names it otherwise, and a
+  failed call is reported as `<name>-failed` with the HTTP status and the server's error code and
+  without the message.
+- **AC11.3:** Given a read, or a call whose body sets a `skipWhen` field, when it completes, then
+  nothing is reported.
+- **AC11.4:** Given a signed-in user, when the application reloads, refreshes its token, signs in
+  silently or switches organization, then `auth.sign-in` is not reported again.
+- **AC11.5:** Given any reported event, when its body is inspected, then it holds no URL query,
+  no token, no name or email address and no error message, and ids appear only as ids.
+- **AC11.6:** Given a configured `token`, when events are sent, then the request carries that
+  token and never the application's own; given no `token` and an endpoint the
+  [token rules](#telemetry) do not trust with the application's access token (for a browser SDK,
+  any other origin; for a mobile SDK, one that neither shares the origin of `baseUrl` nor matches an
+  `allowedExternalUrls` entry), then the request carries no token.
+- **AC11.7:** Given `consent` that returns false, when events occur, then none is sent until it
+  returns true.
+- **AC11.8:** Given an endpoint that fails or never answers, when the application makes its
+  calls, then every call completes as it would without telemetry.
+- **AC11.9:** Given `prefix`, when any event is reported, then its name starts with the prefix.
+- **AC11.10:** Given `parentActions` for a sub-collection, when one of its items is created,
+  updated or deleted, then the configured action is reported on the parent, such as
+  `application.share`.
+- **AC11.11:** Given a change that no built-in rule names, when it completes, then `api.call` is
+  reported with its method and a path template that holds no value from the path.
+- **AC11.12:** Given a name configured for a call's method and path template, or an
+  `X-Telemetry-Event` response header with a valid name, when the call completes, then the event
+  takes the configured name for the method and path first, then a configured rename of the
+  rules' name, then the header's name, then the rules' name, so configuration always beats the
+  header; and given `X-Telemetry-Event: none`, nothing is reported.
+- **AC11.13:** Given a path whose segments include words a user chose, such as handles in a tree
+  path, when the call is reported, then none of those words is part of the event's name.
+- **AC11.14:** Given a link to another origin with a path of several segments, when it is
+  reported, then its path keeps only the first segment, when it is a plain word, and every other
+  segment is `{id}`.
+- **AC11.15:** Given `apiEvents.exclude` that matches a call's URL, its path as called, its path
+  with values replaced, its rules' name or its final name, when the call succeeds or fails, then
+  nothing is reported, neither the name nor its `-failed` form.
+- **AC11.16:** Given `authEvents.exclude` with an action, when that action happens, then it is
+  not reported, and a pattern in `authEvents.exclude` matches no other action.
+- **AC11.17:** Given no `apiEvents.kinds`, when `POST /connections/google` completes, then
+  `connection.create` is reported with no `kind` and the route `/connections/{id}`; given
+  `kinds: ["connections"]`, then it carries `kind: google` and the route `/connections/google`.
+- **AC11.18:** Given `apiEvents.addressWords: ["tree"]`, when
+  `PUT /organization-units/tree/engineering/operations` or `PUT /organization-units/tree`
+  completes, then `organization-unit.update` is reported with the route
+  `/organization-units/tree/{path}` and no word of the address in its name or `data`.
+- **AC11.19:** Given no `apiEvents.actions`, when `POST /groups/{id}/members/alice` completes,
+  then `member.create` is reported with `parent_type: group` and the route
+  `/groups/{id}/members/{id}`; when `POST /groups/{id}/members/add` completes, then
+  `group.member-add` is reported; given `actions: ["suspend"]`, `POST /groups/{id}/members/suspend`
+  is `group.member-suspend`.
+- **AC11.20:** Given a change no rule names, when it is reported as `api.call`, then its route
+  keeps only its first segment, when that is a word, and every later segment is `{id}`.
+- **AC11.21:** Given the embedded sign-in flow, when it ends with an `ERROR` status, then
+  `auth.sign-in-failed` is reported, with `error_code` only when the flow's code is well formed,
+  and never the flow's message.
+- **AC11.22:** Given a silent sign-in that starts the application's session without a sign-in
+  page, when it completes, then `auth.sign-in` is reported once for that session; and given a
+  switch of organization, then `auth.sign-in` is not reported.
+- **AC11.23:** Given two watched base URLs where one is below the other, when a call falls under
+  both, then its path is read below the longer one.
+- **AC11.24:** Given the shared API naming cases (method, path, body, outcome and `apiEvents`
+  configuration, with the expected name, route and data), when an SDK reports each call, then it
+  gives exactly the expected event, or none where none is expected. The cases are kept in one file,
+  generated from the reference SDK and copied unchanged into every SDK's tests.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1254,3 +1522,4 @@ server recorded and nothing else.
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
+| 0.11 | 2026-11-23 | Telemetry added as an optional capability (R11): the `telemetry` key, automatic page views, API events, auth events and links that leave the application, generic naming rules for any REST API, `api.call`, the `X-Telemetry-Event` header, and configuration for what is particular to one API (names, exclusions, kinds, address words and actions), what an event may carry, and which token the endpoint gets. |
