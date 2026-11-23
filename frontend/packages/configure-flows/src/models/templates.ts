@@ -62,6 +62,22 @@ export const TemplateCategories = {
 
 export type TemplateCategories = (typeof TemplateCategories)[keyof typeof TemplateCategories];
 
+/**
+ * Who a flow template is written for. On a template, `AGENT` exists for an AI agent story (creating an agent identity),
+ * `USER` is a journey for people that no agent can take (user registration, recovery, sign-out, invitations,
+ * self-service and administrator-initiated verification), and `ALL` serves both. That covers every sign-in flow, since
+ * an agent signs in through one itself and an agent's Flows tab selects one for the users it signs in, plus device
+ * authorization, the personal assistant registration (the one sign-up that can create an agent) and the blank
+ * canvases. As the Create Flow wizard's filter, `ALL` means no filter.
+ */
+export const TemplateAudiences = {
+  All: 'ALL',
+  User: 'USER',
+  Agent: 'AGENT',
+} as const;
+
+export type TemplateAudiences = (typeof TemplateAudiences)[keyof typeof TemplateAudiences];
+
 export const TemplateTypes = {
   Blank: 'BLANK',
   Basic: 'BASIC',
@@ -111,6 +127,10 @@ export interface FlowTemplate {
   category: string;
   type: string;
   flowType: FlowType;
+  /**
+   * Who the template is written for. The Create Flow wizard lists it only when its audience filter is `ALL` or matches.
+   */
+  audience: TemplateAudiences;
   /**
    * Opens the template in the builder unsaved, for one that names values only the deployment has, such as roles, and
    * that the server would refuse to save without them.

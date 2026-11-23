@@ -4,13 +4,20 @@
 import {Box, Card, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
 import {KeyRound, Lock, LogOut, Send, ShieldCheck, UserCheck, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
+import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
+import AudienceFilter from './AudienceFilter';
+import useGetFlowsMeta from '../../api/useGetFlowsMeta';
 import {FlowType} from '../../models/flows';
+import type {TemplateAudiences} from '../../models/templates';
+import {isFlowTypeOffered} from '../../utils/templateAudience';
 
 interface SelectFlowTypeProps {
   selectedType: string | null;
   onTypeChange: (type: string) => void;
   onReadyChange: (isReady: boolean) => void;
+  audience: TemplateAudiences;
+  onAudienceChange: (audience: TemplateAudiences) => void;
 }
 
 interface FlowTypeOption {
@@ -22,8 +29,15 @@ interface FlowTypeOption {
   icon: JSX.Element;
 }
 
-export default function SelectFlowType({selectedType, onTypeChange, onReadyChange}: SelectFlowTypeProps): JSX.Element {
+export default function SelectFlowType({
+  selectedType,
+  onTypeChange,
+  onReadyChange,
+  audience,
+  onAudienceChange,
+}: SelectFlowTypeProps): JSX.Element {
   const {t} = useTranslation();
+  const {data} = useGetFlowsMeta();
 
   const options: FlowTypeOption[] = [
     {
@@ -100,6 +114,15 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
     },
   ];
 
+  const visibleOptions = options.filter((option) => isFlowTypeOffered(data.templates, option.type, audience));
+  const isSelectionOffered = selectedType !== null && isFlowTypeOffered(data.templates, selectedType, audience);
+
+  // Switching the audience, here or on the template step, can hide the type already picked. Nothing visible is then
+  // selected, so the step is not ready until the user picks again or switches back.
+  useEffect(() => {
+    if (selectedType !== null) onReadyChange(isSelectionOffered);
+  }, [selectedType, isSelectionOffered, onReadyChange]);
+
   const handleSelect = (type: string): void => {
     onTypeChange(type);
     onReadyChange(true);
@@ -110,16 +133,18 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       <Typography variant="h1" gutterBottom>
         {t('flows:create.type.title', 'What kind of flow do you want to create?')}
       </Typography>
+      <Box sx={{mt: 3}}>
+        <AudienceFilter value={audience} onChange={onAudienceChange} />
+      </Box>
       <Box
         sx={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
           maxWidth: 1040,
           gap: 2,
-          mt: 3,
         }}
       >
-        {options.map((option) => {
+        {visibleOptions.map((option) => {
           const isSelected = selectedType === option.type;
           return (
             <Card

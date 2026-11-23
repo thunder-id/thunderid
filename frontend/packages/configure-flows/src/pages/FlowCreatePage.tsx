@@ -23,7 +23,7 @@ import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
 import {FlowType} from '../models/flows';
 import type {FlowDefinitionResponse} from '../models/responses';
-import type {FlowTemplate} from '../models/templates';
+import {type FlowTemplate, TemplateAudiences} from '../models/templates';
 import {fillParentOrganizationUnit, PARENT_OU_ID_PLACEHOLDER} from '../utils/parentOrganizationUnit';
 import resolveConnectionPlaceholders from '../utils/resolveConnectionPlaceholders';
 
@@ -56,6 +56,7 @@ export default function FlowCreatePage(): JSX.Element {
   const [requestedStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.ORGANIZATION_UNIT);
   const [selectedType, setSelectedType] = useState<FlowType | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<FlowTemplate | null>(null);
+  const [audience, setAudience] = useState<TemplateAudiences>(TemplateAudiences.All);
   const [typeReady, setTypeReady] = useState(false);
   const [nameValue, setNameValue] = useState<ConfigureFlowNameValue>({name: '', handle: ''});
   const [nameReady, setNameReady] = useState(false);
@@ -251,6 +252,8 @@ export default function FlowCreatePage(): JSX.Element {
           selectedType={selectedType}
           onTypeChange={(type) => handleTypeChange(type as FlowType)}
           onReadyChange={setTypeReady}
+          audience={audience}
+          onAudienceChange={setAudience}
         />
       );
     }
@@ -260,6 +263,8 @@ export default function FlowCreatePage(): JSX.Element {
           flowType={selectedType}
           selectedTemplate={selectedTemplate}
           onTemplateChange={handleTemplateChange}
+          audience={audience}
+          onAudienceChange={setAudience}
         />
       );
     }

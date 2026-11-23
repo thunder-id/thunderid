@@ -302,6 +302,41 @@ describe('FlowCreatePage', () => {
     fireEvent.click(screen.getByText('Continue'));
   };
 
+  describe('Audience filter', () => {
+    const changeAudience = (props: Record<string, unknown>, audience: string): void => {
+      act(() => {
+        (props['onAudienceChange'] as (audience: string) => void)(audience);
+      });
+    };
+
+    it('should start with every audience on the type step', () => {
+      render(<FlowCreatePage />);
+
+      expect(capturedTypeProps['audience']).toBe('ALL');
+    });
+
+    it('should pass the audience picked on the type step to the template step', () => {
+      render(<FlowCreatePage />);
+
+      changeAudience(capturedTypeProps, 'AGENT');
+      expect(capturedTypeProps['audience']).toBe('AGENT');
+
+      navigateToTemplateStep();
+
+      expect(capturedTemplateProps['audience']).toBe('AGENT');
+    });
+
+    it('should pass the audience picked on the template step back to the type step', () => {
+      render(<FlowCreatePage />);
+      navigateToTemplateStep();
+
+      changeAudience(capturedTemplateProps, 'USER');
+      fireEvent.click(screen.getByText('Back'));
+
+      expect(capturedTypeProps['audience']).toBe('USER');
+    });
+  });
+
   describe('Step Navigation', () => {
     it('should advance to Template step when Continue is clicked after selecting a type', () => {
       render(<FlowCreatePage />);
