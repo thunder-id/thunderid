@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {AllowedOriginTypes, createRow, rowKey, type AllowedOriginDraftRow} from '@thunderid/configure-settings';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -235,6 +235,7 @@ interface ConfigureRedirectUrisProps {
 
 export default function ConfigureRedirectUris({redirectUriRequired}: ConfigureRedirectUrisProps): JSX.Element {
   const {t} = useTranslation();
+  const {config} = useConfig();
   const {
     redirectUris,
     setRedirectUris,
@@ -277,7 +278,8 @@ export default function ConfigureRedirectUris({redirectUriRequired}: ConfigureRe
         title={t('applications:edit.general.redirectUris.title', 'Authorized redirect URIs')}
         description={t(
           'applications:edit.general.redirectUris.description',
-          'Where ThunderID sends users back after they sign in. Sign-in requests must use one of these URIs.',
+          'Where {{productName}} sends users back after they sign in. Sign-in requests must use one of these URIs.',
+          {productName: config.brand.product_name},
         )}
         placeholder={t(
           'applications:onboarding.configure.details.redirectUris.placeholder',
