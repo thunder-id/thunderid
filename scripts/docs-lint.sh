@@ -40,14 +40,15 @@ if [[ $# -eq 0 ]]; then
 else
   for f in "$@"; do
     [[ "$f" == /* ]] || f="$PWD/$f"
-    # Skip agent skill definitions, internal design docs, and repo meta-docs
-    # (AGENTS.md, README.md, ARCHITECTURE.md) even if passed explicitly — they're
-    # not docs/content pages and don't follow its conventions (frontmatter,
-    # <ProductName />, etc.). docs-internals has its own templates, which carry no
-    # frontmatter and name the product directly.
+    # Skip agent skill definitions, internal design docs, architectural decision
+    # records, and repo meta-docs (AGENTS.md, README.md, ARCHITECTURE.md) even if
+    # passed explicitly — they're not docs/content pages and don't follow its
+    # conventions (frontmatter, <ProductName />, etc.). docs-internals has its own
+    # templates, which carry no frontmatter and name the product directly.
     case "$f" in
       "$REPO_ROOT"/.agent/skills/*|"$REPO_ROOT"/.claude/skills/*) continue ;;
       "$REPO_ROOT"/docs-internals/*) continue ;;
+      "$REPO_ROOT"/docs/adrs/*) continue ;;
       */AGENTS.md|*/README.md|*/ARCHITECTURE.md) continue ;;
     esac
     FILES+=("$f")
