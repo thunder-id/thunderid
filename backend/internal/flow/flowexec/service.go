@@ -851,11 +851,11 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	return &engineCtx, nil
 }
 
-// boundSignIn marks a sign-in flow as bounded and fixes its organization unit: the one the request names,
-// or the application's own when the application is not shared.
+// boundSignIn applies the sign-in boundary to authentication and device grant flows. A named unit
+// fixes the sign-in to that unit, and an unshared application fixes it to its own.
 func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineContext,
 	logger *log.Logger) *tidcommon.ServiceError {
-	if engineCtx.FlowType != providers.FlowTypeAuthentication {
+	if engineCtx.FlowType != providers.FlowTypeAuthentication && engineCtx.FlowType != providers.FlowTypeDeviceGrant {
 		return nil
 	}
 	engineCtx.SignInBounded = true

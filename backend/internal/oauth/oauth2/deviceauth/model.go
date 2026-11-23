@@ -31,27 +31,28 @@ const (
 
 // DeviceAuthRequest represents a persisted device authorization request.
 type DeviceAuthRequest struct {
-	RequestID                  string
-	ApplicationID              string
-	DeviceCodeHash             string
-	UserCode                   string `json:"-"`
-	ClientID                   string
-	UserID                     string
-	SubjectID                  string
-	StandardScopes             string
-	RequestedPermissions       string
-	RequiredOptionalAttributes string
-	AuthorizedScopes           string
-	Resources                  []string
-	State                      DeviceRequestState
-	AttributeCacheID           string
-	CompletedACR               string
-	AuthTime                   time.Time
-	SessionID                  string
-	SessionData                []oauth2model.SessionData
-	LastPolledAt               time.Time
-	PollInterval               int64
-	ExpiryTime                 time.Time
+	RequestID                     string
+	ApplicationID                 string
+	DeviceCodeHash                string
+	UserCode                      string `json:"-"`
+	ClientID                      string
+	UserID                        string
+	SubjectID                     string
+	StandardScopes                string
+	RequestedPermissions          string
+	RequiredOptionalAttributes    string
+	UserAttributesCacheTTLSeconds int64
+	AuthorizedScopes              string
+	Resources                     []string
+	State                         DeviceRequestState
+	AttributeCacheID              string
+	CompletedACR                  string
+	AuthTime                      time.Time
+	SessionID                     string
+	SessionData                   []oauth2model.SessionData
+	LastPolledAt                  time.Time
+	PollInterval                  int64
+	ExpiryTime                    time.Time
 }
 
 // DeviceApproval is what an approving flow assertion records on its Device Grant request. SubjectID is the

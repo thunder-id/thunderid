@@ -25,12 +25,13 @@ import (
 
 // DeviceVerificationResult contains trusted request data returned after a Device Grant user code check.
 type DeviceVerificationResult struct {
-	InvalidCode                bool
-	ApplicationID              string
-	AuthID                     string
-	RequestedPermissions       string
-	ResourceServerIdentifier   string
-	RequiredOptionalAttributes string
+	InvalidCode                   bool
+	ApplicationID                 string
+	AuthID                        string
+	RequestedPermissions          string
+	ResourceServerIdentifier      string
+	RequiredOptionalAttributes    string
+	UserAttributesCacheTTLSeconds int64
 }
 
 // LanguageTranslationsResponse represents all translations for a language, organized by namespace.

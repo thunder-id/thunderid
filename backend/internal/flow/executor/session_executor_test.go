@@ -384,6 +384,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	ctx.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, "other")] = "h"
 	ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes] = "email"
 	ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes] = "phone"
+	ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds] = "120"
 	ctx.RuntimeData[common.RuntimeKeyRequiredLocales] = "en-US"
 	ctx.RuntimeData[common.RuntimeKeyRequestedPermissions] = "openid profile"
 	ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier] = "rs-a"
@@ -410,6 +411,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	// Request-scoped keys are stripped so they cannot override a joining app's request.
 	suite.NotContains(rd, common.RuntimeKeyRequiredEssentialAttributes)
 	suite.NotContains(rd, common.RuntimeKeyRequiredOptionalAttributes)
+	suite.NotContains(rd, common.RuntimeKeyUserAttributesCacheTTLSeconds)
 	suite.NotContains(rd, common.RuntimeKeyRequiredLocales)
 	suite.NotContains(rd, common.RuntimeKeyRequestedPermissions)
 	suite.NotContains(rd, common.RuntimeKeyResourceServerIdentifier)
