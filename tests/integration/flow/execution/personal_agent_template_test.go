@@ -136,10 +136,7 @@ func (ts *PersonalAgentTemplateTestSuite) TestRegistersAPersonalAgentWithAJWKSUR
 		"authFlowId":           defaultFlowID,
 		"alwaysPromptConsent":  "false",
 	})
-	ts.Require().Equal("COMPLETE", step.FlowStatus, body)
-	agentID := step.Data.AdditionalData[agentIDData]
-	ts.Require().NotEmpty(agentID, body)
-	ts.agentIDs = append(ts.agentIDs, agentID)
+	agentID := ts.registered(step, body)
 	ts.NotEmpty(step.Data.AdditionalData[agentClientIDData])
 	ts.Empty(step.Data.AdditionalData[agentClientSecretData])
 
@@ -167,6 +164,32 @@ func (ts *PersonalAgentTemplateTestSuite) TestAsksForTheJWKSURI() {
 	ts.Equal("INCOMPLETE", step.FlowStatus, body)
 	ts.Empty(step.Data.AdditionalData[agentIDData], body)
 	ts.Contains(inputIdentifiers(step), "jwksUri", body)
+}
+
+// The agent's name is unique, so a name another agent has is asked for again on the details prompt, and a new
+// name registers the agent in the same run.
+func (ts *PersonalAgentTemplateTestSuite) TestAsksAgainForATakenName() {
+	taken := common.GenerateUniqueUsername("pa_template_taken")
+	executionID, challenge := ts.signIn()
+	step, body := ts.step(executionID, challenge, testutils.PersonalAgentDetailsAction, map[string]string{
+		agentNameInput: taken, agentRedirectURIsInput: personalAgentCallback, "jwksUri": personalAgentJWKSURI,
+	})
+	ts.registered(step, body)
+
+	executionID, challenge = ts.signIn()
+	step, body = ts.step(executionID, challenge, testutils.PersonalAgentDetailsAction, map[string]string{
+		agentNameInput: taken, agentRedirectURIsInput: personalAgentCallback, "jwksUri": personalAgentJWKSURI,
+	})
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, body)
+	ts.Empty(step.Data.AdditionalData[agentIDData], body)
+	ts.Require().Contains(inputIdentifiers(step), agentNameInput, "the name can be changed: %s", body)
+
+	step, body = ts.step(executionID, step.ChallengeToken, testutils.PersonalAgentDetailsAction, map[string]string{
+		agentNameInput:         common.GenerateUniqueUsername("pa_template_freed"),
+		agentRedirectURIsInput: personalAgentCallback,
+		"jwksUri":              personalAgentJWKSURI,
+	})
+	ts.registered(step, body)
 }
 
 // The labels are translation keys the gate resolves, so every key the template uses must be served, and the
@@ -223,6 +246,16 @@ func (ts *PersonalAgentTemplateTestSuite) TestUserChoiceSignsAUserUp() {
 	ts.Require().NoError(err)
 	ts.Require().NotNil(user)
 	ts.userIDs = append(ts.userIDs, user.ID)
+}
+
+// registered checks that a registration completed with the agent's credentials, and returns the agent's ID.
+func (ts *PersonalAgentTemplateTestSuite) registered(step common.FlowStep, body string) string {
+	ts.T().Helper()
+	ts.Require().Equal("COMPLETE", step.FlowStatus, body)
+	agentID := step.Data.AdditionalData[agentIDData]
+	ts.Require().NotEmpty(agentID, body)
+	ts.agentIDs = append(ts.agentIDs, agentID)
+	return agentID
 }
 
 // signIn starts the registration, chooses a personal agent and signs the owner in through the called login
