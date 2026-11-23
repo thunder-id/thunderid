@@ -766,6 +766,22 @@ func (s *CacheBackedEntityStoreTestSuite) TestLockEntity_BypassesCache() {
 	s.mockStore.AssertExpectations(s.T())
 }
 
+// The credentials read under the lock bypass the cache in both directions, as the entity does.
+func (s *CacheBackedEntityStoreTestSuite) TestLockEntityWithCredentials_BypassesCache() {
+	stale := &entityWithCredentials{Entity: &providers.Entity{ID: testEntityID},
+		SchemaCredentials: json.RawMessage(`{"pin":"stale"}`)}
+	s.entityWithCredsByIDData[testEntityID] = stale
+	locked := &entityWithCredentials{Entity: &providers.Entity{ID: testEntityID},
+		SchemaCredentials: json.RawMessage(`{"password":"fresh"}`)}
+	s.mockStore.On("LockEntityWithCredentials", mock.Anything, testEntityID).Return(locked, nil).Once()
+
+	got, err := s.cachedStore.LockEntityWithCredentials(context.Background(), testEntityID)
+	s.Require().NoError(err)
+	s.Same(locked, got)
+	s.Same(stale, s.entityWithCredsByIDData[testEntityID])
+	s.mockStore.AssertExpectations(s.T())
+}
+
 func (s *CacheBackedEntityStoreTestSuite) TestGetEntityListBySystemAttributes_PassThrough() {
 	sysQuery := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "u1"}}
 	s.mockStore.On("GetEntityListCountBySystemAttributes", mock.Anything, "agent", sysQuery).Return(2, nil)

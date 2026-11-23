@@ -590,6 +590,25 @@ func (s *DBStoreTestSuite) TestLockEntity_ReadsEntityUnderLock() {
 	s.Equal("e1", e.ID)
 }
 
+func (s *DBStoreTestSuite) TestLockEntityWithCredentials_NotFound() {
+	s.expectClient()
+	s.onExecAny(0, nil)
+	_, err := s.store.LockEntityWithCredentials(s.ctx, "e1")
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+// The credentials are read from the database under the lock, so the caller modifies the committed value.
+func (s *DBStoreTestSuite) TestLockEntityWithCredentials_ReadsCredentialsUnderLock() {
+	s.expectClient()
+	s.onExecAny(1, nil)
+	s.expectClient()
+	s.onQueryAny([]map[string]interface{}{dbEntityRowWithCreds()}, nil)
+	result, err := s.store.LockEntityWithCredentials(s.ctx, "e1")
+	s.Require().NoError(err)
+	s.Equal("e1", result.Entity.ID)
+	s.JSONEq(`{"password":"hashed"}`, string(result.SchemaCredentials))
+}
+
 func (s *DBStoreTestSuite) TestUpdateCredentials_ProviderError() {
 	s.expectClientError()
 	err := s.store.UpdateCredentials(s.ctx, "e1", json.RawMessage(`{}`))
