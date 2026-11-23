@@ -82,7 +82,7 @@ Changes take effect immediately for new authentication sessions.
 
 ## Scope Themes to a Project
 
-On the control plane, every theme you manage through the REST API, the MCP server, or an import belongs to a project. Pass the project ID when you work with these themes.
+On the control plane, every theme you manage through the REST API, the MCP server, or an import belongs to a project. Pass the project ID when you work with these themes. To learn what a project is, see [Projects](../../key-concepts/projects.mdx).
 
 - **Create**: set `projectId` in the body of `POST /design/themes`. A request without `projectId` fails with `THM-1019`.
 - **Update**: a `PUT /design/themes/{id}` without `projectId`, or with the current one, keeps the theme in its project without checking the project again. A different `projectId` moves the theme to that project.
