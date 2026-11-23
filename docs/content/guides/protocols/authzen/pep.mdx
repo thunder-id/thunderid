@@ -68,6 +68,8 @@ During an authorization flow, <ProductName /> resolves the target resource serve
 
 <ProductName /> sends the evaluation to the configured AuthZEN PDP through the access evaluation API. The PDP returns an allow or deny decision for each permission evaluated. <ProductName /> enforces these decisions by retaining only the allowed permissions. If the PDP cannot complete the evaluation, the authorization flow fails.
 
+An evaluation needs a subject ID. A subject with no local record has none, such as the subject of an external token on [token exchange](../../oauth-oidc/token-exchange) or the JWT bearer grant. <ProductName /> denies its permissions without calling the PDP, so a token issued for an external token carries no permission that an AuthZEN PDP decides.
+
 ## Configure <ProductName /> {#configure-thunderid}
 
 ### Create an AuthZEN PDP Connection

@@ -58,10 +58,15 @@ func (p *authZENPDPEngine) EvaluateAccessBatch(
 	if p.client == nil {
 		return nil, fmt.Errorf("HTTP client is required")
 	}
-	groups, err := groupAuthZENEvaluations(request)
+	groups, subjectless, err := groupAuthZENEvaluations(request)
 	if err != nil {
 		return nil, err
 	}
+	if subjectless > 0 {
+		p.logger.Warn(ctx, "Denied AuthZEN evaluations that have no subject without calling the PDP",
+			log.Int("count", subjectless))
+	}
+	// An evaluation left out of every group keeps the zero response, a deny.
 	responses := make([]AccessEvaluationResponse, len(request.Evaluations))
 	for key, group := range groups {
 		settings, err := p.settingsForConnection(ctx, key.connectionID, key.resourceType)
@@ -100,13 +105,23 @@ func (p *authZENPDPEngine) evaluateGroup(
 	return &AccessEvaluationsResponse{Evaluations: responses}, nil
 }
 
-// groupAuthZENEvaluations groups requests by their PDP connection and resource type.
-func groupAuthZENEvaluations(request AccessEvaluationsRequest) (map[authZENPDPBatchKey]*authZENPDPBatch, error) {
+// groupAuthZENEvaluations groups requests by their PDP connection and resource type. It leaves out, and
+// counts, the evaluations whose subject has no ID: AuthZEN requires one, and a PDP asked about no subject
+// could grant the request blind. A subject with no local record, such as an external token's subject on
+// token exchange or the jwt-bearer grant, has none.
+func groupAuthZENEvaluations(
+	request AccessEvaluationsRequest,
+) (map[authZENPDPBatchKey]*authZENPDPBatch, int, error) {
 	groups := make(map[authZENPDPBatchKey]*authZENPDPBatch)
+	subjectless := 0
 	for index, evaluation := range request.Evaluations {
+		if strings.TrimSpace(evaluation.Subject.ID) == "" {
+			subjectless++
+			continue
+		}
 		connectionID, resourceType, err := authZENPDPRoute(evaluation)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		key := authZENPDPBatchKey{connectionID: connectionID, resourceType: resourceType}
 		group, found := groups[key]
@@ -117,7 +132,7 @@ func groupAuthZENEvaluations(request AccessEvaluationsRequest) (map[authZENPDPBa
 		group.request.Evaluations = append(group.request.Evaluations, evaluation)
 		group.indexes = append(group.indexes, index)
 	}
-	return groups, nil
+	return groups, subjectless, nil
 }
 
 // authZENPDPRoute returns the PDP connection and resource-server identifiers for an evaluation.
