@@ -4572,6 +4572,7 @@ const (
 	boundaryNamedOUID  = "boundary-named-ou"
 	boundaryAuthFlowID = "boundary-auth-flow"
 	boundaryRegFlowID  = "boundary-registration-flow"
+	boundaryDGFlowID   = "boundary-device-grant-flow"
 	boundaryUserID     = "boundary-user"
 )
 
@@ -4606,13 +4607,16 @@ func (s *ServiceTestSuite) newBoundaryFixture(flowType providers.FlowType) *boun
 	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
 
 	flowID := boundaryAuthFlowID
-	if flowType == providers.FlowTypeRegistration {
+	switch flowType {
+	case providers.FlowTypeRegistration:
 		flowID = boundaryRegFlowID
+	case providers.FlowTypeDeviceGrant:
+		flowID = boundaryDGFlowID
 	}
 	actor := actorprovidermock.NewActorProviderMock(s.T())
 	actor.EXPECT().GetInboundClientByID(mock.Anything, boundaryAppID).Return(&providers.InboundClient{
 		ID: boundaryAppID, AuthFlowID: boundaryAuthFlowID,
-		RegistrationFlowID: boundaryRegFlowID, IsRegistrationFlowEnabled: true,
+		RegistrationFlowID: boundaryRegFlowID, IsRegistrationFlowEnabled: true, DeviceGrantFlowID: boundaryDGFlowID,
 	}, nil)
 	actor.EXPECT().GetActor(mock.Anything, boundaryAppID).Return(&providers.Entity{
 		ID: boundaryAppID, OUID: boundaryAppOUID, Category: providers.EntityCategoryApp,
@@ -4657,8 +4661,8 @@ func (f *boundaryFixture) initContext(ctx context.Context, flowType providers.Fl
 	return f.service.initContext(ctx, "", boundaryAppID, flowType, nil, nil, true, log.GetLogger())
 }
 
-// The start fixes the organization unit when it can: the one the request names, or the application's
-// own when it is not shared. A shared application with no unit named leaves it open.
+// A sign-in or device grant start fixes the organization unit when it can: the one the request names, or the
+// application's own when it is not shared. A shared application with no unit named leaves it open.
 func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 	cases := []struct {
 		name      string
@@ -4689,23 +4693,25 @@ func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 		},
 	}
 
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
-			tc.arrange(f.ou)
-			ctx := context.Background()
-			if tc.namedOUID != "" {
-				ctx = sysContext.WithAccessingOUID(ctx, tc.namedOUID)
-			}
+	for _, flowType := range []providers.FlowType{providers.FlowTypeAuthentication, providers.FlowTypeDeviceGrant} {
+		for _, tc := range cases {
+			s.Run(string(flowType)+" "+tc.name, func() {
+				f := s.newBoundaryFixture(flowType)
+				tc.arrange(f.ou)
+				ctx := context.Background()
+				if tc.namedOUID != "" {
+					ctx = sysContext.WithAccessingOUID(ctx, tc.namedOUID)
+				}
 
-			engineCtx, svcErr := f.initContext(ctx, providers.FlowTypeAuthentication)
+				engineCtx, svcErr := f.initContext(ctx, flowType)
 
-			s.Require().Nil(svcErr)
-			s.True(engineCtx.SignInBounded)
-			ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
-			s.Equal(tc.wantOUID != "", fixed)
-			s.Equal(tc.wantOUID, ouID)
-		})
+				s.Require().Nil(svcErr)
+				s.True(engineCtx.SignInBounded)
+				ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
+				s.Equal(tc.wantOUID != "", fixed)
+				s.Equal(tc.wantOUID, ouID)
+			})
+		}
 	}
 }
 
@@ -4792,7 +4798,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_LookupFailureIsAServerError() {
 	})
 }
 
-// Only sign-in is bounded: another flow type asks nothing about sharing, even with a unit named.
+// Only sign-in and device grant are bounded: another flow type asks nothing about sharing, even with a unit named.
 func (s *ServiceTestSuite) TestBoundSignIn_OtherFlowTypesAreNotBounded() {
 	f := s.newBoundaryFixture(providers.FlowTypeRegistration)
 

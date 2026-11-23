@@ -294,6 +294,9 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 ) error {
 	ttlSecondsStr, exists := ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]
 	if !exists {
+		ttlSecondsStr, exists = ctx.SharedRuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]
+	}
+	if !exists {
 		for attrKey, attrVal := range resolvedAttributes {
 			if reservedAssertionClaims[attrKey] {
 				continue

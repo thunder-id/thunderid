@@ -1545,3 +1545,48 @@ func (suite *UtilsTestSuite) TestApplyMappedAuthorizationPreservesRoleAlternativ
 	suite.Nil(err)
 	suite.Equal([]string{"reservations:view"}, granted)
 }
+
+func (suite *UtilsTestSuite) TestResolveUserAttributesCacheTTL() {
+	accessToken := func(validity int64) *providers.OAuthTokenConfig {
+		return &providers.OAuthTokenConfig{AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: validity},
+		}}
+	}
+	withRefresh := []providers.GrantType{providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken}
+	withoutRefresh := []providers.GrantType{providers.GrantTypeAuthorizationCode}
+	appRefresh := accessToken(3600)
+	appRefresh.RefreshToken = &providers.RefreshTokenConfig{ValidityPeriod: 86400}
+
+	tests := []struct {
+		name             string
+		serverRefreshTTL int64
+		grants           []providers.GrantType
+		token            *providers.OAuthTokenConfig
+		redemptionWindow int64
+		want             int64
+	}{
+		{"refresh allowed and longer than access", 7200, withRefresh, accessToken(3600), 600, 7860},
+		{"refresh allowed and shorter than access", 1800, withRefresh, accessToken(7200), 600, 7860},
+		{"refresh allowed with the application's refresh validity", 7200, withRefresh, appRefresh, 600, 87060},
+		{"refresh allowed with no refresh validity falls back to JWT", 0, withRefresh, nil, 600, 1560},
+		{"refresh not allowed ignores refresh validity", 7200, withoutRefresh, accessToken(3600), 600, 4260},
+		{"refresh not allowed with no access validity falls back to JWT", 0, withoutRefresh, accessToken(0), 600, 1560},
+		{"no token configuration falls back to JWT", 0, withoutRefresh, nil, 600, 1560},
+		{"no access token configuration falls back to JWT", 0, withoutRefresh,
+			&providers.OAuthTokenConfig{}, 600, 1560},
+		{"the grant's redemption window is added", 0, withoutRefresh, accessToken(3600), 1800, 5460},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			cfg := oauthconfig.Config{
+				JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+				OAuth: engineconfig.OAuthConfig{
+					RefreshToken: engineconfig.RefreshTokenConfig{ValidityPeriod: tc.serverRefreshTTL},
+				},
+			}
+			app := &providers.OAuthClient{GrantTypes: tc.grants, Token: tc.token}
+
+			assert.Equal(suite.T(), tc.want, ResolveUserAttributesCacheTTL(cfg, app, tc.redemptionWindow))
+		})
+	}
+}

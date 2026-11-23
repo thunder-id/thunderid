@@ -757,6 +757,8 @@ func (as *authorizeService) startAuthorizationFlow(
 	}
 
 	// Initiate flow with OAuth context.
+	attrCacheTTL := tokenservice.ResolveUserAttributesCacheTTL(
+		as.cfg, app, as.cfg.OAuth.AuthorizationCode.ValidityPeriod)
 	runtimeData := map[string]string{
 		flowcm.RuntimeKeyClientID:                      oauthParams.ClientID,
 		flowcm.RuntimeKeyRequestedPermissions:          utils.StringifyStringArray(oauthParams.PermissionScopes, " "),
@@ -764,7 +766,7 @@ func (as *authorizeService) startAuthorizationFlow(
 		flowcm.RuntimeKeyRequiredEssentialAttributes:   essentialAttributes,
 		flowcm.RuntimeKeyRequiredOptionalAttributes:    optionalAttributes,
 		flowcm.RuntimeKeyRequiredLocales:               oauthParams.ClaimsLocales,
-		flowcm.RuntimeKeyUserAttributesCacheTTLSeconds: fmt.Sprintf("%d", as.resolveUserAttributesCacheTTL(app)),
+		flowcm.RuntimeKeyUserAttributesCacheTTLSeconds: fmt.Sprintf("%d", attrCacheTTL),
 		flowcm.RuntimeKeyAuthorizationRequestID:        identifier,
 	}
 	if effectiveAcrValues != "" {
@@ -1688,25 +1690,6 @@ func validateSubClaimConstraint(claimsRequest *oauth2model.ClaimsRequest, actual
 	}
 
 	return nil
-}
-
-// resolveUserAttributesCacheTTL determines the TTL for caching user attributes based on the
-// token validity configuration. The largest of the access and refresh token (if allowed) validity
-// periods is taken as the base, then the authorization code validity period is added to cover
-// the window between code issuance and token exchange.
-// A fixed buffer of attributeCacheTTLBufferSeconds is added to cover the window between
-// authentication completion and token issuance.
-func (as *authorizeService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
-	maxTTL := tokenservice.ResolveTokenConfig(
-		as.cfg, app, tokenservice.TokenTypeAccess, app.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
-	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
-		refreshTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
-		if refreshTTL > maxTTL {
-			maxTTL = refreshTTL
-		}
-	}
-	authCodeTTL := as.cfg.OAuth.AuthorizationCode.ValidityPeriod
-	return maxTTL + authCodeTTL + oauth2const.AttributeCacheTTLBufferSeconds
 }
 
 // addMetadataDocumentClientHosts adds the client ID host and the redirect URI host of a client registered

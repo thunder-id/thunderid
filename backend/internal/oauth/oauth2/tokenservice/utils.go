@@ -89,6 +89,17 @@ func ResolveTokenConfig(
 	return tokenConfig
 }
 
+// ResolveUserAttributesCacheTTL keeps the attributes available through redemption and the life of
+// the longest-lived token that can use them. The grant supplies its own redemption window in seconds.
+func ResolveUserAttributesCacheTTL(cfg oauthconfig.Config, app *providers.OAuthClient, redemptionWindow int64) int64 {
+	accessValidity := app.UserAccessTokenConfig().ValidityPeriodOrZero()
+	validity := ResolveTokenConfig(cfg, app, TokenTypeAccess, accessValidity).ValidityPeriod
+	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
+		validity = max(validity, ResolveTokenConfig(cfg, app, TokenTypeRefresh, 0).ValidityPeriod)
+	}
+	return validity + redemptionWindow + constants.AttributeCacheTTLBufferSeconds
+}
+
 // extractStringClaim safely extracts a non-empty string claim from a claims map.
 func extractStringClaim(claims map[string]interface{}, key string) (string, error) {
 	value, ok := claims[key]

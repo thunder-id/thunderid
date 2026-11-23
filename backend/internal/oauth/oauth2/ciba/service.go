@@ -154,7 +154,8 @@ func (s *cibaService) InitiateBackchannelAuth(
 		effectiveResources = []string{targetRS.Identifier}
 		resourceServerIdentifier = targetRS.Identifier
 	}
-	cacheTTL := strconv.FormatInt(s.resolveUserAttributesCacheTTL(oauthApp), 10)
+	cacheTTL := strconv.FormatInt(
+		tokenservice.ResolveUserAttributesCacheTTL(s.cfg, oauthApp, oauth2const.CIBAMaxExpiresInSeconds), 10)
 
 	// authReqID is injected into runtime data for two reasons:
 	//   a) auth_assert_executor binds it as the authorization_request_id claim in the assertion JWT,
@@ -671,23 +672,6 @@ func defaultBindingMessage(authReqID string) string {
 	}
 	code := strings.ToUpper(clean[:4] + "-" + clean[4:8])
 	return "An authentication request has been initiated on your behalf. Code: " + code + ". Please review and confirm."
-}
-
-// resolveUserAttributesCacheTTL determines the TTL for caching user attributes during the flow.
-// It mirrors the authorization code path: the largest of the access and refresh token (if allowed)
-// validity periods is the base, plus the CIBA request lifetime to cover the poll window, plus a
-// fixed buffer. Setting this in the flow runtime data is what makes the auth assertion cache the
-// resolved attributes and emit the aci claim (consumed by the CIBA callback).
-func (s *cibaService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
-	maxTTL := tokenservice.ResolveTokenConfig(
-		s.cfg, app, tokenservice.TokenTypeAccess, app.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
-	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
-		refreshTTL := tokenservice.ResolveTokenConfig(s.cfg, app, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
-		if refreshTTL > maxTTL {
-			maxTTL = refreshTTL
-		}
-	}
-	return maxTTL + oauth2const.CIBAMaxExpiresInSeconds + oauth2const.AttributeCacheTTLBufferSeconds
 }
 
 // GetByAuthReqID retrieves a CIBA authentication request by ID. Used by the grant handler at the

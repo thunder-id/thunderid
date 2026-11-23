@@ -683,24 +683,6 @@ func (suite *CIBAServiceTestSuite) TestResolveExpiresIn_WithWhitespace() {
 }
 
 // -------------------------------------------------------------------
-// resolveUserAttributesCacheTTL tests
-// -------------------------------------------------------------------
-
-func (suite *CIBAServiceTestSuite) TestResolveUserAttributesCacheTTL_RefreshTokenBranchTakesPrecedence() {
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{providers.GrantTypeCIBA, providers.GrantTypeRefreshToken},
-		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{
-				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
-			},
-			RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 86400},
-		},
-	}
-	ttl := (&cibaService{cfg: testhelpers.OAuthConfig()}).resolveUserAttributesCacheTTL(app)
-	suite.Greater(ttl, int64(86400))
-}
-
-// -------------------------------------------------------------------
 // resolveExpectedAudience tests
 // -------------------------------------------------------------------
 

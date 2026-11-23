@@ -1,7 +1,7 @@
 # OAuth 2.0 Device Authorization Grant Specification
 
 - **Status:** Final
-- **Version:** 1.2
+- **Version:** 1.3
 - **Related documents:**
   - [Feature issue #5156](https://github.com/thunder-id/thunderid/issues/5156)
   - [RFC 8628](https://www.rfc-editor.org/info/rfc8628/)
@@ -149,6 +149,10 @@ The device sends `grant_type=urn:ietf:params:oauth:grant-type:device_code` and t
 
 An ID token is returned when `openid` is authorized. A refresh token is returned when the client allows the `refresh_token`. A `device_secret` is returned when `device_sso` is authorized and the approval kept at least one SSO session: it carries those sessions for the approving user, as the authorization code grant's does, and the client exchanges it for tokens of a client that signs in on the same flow with no browser. Native SSO draft 07 defines the `device_secret` for the authorization code and refresh token grants only (section 3.3), so returning one from this grant is a ThunderID extension. The client must stop polling after tokens or a terminal OAuth error. A `slow_down` response requires increasing the polling interval by five seconds.
 
+The called Authentication flow caches the user attributes required by the application's token configuration and granted scopes. The approval carries the cache ID to token issuance. If the flow prompts the user to choose an eligible organization unit, the configured `ouId` claim identifies that unit.
+
+The sign-in follows the called Authentication flow's organization unit boundary. A device authorization request cannot name an organization unit, so an application that is not shared signs in to its own unit, and a shared application's Authentication flow must decide the unit, for example with a Resolve OU node, or its assertion is refused with `FET-1124`. Reusing an SSO session is checked against the same boundary: the session is reused only while its user may sign in to the unit the sign-in decided, or, when none is decided, to the unit the user last signed in to with that session.
+
 Only one concurrent token exchange can consume an approved request. The `PENDING` to `REDEEMING`, `REDEEMING` to `APPROVED`, and `APPROVED` to `CONSUMED` transitions use atomic state comparisons; the first two and consumption also require the request expiry to remain in the future. If request storage expires, the request cannot be claimed, approved, or consumed.
 
 ### UI
@@ -201,6 +205,7 @@ The page does not look up code status before submission and does not use a Devic
 - **AC2.7:** Given a Device Grant flow has claimed a request, when Gate submits its terminal assertion to the callback, then the callback `authId`, assertion `authorization_request_id`, and stored request ID must match, and the request ID remains distinct from the flow `executionId`.
 - **AC2.8:** Given an application or delegated agent has configured its Authentication flow, when the Device Grant flow calls it, then authentication and any consent behavior follow that flow without a separate Device Grant consent requirement.
 - **AC2.9:** Given a request is in `REDEEMING`, when the callback handles a valid signed success, user-denial, or other failure result for that request, then it records the corresponding `APPROVED`, `DENIED`, or `FAILED` outcome.
+- **AC2.10:** Given the Device Grant flow calls the Authentication flow, when the user signs in, then the sign-in is bounded as an Authentication flow sign-in: an application that is not shared signs in to its own organization unit, a shared application's sign-in that decides no organization unit is refused at its assertion with `FET-1124`, and an SSO session is reused only while its user may sign in to the organization unit the sign-in follows.
 
 ### R3. Poll and issue tokens once
 
@@ -215,6 +220,7 @@ The page does not look up code status before submission and does not use a Devic
 - **AC3.5:** Given two token exchanges race for the same approved request, when ThunderID consumes it, then only one exchange succeeds in consuming the request and receiving tokens.
 - **AC3.6:** Given `device_sso` is authorized and the approval kept at least one of the SSO sessions the callback posted, when the client polls successfully, then the token response includes a `device_secret` carrying the kept sessions for the approving user's entity ID.
 - **AC3.7:** Given `device_sso` is not authorized, or the approval kept no session because none was posted or every posted entry was left out, when the client polls successfully, then the token response has no `device_secret`.
+- **AC3.8:** Given a request is approved, when its client polls successfully, then the access token carries the user attributes configured for it and the ID token the configured attributes the granted scopes release, both limited to the attributes the user approved when the flow includes consent, and a configured `ouId` claim names the organization unit the sign-in decided.
 
 ### R4. Expiry and request integrity
 
@@ -243,3 +249,4 @@ The page does not look up code status before submission and does not use a Devic
 | 1.0 | 2026-10-09 | Initial specification. |
 | 1.1 | 2026-11-05 | Added delegated-agent support. |
 | 1.2 | 2026-11-16 | The Device Code token response returns a device secret for `device_sso`, from the SSO sessions the approval kept. |
+| 1.3 | 2026-11-23 | Device tokens carry configured user attributes and the organization unit chosen during sign-in, and the device sign-in follows the Authentication flow's organization unit boundary ([#6991](https://github.com/thunder-id/thunderid/issues/6991)). |

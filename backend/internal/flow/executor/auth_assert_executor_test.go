@@ -1416,7 +1416,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_AttrsSt
 		EntityID:    "app-123",
 		Context:     context.Background(),
 		AuthUser:    newTestAuthenticatedAuthUser(),
-		RuntimeData: map[string]string{
+		SharedRuntimeData: map[string]string{
 			common.RuntimeKeyUserAttributesCacheTTLSeconds: "300",
 		},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},

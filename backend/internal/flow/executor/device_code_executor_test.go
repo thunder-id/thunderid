@@ -37,7 +37,7 @@ func (s *DeviceCodeExecutorTestSuite) TestUsesStoredRequestIdentity() {
 	verifier.EXPECT().VerifyUserCode(mock.Anything, "stored-app", "BCDF-GHJK").Return(
 		&providers.DeviceVerificationResult{ApplicationID: "stored-app", AuthID: "stored-request",
 			RequestedPermissions: "booking:read", ResourceServerIdentifier: "https://api.example.com",
-			RequiredOptionalAttributes: "email"}, nil)
+			RequiredOptionalAttributes: "email", UserAttributesCacheTTLSeconds: 4200}, nil)
 	executor := &deviceCodeExecutor{
 		verifier: verifier,
 	}
@@ -51,6 +51,7 @@ func (s *DeviceCodeExecutorTestSuite) TestUsesStoredRequestIdentity() {
 	s.Equal("booking:read", response.SharedRuntimeData[flowcommon.RuntimeKeyRequestedPermissions])
 	s.Equal("https://api.example.com", response.SharedRuntimeData[flowcommon.RuntimeKeyResourceServerIdentifier])
 	s.Equal("email", response.SharedRuntimeData[flowcommon.RuntimeKeyRequiredOptionalAttributes])
+	s.Equal("4200", response.SharedRuntimeData[flowcommon.RuntimeKeyUserAttributesCacheTTLSeconds])
 }
 
 func (s *DeviceCodeExecutorTestSuite) TestRepeatsPromptForUnavailableCode() {
