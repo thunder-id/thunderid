@@ -1,7 +1,7 @@
 # Email Provider Configuration Specification
 
 - **Status:** Draft
-- **Version:** 0.4
+- **Version:** 0.5
 - **Related documents:** [Design discussion #3277](https://github.com/thunder-id/thunderid/discussions/3277), [Feature issue #5415](https://github.com/thunder-id/thunderid/issues/5415), [Feature issue #3276](https://github.com/thunder-id/thunderid/issues/3276)
 
 ## Summary
@@ -200,7 +200,7 @@ A `senderId` that is not a string fails the step with an error reporting the typ
 
 | Dispatch outcome | Flow result |
 |---|---|
-| Empty `senderId`, or a sender that does not resolve | A flow failure carrying "email provider not configured", recording that no email was sent. |
+| Empty `senderId`, or a sender that does not resolve | A flow failure carrying "email provider not configured", recording that no email was sent. In a user onboarding or invitation flow, the failure also carries the invite link the email would have carried, for the administrator's screen that shows it instead; every other flow returns no link. |
 | Any other dispatch failure | The step fails as a server error, with the cause logged for diagnosis and nothing about the provider returned to the caller. |
 | Success | The step continues, recording that the email was sent. |
 
@@ -514,3 +514,4 @@ This specification does not define the following.
 | 0.2 | 2026-10-09 | Aligned the credential carry-over, dispatch failure, and vendor metadata behaviour with the implementation. A stored credential carries over on update only while the authentication type, its non-secret fields, and the provider's host and port are unchanged. A dispatch failure other than a missing provider fails the step as a server error. The vendor on `GET /connections/meta` is an optional filter. |
 | 0.3 | 2026-10-26 | Every email provider is owned by exactly one organization unit. `ouId` is required on create and immutable, a declarative document names its owner with `ouId` or `ouHandle`, `NOTIFICATION_SENDER` gains `OU_ID VARCHAR(36) NOT NULL`, and `MNS-1018`, `MNS-1019`, and `MNS-1020` report an unknown, changed, and missing owner. |
 | 0.4 | 2026-11-09 | The flow create wizard fills in a template's email provider before it saves the flow, rather than leaving the assignment to the builder, as implemented in #6669. |
+| 0.5 | 2026-11-21 | A failed email step returns the invite link only in user onboarding and invitation flows; other flows deliver their link by email only. |
