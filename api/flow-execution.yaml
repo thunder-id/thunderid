@@ -545,9 +545,12 @@ components:
         inputs:
           type: object
           description: >-
-            Input data provided for the flow step execution. A value sent for an input that an
-            executor node holds constant is ignored without an error, unless another executor node
-            lists the same input without constant.
+            Input data provided for the flow step execution. Only the inputs the paused step asks for
+            are taken, and others are ignored without an error. A request that continues after a
+            redirection step can also carry the external party's callback parameters.
+            `requested_permissions` and `resource_server_identifier` are only taken from the request
+            that starts the flow. A value sent for an input that an executor node holds constant is
+            ignored without an error, unless another executor node lists the same input without constant.
           additionalProperties:
             type: string
           example: {

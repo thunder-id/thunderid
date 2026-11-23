@@ -282,6 +282,45 @@ func (ts *InvitationTestSuite) TestNewUser_CreatedAtAcceptanceInTheRoot() {
 	ts.Contains(ts.assigneesInChild(ts.ownedRoleID), user.ID)
 }
 
+func (ts *InvitationTestSuite) TestUndeliveredInvite_LinkGoesToTheAdmin() {
+	nodes := ts.templateNodes()
+	for _, node := range nodes {
+		if id, _ := node["id"].(string); strings.HasPrefix(id, "send_invite_email_") {
+			delete(node["properties"].(map[string]interface{}), "senderId")
+		}
+	}
+	flowID, err := testutils.CreateFlow(testutils.Flow{
+		Name: "User Invitation No Provider Flow", FlowType: "INVITATION", Handle: "invitation-no-provider-flow",
+		Nodes: nodes, OUID: ts.parentOUID,
+	})
+	ts.Require().NoError(err, "create the flow without an email provider")
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("delete the flow without an email provider: %v", err)
+		}
+	}()
+	status, raw := ts.request(testutils.GetHTTPClient(), http.MethodPost,
+		"/flows/"+flowID+"/sharing-policies", map[string]interface{}{
+			"childUnits": map[string]interface{}{"mode": "selected", "units": []map[string]interface{}{{
+				"ouId": ts.childOUID, "reach": "subtree",
+			}}},
+		})
+	ts.Require().Equal(http.StatusCreated, status, "share the flow with the child's subtree: %s", raw)
+
+	status, step, errResp := ts.execute(ts.childAdminToken, map[string]interface{}{
+		"flowId": flowID, "action": "action_submit_email",
+		"inputs": map[string]string{"email": "invitation-undelivered@thunderid.test"},
+	})
+	ts.Require().Equal(http.StatusOK, status, "%+v", errResp)
+	step = ts.continueAsAdmin(ts.childAdminToken, step, "action_invite_new", nil)
+	ts.Require().Nil(step.Error, "%+v", step)
+	step = ts.continueAsAdmin(ts.childAdminToken, step, "action_roles_"+branchNew,
+		map[string]string{"roles": ts.ownedRoleID})
+
+	ts.NotEmpty(step.Data.AdditionalData["inviteLink"], "the admin gets the link the email could not carry")
+	ts.Empty(ts.smtp.GetEmails(), "no invite is emailed")
+}
+
 func (ts *InvitationTestSuite) TestDecline_WritesNothing() {
 	email := "invitation-declines@thunderid.test"
 	userID := ts.createUser(ts.parentOUID, "invitation-declines", email)

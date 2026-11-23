@@ -194,6 +194,8 @@ func personalAgentRegistrationNodes(loginFlowID string) []map[string]interface{}
 			"meta": map[string]interface{}{"components": []map[string]interface{}{
 				{"type": "BLOCK", "id": "block_agent_details", "components": []map[string]interface{}{
 					{"type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_agent_inputs"},
+					{"type": "TEXT_INPUT", "id": "input_agent_description", "ref": "description",
+						"label": "Description", "required": false},
 					{"type": "TEXT_INPUT", "id": "input_agent_redirect_uris", "ref": "redirectUris",
 						"label": "Redirect URIs", "required": true},
 					{"type": "TEXT_INPUT", "id": "input_agent_jwks_uri", "ref": "jwksUri", "label": "JWKS URI",
@@ -206,6 +208,8 @@ func personalAgentRegistrationNodes(loginFlowID string) []map[string]interface{}
 			}},
 			"prompts": []map[string]interface{}{{
 				"inputs": []map[string]interface{}{
+					{"ref": "input_agent_description", "identifier": "description", "type": "TEXT_INPUT",
+						"required": false},
 					{"ref": "input_agent_redirect_uris", "identifier": "redirectUris", "type": "TEXT_INPUT",
 						"required": true},
 					{"ref": "input_agent_jwks_uri", "identifier": "jwksUri", "type": "TEXT_INPUT",

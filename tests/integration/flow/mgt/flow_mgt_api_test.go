@@ -993,6 +993,31 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_PromptInputHeldConstantRejected
 	suite.updateFlowExpectError(created.ID, heldConstantFlow(true), http.StatusBadRequest, "FLM-1024")
 }
 
+// oneTimeUseFlow returns a flow whose prompt asks for the department, marked one time use on the prompt when
+// onPrompt is true and on the executor node otherwise.
+func oneTimeUseFlow(onPrompt bool) FlowDefinition {
+	flowDef := promptFlowWithInput(
+		InputDefinition{Type: "TEXT_INPUT", Identifier: "department", OneTimeUse: onPrompt})
+	flowDef.Nodes[2].Executor.Inputs = []InputDefinition{
+		{Type: "TEXT_INPUT", Identifier: "department", OneTimeUse: !onPrompt},
+	}
+	return flowDef
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_PromptInputOneTimeUseRejected() {
+	suite.createFlowExpectError(oneTimeUseFlow(true), http.StatusBadRequest, "FLM-1024")
+
+	created := suite.createFlow(oneTimeUseFlow(false))
+	suite.trackFlow(created.ID)
+}
+
+func (suite *FlowMgtAPITestSuite) TestUpdateFlow_PromptInputOneTimeUseRejected() {
+	created := suite.createFlow(oneTimeUseFlow(false))
+	suite.trackFlow(created.ID)
+
+	suite.updateFlowExpectError(created.ID, oneTimeUseFlow(true), http.StatusBadRequest, "FLM-1024")
+}
+
 func (suite *FlowMgtAPITestSuite) TestFlow_ExecutorInputDefaultsAreKept() {
 	inputs := []InputDefinition{
 		{Type: "TEXT_INPUT", Identifier: "locale", DefaultValue: "en-US"},

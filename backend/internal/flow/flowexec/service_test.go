@@ -4152,6 +4152,7 @@ func (s *ServiceTestSuite) TestLoadNewContext_IgnoresConstantInputs() {
 	s.Require().NotNil(engineCtx)
 	s.Equal("user-1", engineCtx.UserInputs["subject"])
 	s.NotContains(engineCtx.UserInputs, "locale")
+	s.Equal(map[string]struct{}{"subject": {}}, engineCtx.additionalInputs)
 }
 
 // A client that continues a flow cannot set an input the flow holds constant either.
@@ -4178,7 +4179,73 @@ func (s *ServiceTestSuite) TestLoadPrevContext_IgnoresConstantInputs() {
 	s.Nil(svcErr)
 	s.Require().NotNil(engineCtx)
 	s.Equal("alice", engineCtx.UserInputs["username"])
+	s.Equal(map[string]struct{}{"username": {}}, engineCtx.additionalInputs)
 	s.NotContains(engineCtx.UserInputs, "locale")
+}
+
+// A value the flow already holds is replaced by a resent one, and is not counted as first submitted.
+func (s *ServiceTestSuite) TestPrepareContext_ResentHeldInputIsNotNew() {
+	ctx := &EngineContext{UserInputs: map[string]string{"ouId": "ou-1", "userType": "person"}}
+
+	prepareContext(ctx, "", map[string]string{"ouId": "ou-2", "userType": "person", "name": "agent"})
+
+	s.Equal(map[string]string{"ouId": "ou-2", "userType": "person", "name": "agent"}, ctx.UserInputs)
+	s.Equal(map[string]struct{}{"name": {}}, ctx.additionalInputs)
+}
+
+// A request continuing a flow carries only the inputs the paused step asks for, and never the authorization params.
+func (s *ServiceTestSuite) TestLoadPrevContext_LimitsInputsToThePausedStep() {
+	t := s.T()
+	rawCtx := "{\"executionID\":\"exec-1\",\"appID\":\"app-1\",\"flowType\":\"ADMINISTRATION\"," +
+		"\"graphID\":\"graph-1\",\"currentNodeID\":\"node-1\"," +
+		"\"userInputs\":\"{\\\"email\\\":\\\"alice@example.com\\\"}\"," +
+		"\"runtimeData\":\"{}\",\"requestedInputs\":[\"otp\",\"requested_permissions\"]," +
+		"\"executionHistory\":\"{}\"}"
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "exec-1").
+		Return(&FlowContextDB{ExecutionID: "exec-1", Context: rawCtx}, nil)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, mock.Anything).Return(&providers.CompleteFlowDefinition{}, nil)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).
+		Return(s.graphWithConstantInput(providers.FlowTypeAdministration), nil)
+	service := &flowExecService{
+		flowStore: mockStore, graphBuilder: mockGraphBuilder, flowProvider: mockFlowProvider, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadPrevContext(context.Background(), "exec-1", "",
+		map[string]string{"otp": "123456", "email": "other@example.com",
+			common.RuntimeKeyRequestedPermissions: "read"}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal(map[string]string{"email": "alice@example.com", "otp": "123456"}, engineCtx.UserInputs)
+}
+
+// The request that starts a flow can set the authorization params.
+func (s *ServiceTestSuite) TestLoadNewContext_TakesAuthorizationParams() {
+	security.InitControlPlanePermissions("")
+	graph := s.graphWithConstantInput(providers.FlowTypeAdministration)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "administration-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "administration-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+		flowVisibility: s.administrationFlowVisible(),
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+		"administration-1", "", "", "", true, "",
+		map[string]string{"subject": "user-1", common.RuntimeKeyRequestedPermissions: "read"}, "", "",
+		log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("read", engineCtx.UserInputs[common.RuntimeKeyRequestedPermissions])
 }
 
 // The initial inputs of a flow started by the server, such as the login hint of a CIBA request, come

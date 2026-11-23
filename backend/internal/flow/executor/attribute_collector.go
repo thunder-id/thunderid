@@ -141,8 +141,8 @@ func (a *attributeCollector) HasRequiredInputs(ctx *providers.NodeContext,
 		}
 
 		for _, input := range missingAttributes {
-			attribute, exists := authnUserAttrs.Attributes[input.Identifier]
-			if exists {
+			attribute := authnUserAttrs.Attributes[input.Identifier]
+			if attribute != nil && !isEmptyAttribute(attribute.Value) {
 				// If the attribute is a password, do not retrieve it from the profile.
 				if input.Identifier == userAttributePassword {
 					continue
@@ -191,8 +191,8 @@ func (a *attributeCollector) HasRequiredInputs(ctx *providers.NodeContext,
 	}
 
 	for _, input := range missingInputs {
-		attribute, exists := userAttributes[input.Identifier]
-		if exists {
+		attribute := userAttributes[input.Identifier]
+		if !isEmptyAttribute(attribute) {
 			// If the attribute is a password, do not retrieve it from the profile.
 			if input.Identifier == userAttributePassword {
 				continue
@@ -334,9 +334,19 @@ func (a *attributeCollector) getUpdatedUserObject(ctx *providers.NodeContext,
 		return false, userData, nil
 	}
 
-	// Merge attributes
+	// Merge only the attributes the user doesn't already have.
+	updated := false
 	for k, v := range newAttrs {
+		if !isEmptyAttribute(existingAttrs[k]) {
+			logger.Debug(ctx.Context, "Attribute already exists on the user, ignoring the provided value",
+				log.String("attributeName", k))
+			continue
+		}
 		existingAttrs[k] = v
+		updated = true
+	}
+	if !updated {
+		return false, userData, nil
 	}
 
 	// Marshal the merged attributes back to JSON

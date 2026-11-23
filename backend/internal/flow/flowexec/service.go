@@ -953,7 +953,7 @@ func (s *flowExecService) loadPrevContext(ctx context.Context, executionID, acti
 		return nil, err
 	}
 
-	prepareContext(engineCtx, action, inputs)
+	prepareContext(engineCtx, action, engineCtx.onlyRequestedInputs(inputs))
 	return engineCtx, nil
 }
 
@@ -1336,10 +1336,7 @@ func withoutConstantInputs(graph core.GraphInterface, inputs map[string]string) 
 // prepareContext prepares the flow context by merging any data. Inputs the flow holds constant are left
 // out, so no way of starting or continuing a flow can set one.
 func prepareContext(ctx *EngineContext, action string, inputs map[string]string) {
-	// Append any inputs present to the context
-	if inputs = withoutConstantInputs(ctx.Graph, inputs); len(inputs) > 0 {
-		ctx.UserInputs = sysutils.MergeStringMaps(ctx.UserInputs, inputs)
-	}
+	ctx.mergeInputs(withoutConstantInputs(ctx.Graph, inputs))
 
 	if ctx.UserInputs == nil {
 		ctx.UserInputs = make(map[string]string)

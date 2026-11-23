@@ -378,6 +378,38 @@ func (s *ModelTestSuite) TestContextRoundTrip_KeepsExpiry() {
 	s.True(expiresAt.Equal(resultCtx.expiresAt))
 }
 
+// The inputs a continuing request may carry survive storage, and so does the difference between a flow that is
+// not limited and a step that asks for nothing.
+func (s *ModelTestSuite) TestRequestedInputsRoundTrip() {
+	tests := []struct {
+		name      string
+		requested map[string]struct{}
+	}{
+		{"not limited", nil},
+		{"asks for nothing", map[string]struct{}{}},
+		{"asks for inputs", map[string]struct{}{"otp": {}, "captcha_token": {}}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			mockGraph := coremock.NewGraphInterfaceMock(s.T())
+			mockGraph.On("GetID").Return("test-graph-id").Maybe()
+			mockGraph.On("GetType").Return(providers.FlowTypeAuthentication).Maybe()
+
+			dbModel := &FlowContextDB{}
+			s.Require().NoError(dbModel.FromEngineContext(EngineContext{
+				ExecutionID:       "test-flow-id",
+				AuthenticatedUser: authncm.AuthenticatedUser{Attributes: map[string]interface{}{}},
+				Graph:             mockGraph,
+				requestedInputs:   tt.requested,
+			}))
+
+			resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+			s.Require().NoError(err)
+			s.Equal(tt.requested, resultCtx.requestedInputs)
+		})
+	}
+}
+
 func (s *ModelTestSuite) TestFromEngineContext_PreservesOtherFields() {
 	testToken := "test-token-preserve-fields"
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
