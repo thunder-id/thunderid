@@ -37,13 +37,25 @@ func catalogActions() map[security.ResourceType][]string {
 	return catalog
 }
 
-// TestRequiredActionsMatchTheCatalog keeps the table in step with the system permission catalog, so the
-// response reports every catalog action and nothing else, each lists its own action first, and no listed
-// action needs the root permission.
+// TestRequiredActionsMatchTheCatalog keeps the tables in step with the system permission catalog, so the
+// response reports every catalog action and nothing else. A resource no system action covers is answered
+// from its routes. Either way each action lists its own first, and no listed action needs the root
+// permission.
 func (s *ActionsTestSuite) TestRequiredActionsMatchTheCatalog() {
 	catalog := catalogActions()
-	s.Len(requiredActions, len(catalog))
+	s.Len(catalog, len(requiredActions)+len(requiredRoutes))
 	for resource, names := range catalog {
+		if routes, ok := requiredRoutes[resource]; ok {
+			s.Len(routes, len(names), resource)
+			for _, name := range names {
+				if s.NotEmpty(routes[name], "%s:%s", resource, name) {
+					permission, _ := security.ResolveAPIPermission(routes[name][0])
+					s.Equal("system:"+string(resource)+":"+name, permission,
+						"the first route of %s:%s is not its own", resource, name)
+				}
+			}
+			continue
+		}
 		s.Len(requiredActions[resource], len(names), resource)
 		for _, name := range names {
 			actions := requiredActions[resource][name]

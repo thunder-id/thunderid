@@ -716,7 +716,7 @@ describe('DashboardLayout', () => {
     it("offers a gateway's variables and secrets only to admins who can view both", () => {
       mockUseProjectSelection.mockReturnValue(inShop());
       mockPath = '/deploy/gateways/gw-dev';
-      mockCapabilities = {can: (resource) => resource !== 'gatewaysecret', isLoading: false};
+      mockCapabilities = {can: (resource) => resource !== 'secret', isLoading: false};
       render(<DashboardLayout />);
 
       expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
@@ -760,7 +760,7 @@ describe('DashboardLayout', () => {
       mockUseProjectSelection.mockReturnValue(inShop());
       mockPath = '/deploy/gateways/gw-dev/values';
       mockPathname = mockPath;
-      mockCapabilities = {can: (resource) => resource !== 'gatewayvariable', isLoading: false};
+      mockCapabilities = {can: (resource) => resource !== 'variable', isLoading: false};
       render(<DashboardLayout />);
 
       expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();

@@ -8,16 +8,6 @@ import "github.com/thunder-id/thunderid/internal/system/security"
 // viewAction is the catalog action every other action of a resource builds on.
 const viewAction = "view"
 
-// The catalog resources that no system action covers, answered from the API routes in requiredRoutes.
-const (
-	resourceImport          security.ResourceType = "import"
-	resourceExport          security.ResourceType = "export"
-	resourceVariable        security.ResourceType = "variable"
-	resourceSecret          security.ResourceType = "secret"
-	resourceGatewayVariable security.ResourceType = "gatewayvariable"
-	resourceGatewaySecret   security.ResourceType = "gatewaysecret"
-)
-
 // requiredActions maps each catalog resource and action to the system actions a caller needs, all of
 // them, to do it in the Console. The first is the action itself, where a catalog "view" is the
 // resource's read. The rest are what its Console page can't work without: a create wizard that places
@@ -152,32 +142,20 @@ var requiredActions = map[security.ResourceType]map[string][]security.Action{
 // permission map lists it, so the answer follows whatever permission that map requires for it. As with
 // requiredActions, every action other than view also needs what the resource's view needs.
 var requiredRoutes = map[security.ResourceType]map[string][]string{
-	resourceImport: {
+	security.ResourceTypeImport: {
 		"create": {"POST /import"},
 		"delete": {"POST /import/delete"},
 	},
-	resourceExport: {
+	security.ResourceTypeExport: {
 		"create": {"POST /export"},
 	},
-	resourceVariable: {
-		"view":   {"GET /variables", "GET /variables/**"},
-		"create": {"POST /variables"},
-		"update": {"PUT /variables/**"},
-		"delete": {"DELETE /variables/**"},
-	},
-	resourceSecret: {
-		"view":   {"GET /secrets", "GET /secrets/**"},
-		"create": {"POST /secrets"},
-		"update": {"PUT /secrets/**"},
-		"delete": {"DELETE /secrets/**"},
-	},
-	resourceGatewayVariable: {
+	security.ResourceTypeVariable: {
 		"view":   {"GET /gateways/*/variables/**"},
 		"create": {"POST /gateways/*/variables/**"},
 		"update": {"PUT /gateways/*/variables/**"},
 		"delete": {"DELETE /gateways/*/variables/**"},
 	},
-	resourceGatewaySecret: {
+	security.ResourceTypeSecret: {
 		"view":   {"GET /gateways/*/secrets/**"},
 		"create": {"POST /gateways/*/secrets/**"},
 		"update": {"PUT /gateways/*/secrets/**"},

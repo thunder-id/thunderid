@@ -136,7 +136,7 @@ describe('ApplyPanel', () => {
     render(
       <CapabilitiesProvider
         capabilities={{
-          can: (resource) => resource !== 'gatewayvariable' && resource !== 'gatewaysecret',
+          can: (resource) => resource !== 'variable' && resource !== 'secret',
           isLoading: false,
         }}
       >
@@ -163,7 +163,7 @@ describe('ApplyPanel', () => {
     render(
       <CapabilitiesProvider
         capabilities={{
-          can: (resource) => resource !== 'gatewayvariable' && resource !== 'gatewaysecret',
+          can: (resource) => resource !== 'variable' && resource !== 'secret',
           isLoading: false,
         }}
       >

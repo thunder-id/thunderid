@@ -25,7 +25,8 @@ var dataPlaneOrgCatalog = []catalogResource{
 //   - Themes, layouts, translations and authorization detail types serve every organization unit:
 //     reading one requires the org root permission, and changing one requires the system root
 //     permission.
-//   - Server configurations, gateways and configuration versions require the system root permission.
+//   - Server configurations, gateways and their variables and secrets, configuration versions, import
+//     and export require the system root permission.
 //
 // It must be called once at startup before any service or middleware uses permissions.
 func InitDataPlanePermissions(handle string) {
@@ -119,6 +120,17 @@ func InitDataPlanePermissions(handle string) {
 		GatewayCreate:       system,
 		GatewayUpdate:       system,
 		GatewayDelete:       system,
+		VariableView:        system,
+		VariableCreate:      system,
+		VariableUpdate:      system,
+		VariableDelete:      system,
+		SecretView:          system,
+		SecretCreate:        system,
+		SecretUpdate:        system,
+		SecretDelete:        system,
+		ImportCreate:        system,
+		ImportDelete:        system,
+		ExportCreate:        system,
 		ServerConfigView:    system,
 		ServerConfigUpdate:  system,
 		ConfigVersionView:   system,

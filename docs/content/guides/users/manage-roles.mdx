@@ -72,9 +72,13 @@ The **System** resource server declares the permissions for managing <ProductNam
 | `design` | Design | `view`, `create`, `update`, `delete` |
 | `i18n` | Translations | `view`, `create`, `update`, `delete` |
 | `gateway` | Gateways | `view`, `create`, `update`, `delete` |
+| `variable` | Variables | `view`, `create`, `update`, `delete` |
+| `secret` | Secrets | `view`, `create`, `update`, `delete` |
 | `authzdetail` | [Authorization Detail Types](../../intents) | `view`, `create`, `update`, `delete` |
 | `serverconfig` | Server Configuration | `view`, `update` |
 | `configversion` | Configuration Versions | `view`, `create` |
+| `import` | Import | `create`, `delete` |
+| `export` | Export | `create` |
 
 Design, translations, gateways, authorization detail types, server configuration, and configuration versions have no owning organization unit, so a change to one affects every organization unit. A configuration version holds a snapshot of the whole deployment, so once a management API accepts `system:configversion:view`, it will expose the configuration of every organization unit. No management API accepts that permission yet.
 
@@ -94,8 +98,10 @@ The following exceptions apply:
 
 - Reading translations is public. `system:i18n:update` sets translation overrides and `system:i18n:delete` clears them.
 - `system:vc:view` also reads the trust anchors that presentations are verified against.
-- The variables and secrets of a gateway require the root `system` permission, as the server's own variable store does.
-- The variable store, import, and export require the root `system` permission.
+- `system:variable` and `system:secret` manage the variables and secrets a gateway holds. `system:secret:view` lists secrets and their metadata, never their values. The `gateway` permissions do not include them, but `system:gateway:update` can change a gateway's address and key, and the control plane presents that key on every call to the gateway. Grant `system:gateway:update` only to administrators you trust with `system:secret`.
+- `system:import:create` imports resources, including the deletions an import lists, and `system:import:delete` deletes resources through an import. An import also needs the permission for each resource it writes, except gateways and projects, which `system:import:create` writes on its own. Because an import can register or redirect a gateway, treat `system:import:create` as close to the root `system` permission.
+- `system:export:create` exports the resources you can view. When you export every resource of a type you cannot view, the export leaves that type out without an error.
+- The server's own variable store, `/variables` and `/secrets`, requires the root `system` permission.
 
 The `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, `notificationtemplate`, `app`, `role`, `rs`, `connection`, `flow`, and `vc` permissions are confined to an organization unit. A caller with one of them acts only on the resources of the organization unit it holds the permission in. Its lists hold that unit's resources, followed by the ones shared into it, and it can read a shared resource but not change or delete it. See [Shared Resources in the Receiving Organization Unit](../../key-concepts/resource-sharing.mdx#shared-resources-in-the-receiving-organization-unit). Other calls are refused with `403`. A caller can also read the notification templates, credential configurations, presentation definitions, and resource servers of the organization units above its own, because its flows and roles use them.
 

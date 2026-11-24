@@ -4,8 +4,6 @@
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import type {ValueKind} from '../models/deploy';
 
-const RESOURCES: Record<ValueKind, string> = {variable: 'gatewayvariable', secret: 'gatewaysecret'};
-
 export interface GatewayValueAccess {
   /** Whether the admin may perform `action` on a gateway's values of `kind`. */
   canValue: (kind: ValueKind, action?: string) => boolean;
@@ -15,10 +13,10 @@ export interface GatewayValueAccess {
   canSetValues: boolean;
 }
 
-/** What the admin may do with a gateway's variables and secrets, the one place naming their resources. */
+/** What the admin may do with a gateway's variables and secrets. Each kind is also its resource's name. */
 export default function useGatewayValueAccess(): GatewayValueAccess {
   const {can} = useCapabilitiesContext();
-  const canValue = (kind: ValueKind, action?: string): boolean => can(RESOURCES[kind], action);
+  const canValue = (kind: ValueKind, action?: string): boolean => can(kind, action);
   const canBoth = (action?: string): boolean => canValue('variable', action) && canValue('secret', action);
 
   return {canValue, canViewValues: canBoth(), canSetValues: canBoth('update')};

@@ -24,13 +24,16 @@ info:
 
     ## Authorization
 
-    Every route here requires the **root system permission**, the one named by
+    Every route here accepts the **root system permission**, the one named by
     `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
-    `tenant_instance:system` where a prefix is configured). A narrower permission is not enough for
-    any of them, including the reads.
+    `tenant_instance:system` where a prefix is configured). A narrower token needs the `gateway`
+    permission for the route's action (`system:gateway:view`, `create`, `update` or `delete`). The
+    routes of a gateway's variables and secrets need the `variable` and `secret` permissions
+    instead, such as `system:secret:update`, which the `gateway` permissions do not include.
 
-    A registration holds the credential to a gateway, and even the list of names and addresses is
-    worth protecting: it describes the fleet. Reading it is therefore as privileged as changing it.
+    A registration holds the credential to a gateway. `system:gateway:update` can change a gateway's
+    address and key, and the control plane presents that key on every call to the gateway, so grant
+    it only to administrators trusted with the gateway's secrets.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html

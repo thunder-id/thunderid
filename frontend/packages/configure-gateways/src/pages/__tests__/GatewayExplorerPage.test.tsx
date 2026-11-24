@@ -403,7 +403,7 @@ describe('GatewayExplorerPage', () => {
     render(
       <CapabilitiesProvider
         capabilities={{
-          can: (resource, action) => !(resource === 'gatewaysecret' && action === 'update'),
+          can: (resource, action) => !(resource === 'secret' && action === 'update'),
           isLoading: false,
         }}
       >
@@ -424,7 +424,7 @@ describe('GatewayExplorerPage', () => {
 
   it("doesn't read the gateway's secrets for an admin who may not view them", async () => {
     render(
-      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'gatewaysecret', isLoading: false}}>
+      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'secret', isLoading: false}}>
         <GatewayExplorerPage />
       </CapabilitiesProvider>,
     );

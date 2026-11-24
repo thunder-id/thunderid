@@ -39,7 +39,7 @@ describe('StageCard refused resources', () => {
       <CapabilitiesProvider
         capabilities={{
           can: (resource, action = 'view') =>
-            action === 'view' && (resource === 'gatewayvariable' || resource === 'gatewaysecret'),
+            action === 'view' && (resource === 'variable' || resource === 'secret'),
           isLoading: false,
         }}
       >
@@ -51,7 +51,7 @@ describe('StageCard refused resources', () => {
 
   it("hides Configure from an admin who cannot view the gateway's secrets", () => {
     render(
-      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'gatewaysecret', isLoading: false}}>
+      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'secret', isLoading: false}}>
         <StageCard name="Staging" version={{number: 3, hash: 'abc123'}} onExplore={vi.fn()} onConfigure={vi.fn()} />
       </CapabilitiesProvider>,
     );

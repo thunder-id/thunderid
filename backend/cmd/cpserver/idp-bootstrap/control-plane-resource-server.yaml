@@ -238,6 +238,32 @@ resources:
         handle: update
       - name: Delete
         handle: delete
+  - name: Variables
+    handle: variable
+    parent: system
+    description: Gateway variable management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Secrets
+    handle: secret
+    parent: system
+    description: Gateway secret management. A secret's value is never returned.
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
   - name: Authorization Detail Types
     handle: authzdetail
     parent: system
@@ -267,5 +293,21 @@ resources:
     actions:
       - name: View
         handle: view
+      - name: Create
+        handle: create
+  - name: Import
+    handle: import
+    parent: system
+    description: Configuration import, which also needs the permission of each resource it writes, except gateways and projects
+    actions:
+      - name: Create
+        handle: create
+      - name: Delete
+        handle: delete
+  - name: Export
+    handle: export
+    parent: system
+    description: Configuration export of the resources the caller can view
+    actions:
       - name: Create
         handle: create
