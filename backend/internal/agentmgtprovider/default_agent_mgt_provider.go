@@ -6,6 +6,7 @@ package agentmgtprovider
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/agent/model"
@@ -37,6 +38,36 @@ func (p *defaultAgentMgtProvider) CreateAgent(
 		return nil, svcErr
 	}
 	return toProviderAgent(created), nil
+}
+
+// UpdateAgentCredentials sets the agent's credentials through the agent service.
+func (p *defaultAgentMgtProvider) UpdateAgentCredentials(
+	ctx context.Context, agentID string, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	return p.agentSvc.UpdateAgentCredentials(ctx, agentID, credentials)
+}
+
+// ValidateRemoveAgentCredential checks the invalidation through the agent service, changing nothing, and returns
+// the owner's email address.
+func (p *defaultAgentMgtProvider) ValidateRemoveAgentCredential(
+	ctx context.Context, agentID, credentialType string,
+) (string, *tidcommon.ServiceError) {
+	return p.agentSvc.ValidateRemoveAgentCredential(ctx, agentID, credentialType)
+}
+
+// RemoveAgentCredential removes the agent's credential through the agent service.
+func (p *defaultAgentMgtProvider) RemoveAgentCredential(
+	ctx context.Context, agentID, credentialType string,
+) (string, *tidcommon.ServiceError) {
+	return p.agentSvc.RemoveAgentCredential(ctx, agentID, credentialType)
+}
+
+// IsAgentCredentialUnchangedSince checks through the agent service whether the agent's credential changed since
+// the removal that returned marker.
+func (p *defaultAgentMgtProvider) IsAgentCredentialUnchangedSince(
+	ctx context.Context, agentID, marker string,
+) (bool, *tidcommon.ServiceError) {
+	return p.agentSvc.IsAgentCredentialUnchangedSince(ctx, agentID, marker)
 }
 
 // toProviderAgent converts the agent service's create response into the provider contract shape.

@@ -266,7 +266,7 @@ Group membership is transitive: scopes inherited from a parent group are include
 
 ### Credentials
 
-The credential the agent authenticates with, either a client secret or a signed key, along with any sensitive credential attributes it carries. [Rotate the secret](../authentication#use-a-client-secret) or switch to a [private key JWT](../authentication#use-a-private-key-jwt) here.
+The credential the agent authenticates with, either a client secret or a signed key, along with any sensitive credential attributes it carries. [Rotate the secret](../authentication#use-a-client-secret) or switch to a [private key JWT](../authentication#use-a-private-key-jwt) here. To have the agent's owner choose a new password or other credential attribute, see [Reset an Agent's Credential Through Its Owner](#reset-an-agents-credential-through-its-owner).
 
 ### Flows
 
@@ -298,6 +298,33 @@ The custom attributes an agent carries come from its agent type's schema. Each a
 ## Set a lifespan
 
 Give an agent an end date, its `validUntil`, to stop it authenticating and obtaining tokens automatically once its work is done. Set it on the agent's **Attributes** tab, through the API, or in a [customized onboarding flow](../agent-lifespan#set-a-lifespan-during-onboarding). Tokens issued to the agent or for it expire no later than the `validUntil` in force when they are issued; moving it earlier does not revoke tokens already issued. See [Set an Agent's Lifespan](../agent-lifespan).
+
+## Reset an agent's credential through its owner
+
+To replace an agent's password or another credential attribute without you setting or seeing the new value, start a credential reset. <ProductName /> emails a reset link to the agent's [owner](#identifiers-and-owner), never to the agent, even when the agent has an email address of its own. Then it removes the agent's current credential and revokes what was issued to the agent with it. The owner opens the link, in any browser and without signing in, sets the new value, and gives it to the agent the way the original was given.
+
+Where the link goes depends on the owner:
+
+| Owner | Link goes to |
+|---|---|
+| A user of this deployment | The `email` attribute on the owner's profile |
+| An external owner identified by email | That email address |
+| An external owner identified by mobile number or user ID, a user without an email address, or no owner | Nowhere. The reset is refused with `AGT-1070` before anything is sent, and the credential keeps working. |
+
+<ProductName /> ships the `default-admin-agent-credential-reset-flow` flow for this. Its **Send Email** step ships without an email provider, so select your provider on that step and save the flow before you start a reset. See [Configure an Email Provider](../../notifications/email-providers).
+
+Start the flow through the Flow Execution API with an administrator access token that carries `system:agent:update` or `org:agent:update`. Name the agent's ID in the `subject` input and the credential to reset in the `credential` input:
+
+```bash
+curl -kL -X POST https://localhost:8090/flow/execute \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "flowType": "ADMIN_INITIATED", "handle": "default-admin-agent-credential-reset-flow", "inputs": { "subject": "<agent-id>", "credential": "password" }, "verbose": true }'
+```
+
+The credential must be a text credential that the agent's type declares, such as `password`. The client secret is not one: [rotate the secret](../authentication#use-a-client-secret) instead. Keep `"verbose": true`, since the page the link opens shows the form only in verbose mode. Once the email is sent, the response has `"flowStatus": "INCOMPLETE"` and `additionalData.emailSent` set to `"true"`. The response never contains the link or the owner's address. The flow runs with your permissions, so you can reset only agents you can update and control.
+
+A reset is also refused, and the current credential keeps working, for a personal agent, whose owner sets its credentials, for a suspended agent, and when the email cannot be sent. The link expires with the flow, 6 hours by default (`adminInitiatedFlow.expirySeconds`). A later change to the agent's credentials, such as another reset or an update through the API, voids an earlier link. Starting the reset is recorded as the `agent.credential.invalidate` audit event, and setting the new value as `agent.credential.update`, with the owner as the actor when the owner is a user of this deployment. The reset works the same way as a user's; see [Ask a User to Reset a Credential](../../users/manage-users#ask-a-user-to-reset-a-credential).
 
 ## Suspend or unlock an agent
 

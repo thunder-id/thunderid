@@ -4,6 +4,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -7625,4 +7627,249 @@ func (suite *AgentServiceTestSuite) TestRegenerateAgentSecret() {
 		_, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
 		suite.Equal(&tidcommon.InternalServerError, svcErr)
 	})
+}
+
+// resetTypeMock returns an entity type service whose agent type declares a password, a PIN and a number credential.
+func (suite *AgentServiceTestSuite) resetTypeMock() *entitytypemock.EntityTypeServiceInterfaceMock {
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{
+			{Attribute: "password", Type: entitytypemodel.TypeString, Credential: true},
+			{Attribute: "pin", Type: entitytypemodel.TypeString, Credential: true},
+			{Attribute: "numericCode", Type: entitytypemodel.TypeNumber, Credential: true},
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+	return mockType
+}
+
+// resetService returns a service whose agent is stored with the owner given, as the system attribute holds it.
+func (suite *AgentServiceTestSuite) resetService(owner map[string]interface{}) (*agentService,
+	*entitymock.EntityServiceInterfaceMock) {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.entityTypeService = suite.resetTypeMock()
+	agent := buildAgentEntityFixture(testAgentName, "", "", "")
+	if owner != nil {
+		agent.SystemAttributes, _ = json.Marshal(map[string]interface{}{fieldOwner: owner})
+	}
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(agent, nil).Maybe()
+	return svc, mockEntity
+}
+
+// A reset link for an agent goes to its owner: a local owner's email attribute, or an external owner's ID when
+// the owner is identified by email. An owner without an address is refused, and so is an agent without an owner.
+func (suite *AgentServiceTestSuite) TestValidateRemoveAgentCredential_ResolvesTheOwnersAddress() {
+	const ownerID = "owner-1"
+	localOwner := storedOwner(ownerID, true)
+	for name, test := range map[string]struct {
+		owner      map[string]interface{}
+		ownerAttrs string
+		ownerErr   error
+		ownerKind  providers.EntityCategory
+		want       string
+		wantCode   string
+	}{
+		"a local owner that is an agent": {owner: localOwner, ownerKind: providers.EntityCategoryAgent,
+			ownerAttrs: `{"email":"other-agent@example.com"}`, wantCode: ErrorOwnerAddressUnavailable.Code},
+		"a local owner that is an application": {owner: localOwner, ownerKind: providers.EntityCategoryApp,
+			ownerAttrs: `{"email":"app@example.com"}`, wantCode: ErrorOwnerAddressUnavailable.Code},
+		"a local owner with an email": {owner: localOwner,
+			ownerAttrs: `{"email":"owner@example.com","name":"Owner"}`, want: "owner@example.com"},
+		"a local owner without an email": {owner: localOwner, ownerAttrs: `{"name":"Owner"}`,
+			wantCode: ErrorOwnerAddressUnavailable.Code},
+		"a local owner with an empty email": {owner: localOwner, ownerAttrs: `{"email":" "}`,
+			wantCode: ErrorOwnerAddressUnavailable.Code},
+		"a deleted local owner": {owner: localOwner, ownerErr: entity.ErrEntityNotFound,
+			wantCode: ErrorOwnerAddressUnavailable.Code},
+		"a fault reading the owner": {owner: localOwner, ownerErr: assert.AnError,
+			wantCode: tidcommon.InternalServerError.Code},
+		"unreadable owner attributes": {owner: localOwner, ownerAttrs: `[`,
+			wantCode: ErrorOwnerAddressUnavailable.Code},
+		"an external owner identified by email": {owner: map[string]interface{}{"id": "ext@example.com",
+			"idType": "email", "isLocal": false}, want: "ext@example.com"},
+		"an external owner identified by mobile": {owner: map[string]interface{}{"id": "+94771234567",
+			"idType": "mobile", "isLocal": false}, wantCode: ErrorOwnerAddressUnavailable.Code},
+		"an external owner identified by ID": {owner: storedOwner("ext-1", false),
+			wantCode: ErrorOwnerAddressUnavailable.Code},
+		"no owner": {wantCode: ErrorOwnerAddressUnavailable.Code},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity := suite.resetService(test.owner)
+			if test.ownerAttrs != "" || test.ownerErr != nil {
+				var owner *providers.Entity
+				if test.ownerErr == nil {
+					owner = &providers.Entity{ID: ownerID,
+						Category:   cmp.Or(test.ownerKind, providers.EntityCategoryUser),
+						Attributes: json.RawMessage(test.ownerAttrs)}
+				}
+				mockEntity.On("GetEntityProfile", mock.Anything, ownerID).Return(owner, test.ownerErr).Once()
+			}
+
+			address, svcErr := svc.ValidateRemoveAgentCredential(context.Background(), testAgentID, "password")
+
+			suite.Equal(test.want, address)
+			if test.wantCode == "" {
+				suite.Nil(svcErr)
+				return
+			}
+			suite.Require().NotNil(svcErr)
+			suite.Equal(test.wantCode, svcErr.Code)
+			mockEntity.AssertNotCalled(suite.T(), "RemoveCredential", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// A control plane keeps an owner's ID as a reference until a deployment resolves it, so there is no address yet.
+func (suite *AgentServiceTestSuite) TestValidateRemoveAgentCredential_RefusesAnOwnerThatIsAReference() {
+	svc, _ := suite.resetService(map[string]interface{}{"id": "var:AGENT__A__OWNER", "idType": "email",
+		"isLocal": false})
+	svc.keepsReferences = true
+
+	address, svcErr := svc.ValidateRemoveAgentCredential(context.Background(), testAgentID, "password")
+
+	suite.Empty(address)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorOwnerAddressUnavailable.Code, svcErr.Code)
+}
+
+// An invalidation is refused for an agent the caller may not reset, and for a credential the agent's type does
+// not declare as a string. Nothing is removed and no owner is looked up.
+func (suite *AgentServiceTestSuite) TestValidateRemoveAgentCredential_RefusesWhatCannotBeReset() {
+	personal := withKind(buildAgentEntityFixture(testAgentName, "", "alice", ""),
+		providers.AgentKindPersonalAssistant)
+	for name, test := range map[string]struct {
+		agentID    string
+		credential string
+		agent      *providers.Entity
+		typeErr    *tidcommon.ServiceError
+		wantCode   string
+	}{
+		"no agent":            {credential: "password", wantCode: ErrorAgentNotFound.Code},
+		"no credential":       {agentID: testAgentID, credential: " ", wantCode: ErrorInvalidCredential.Code},
+		"an undeclared one":   {agentID: testAgentID, credential: "apiKey", wantCode: ErrorInvalidCredential.Code},
+		"a number credential": {agentID: testAgentID, credential: "numericCode", wantCode: ErrorInvalidCredential.Code},
+		"a personal agent": {agentID: testAgentID, credential: "password", agent: personal,
+			wantCode: ErrorPersonalAgentCredentialsNotUpdatable.Code},
+		"a fault reading the type": {agentID: testAgentID, credential: "password",
+			typeErr: &tidcommon.InternalServerError, wantCode: tidcommon.InternalServerError.Code},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity := suite.resetService(storedOwner("owner-1", true))
+			mockEntity.On("GetEntityProfile", mock.Anything, "").Return(nil, entity.ErrEntityNotFound).Maybe()
+			if test.agent != nil {
+				clearMockCalls(mockEntity, "GetEntityProfile")
+				mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(test.agent, nil)
+			}
+			if test.typeErr != nil {
+				mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+				mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
+					mock.Anything).Return(nil, test.typeErr).Once()
+				svc.entityTypeService = mockType
+			}
+
+			address, svcErr := svc.ValidateRemoveAgentCredential(context.Background(), test.agentID,
+				test.credential)
+
+			suite.Empty(address)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(test.wantCode, svcErr.Code)
+			mockEntity.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, "owner-1")
+		})
+	}
+}
+
+// The removal runs the same checks, removes only the credential named and returns the marker it wrote. A failure
+// of the entity layer is mapped: an undeclared credential is the caller's, anything else, including a revocation
+// that failed after the removal, is the server's.
+func (suite *AgentServiceTestSuite) TestRemoveAgentCredential_RemovesTheCredential() {
+	for name, test := range map[string]struct {
+		removeErr error
+		wantCode  string
+	}{
+		"removed": {},
+		"a removal the store refuses": {removeErr: entity.ErrInvalidCredential,
+			wantCode: tidcommon.InternalServerError.Code},
+		"an incomplete revocation": {removeErr: fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete),
+			wantCode: tidcommon.InternalServerError.Code},
+		"a store fault": {removeErr: assert.AnError, wantCode: tidcommon.InternalServerError.Code},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity := suite.resetService(storedOwner("owner-1", true))
+			marker := ""
+			if test.removeErr == nil {
+				marker = "2026-11-24T10:00:00.123456789Z"
+			}
+			mockEntity.On("RemoveCredential", mock.Anything, testAgentID, "pin").Return(marker, test.removeErr).Once()
+
+			got, svcErr := svc.RemoveAgentCredential(context.Background(), testAgentID, "pin")
+
+			suite.Equal(marker, got)
+			if test.wantCode == "" {
+				suite.Nil(svcErr)
+				return
+			}
+			suite.Require().NotNil(svcErr)
+			suite.Equal(test.wantCode, svcErr.Code)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestRemoveAgentCredential_ARefusedCheckRemovesNothing() {
+	svc, mockEntity := suite.resetService(storedOwner("owner-1", true))
+
+	marker, svcErr := svc.RemoveAgentCredential(context.Background(), testAgentID, "numericCode")
+
+	suite.Empty(marker)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorInvalidCredential.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "RemoveCredential", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The reset is current while the agent's credential marker is still the one its removal wrote. A deleted entity,
+// one that is not an agent, and an empty request are not current; a fault reading the agent is the server's.
+func (suite *AgentServiceTestSuite) TestIsAgentCredentialUnchangedSince() {
+	const marker = "2026-11-24T10:00:00.123456789Z"
+	stamped := func(category providers.EntityCategory, value string) *providers.Entity {
+		attrs, _ := json.Marshal(map[string]string{authnprovidercm.SystemAttrCredentialUpdatedAt: value})
+		return &providers.Entity{ID: testAgentID, Category: category, SystemAttributes: attrs}
+	}
+	for name, test := range map[string]struct {
+		agentID  string
+		marker   string
+		stored   *providers.Entity
+		readErr  error
+		want     bool
+		wantCode string
+	}{
+		"unchanged": {agentID: testAgentID, marker: marker,
+			stored: stamped(providers.EntityCategoryAgent, marker), want: true},
+		"a later change": {agentID: testAgentID, marker: marker,
+			stored: stamped(providers.EntityCategoryAgent, "2026-11-24T11:00:00Z")},
+		"a deleted agent": {agentID: testAgentID, marker: marker, readErr: entity.ErrEntityNotFound},
+		"no marker":       {agentID: testAgentID},
+		"no agent":        {marker: marker},
+		"a read fault": {agentID: testAgentID, marker: marker, readErr: assert.AnError,
+			wantCode: tidcommon.InternalServerError.Code},
+		"unreadable system attributes": {agentID: testAgentID, marker: marker,
+			stored: &providers.Entity{ID: testAgentID, Category: providers.EntityCategoryAgent,
+				SystemAttributes: json.RawMessage(`[`)}},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			if test.stored != nil || test.readErr != nil {
+				clearMockCalls(mockEntity, "GetEntity")
+				mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(test.stored, test.readErr).Once()
+			}
+
+			current, svcErr := svc.IsAgentCredentialUnchangedSince(context.Background(), test.agentID, test.marker)
+
+			suite.Equal(test.want, current)
+			if test.wantCode == "" {
+				suite.Nil(svcErr)
+				return
+			}
+			suite.Require().NotNil(svcErr)
+			suite.Equal(test.wantCode, svcErr.Code)
+		})
+	}
 }

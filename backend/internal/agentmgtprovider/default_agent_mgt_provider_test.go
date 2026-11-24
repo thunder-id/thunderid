@@ -5,6 +5,7 @@ package agentmgtprovider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -360,4 +361,46 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 	suite.Equal(attestation, resp.Attestation)
 	suite.Require().NotNil(resp.ValidUntil)
 	suite.Equal(full.ValidUntil, *resp.ValidUntil)
+}
+
+// The credential write, the invalidation, its check and the check that the reset is current reach the agent service
+// with the caller's context, and the service's answer is returned unchanged.
+func (suite *DefaultAgentMgtProviderTestSuite) TestCredentialResetDelegatesWithTheCallersContext() {
+	type ctxKey string
+	callerCtx := context.WithValue(context.Background(), ctxKey("caller"), "admin-1")
+	callers := mock.MatchedBy(func(ctx context.Context) bool {
+		return !security.IsRuntimeContext(ctx) && ctx.Value(ctxKey("caller")) == "admin-1"
+	})
+	credentials := json.RawMessage(`{"password":"N3w-secret!"}`)
+	for name, test := range map[string]struct {
+		address string
+		marker  string
+		svcErr  *tidcommon.ServiceError
+	}{
+		"success": {address: "owner@example.com", marker: "2026-11-24T10:00:00.5Z"},
+		"refusal": {svcErr: &agent.ErrorOwnerAddressUnavailable},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockService.EXPECT().UpdateAgentCredentials(callers, testAgentID, credentials).
+				Return(test.svcErr).Once()
+			suite.mockService.EXPECT().ValidateRemoveAgentCredential(callers, testAgentID, "password").
+				Return(test.address, test.svcErr).Once()
+			suite.mockService.EXPECT().RemoveAgentCredential(callers, testAgentID, "password").
+				Return(test.marker, test.svcErr).Once()
+			suite.mockService.EXPECT().IsAgentCredentialUnchangedSince(callers, testAgentID, "m").
+				Return(test.svcErr == nil, test.svcErr).Once()
+
+			suite.Equal(test.svcErr, suite.provider.UpdateAgentCredentials(callerCtx, testAgentID, credentials))
+			address, svcErr := suite.provider.ValidateRemoveAgentCredential(callerCtx, testAgentID, "password")
+			suite.Equal(test.address, address)
+			suite.Equal(test.svcErr, svcErr)
+			marker, svcErr := suite.provider.RemoveAgentCredential(callerCtx, testAgentID, "password")
+			suite.Equal(test.marker, marker)
+			suite.Equal(test.svcErr, svcErr)
+			current, svcErr := suite.provider.IsAgentCredentialUnchangedSince(callerCtx, testAgentID, "m")
+			suite.Equal(test.svcErr == nil, current)
+			suite.Equal(test.svcErr, svcErr)
+		})
+	}
 }

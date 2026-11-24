@@ -1230,6 +1230,80 @@ func (_c *AgentServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(r
 	return _c
 }
 
+// IsAgentCredentialUnchangedSince provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) IsAgentCredentialUnchangedSince(ctx context.Context, agentID string, marker string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID, marker)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsAgentCredentialUnchangedSince")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID, marker)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = returnFunc(ctx, agentID, marker)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID, marker)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsAgentCredentialUnchangedSince'
+type AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call struct {
+	*mock.Call
+}
+
+// IsAgentCredentialUnchangedSince is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+//   - marker string
+func (_e *AgentServiceInterfaceMock_Expecter) IsAgentCredentialUnchangedSince(ctx any, agentID any, marker any) *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call {
+	return &AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call{Call: _e.mock.On("IsAgentCredentialUnchangedSince", ctx, agentID, marker)}
+}
+
+func (_c *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call) Run(run func(ctx context.Context, agentID string, marker string)) *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call) Return(b bool, serviceError *common.ServiceError) *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call) RunAndReturn(run func(ctx context.Context, agentID string, marker string) (bool, *common.ServiceError)) *AgentServiceInterfaceMock_IsAgentCredentialUnchangedSince_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RegenerateAgentSecret provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agentID)
@@ -1296,6 +1370,80 @@ func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) Return(clientSec
 }
 
 func (_c *AgentServiceInterfaceMock_RegenerateAgentSecret_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*model.ClientSecretResponse, *common.ServiceError)) *AgentServiceInterfaceMock_RegenerateAgentSecret_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveAgentCredential provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) RemoveAgentCredential(ctx context.Context, agentID string, credentialType string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID, credentialType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveAgentCredential")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID, credentialType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = returnFunc(ctx, agentID, credentialType)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID, credentialType)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_RemoveAgentCredential_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveAgentCredential'
+type AgentServiceInterfaceMock_RemoveAgentCredential_Call struct {
+	*mock.Call
+}
+
+// RemoveAgentCredential is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+//   - credentialType string
+func (_e *AgentServiceInterfaceMock_Expecter) RemoveAgentCredential(ctx any, agentID any, credentialType any) *AgentServiceInterfaceMock_RemoveAgentCredential_Call {
+	return &AgentServiceInterfaceMock_RemoveAgentCredential_Call{Call: _e.mock.On("RemoveAgentCredential", ctx, agentID, credentialType)}
+}
+
+func (_c *AgentServiceInterfaceMock_RemoveAgentCredential_Call) Run(run func(ctx context.Context, agentID string, credentialType string)) *AgentServiceInterfaceMock_RemoveAgentCredential_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_RemoveAgentCredential_Call) Return(s string, serviceError *common.ServiceError) *AgentServiceInterfaceMock_RemoveAgentCredential_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_RemoveAgentCredential_Call) RunAndReturn(run func(ctx context.Context, agentID string, credentialType string) (string, *common.ServiceError)) *AgentServiceInterfaceMock_RemoveAgentCredential_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -2003,6 +2151,80 @@ func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) Retur
 }
 
 func (_c *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call) RunAndReturn(run func(ctx context.Context, agentID string) *common.ServiceError) *AgentServiceInterfaceMock_ValidateClientSecretRegeneration_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateRemoveAgentCredential provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) ValidateRemoveAgentCredential(ctx context.Context, agentID string, credentialType string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID, credentialType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateRemoveAgentCredential")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID, credentialType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = returnFunc(ctx, agentID, credentialType)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID, credentialType)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateRemoveAgentCredential'
+type AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call struct {
+	*mock.Call
+}
+
+// ValidateRemoveAgentCredential is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+//   - credentialType string
+func (_e *AgentServiceInterfaceMock_Expecter) ValidateRemoveAgentCredential(ctx any, agentID any, credentialType any) *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call {
+	return &AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call{Call: _e.mock.On("ValidateRemoveAgentCredential", ctx, agentID, credentialType)}
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call) Run(run func(ctx context.Context, agentID string, credentialType string)) *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call) Return(s string, serviceError *common.ServiceError) *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call) RunAndReturn(run func(ctx context.Context, agentID string, credentialType string) (string, *common.ServiceError)) *AgentServiceInterfaceMock_ValidateRemoveAgentCredential_Call {
 	_c.Call.Return(run)
 	return _c
 }

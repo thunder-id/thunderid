@@ -426,6 +426,9 @@ const (
 	// RuntimeKeyResetCredentialMarker holds the credential marker the reset's invalidation wrote. A later
 	// change to the user's credentials moves the marker, which voids the reset.
 	RuntimeKeyResetCredentialMarker = "resetCredentialMarker" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetSubjectCategory holds agent when the reset is for an agent, whose credential the agent
+	// management provider removes and sets. Any other value is a user's reset.
+	RuntimeKeyResetSubjectCategory = "resetSubjectCategory"
 	// RuntimeKeyResetCredentialRequested marks that the reset's set step asked the user for the new credential,
 	// in the request that opened the link. The value is read only from a later request.
 	RuntimeKeyResetCredentialRequested = "resetCredentialRequested" //nolint:gosec // a runtime data key

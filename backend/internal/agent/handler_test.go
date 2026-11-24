@@ -94,6 +94,24 @@ func (s *InlineStubAgentService) UpdateOwnedAgentCredentials(
 	return nil
 }
 
+func (s *InlineStubAgentService) ValidateRemoveAgentCredential(
+	context.Context, string, string,
+) (string, *tidcommon.ServiceError) {
+	return "", nil
+}
+
+func (s *InlineStubAgentService) RemoveAgentCredential(
+	context.Context, string, string,
+) (string, *tidcommon.ServiceError) {
+	return "", nil
+}
+
+func (s *InlineStubAgentService) IsAgentCredentialUnchangedSince(
+	context.Context, string, string,
+) (bool, *tidcommon.ServiceError) {
+	return false, nil
+}
+
 func (s *InlineStubAgentService) UpdateAgent(
 	ctx context.Context, id string, req *model.UpdateAgentRequest,
 ) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {

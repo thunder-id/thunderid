@@ -221,6 +221,12 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user credential invalidate value", EventUserCredentialInvalidate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"credential_type": "password", "value": "s3cr3t"}), errDetailNotAllowed},
+		{"an agent credential invalidate", EventAgentCredentialInvalidate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password"}), nil},
+		{"an agent credential invalidate value", EventAgentCredentialInvalidate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password", "value": "s3cr3t"}), errDetailNotAllowed},
 		{"a user credential enroll without a resolved user", EventUserCredentialEnroll,
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
 		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,

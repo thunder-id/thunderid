@@ -66,6 +66,9 @@ type AdminInitiatedResetTestSuite struct {
 	flowHandle string
 	clientID   string
 	appID      string
+	// agentHandle and agentTypeHandle are the agent flow and agent type the agent tests create once.
+	agentHandle     string
+	agentTypeHandle string
 }
 
 // resetUser is an account a test created, with what it signs in with.
@@ -155,6 +158,7 @@ func (ts *AdminInitiatedResetTestSuite) SetupSuite() {
 	})
 
 	ts.flowHandle = ts.copyFlow("admin-reset-"+ts.suffix, "", ts.senderID)
+	ts.setupAgents()
 }
 
 func (ts *AdminInitiatedResetTestSuite) SetupTest() {
@@ -809,8 +813,9 @@ func (ts *AdminInitiatedResetTestSuite) TestALockedUserCompletesTheResetAndIsUnl
 	ts.True(ts.authenticates(user.username, "password", "Unlocked-1!"), "the new password must work")
 }
 
-// The Console reads which flow to start from adminUserCredentialResetFlow, so bootstrap names the shipped flow there.
-// Bootstrap also keeps administrator-initiated links open for 6 hours.
+// The Console reads which flow to start from adminUserCredentialResetFlow, and for an agent from
+// adminAgentCredentialResetFlow, so bootstrap names the shipped flows there. Bootstrap also keeps
+// administrator-initiated links open for 6 hours.
 func (ts *AdminInitiatedResetTestSuite) TestServerConfigNamesTheShippedFlow() {
 	resp, err := testutils.GetHTTPClient().Get(testutils.TestServerURL + "/server-config/flow")
 	ts.Require().NoError(err)
@@ -822,6 +827,9 @@ func (ts *AdminInitiatedResetTestSuite) TestServerConfigNamesTheShippedFlow() {
 			AdminUserCredentialResetFlow struct {
 				DefaultHandle string `json:"defaultHandle"`
 			} `json:"adminUserCredentialResetFlow"`
+			AdminAgentCredentialResetFlow struct {
+				DefaultHandle string `json:"defaultHandle"`
+			} `json:"adminAgentCredentialResetFlow"`
 			AdminInitiatedFlow struct {
 				ExpirySeconds int64 `json:"expirySeconds"`
 			} `json:"adminInitiatedFlow"`
@@ -829,6 +837,7 @@ func (ts *AdminInitiatedResetTestSuite) TestServerConfigNamesTheShippedFlow() {
 	}
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&layers))
 	ts.Equal(adminResetFlowHandle, layers.Merged.AdminUserCredentialResetFlow.DefaultHandle)
+	ts.Equal(adminAgentResetFlowHandle, layers.Merged.AdminAgentCredentialResetFlow.DefaultHandle)
 	ts.Equal(int64(adminResetLinkLifetime), layers.Merged.AdminInitiatedFlow.ExpirySeconds,
 		"the shipped link lifetime must be 6 hours")
 }
@@ -1150,6 +1159,11 @@ func (ts *AdminInitiatedResetTestSuite) collectionApplication(attribute string) 
 // ouAdministratorToken creates a child unit of the suite's unit and a user there holding org:user but not the
 // root system permission, and returns that user's token and the unit.
 func (ts *AdminInitiatedResetTestSuite) ouAdministratorToken() (string, string) {
+	return ts.ouAdministratorTokenFor("user")
+}
+
+// ouAdministratorTokenFor is ouAdministratorToken holding org:<resource>, such as org:agent.
+func (ts *AdminInitiatedResetTestSuite) ouAdministratorTokenFor(resource string) (string, string) {
 	t := ts.T()
 	name := fmt.Sprintf("ouadmin%d", time.Now().UnixNano())
 	parent := ts.ouID
@@ -1171,7 +1185,7 @@ func (ts *AdminInitiatedResetTestSuite) ouAdministratorToken() (string, string) 
 
 	admin := ts.newUserIn(name, ouID, true)
 	identifier := "https://admin-reset.example.com/" + name
-	rsID, err := testutils.CreateOrgScopedResourceServer(ouID, "Admin Reset "+name+" RS", identifier, "user")
+	rsID, err := testutils.CreateOrgScopedResourceServer(ouID, "Admin Reset "+name+" RS", identifier, resource)
 	ts.Require().NoError(err, "create the resource server")
 	t.Cleanup(func() {
 		if err := testutils.DeleteResourceServerWithChildren(rsID); err != nil {
@@ -1181,7 +1195,7 @@ func (ts *AdminInitiatedResetTestSuite) ouAdministratorToken() (string, string) 
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Admin Reset " + name, OUID: ouID,
 		Assignments: []testutils.Assignment{{ID: admin.id, Type: "user"}},
-		Permissions: []testutils.ResourcePermissions{{ResourceServerID: rsID, Permissions: []string{"org:user"}}},
+		Permissions: []testutils.ResourcePermissions{{ResourceServerID: rsID, Permissions: []string{"org:" + resource}}},
 	})
 	ts.Require().NoError(err, "create the role")
 	t.Cleanup(func() {
@@ -1190,7 +1204,7 @@ func (ts *AdminInitiatedResetTestSuite) ouAdministratorToken() (string, string) 
 		}
 	})
 
-	token, err := signInApps.ObtainAccessToken(ouID, "system org:user", admin.username, admin.password, identifier)
+	token, err := signInApps.ObtainAccessToken(ouID, "system org:"+resource, admin.username, admin.password, identifier)
 	ts.Require().NoError(err, "sign the administrator in")
 	return token.AccessToken, ouID
 }

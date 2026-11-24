@@ -210,6 +210,109 @@ func (ts *AuditLogTestSuite) TestAnAdministratorInitiatedResetRecordsBothStepsFo
 	}
 }
 
+// An administrator-initiated reset of an agent's credential records its invalidation, as the administrator, and its
+// completion, both targeting the agent. The owner completes it from the link without a token, so the completion
+// names the owner. Neither line carries the link token or a credential.
+func (ts *AuditLogTestSuite) TestAnAdministratorInitiatedAgentResetRecordsBothStepsForTheAgent() {
+	ouID := ts.createOrganizationUnit("cred-agent-reset")
+	ownerType := testutils.UserType{
+		Handle: ts.prefix + "cred-agent-reset-owner", DisplayName: "Audit Agent Reset Owner", OUID: ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string"},
+			"email":    map[string]interface{}{"type": "email"},
+		},
+	}
+	ownerTypeID, err := testutils.CreateUserType(ownerType)
+	ts.Require().NoError(err, "failed to create the owner's user type")
+	ts.T().Cleanup(func() { _ = testutils.DeleteUserType(ownerTypeID) })
+	agentType := ts.prefix + "cred-agent-reset-agent"
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: agentType, DisplayName: "Audit Agent Reset Agent", OUID: ouID,
+		Schema: map[string]interface{}{
+			"name":     map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	ts.Require().NoError(err, "failed to create the agent type")
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgentType(agentTypeID) })
+
+	ownerEmail := ts.prefix + "cred-agent-reset-owner@example.com"
+	attributes, err := json.Marshal(map[string]interface{}{"username": ts.prefix + "cred-agent-reset-owner",
+		"email": ownerEmail})
+	ts.Require().NoError(err)
+	ownerID, err := testutils.CreateUser(testutils.User{OUID: ouID, Type: ownerType.Handle, Attributes: attributes})
+	ts.Require().NoError(err, "failed to create the owner")
+	ts.T().Cleanup(func() { _ = testutils.DeleteUser(ownerID) })
+	agentID, err := testutils.CreateAgent(testutils.Agent{OUID: ouID, Type: agentType,
+		Owner: testutils.LocalAgentOwner(ownerID),
+		Attributes: map[string]interface{}{"name": ts.prefix + "cred-agent-reset-agent",
+			"password": credentialMarker + "Before1!"}})
+	ts.Require().NoError(err, "failed to create the agent")
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
+
+	smtp := testutils.NewMockSMTPServer(0)
+	ts.Require().NoError(smtp.Start(), "failed to start the mock SMTP server")
+	ts.T().Cleanup(func() { _ = smtp.Stop() })
+	senderID, err := testutils.CreateSMTPEmailProvider(ts.prefix+"cred-agent-reset-sender", "localhost",
+		smtp.GetPort(), "noreply@thunderid.test")
+	ts.Require().NoError(err, "failed to create the SMTP email provider")
+	ts.T().Cleanup(func() { _ = testutils.DeleteNotificationSender(senderID) })
+	handle := ts.prefix + "cred-agent-reset-flow"
+	flowID, err := testutils.CopyFlowWithSenders("default-admin-agent-credential-reset-flow", "ADMIN_INITIATED",
+		handle, map[string]string{"send_link": senderID}, nil)
+	ts.Require().NoError(err, "failed to copy the shipped administrator agent credential reset flow")
+	ts.T().Cleanup(func() { _ = testutils.DeleteFlow(flowID) })
+	adminToken, err := testutils.GetAccessToken()
+	ts.Require().NoError(err)
+
+	started, step := ts.executeAdminReset(adminToken, map[string]interface{}{
+		"flowType": "ADMIN_INITIATED", "handle": handle,
+		"inputs": map[string]string{"subject": agentID, "credential": "password"},
+	})
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the flow must wait once the link is sent")
+	var email *testutils.EmailMessage
+	ts.Require().Eventually(func() bool {
+		email = smtp.GetLastEmail()
+		return email != nil
+	}, 10*time.Second, 100*time.Millisecond, "the reset email was not sent")
+	ts.Require().Equal([]string{ownerEmail}, email.To, "the link goes to the owner")
+	link := email.ExtractRecoveryLink()
+	inviteToken := testutils.ExtractQueryParam(link, "inviteToken")
+	ts.Require().NotEmpty(inviteToken, "the reset email carries no link")
+	_, step = ts.executeAdminReset("", map[string]interface{}{
+		"executionId": testutils.ExtractQueryParam(link, "executionId"),
+		"inputs":      map[string]string{"inviteToken": inviteToken},
+	})
+	completed, step := ts.executeAdminReset("", map[string]interface{}{
+		"executionId": step.ExecutionID, "challengeToken": step.ChallengeToken,
+		"inputs": map[string]string{"password": credentialMarker + "After1!"},
+		"action": "action_prompt_new_credential",
+	})
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "the reset must complete")
+
+	perCall := ts.linesPerCall(started, completed)
+	agentRef := testutils.AuditRef{Type: "agent", ID: agentID}
+	initiated := ts.onlyLineOf(perCall[0], "agent.credential.invalidate", "the reset's initiation")
+	ts.Equal(testutils.AuditRef{Type: "user", ID: ts.adminUserID()}, initiated.Actor,
+		"the initiation names the administrator")
+	ts.Equal(agentRef, initiated.Target)
+	ts.Equal(map[string]string{"result": "succeeded"}, initiated.Outcome)
+	ts.Equal(map[string]string{"credential_type": "password"}, ts.details(initiated),
+		"the initiation names the credential type, nothing else")
+	finished := ts.onlyLineOf(perCall[1], "agent.credential.update", "the reset's completion")
+	ts.Equal(testutils.AuditRef{Type: "user", ID: ownerID}, finished.Actor,
+		"a completion from the link names the owner, not the administrator")
+	ts.Equal(agentRef, finished.Target)
+	ts.Equal(map[string]string{"result": "succeeded"}, finished.Outcome)
+	for _, written := range perCall {
+		for _, line := range written {
+			ts.NotContains(line.Raw, inviteToken, "the link token is never recorded")
+			ts.NotContains(line.Raw, credentialMarker, "no part of a credential is recorded")
+			ts.NotContains(line.Raw, ownerEmail, "the owner's address is never recorded")
+		}
+	}
+}
+
 // executeAdminReset posts one administrator-initiated flow request, with the bearer token when it is not empty,
 // and returns the response and the step it got after checking the request was accepted.
 func (ts *AuditLogTestSuite) executeAdminReset(token string, request map[string]interface{}) (
