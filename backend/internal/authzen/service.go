@@ -432,7 +432,7 @@ func (s *authzenService) validateSubject(ctx context.Context, subject Subject) *
 		return nil
 	}
 
-	entity, err := s.entityProvider.GetEntity(subject.ID)
+	entity, err := s.entityProvider.GetEntity(ctx, subject.ID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil
@@ -520,7 +520,7 @@ func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) (
 		return []string{}, nil
 	}
 
-	groups, err := s.entityProvider.GetTransitiveEntityGroups(entityID)
+	groups, err := s.entityProvider.GetTransitiveEntityGroups(ctx, entityID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return []string{}, nil

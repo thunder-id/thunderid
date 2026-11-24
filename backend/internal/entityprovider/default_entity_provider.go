@@ -29,9 +29,10 @@ func newDefaultEntityProvider(
 
 // IdentifyEntity resolves an entity ID from indexed attribute filters.
 func (p *defaultEntityProvider) IdentifyEntity(
+	ctx context.Context,
 	filters map[string]interface{},
 ) (*string, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	entityID, err := p.entitySvc.IdentifyEntity(ctx, filters)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -43,9 +44,10 @@ func (p *defaultEntityProvider) IdentifyEntity(
 // OUHandle is not resolved here — callers that need it (e.g. disambiguation flows)
 // resolve it on demand via the OU service.
 func (p *defaultEntityProvider) SearchEntities(
+	ctx context.Context,
 	filters map[string]interface{},
 ) ([]*providers.Entity, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.SearchEntities(ctx, filters)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -59,9 +61,10 @@ func (p *defaultEntityProvider) SearchEntities(
 
 // GetEntity retrieves an entity by ID.
 func (p *defaultEntityProvider) GetEntity(
+	ctx context.Context,
 	entityID string,
 ) (*providers.Entity, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	result, err := p.entitySvc.GetEntity(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -71,13 +74,14 @@ func (p *defaultEntityProvider) GetEntity(
 
 // CreateEntity creates a new entity.
 func (p *defaultEntityProvider) CreateEntity(
+	ctx context.Context,
 	e *providers.Entity, systemCredentials json.RawMessage,
 ) (*providers.Entity, *EntityProviderError) {
 	if e == nil {
 		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
 			"Entity cannot be nil")
 	}
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	svcEntity := toServiceEntity(e)
 	result, err := p.entitySvc.CreateEntity(ctx, svcEntity, systemCredentials)
 	if err != nil {
@@ -88,13 +92,14 @@ func (p *defaultEntityProvider) CreateEntity(
 
 // UpdateEntity updates an existing entity.
 func (p *defaultEntityProvider) UpdateEntity(
+	ctx context.Context,
 	entityID string, e *providers.Entity,
 ) (*providers.Entity, *EntityProviderError) {
 	if e == nil {
 		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
 			"Entity cannot be nil")
 	}
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	svcEntity := toServiceEntity(e)
 	result, err := p.entitySvc.UpdateEntity(ctx, entityID, svcEntity)
 	if err != nil {
@@ -105,9 +110,10 @@ func (p *defaultEntityProvider) UpdateEntity(
 
 // DeleteEntity deletes an entity by ID.
 func (p *defaultEntityProvider) DeleteEntity(
+	ctx context.Context,
 	entityID string,
 ) *EntityProviderError {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.DeleteEntity(ctx, entityID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
@@ -120,9 +126,10 @@ func (p *defaultEntityProvider) DeleteEntity(
 
 // UpdateCredentials updates schema-defined credentials for an entity.
 func (p *defaultEntityProvider) UpdateCredentials(
+	ctx context.Context,
 	entityID string, credentials json.RawMessage,
 ) *EntityProviderError {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateCredentials(ctx, entityID, credentials)
 	if err != nil {
 		return mapEntityError(err)
@@ -132,9 +139,10 @@ func (p *defaultEntityProvider) UpdateCredentials(
 
 // UpdateAttributes updates schema-defined attributes for an entity.
 func (p *defaultEntityProvider) UpdateAttributes(
+	ctx context.Context,
 	entityID string, attributes json.RawMessage,
 ) *EntityProviderError {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateAttributes(ctx, entityID, attributes)
 	if err != nil {
 		return mapEntityError(err)
@@ -145,9 +153,10 @@ func (p *defaultEntityProvider) UpdateAttributes(
 // SyncFederatedEntity writes what a federated sign-in syncs to a returning entity, and returns the
 // attributes written.
 func (p *defaultEntityProvider) SyncFederatedEntity(
+	ctx context.Context,
 	entityID string, sync providers.FederatedEntitySync,
 ) (map[string]interface{}, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	written, err := p.entitySvc.SyncFederatedEntity(ctx, entityID, sync)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -157,9 +166,10 @@ func (p *defaultEntityProvider) SyncFederatedEntity(
 
 // UpdateSystemAttributes updates system-managed attributes for an entity.
 func (p *defaultEntityProvider) UpdateSystemAttributes(
+	ctx context.Context,
 	entityID string, attributes json.RawMessage,
 ) *EntityProviderError {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateSystemAttributes(ctx, entityID, attributes)
 	if err != nil {
 		return mapEntityError(err)
@@ -170,9 +180,10 @@ func (p *defaultEntityProvider) UpdateSystemAttributes(
 // UpdateSystemCredentials updates system-managed credentials for an entity.
 // Uses merge behavior — existing credential types not in the update are preserved.
 func (p *defaultEntityProvider) UpdateSystemCredentials(
+	ctx context.Context,
 	entityID string, credentials json.RawMessage,
 ) *EntityProviderError {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateSystemCredentials(ctx, entityID, credentials)
 	if err != nil {
 		return mapEntityError(err)
@@ -182,9 +193,10 @@ func (p *defaultEntityProvider) UpdateSystemCredentials(
 
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
 func (p *defaultEntityProvider) GetTransitiveEntityGroups(
+	ctx context.Context,
 	entityID string,
 ) ([]providers.EntityGroup, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	groups, err := p.entitySvc.GetTransitiveEntityGroups(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -197,9 +209,10 @@ func (p *defaultEntityProvider) GetTransitiveEntityGroups(
 
 // GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
 func (p *defaultEntityProvider) GetTransitiveGroupAncestors(
+	ctx context.Context,
 	groupID string,
 ) ([]string, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	ancestors, err := p.entitySvc.GetTransitiveGroupAncestors(ctx, groupID)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -209,9 +222,10 @@ func (p *defaultEntityProvider) GetTransitiveGroupAncestors(
 
 // ValidateEntityIDs validates that the given entity IDs exist.
 func (p *defaultEntityProvider) ValidateEntityIDs(
+	ctx context.Context,
 	entityIDs []string,
 ) ([]string, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	invalidIDs, err := p.entitySvc.ValidateEntityIDs(ctx, entityIDs)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -221,9 +235,10 @@ func (p *defaultEntityProvider) ValidateEntityIDs(
 
 // GetEntitiesByIDs retrieves multiple entities by their IDs.
 func (p *defaultEntityProvider) GetEntitiesByIDs(
+	ctx context.Context,
 	entityIDs []string,
 ) ([]providers.Entity, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.GetEntitiesByIDs(ctx, entityIDs)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -238,9 +253,10 @@ func (p *defaultEntityProvider) GetEntitiesByIDs(
 
 // GetEntityListCount returns the total number of entities in the given category.
 func (p *defaultEntityProvider) GetEntityListCount(
+	ctx context.Context,
 	category providers.EntityCategory, filters map[string]interface{},
 ) (int, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	count, err := p.entitySvc.GetEntityListCount(ctx, category, filters)
 	if err != nil {
 		return 0, mapEntityError(err)
@@ -250,9 +266,10 @@ func (p *defaultEntityProvider) GetEntityListCount(
 
 // GetEntityList returns a page of entities in the given category.
 func (p *defaultEntityProvider) GetEntityList(
+	ctx context.Context,
 	category providers.EntityCategory, limit, offset int, filters map[string]interface{},
 ) ([]providers.Entity, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.GetEntityList(ctx, category, limit, offset, filters)
 	if err != nil {
 		return nil, mapEntityError(err)

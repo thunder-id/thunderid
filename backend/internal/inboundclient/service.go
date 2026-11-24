@@ -376,7 +376,7 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	if s.entityProvider == nil {
 		return ""
 	}
-	e, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntity(ctx, entityID)
 	if epErr != nil {
 		s.logger.Warn(ctx, "Failed to resolve OAuth client_id from entity provider",
 			log.String("entityID", entityID), log.Error(epErr))
@@ -527,7 +527,7 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 		return nil, nil
 	}
 
-	entityIDPtr, epErr := s.entityProvider.IdentifyEntity(map[string]interface{}{"clientId": clientID})
+	entityIDPtr, epErr := s.entityProvider.IdentifyEntity(ctx, map[string]interface{}{"clientId": clientID})
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, nil
@@ -538,7 +538,7 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 		return nil, nil
 	}
 	entityID := *entityIDPtr
-	e, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntity(ctx, entityID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, nil
@@ -624,7 +624,7 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 
 	ouID := ""
 	if s.entityProvider != nil && c.ID != "" {
-		if e, epErr := s.entityProvider.GetEntity(c.ID); epErr == nil && e != nil {
+		if e, epErr := s.entityProvider.GetEntity(ctx, c.ID); epErr == nil && e != nil {
 			ouID = e.OUID
 		}
 	}

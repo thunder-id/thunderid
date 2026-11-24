@@ -934,7 +934,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ResolvesEmailFromEntit
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"workEmail":"database-resolved@example.com"}`),
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-db-user-id").Return(mockEntity, nil)
 
 	suite.mockTemplateService.On("Render",
 		ctx.Context,
@@ -1010,7 +1010,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderMissingE
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"other":"data"}`),
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-db-user-id").Return(mockEntity, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1052,7 +1052,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderError() 
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError, "provider error", "system failure"))
 
@@ -1076,7 +1076,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderUserNotF
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntity", "non-existent-user-id").Return(
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "non-existent-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeEntityNotFound, "user not found", "entity not found"))
 
@@ -1255,7 +1255,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserGetsTheS
 				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "PASSWORD_RECOVERY"},
 			}
 			arrange(ctx)
-			suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+			suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"email":"` + stored + `"}`)}, nil)
 			suite.expectEmail(stored)
 
@@ -1276,7 +1276,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserWithoutA
 		RuntimeData:    map[string]string{userAttributeUserID: "test-user-id"},
 		NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "PASSWORD_RECOVERY"},
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 		&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -1306,7 +1306,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_SignedInUserWithoutAnE
 				RuntimeData:    map[string]string{userAttributeUserID: "test-user-id"},
 				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "MAGIC_LINK"},
 			}
-			suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+			suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
 			suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, authUser).Return(authUser,
 				&providers.EntityReference{EntityID: test.signedInAs}, (*tidcommon.ServiceError)(nil))
@@ -1350,7 +1350,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserGetsT
 			suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, authUser).
 				Return(authUser, test.entityRef, test.svcErr)
 			if test.entityRef != nil {
-				suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+				suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 					&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"email":"stored@example.com"}`)}, nil)
 			}
 			ctx := &providers.NodeContext{
@@ -1389,7 +1389,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserWithoutA
 		},
 		NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "PASSWORD_RECOVERY"},
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 		&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
 	suite.expectEmail("collected@example.com")
 

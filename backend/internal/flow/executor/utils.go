@@ -320,7 +320,7 @@ func expandMappedGroupAncestors(
 	}
 	expanded := mappedGroupIDs
 	for _, groupID := range mappedGroupIDs {
-		ancestors, err := entityProvider.GetTransitiveGroupAncestors(groupID)
+		ancestors, err := entityProvider.GetTransitiveGroupAncestors(ctx, groupID)
 		if err != nil {
 			logger.Warn(ctx, "Failed to resolve ancestors of a mapped group, continuing without them",
 				log.String("groupId", groupID), log.Error(err))
@@ -418,7 +418,7 @@ func resolveKnownRecipient(ctx *providers.NodeContext, execResp *providers.Execu
 	if entityProvider == nil {
 		return "", true, errors.New("entity provider is not configured for recipient resolution")
 	}
-	user, providerErr := entityProvider.GetEntity(userID)
+	user, providerErr := entityProvider.GetEntity(ctx.Context, userID)
 	if providerErr != nil {
 		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return "", true, nil

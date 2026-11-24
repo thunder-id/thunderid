@@ -73,7 +73,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_Success() {
 	})
 
 	// Use mock.Anything for credentials JSON bytes to avoid strict byte checking
-	suite.mockEntityProvider.On("UpdateCredentials", userID, mock.Anything).Return(nil)
+	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, userID, mock.Anything).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -162,7 +162,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_ServiceError() {
 		},
 	})
 
-	suite.mockEntityProvider.On("UpdateCredentials", userID, mock.Anything).
+	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, userID, mock.Anything).
 		Return(entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -201,7 +201,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_CustomAttribute() {
 
 	// Expect UpdateUserCredentials with custom attribute
 	expectedCredentialsJSON := `{"pin":"1234"}` //nolint:gosec // G101: This is test data, not a real credential
-	suite.mockEntityProvider.On("UpdateCredentials", userID, mock.MatchedBy(func(data []byte) bool {
+	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, userID, mock.MatchedBy(func(data []byte) bool {
 		return string(data) == expectedCredentialsJSON
 	})).Return(nil)
 

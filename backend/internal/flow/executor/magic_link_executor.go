@@ -172,7 +172,7 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 				return execResp, errors.New("user ID is empty in the context")
 			}
 		} else {
-			identifiedUserID, providerErr := m.entityProvider.IdentifyEntity(searchAttrs)
+			identifiedUserID, providerErr := m.entityProvider.IdentifyEntity(ctx.Context, searchAttrs)
 			if providerErr != nil || identifiedUserID == nil || *identifiedUserID == "" {
 				logger.Debug(ctx.Context, "User not found, completing without delivery for anti-enumeration")
 				execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue

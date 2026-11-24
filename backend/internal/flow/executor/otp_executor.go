@@ -217,7 +217,7 @@ func (e *otpExecutor) resolveUserID(ctx *providers.NodeContext,
 		return "", nil
 	}
 
-	identifiedUserID, providerErr := e.entityProvider.IdentifyEntity(searchAttrs)
+	identifiedUserID, providerErr := e.entityProvider.IdentifyEntity(ctx.Context, searchAttrs)
 	if providerErr != nil {
 		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			execResp.Status = providers.ExecFailure

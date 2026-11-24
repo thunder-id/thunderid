@@ -135,9 +135,9 @@ func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Failure() {
 
 func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	expected := &providers.Entity{ID: "app-1"}
-	s.mockEntity.On("GetEntity", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntity", mock.Anything, "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
 
-	entity, err := s.provider.GetActor("app-1")
+	entity, err := s.provider.GetActor(context.Background(), "app-1")
 
 	s.Nil(err)
 	s.Equal(expected, entity)
@@ -145,9 +145,10 @@ func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 
 func (s *ActorProviderTestSuite) TestGetActorGroups_Delegates() {
 	expected := []providers.EntityGroup{{ID: "group-1"}}
-	s.mockEntity.On("GetTransitiveEntityGroups", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetTransitiveEntityGroups", mock.Anything, "app-1").
+		Return(expected, (*entityprovider.EntityProviderError)(nil))
 
-	groups, err := s.provider.GetActorGroups("app-1")
+	groups, err := s.provider.GetActorGroups(context.Background(), "app-1")
 
 	s.Nil(err)
 	s.Equal(expected, groups)
@@ -159,7 +160,7 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_Delegates() {
 	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", groupIDs).
 		Return(expected, (*tidcommon.ServiceError)(nil))
 
-	roles, err := s.provider.GetActorRoles("app-1", groupIDs)
+	roles, err := s.provider.GetActorRoles(context.Background(), "app-1", groupIDs)
 
 	s.Nil(err)
 	s.Equal(expected, roles)
@@ -172,7 +173,7 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesError() {
 	}
 	s.mockRole.On("GetUserRoles", mock.Anything, "app-1", []string{"group-1"}).Return(nil, svcErr)
 
-	roles, err := s.provider.GetActorRoles("app-1", []string{"group-1"})
+	roles, err := s.provider.GetActorRoles(context.Background(), "app-1", []string{"group-1"})
 
 	s.Nil(roles)
 	s.Equal(svcErr, err)
@@ -181,8 +182,34 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesError() {
 func (s *ActorProviderTestSuite) TestGetActorRoles_NilRoleService_ReturnsNil() {
 	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil)
 
-	roles, err := provider.GetActorRoles("app-1", []string{"group-1"})
+	roles, err := provider.GetActorRoles(context.Background(), "app-1", []string{"group-1"})
 
 	s.Nil(err)
 	s.Nil(roles)
+}
+
+type testCtxKey struct{}
+
+func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesContext() {
+	ctx := context.WithValue(context.Background(), testCtxKey{}, "trace-1")
+	s.mockRole.On("GetUserRoles", mock.MatchedBy(func(c context.Context) bool {
+		return c.Value(testCtxKey{}) == "trace-1"
+	}), "app-1", []string{"group-1"}).Return([]string{"admin"}, (*tidcommon.ServiceError)(nil))
+
+	roles, err := s.provider.GetActorRoles(ctx, "app-1", []string{"group-1"})
+
+	s.Nil(err)
+	s.Equal([]string{"admin"}, roles)
+}
+
+func (s *ActorProviderTestSuite) TestGetActor_PropagatesContext() {
+	ctx := context.WithValue(context.Background(), testCtxKey{}, "trace-1")
+	s.mockEntity.On("GetEntity", mock.MatchedBy(func(c context.Context) bool {
+		return c.Value(testCtxKey{}) == "trace-1"
+	}), "app-1").Return(&providers.Entity{ID: "app-1"}, (*entityprovider.EntityProviderError)(nil))
+
+	entity, err := s.provider.GetActor(ctx, "app-1")
+
+	s.Nil(err)
+	s.Equal("app-1", entity.ID)
 }

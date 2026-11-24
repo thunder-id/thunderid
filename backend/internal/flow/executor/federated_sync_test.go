@@ -174,7 +174,7 @@ var syncTestWrite = federatedSync{Entity: providers.FederatedEntitySync{
 }}
 
 func (s *FederatedSyncTestSuite) TestSyncFederatedUser_Writes() {
-	s.entityProvider.On("SyncFederatedEntity", "user-1", syncTestWrite.Entity).
+	s.entityProvider.On("SyncFederatedEntity", mock.Anything, "user-1", syncTestWrite.Entity).
 		Return(map[string]interface{}{"email": "new@example.com"}, nil).Once()
 	execResp := syncTestResponse()
 
@@ -201,7 +201,7 @@ func (s *FederatedSyncTestSuite) TestSyncFederatedUser_IncompleteMappingIsAServe
 }
 
 func (s *FederatedSyncTestSuite) TestSyncFederatedUser_RejectedWriteFailsSignIn() {
-	s.entityProvider.On("SyncFederatedEntity", "user-1", mock.Anything).Return(nil,
+	s.entityProvider.On("SyncFederatedEntity", mock.Anything, "user-1", mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSyncRejected, "Sync rejected", "denied")).Once()
 	execResp := syncTestResponse()
 
@@ -213,7 +213,7 @@ func (s *FederatedSyncTestSuite) TestSyncFederatedUser_RejectedWriteFailsSignIn(
 }
 
 func (s *FederatedSyncTestSuite) TestSyncFederatedUser_SystemErrorIsAServerError() {
-	s.entityProvider.On("SyncFederatedEntity", "user-1", mock.Anything).Return(nil,
+	s.entityProvider.On("SyncFederatedEntity", mock.Anything, "user-1", mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "System error", "db down")).Once()
 	execResp := syncTestResponse()
 
@@ -224,7 +224,7 @@ func (s *FederatedSyncTestSuite) TestSyncFederatedUser_SystemErrorIsAServerError
 }
 
 func (s *FederatedSyncTestSuite) TestSyncFederatedUser_NotImplementedSkipsSync() {
-	s.entityProvider.On("SyncFederatedEntity", "user-1", mock.Anything).Return(nil,
+	s.entityProvider.On("SyncFederatedEntity", mock.Anything, "user-1", mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeNotImplemented, "Not implemented", "")).Once()
 	execResp := syncTestResponse()
 
@@ -245,7 +245,7 @@ func (s *FederatedSyncTestSuite) TestSyncOrDeferFederatedUser_DefersUntilTheUser
 
 	ctx := syncTestContext()
 	ctx.RuntimeData[common.RuntimeKeyPendingFederatedSync] = execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync]
-	s.entityProvider.On("SyncFederatedEntity", "user-2", syncTestWrite.Entity).
+	s.entityProvider.On("SyncFederatedEntity", mock.Anything, "user-2", syncTestWrite.Entity).
 		Return(map[string]interface{}{"email": "new@example.com"}, nil).Once()
 	execResp = syncTestResponse()
 	ok, err = syncPendingFederatedUser(ctx, execResp, s.entityProvider, "user-2", s.logger)
