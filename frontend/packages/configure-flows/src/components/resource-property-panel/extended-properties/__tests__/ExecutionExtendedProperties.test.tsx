@@ -5,6 +5,8 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {IdentityProviderTypes} from '@thunderid/configure-connections';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import FlowTypeContext from '../../../../context/FlowTypeContext';
+import {FlowType} from '../../../../models/flows';
 import type {Resource} from '../../../../models/resources';
 import {ExecutionTypes, type StepData} from '../../../../models/steps';
 import ExecutionExtendedProperties from '../ExecutionExtendedProperties';
@@ -1828,7 +1830,11 @@ describe('ExecutionExtendedProperties', () => {
     } as unknown as Resource;
 
     it('should render NoConfigProperties message', () => {
-      render(<ExecutionExtendedProperties resource={credentialSetterResource} onChange={mockOnChange} />);
+      render(
+        <FlowTypeContext.Provider value={FlowType.ADMINISTRATION}>
+          <ExecutionExtendedProperties resource={credentialSetterResource} onChange={mockOnChange} />
+        </FlowTypeContext.Provider>,
+      );
 
       expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
     });

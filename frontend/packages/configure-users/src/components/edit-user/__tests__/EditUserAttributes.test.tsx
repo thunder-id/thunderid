@@ -21,7 +21,7 @@ vi.mock('@/api/useGetUserType', () => ({
   default: (id?: string) => mockUseGetUserType(id),
 }));
 
-vi.mock('@/api/useGetAttributeVerificationFlow', () => ({
+vi.mock('@/api/useGetAdministrationFlowHandle', () => ({
   default: () => ({data: 'default-admin-attribute-verification-flow'}),
 }));
 

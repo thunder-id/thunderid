@@ -13,15 +13,15 @@ let isPending = false;
 let administrationOperation: unknown = AdministrationModes.FLOW;
 let canUpdate = true;
 let configuredHandle: string | undefined = 'custom-verification-flow';
-const mockUseGetAttributeVerificationFlow = vi.fn();
+const mockUseGetAdministrationFlowHandle = vi.fn();
 
 vi.mock('@/api/useSendUserAttributeVerification', () => ({
   default: () => ({mutate: mockMutate, isPending}),
 }));
 
-vi.mock('@/api/useGetAttributeVerificationFlow', () => ({
-  default: (enabled: boolean) => {
-    mockUseGetAttributeVerificationFlow(enabled);
+vi.mock('@/api/useGetAdministrationFlowHandle', () => ({
+  default: (_configKey: string, enabled: boolean) => {
+    mockUseGetAdministrationFlowHandle(enabled);
     return {data: enabled ? configuredHandle : undefined};
   },
 }));
@@ -48,7 +48,7 @@ describe('SendVerificationLinkButton', () => {
     administrationOperation = AdministrationModes.FLOW;
     canUpdate = true;
     configuredHandle = 'custom-verification-flow';
-    mockUseGetAttributeVerificationFlow.mockReset();
+    mockUseGetAdministrationFlowHandle.mockReset();
   });
 
   it('starts the flow the server configures when clicked', async () => {
@@ -78,7 +78,7 @@ describe('SendVerificationLinkButton', () => {
     canUpdate = false;
     render(<SendVerificationLinkButton userId="user-1" attribute="email" label="Email" />);
 
-    expect(mockUseGetAttributeVerificationFlow).toHaveBeenCalledWith(false);
+    expect(mockUseGetAdministrationFlowHandle).toHaveBeenCalledWith(false);
   });
 
   it('shows one error toast when sending fails', async () => {

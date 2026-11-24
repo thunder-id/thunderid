@@ -153,7 +153,7 @@ export default function AcceptInviteBox(): JSX.Element {
             return (
               <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3, gap: 2}}>
                 <CircularProgress />
-                <Typography>{t('invite:validating', 'Validating your invite link...')}</Typography>
+                <Typography>{t('invite:validating', 'Checking your link...')}</Typography>
               </Box>
             );
           }
@@ -161,8 +161,8 @@ export default function AcceptInviteBox(): JSX.Element {
           if (isTokenInvalid) {
             return (
               <Alert severity="error">
-                <AlertTitle>{t('invite:errors.invalid.title', 'Unable to verify invite')}</AlertTitle>
-                {t('invite:errors.invalid.description', 'This invite link is invalid or has expired.')}
+                <AlertTitle>{t('invite:errors.invalid.title', "This link can't be used")}</AlertTitle>
+                {t('invite:errors.invalid.description', 'It is invalid or has expired. Ask for a new one.')}
               </Alert>
             );
           }

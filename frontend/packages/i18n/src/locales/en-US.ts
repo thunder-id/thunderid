@@ -567,6 +567,14 @@ const translations = {
     'credentialReset.dialog.mismatch': 'Values do not match.',
     'credentialReset.dialog.resetting': 'Resetting…',
     'credentialReset.dialog.resetButton': 'Reset {{label}}',
+    'credentialReset.dialog.method.label': 'How should the {{label}} be reset?',
+    'credentialReset.dialog.method.set': 'Set a new {{label}} now',
+    'credentialReset.dialog.method.link': 'Email the user a link to set a new {{label}}',
+    'credentialReset.dialog.link.message': 'The user will receive an email with a link to set a new {{label}}.',
+    'credentialReset.dialog.link.warning':
+      '{{label}} stops working once the email is sent, and the user is signed out everywhere. It stays unusable until the user sets a new value from the link.',
+    'credentialReset.dialog.link.sendButton': 'Send reset link',
+    'credentialReset.dialog.sending': 'Sending…',
   },
 
   // ============================================================================
@@ -805,6 +813,12 @@ const translations = {
     'verification.sendExpired': "This user's account has expired, so a verification link cannot be sent.",
     'verification.saveToVerify': 'Save to verify',
 
+    // Credential reset link
+    'credentialResetLink.sent': 'Reset link sent. {{credential}} no longer works until the user sets a new one.',
+    'credentialResetLink.error': 'Could not send the reset link. Please try again.',
+    'credentialResetLink.heldSuspended': 'Unsuspend the user to send a reset link.',
+    'credentialResetLink.heldExpired': "This user's account has expired, so a reset link cannot be sent.",
+
     // Update credentials
     'updateCredentials.button': 'Update credentials',
     'updateCredentials.hint': 'Fill in only the credentials you want to update. Empty fields will be skipped.',
@@ -812,9 +826,13 @@ const translations = {
     'updateCredentials.error': 'Failed to update credentials. Please try again.',
 
     // Backend error code translations (per user service error envelope).
-    // Raised by the verification flow; scoped here so other flows keep their own copy.
+    // Raised by the verification and credential reset flows; scoped here so other flows keep their own copy.
+    'errors.FET-1037': 'This user has no email address, so the link was not sent. Add an email address and try again.',
     'errors.FET-1038': 'Email provider is not configured.',
     'errors.FET-1114': 'This user is suspended. Unsuspend the user and try again.',
+    'errors.FET-1139': 'The reset link was not sent, so the current credential still works.',
+    'errors.FET-1140':
+      'The reset failed after the email was sent. The emailed link will not work, and the current credential may already be removed. Send a new reset link.',
     'errors.USR-1003': 'This user no longer exists. It may have already been deleted.',
     'errors.USR-1005': 'The organization unit for this user no longer exists. Refresh and try again.',
     'errors.USR-1014': 'A user with the same unique attribute value already exists.',
@@ -4750,6 +4768,14 @@ const translations = {
     'core.executions.identityGovernance.mode.hint':
       'Suspend and unlock act on different holds, so releasing one leaves the other in place. Suspend acts on the identity a Pre Suspend Executor planned.',
     'core.executions.identityGovernance.description': 'Run one lifecycle operation on the identity the flow resolved.',
+    'core.executions.credentialSetter.description': "Sets, validates or removes a user's credential.",
+    'core.executions.credentialSetter.mode.label': 'Operation',
+    'core.executions.credentialSetter.mode.placeholder': 'Select an operation',
+    'core.executions.credentialSetter.mode.set': 'Set credentials',
+    'core.executions.credentialSetter.mode.validate': 'Validate credential reset',
+    'core.executions.credentialSetter.mode.invalidate': 'Remove credential',
+    'core.executions.credentialSetter.mode.hint':
+      'In an administrator-initiated flow, Validate credential reset runs before the link is sent, Remove credential after it is emailed, and Set credentials when the user submits the new value.',
 
     // Passkey executor modes
     'core.executions.passkey.mode.challenge': 'Challenge',

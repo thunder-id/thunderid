@@ -164,6 +164,28 @@ export const IDENTITY_GOVERNANCE_MODES = [
 ] as const;
 
 /**
+ * Operations of the Credential Setter. Validate and remove run only in an administrator-initiated flow,
+ * where they bracket the reset link; set runs in any flow and is what a node without a mode does.
+ */
+export const CREDENTIAL_SETTER_MODES = [
+  {
+    value: 'set',
+    translationKey: 'flows:core.executions.credentialSetter.mode.set',
+    displayLabel: 'Set Credentials',
+  },
+  {
+    value: 'validate',
+    translationKey: 'flows:core.executions.credentialSetter.mode.validate',
+    displayLabel: 'Validate Credential Reset',
+  },
+  {
+    value: 'invalidate',
+    translationKey: 'flows:core.executions.credentialSetter.mode.invalidate',
+    displayLabel: 'Remove Credential',
+  },
+] as const;
+
+/**
  * Available modes for Passkey executor.
  */
 export const PASSKEY_MODES = [

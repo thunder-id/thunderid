@@ -5,9 +5,10 @@
  * User Management E2E Tests
  *
  * Covers editing a user from the details page: reverting unsaved attribute edits via Reset,
- * persisting edits via Save (verified after a tab switch and a full page reload), and resetting
- * a credential (Password) from the Credentials tab. Each user is created via the Users API,
- * same as user-deletion.spec.ts, so these stay green independent of the create-user UI flow.
+ * persisting edits via Save (verified after a tab switch and a full page reload), resetting
+ * a credential (Password) from the Credentials tab, and a refused reset link. Each user is
+ * created via the Users API, same as user-deletion.spec.ts, so these stay green independent of
+ * the create-user UI flow.
  *
  * Required environment variables:
  * - BASE_URL: Console base URL
@@ -26,10 +27,11 @@ test.describe("User Management - Edit User", () => {
   // Generated at describe scope so afterAll can see the names, same as user-deletion.spec.ts.
   const editTestUser = TestDataFactory.createUser();
   const credentialTestUser = TestDataFactory.createUser();
+  const resetLinkTestUser = TestDataFactory.createUser();
 
   test.afterAll(async ({ request }) => {
     const usersApi = new UsersApi(request);
-    for (const username of [editTestUser.username, credentialTestUser.username]) {
+    for (const username of [editTestUser.username, credentialTestUser.username, resetLinkTestUser.username]) {
       const deleted = await usersApi.deleteByUsername(username);
       console.log(`Teardown: removed ${deleted} user(s) matching ${username}`);
     }
@@ -111,6 +113,44 @@ test.describe("User Management - Edit User", () => {
       await usersPage.fillCredentialResetForm(`NewPass@${Date.now()}`);
       await usersPage.confirmResetPassword();
       await expect(usersPage.credentialResetDialog).toBeHidden({ timeout: Timeouts.FORM_LOAD });
+    });
+  });
+
+  /**
+   * TC003: Verify a refused reset link keeps the reset dialog open with the reason. The shipped
+   * credential reset flow's Send Email step names no email provider, so the start is refused with
+   * FET-1038 before the current password is removed, and the password can still be reset.
+   */
+  test("TC003: A refused reset link shows the reason in the reset dialog", async ({ usersPage, usersApi }) => {
+    const user = await test.step("Create the user via the Users API", async () => {
+      return usersApi.createUser(resetLinkTestUser);
+    });
+
+    await test.step("Open the Credentials tab", async () => {
+      await usersPage.gotoUserDetails(user.id);
+      await usersPage.clickTab("Credentials");
+    });
+
+    await test.step("Choose to email a reset link for the password and send it", async () => {
+      await usersPage.clickResetPassword("Password");
+      await expect(usersPage.credentialResetDialog).toContainText("Reset Password?", {
+        timeout: Timeouts.ELEMENT_VISIBILITY,
+      });
+      await usersPage.chooseResetLink();
+      await usersPage.sendResetLinkConfirmButton.click();
+    });
+
+    await test.step("Verify the refusal stays in the dialog", async () => {
+      await expect(usersPage.credentialResetError).toHaveText("Email provider is not configured.", {
+        timeout: Timeouts.FORM_LOAD,
+      });
+      await expect(usersPage.sendResetLinkConfirmButton).toBeEnabled();
+    });
+
+    await test.step("Cancel and verify the password can still be reset", async () => {
+      await usersPage.cancelResetPasswordButton.click();
+      await expect(usersPage.credentialResetDialog).toBeHidden({ timeout: Timeouts.ELEMENT_VISIBILITY });
+      await expect(usersPage.resetPasswordButton).toBeEnabled();
     });
   });
 });

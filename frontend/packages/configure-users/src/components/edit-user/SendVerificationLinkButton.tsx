@@ -3,11 +3,12 @@
 
 import {AdministrationModes, useAdministrationOperation, useCapabilitiesContext, useToast} from '@thunderid/contexts';
 import type {AccessStatus} from '@thunderid/types';
+import {AdministrationFlowConfigKey} from '@thunderid/utils';
 import {Button, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Send} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import useGetAttributeVerificationFlow from '../../api/useGetAttributeVerificationFlow';
+import useGetAdministrationFlowHandle from '../../api/useGetAdministrationFlowHandle';
 import useSendUserAttributeVerification from '../../api/useSendUserAttributeVerification';
 import getUserErrorMessage from '../../utils/getUserErrorMessage';
 
@@ -47,7 +48,10 @@ export default function SendVerificationLinkButton({
   const {showToast} = useToast();
   const sendVerification = useSendUserAttributeVerification();
   const offered = mode === AdministrationModes.FLOW && can('user', 'update');
-  const {data: handle} = useGetAttributeVerificationFlow(offered);
+  const {data: handle} = useGetAdministrationFlowHandle(
+    AdministrationFlowConfigKey.ADMIN_ATTRIBUTE_VERIFICATION,
+    offered,
+  );
 
   if (!offered || !handle) {
     return null;

@@ -81,7 +81,18 @@ To have a user choose a new password, PIN, or other credential themselves, witho
 
 <ProductName /> ships the `default-admin-user-credential-reset-flow` flow for this. Its **Send Email** step ships without an email provider, so select your provider on that step and save the flow before you start a reset. The flow sends the link to the profile attribute that step's email input names, `email` by default. See [Configure an Email Provider](../../notifications/email-providers).
 
-Start the flow through the Flow Execution API with an administrator access token that carries `system:user:update` or `org:user:update`. Name the user's ID in the `subject` input and the credential to reset in the `credential` input:
+To start a reset in the Console, open the user and go to the **Credentials** tab. Click the credential's reset button, such as **Reset Password**. In the dialog, choose **Email the user a link to set a new password**, then click **Send reset link**. The Console starts the flow that `adminUserCredentialResetFlow` names in the `flow` server configuration section, the shipped flow by default. The dialog offers the link only for text credentials, and only when:
+
+- You can update users and read the server configuration.
+- A flow is set for `adminUserCredentialResetFlow`. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+- The Console runs user administration through flows.
+- The user is not declarative (read-only).
+
+For a suspended user or an expired account, the link option is disabled, and the dialog says why. You can still set a new value there. A locked user can still be sent a link.
+
+To build a flow of your own, create an **Administrator-initiated** flow from the **Administrator User Credential Reset with Email Link** template. Select its email provider on the **Send Email** node and save the flow, then set `adminUserCredentialResetFlow.defaultHandle` to its handle. The **Operation** setting of each credential node selects what it does: **Validate credential reset**, **Remove credential**, or **Set credentials**. See [Build a Flow](../../flows/build-a-flow#go-further) and [Credential Verification and Management](../../flows/advanced-configurations#credential-verification-and-management).
+
+To start the flow through the Flow Execution API instead, use an administrator access token that carries `system:user:update` or `org:user:update`. Name the user's ID in the `subject` input and the credential to reset in the `credential` input:
 
 ```bash
 curl -kL -X POST https://localhost:8090/flow/execute \

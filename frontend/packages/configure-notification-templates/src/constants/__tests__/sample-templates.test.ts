@@ -21,3 +21,17 @@ describe('attribute verification samples', () => {
     },
   );
 });
+
+describe('credential reset sample', () => {
+  // The credential reset flow sends the link as `inviteLink`, so the sample must render it.
+  it('is an email sample that renders the reset link', () => {
+    const sample = getSampleTemplates('email').find(
+      (candidate) => candidate.id === 'email-admin-user-credential-reset',
+    );
+
+    expect(sample).toBeDefined();
+    expect(sample?.subject).toBe('Reset your sign-in credential');
+    expect(ctxKeys(sample?.body ?? '')).toEqual(['inviteLink', 'inviteLink', 'inviteLink']);
+    expect(ctxKeys(sample?.body ?? '').every((key) => CONTEXT_TOKEN_KEYS.has(key))).toBe(true);
+  });
+});

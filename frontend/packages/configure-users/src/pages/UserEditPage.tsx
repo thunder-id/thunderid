@@ -152,6 +152,15 @@ export default function UserEditPage() {
       });
   }, [userTypeDetails, resolveDisplayName]);
 
+  // A reset link resets only a text credential; the flow refuses a number credential.
+  const resetLinkFieldNames: string[] = useMemo(
+    () =>
+      Object.entries(userTypeDetails?.schema ?? {})
+        .filter(([, fieldDef]) => fieldDef.type === 'string' && fieldDef.credential)
+        .map(([fieldName]) => fieldName),
+    [userTypeDetails],
+  );
+
   const displayName = user?.display ?? user?.id ?? '';
 
   useEffect(
@@ -458,7 +467,14 @@ export default function UserEditPage() {
     tabs.push({
       key: 'credentials',
       label: t('users:manageUser.tabs.credentials', 'Credentials'),
-      render: () => <CredentialsTabPanel userId={userId!} credentialFields={credentialFields} />,
+      render: () => (
+        <CredentialsTabPanel
+          userId={userId!}
+          credentialFields={credentialFields}
+          resetLinkFieldNames={resetLinkFieldNames}
+          accessStatus={user.status?.value}
+        />
+      ),
     });
   }
 
