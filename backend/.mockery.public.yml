@@ -638,6 +638,15 @@ packages:
           pkgname: identitygovernancemock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authnprovider/federatedsync:
+    interfaces:
+      FederatedSyncServiceInterface:
+        config:
+          dir: tests/mocks/authnprovider/federatedsyncmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: federatedsyncmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/attributeverification:
     interfaces:
       AttributeVerificationServiceInterface:

@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
+	"github.com/thunder-id/thunderid/internal/authnprovider/federatedsync"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/authnprovider/restprovider"
 	"github.com/thunder-id/thunderid/internal/authz"
@@ -427,14 +428,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			Creds:    restCfg.CredentialTypes,
 		}
 	}
-	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders, auditBus,
-		authnprovidermgr.FederatedSyncDependencies{
-			EntityProvider:        entityProvider,
-			EntityTypeService:     entityTypeService,
-			GroupService:          groupService,
-			RoleAssignmentService: roleAssignmentService,
-			IDPProvider:           idpService,
-		})
+	federatedSync := federatedsync.Initialize(idpService, entityProvider, entityTypeService, groupService,
+		roleAssignmentService)
+	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders, auditBus, federatedSync)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}

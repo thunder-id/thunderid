@@ -4,18 +4,19 @@
 package manager
 
 import (
+	"github.com/thunder-id/thunderid/internal/authnprovider/federatedsync"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize creates a new AuthnProviderManager. defaultProvider is required. bus is required: the
-// manager publishes the audit event of every credential it enrolls on it. syncDeps are what it syncs
-// federated sign-ins with.
+// manager publishes the audit event of every credential it enrolls on it. federatedSync syncs federated
+// sign-ins to the accounts holding their links. Without it no sign-in is synced.
 func Initialize(defaultProvider providers.AuthnProviderInterface,
 	others map[string]providers.CustomAuthnProvider, bus eventbus.EventBusInterface,
-	syncDeps FederatedSyncDependencies) (providers.AuthnProviderManager, error) {
+	federatedSync federatedsync.FederatedSyncServiceInterface) (providers.AuthnProviderManager, error) {
 	if bus == nil {
 		return nil, errNilEventBus
 	}
-	return newAuthnProviderManager(defaultProvider, others, bus, syncDeps)
+	return newAuthnProviderManager(defaultProvider, others, bus, federatedSync)
 }

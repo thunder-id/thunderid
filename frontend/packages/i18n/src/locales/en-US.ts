@@ -2696,12 +2696,12 @@ const translations = {
     'attributeMapping.sync.attributes.hint.no_sync':
       "The provider's attributes are stored when a sign-in creates the account, and are not updated after.",
     'attributeMapping.sync.attributes.hint.session_only':
-      "The account stores only the required attributes and the values the user enters. The provider's other attributes apply to the session.",
+      'The account stores only the required attributes and the values the user enters. The other attributes in the attribute mappings apply to the session.',
     'attributeMapping.sync.groupsAndRoles.label': 'Groups and roles sync',
     'attributeMapping.sync.groupsAndRoles.hint.no_sync':
       'The groups and roles the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after.',
     'attributeMapping.sync.groupsAndRoles.hint.override_all':
-      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Protected assignments are kept.",
+      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Group memberships and role assignments set by a control plane, group memberships set by a resource file, and roles a sharing policy mandates are kept.",
     'attributeMapping.sync.groupsAndRoles.hint.session_only':
       'The groups and roles the authorization mapping resolves apply to the session and are not assigned to the account.',
     'attributeMapping.sync.mode.no_sync': 'No sync',
@@ -4948,7 +4948,7 @@ const translations = {
     'core.executions.provisioning.assignRole.noneExist': 'No roles exist. Create one, then select it here.',
     'core.executions.provisioning.assignRole.loadError': 'Failed to load roles.',
     'core.executions.provisioning.federatedOverrideWarning':
-      "With Override all sync, a later federated sign-in removes groups assigned here that the connection's authorization mapping doesn't resolve when it has a group target, and roles when it has a role target.",
+      'A later sign-in through a connection set to Override all can remove the groups and roles assigned here.',
 
     // Session sign out executor
     'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',

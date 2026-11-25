@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
@@ -59,6 +60,16 @@ func expectIdentityProviderResolved(m *idpmock.IDPServiceInterfaceMock) {
 // What the provider's sync keeps to the session is written to runtime data, and never reaches the claim
 // record. The flow type travels to the provider in the metadata.
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_WritesSessionValues() {
+	assertWritesSessionValues(suite.T(), suite.mockAuthnProvider, suite.mockIDPService,
+		suite.executor.ProcessAuthFlowResponse)
+}
+
+// assertWritesSessionValues runs processResponse on a sign-in whose sync keeps values to the session, and
+// asserts they are written to runtime data and never reach the claim record, and that the flow type
+// travels to the provider in the metadata.
+func assertWritesSessionValues(t *testing.T, authnProvider *managermock.AuthnProviderManagerMock,
+	idpService *idpmock.IDPServiceInterfaceMock,
+	processResponse func(*providers.NodeContext, *providers.ExecutorResponse) error) {
 	ctx := &providers.NodeContext{
 		ExecutionID:    "flow-123",
 		FlowType:       providers.FlowTypeAuthentication,
@@ -78,24 +89,24 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_WritesSessionVa
 				{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"}},
 		},
 	}
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	authnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.MatchedBy(func(m *providers.AuthnMetadata) bool {
 			return m != nil && !m.DeferSync
 		}), mock.Anything).
 		Return(providers.AuthUser{}, claims, (*tidcommon.ServiceError)(nil))
-	expectIdentityProviderResolved(suite.mockIDPService)
+	expectIdentityProviderResolved(idpService)
 
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+	err := processResponse(ctx, execResp)
 
-	suite.Require().NoError(err)
-	suite.Equal(providers.ExecComplete, execResp.Status)
-	suite.JSONEq(`{"email":"session@example.com"}`, execResp.RuntimeData[common.RuntimeKeySessionAttributes])
-	suite.Equal("group-a group-parent", execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
-	suite.Equal("group-a", execResp.RuntimeData[common.RuntimeKeySessionDirectGroupIDs])
-	suite.Equal("", execResp.RuntimeData[common.RuntimeKeySessionRoleIDs])
-	suite.JSONEq(`[{"type":"permission","resourceServerId":"rs-1","permission":"read"}]`,
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, execResp.Status)
+	assert.JSONEq(t, `{"email":"session@example.com"}`, execResp.RuntimeData[common.RuntimeKeySessionAttributes])
+	assert.Equal(t, "group-a group-parent", execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
+	assert.Equal(t, "group-a", execResp.RuntimeData[common.RuntimeKeySessionDirectGroupIDs])
+	assert.Equal(t, "", execResp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+	assert.JSONEq(t, `[{"type":"permission","resourceServerId":"rs-1","permission":"read"}]`,
 		execResp.RuntimeData[common.RuntimeKeyMappedPermissions])
-	suite.NotContains(execResp.RuntimeData[common.RuntimeKeyExternalIdentity], authnprovidercm.ClaimSessionValues)
+	assert.NotContains(t, execResp.RuntimeData[common.RuntimeKeyExternalIdentity], authnprovidercm.ClaimSessionValues)
 }
 
 // A failed sync at sign-in fails the step with the sync error.
