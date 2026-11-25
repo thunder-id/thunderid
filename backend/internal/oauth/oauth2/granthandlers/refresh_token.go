@@ -311,7 +311,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// Issue a new refresh token if renew_on_grant is enabled; otherwise reuse the existing one.
 	// The new refresh token carries the same single resource server audience.
 	if renewRefreshToken {
-		logger.Debug(ctx, "Renewing refresh token", log.String("client_id", tokenRequest.ClientID))
+		logger.Debug(ctx, "Renewing refresh token", log.String("clientID", tokenRequest.ClientID))
 		errResp := h.IssueRefreshToken(ctx, tokenResponse, oauthApp,
 			refreshTokenClaims.Sub, audiences,
 			refreshTokenClaims.GrantType, newTokenScopes,

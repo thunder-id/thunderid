@@ -89,7 +89,7 @@ func (g *googleOIDCAuthnService) ValidateTokenResponse(ctx context.Context, idpI
 // is called with validateResponse set to true.
 func (g *googleOIDCAuthnService) ValidateIDToken(
 	ctx context.Context, idpID, idToken string) *tidcommon.ServiceError {
-	logger := g.logger.With(log.String("idpId", idpID))
+	logger := g.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Validating ID token")
 
 	if strings.TrimSpace(idToken) == "" {
@@ -137,7 +137,7 @@ func (g *googleOIDCAuthnService) ValidateIDToken(
 	aud, ok := claims["aud"].(string)
 	if !ok || aud != oAuthClientConfig.ClientID {
 		logger.Debug(ctx, "Invalid ID token audience", log.String("audience", aud),
-			log.MaskedString("clientId", oAuthClientConfig.ClientID))
+			log.MaskedString("clientID", oAuthClientConfig.ClientID))
 		return tidcommon.CustomServiceError(authnoidc.ErrorInvalidIDToken, tidcommon.I18nMessage{
 			Key:          "error.authnservice.google.invalid_id_token_audience_description",
 			DefaultValue: "The ID token audience does not match the expected client ID",
@@ -224,7 +224,7 @@ func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData common.AuthorizationData) (*common.AuthnResult, *tidcommon.ServiceError) {
-	logger := g.logger.With(log.String("idpId", idpID))
+	logger := g.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Performing federated Google OIDC authentication")
 
 	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)
