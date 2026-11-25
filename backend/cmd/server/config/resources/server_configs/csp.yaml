@@ -39,3 +39,20 @@ value:
         font-src:
           - "'self'"
           - "data:"
+    - location: "/myaccount/"
+      directives:
+        style-src-elem:
+          - "'self'"
+        # Governs inline style="" attributes that can't carry a nonce.
+        style-src-attr:
+          - "'self'"
+          - "'unsafe-inline'"
+        # The brand logo a deployment sets in config.js and the user's own picture can be hosted
+        # anywhere.
+        img-src:
+          - "'self'"
+          - "data:"
+          - "https:"
+        font-src:
+          - "'self'"
+          - "data:"

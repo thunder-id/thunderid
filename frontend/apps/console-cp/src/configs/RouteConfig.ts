@@ -35,6 +35,10 @@ export interface ConsoleRoutePaths {
   };
   /** The Control Plane's own users, its administrators, outside any project. */
   administrators: UserRoutePaths['users'];
+  build: {
+    adminApp: () => string;
+    myAccount: () => string;
+  };
 }
 
 /**
@@ -111,6 +115,9 @@ export const ROUTE_SEGMENTS = {
   deploy: 'deploy',
   // Where a gateway's own page is, before its id: as the deployment sets it, else under Deploy.
   deployTargets: window.__THUNDERID_RUNTIME_CONFIG__?.deploy?.gateway_path ?? 'deploy/gateways',
+  build: 'build',
+  adminApp: 'admin-app',
+  myAccount: 'myaccount',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -233,6 +240,10 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.projects}`,
     create: () => `/${ROUTE_SEGMENTS.projects}/create`,
     home: (handle, path = '') => `/${ROUTE_SEGMENTS.project}/${encodeURIComponent(handle)}${path}`,
+  },
+  build: {
+    adminApp: () => `/${ROUTE_SEGMENTS.build}/${ROUTE_SEGMENTS.adminApp}`,
+    myAccount: () => `/${ROUTE_SEGMENTS.build}/${ROUTE_SEGMENTS.myAccount}`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,

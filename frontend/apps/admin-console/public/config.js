@@ -18,7 +18,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   },
   client: {
     base: '/console',
-    client_id: 'CONSOLE',
+    client_id: '95PdsWoJR23-0W9VaZu6tA',
     resource_identifier: 'https://localhost:8090/mcp',
     scopes: ['openid', 'profile', 'email', 'ou', 'system', 'org'],
   },
@@ -30,4 +30,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   // gate_client: {
   //   public_url: 'https://gate.example.com',   // or hostname/port/scheme
   // },
+  sdk: {
+    applicationId: '01a19b12-52a3-7910-86c8-376794494273',
+  }
 };

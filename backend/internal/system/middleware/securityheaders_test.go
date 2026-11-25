@@ -170,11 +170,11 @@ func TestSecurityHeadersMiddleware_Nonce(t *testing.T) {
 	})
 }
 
-func TestSecurityHeadersMiddleware_ScopedToConsoleAndGate(t *testing.T) {
+func TestSecurityHeadersMiddleware_ScopedToTheApps(t *testing.T) {
 	csp.InitializeConfigReader(fakeCSPReader{cfg: csp.PolicyConfig{ReportOnly: boolPtr(false)}})
 	t.Cleanup(func() { csp.InitializeConfigReader(nil) })
 
-	for _, path := range []string{"/console/", "/console/apps", "/gate/", "/gate/signin"} {
+	for _, path := range []string{"/console/", "/console/apps", "/gate/", "/gate/signin", "/myaccount/", "/myaccount/profile"} {
 		rr := serve(path)
 		assert.NotEmpty(t, rr.Header().Get(serverconst.ContentSecurityPolicyHeaderName), "path %q should get CSP", path)
 	}

@@ -3,13 +3,27 @@
 
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
-import {SignOutButton, User, useThunderID} from '@thunderid/react';
-import {AppShell, Box, ColorSchemeImage, ColorSchemeToggle, Footer, Header, Sidebar, UserMenu} from '@wso2/oxygen-ui';
+import {Attribution, SignOutButton, User, useThunderID} from '@thunderid/react';
+import {resolveAppImage, type AppLink} from '@thunderid/system-apps';
+import {
+  AppShell,
+  Box,
+  ColorSchemeImage,
+  ColorSchemeToggle,
+  Footer,
+  Header,
+  Sidebar,
+  UserMenu,
+  useColorScheme,
+} from '@wso2/oxygen-ui';
 import {Bot, Building2, Group, LogOut, ShieldCheck, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation} from 'react-router';
+import LanguageMenu from '../components/LanguageMenu';
 import RouteConfig, {MANAGED_RESOURCES, type ManagedResource} from '../configs/RouteConfig';
+import useAdminAppConfig from '../hooks/useAdminAppConfig';
+import useAppLanguage from '../hooks/useAppLanguage';
 import useOrganizationName from '../hooks/useOrganizationName';
 import useVisibleResources from '../hooks/useVisibleResources';
 
@@ -30,14 +44,31 @@ const RESOURCE_ICONS: Record<ManagedResource, JSX.Element> = {
 /**
  * The Admin Console shell, laid out like the Control Plane console: a top bar with the brand and the
  * user menu, a sidebar with the pages the admin may see, and a footer.
+ *
+ * The Admin App configuration the Console's builder saves decides which pages show and in what order
+ * (through {@link useVisibleResources}), the brand's logo and title, the language menu, and the
+ * footer's links and "Secured by" attribution.
  */
 export default function AdminLayout(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger();
   const {pathname} = useLocation();
   const {clearSession, discovery} = useThunderID();
-  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
+  const {config: runtimeConfig, isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {visible} = useVisibleResources();
+  const {config} = useAdminAppConfig();
+  useAppLanguage(config.languages);
+  const {meta} = useThunderID();
+  const {mode, systemMode} = useColorScheme();
+  const offeredLanguages: string[] = config.languages?.offered ?? [];
+  const links: AppLink[] = config.branding.links ?? [];
+  const title: string = config.branding.title ?? 'Admin Console';
+  // The logo this deployment's config.js sets, else the Admin App configuration's for the color
+  // scheme shown, else that of the application the admin signed in with, else the app's own.
+  const configuredLogo: string | undefined =
+    runtimeConfig?.brand?.logo ??
+    resolveAppImage(config.branding.logo, (mode === 'system' ? systemMode : mode) === 'dark' ? 'dark' : 'light') ??
+    meta?.application?.logoUrl;
   const organization: string | undefined = useOrganizationName();
   const basePath: string = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -84,16 +115,20 @@ export default function AdminLayout(): JSX.Element {
           <Header.Toggle />
           <Header.Brand>
             <Header.BrandLogo>
-              <ColorSchemeImage
-                src={{light: `${basePath}/assets/images/logo.svg`, dark: `${basePath}/assets/images/logo-inverted.svg`}}
-                alt={{light: 'Logo (Light)', dark: 'Logo (Dark)'}}
-                height={27}
-                width="auto"
-                alignItems="center"
-                marginBottom="3px"
-              />
+              {configuredLogo ? (
+                <Box component="img" src={configuredLogo} alt={title} sx={{height: 27, width: 'auto', display: 'block'}} />
+              ) : (
+                <ColorSchemeImage
+                  src={{light: `${basePath}/assets/images/logo.svg`, dark: `${basePath}/assets/images/logo-inverted.svg`}}
+                  alt={{light: 'Logo (Light)', dark: 'Logo (Dark)'}}
+                  height={27}
+                  width="auto"
+                  alignItems="center"
+                  marginBottom="3px"
+                />
+              )}
             </Header.BrandLogo>
-            <Header.BrandTitle>{'Admin Console'}</Header.BrandTitle>
+            <Header.BrandTitle>{title}</Header.BrandTitle>
           </Header.Brand>
           {organization && (
             <Box sx={{alignItems: 'center', color: 'text.secondary', display: 'flex', gap: 1, ml: 2, minWidth: 0}}>
@@ -108,6 +143,7 @@ export default function AdminLayout(): JSX.Element {
           )}
           <Header.Spacer />
           <Header.Actions>
+            {config.languages?.menu && offeredLanguages.length > 0 && <LanguageMenu offered={offeredLanguages} />}
             <ColorSchemeToggle />
             <User>
               {(user) => {
@@ -161,7 +197,18 @@ export default function AdminLayout(): JSX.Element {
       <AppShell.Footer>
         <Footer>
           <Footer.Copyright>© {new Date().getFullYear()} The ThunderID Authors</Footer.Copyright>
+          {links.map((link: AppLink) => (
+            <Footer.Link key={`${link.label}-${link.url}`} href={link.url} target="_blank" rel="noopener noreferrer">
+              {link.label}
+            </Footer.Link>
+          ))}
         </Footer>
+        {/* The footer keeps only its own parts, so the attribution sits on a row of its own under it. */}
+        {config.branding.showSecuredBy && (
+          <Box sx={{bgcolor: 'background.paper', display: 'flex', justifyContent: 'center', pb: 2}}>
+            <Attribution />
+          </Box>
+        )}
       </AppShell.Footer>
     </AppShell>
   );

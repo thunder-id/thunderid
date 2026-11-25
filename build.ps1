@@ -168,6 +168,10 @@ $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console
 # The Data Plane's own admin app (Users, Agents, Groups, Roles). Only the quickstart's managed Data
 # Plane ships it, in place of the full console, in the same apps/console slot.
 $FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/admin-console"
+# MyAccount, the self-service Account App (profile and credentials). Every Data Plane distribution
+# serves it from /myaccount; a Control Plane does not.
+$MYACCOUNT_APP_DIST_DIR = "apps/myaccount"
+$FRONTEND_MYACCOUNT_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/myaccount"
 $SAMPLE_BASE_DIR = "samples"
 $VANILLA_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/vanilla-sample"
 $REACT_SDK_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/react-sdk-sample"
@@ -186,6 +190,7 @@ $QUICKSTART_BUNDLE_STAGE_DIR = Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "src/d
 $GATE_APP_DEFAULT_PORT = 5190
 $CONSOLE_APP_DEFAULT_PORT = 5191
 $ADMIN_CONSOLE_APP_DEFAULT_PORT = 5192
+$MYACCOUNT_APP_DEFAULT_PORT = 5194
 $QUICKSTART_AUTH_DP_PORT = 8091
 $QUICKSTART_DP_PORT = 8090
 $QUICKSTART_CP_PORT = 8095
@@ -784,6 +789,16 @@ function Prepare-Frontend-For-Packaging {
         Write-Host "Warning: Console app build output not found at $((Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist"))"
     }
 
+    # Copy MyAccount build output
+    if (Test-Path (Join-Path $FRONTEND_MYACCOUNT_APP_SOURCE_DIR "dist")) {
+        Write-Host "Copying MyAccount build output..."
+        New-Item -Path (Join-Path $package_folder $MYACCOUNT_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
+        Copy-Item -Path (Join-Path $FRONTEND_MYACCOUNT_APP_SOURCE_DIR "dist\*") -Destination (Join-Path $package_folder $MYACCOUNT_APP_DIST_DIR) -Recurse -Force
+    }
+    else {
+        Write-Host "Warning: MyAccount build output not found at $((Join-Path $FRONTEND_MYACCOUNT_APP_SOURCE_DIR "dist"))"
+    }
+
     Write-Host "================================================================"
 }
 
@@ -887,6 +902,9 @@ function Prepare-Cp-Backend-For-Packaging {
     # Ship the Control Plane resource server for the identity provider that signs operators into the
     # Control Plane. It sits outside bootstrap/ because the Control Plane must not import it.
     Copy-Item -Path (Join-Path $CPSERVER_DIR "idp-bootstrap") -Destination $package_folder -Recurse -Force
+    # A Control Plane does not serve MyAccount, and its default application is addressed by the
+    # Control Plane's own URL, which a sync would carry to every Data Plane it manages.
+    Remove-ConsoleApplication -PlaneDir $package_folder -ClientId "MYACCOUNT"
 
     # Key material is not generated into the distribution; setup-cp.ps1 generates it per deployment.
 }
@@ -1005,11 +1023,11 @@ function Add-QuickstartLine {
     Write-QuickstartFile -Path $Path -Content ($out -join "`n")
 }
 
-# Remove-ConsoleApplication drops the default CONSOLE application from a plane's copy of
-# 01-default-resources.yaml. Documents are split on "---"; the one declaring clientId CONSOLE is
-# skipped.
+# Remove-ConsoleApplication drops a default application, CONSOLE unless $ClientId names another,
+# from a plane's copy of 01-default-resources.yaml. Documents are split on "---"; the one declaring
+# that clientId is skipped.
 function Remove-ConsoleApplication {
-    param([string]$PlaneDir)
+    param([string]$PlaneDir, [string]$ClientId = "CONSOLE")
 
     $path = Join-Path $PlaneDir "bootstrap/01-default-resources.yaml"
     $docs = New-Object System.Collections.Generic.List[string]
@@ -1019,7 +1037,7 @@ function Remove-ConsoleApplication {
         $doc += "$line`n"
     }
     if ($doc -ne "") { $docs.Add($doc) }
-    $kept = $docs | Where-Object { $_ -notmatch "clientId: CONSOLE`n" }
+    $kept = $docs | Where-Object { $_ -notmatch "clientId: $([regex]::Escape($ClientId))`n" }
     Write-QuickstartFile -Path $path -Content (($kept -join "") )
 }
 
@@ -2099,6 +2117,7 @@ value:
     - "https://localhost:$GATE_APP_DEFAULT_PORT"
     - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
     - "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+    - "https://localhost:$MYACCOUNT_APP_DEFAULT_PORT"
 "@
     Set-Content -Path (Join-Path $BACKEND_DIR "bootstrap/03-dev-server-configurations.yaml") -Value $devServerConfig
 
@@ -2111,7 +2130,8 @@ value:
     try {
         # Both the Console and Admin Console dev servers use the same CONSOLE OAuth2 client, each on
         # its own origin, so both need a registered redirect URI here.
-        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console,https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console,https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console" `
+            --myaccount-redirect-uris "https://localhost:${MYACCOUNT_APP_DEFAULT_PORT}/myaccount"
         $bootstrapExit = $LASTEXITCODE
     }
     finally {
@@ -2133,6 +2153,7 @@ value:
     Write-Host "      🚪 Gate (Login/Register): https://localhost:${GATE_APP_DEFAULT_PORT}/gate"
     Write-Host "      🛠️  Console (System Management): https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console"
     Write-Host "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+    Write-Host "      👤 MyAccount (Self Service): https://localhost:${MYACCOUNT_APP_DEFAULT_PORT}/myaccount"
     Write-Host ""
 
     Write-Host "Press Ctrl+C to stop."
@@ -2246,7 +2267,7 @@ function Run-Frontend {
         # In dev the apps are served on their own origins, so point them at the backend via
         # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
         $env:THUNDERID_DEV_SERVER_URL = $PUBLIC_URL
-        $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "--filter", "@thunderid/admin-console", "dev" -PassThru -NoNewWindow
+        $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "--filter", "@thunderid/admin-console", "--filter", "@thunderid/myaccount", "dev" -PassThru -NoNewWindow
         $script:FRONTEND_PID = $frontendProcess.Id
     }
     finally {

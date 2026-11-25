@@ -6068,6 +6068,74 @@ inboundAuthConfig:
         ou:
           - ouId
 ---
+resource_type: application
+id: 01900000-0000-7000-8000-0000000000f6
+name: MyAccount
+description: Lets users manage their own profile and sign-in credentials
+type: browser
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .PUBLIC_URL }}/myaccount"
+logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+signOutFlowId: 01900000-0000-7000-8000-00000000006a
+recoveryFlowId: 01900000-0000-7000-8000-000000000070
+isRecoveryFlowEnabled: false
+allowedUserTypes:
+  - person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: MYACCOUNT
+      redirectUris:
+        - "{{ .PUBLIC_URL }}/myaccount"
+        {{- range .MYACCOUNT_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      postLogoutRedirectUris:
+        - "{{ .PUBLIC_URL }}/myaccount"
+        {{- range .MYACCOUNT_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - name
+              - ouId
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - name
+            - ouId
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
+        ou:
+          - ouId
+---
 resource_type: user
 id: 01900000-0000-7000-8000-000000000030
 type: person
