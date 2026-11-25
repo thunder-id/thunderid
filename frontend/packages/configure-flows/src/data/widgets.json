@@ -1516,7 +1516,7 @@
                   "mode": "verify"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
-                "onFailure": "",
+                "onFailure": "{{PASSKEY_USERNAME_VIEW_ID}}",
                 "onIncomplete": ""
               }
             }
@@ -1654,7 +1654,7 @@
                   "mode": "register_finish"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
-                "onFailure": "",
+                "onFailure": "{{PASSWORD_FOR_REG_VIEW_ID}}",
                 "onIncomplete": ""
               }
             }

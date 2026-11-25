@@ -2601,7 +2601,8 @@
             "name": "PasskeyAuthExecutor",
             "mode": "verify"
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onFailure": "prompt_passkey"
         },
         {
           "id": "authorization_check",
@@ -5609,7 +5610,8 @@
             "name": "PasskeyAuthExecutor",
             "mode": "verify"
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onFailure": "choose_auth_method"
         },
         {
           "id": "prompt_password_for_registration",
@@ -5770,7 +5772,8 @@
             "name": "PasskeyAuthExecutor",
             "mode": "register_finish"
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onFailure": "prompt_password_for_registration"
         },
         {
           "id": "credentials_auth",
@@ -9726,7 +9729,70 @@
             "name": "PasskeyAuthExecutor",
             "mode": "register_finish"
           },
-          "onSuccess": "end"
+          "onSuccess": "end",
+          "onFailure": "prompt_passkey_retry"
+        },
+        {
+          "id": "prompt_passkey_retry",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_passkey_retry_heading",
+                "label": "{{ t(signup:forms.passkey.retry.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_passkey_retry_description",
+                "label": "{{ t(signup:forms.passkey.retry.description) }}",
+                "variant": "BODY"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_passkey_retry_actions",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_retry_passkey",
+                    "label": "{{ t(signup:forms.passkey.retry.actions.retry.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "TRIGGER"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_retry_passkey",
+                "nextNode": "passkey_reg_start"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 560
+            },
+            "position": {
+              "x": 1870,
+              "y": 420
+            }
+          }
         },
         {
           "id": "end",
@@ -11970,6 +12036,7 @@
             "mode": "register_finish"
           },
           "onSuccess": "end",
+          "onFailure": "prompt_add_passkey",
           "layout": {
             "size": {
               "width": 256,
@@ -12087,6 +12154,7 @@
             "mode": "register_finish"
           },
           "onSuccess": "end",
+          "onFailure": "prompt_passkey_only_retry",
           "layout": {
             "size": {
               "width": 256,
@@ -12094,6 +12162,68 @@
             },
             "position": {
               "x": 2832,
+              "y": 1444
+            }
+          }
+        },
+        {
+          "id": "prompt_passkey_only_retry",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_passkey_retry_heading",
+                "label": "{{ t(signup:forms.passkey.retry.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_passkey_retry_description",
+                "label": "{{ t(signup:forms.passkey.retry.description) }}",
+                "variant": "BODY"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_passkey_retry_actions",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_retry_passkey",
+                    "label": "{{ t(signup:forms.passkey.retry.actions.retry.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "TRIGGER"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_retry_passkey",
+                "nextNode": "passkey_only_reg_start"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 560
+            },
+            "position": {
+              "x": 3200,
               "y": 1444
             }
           }
@@ -19898,7 +20028,7 @@
                   "mode": "verify"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
-                "onFailure": "",
+                "onFailure": "{{PASSKEY_USERNAME_VIEW_ID}}",
                 "onIncomplete": ""
               }
             }
@@ -20036,7 +20166,7 @@
                   "mode": "register_finish"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
-                "onFailure": "",
+                "onFailure": "{{PASSWORD_FOR_REG_VIEW_ID}}",
                 "onIncomplete": ""
               }
             }

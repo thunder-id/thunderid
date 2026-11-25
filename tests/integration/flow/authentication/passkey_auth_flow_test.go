@@ -155,6 +155,18 @@ func buildUsernamelessFlow(name, handle string) testutils.Flow {
 	return testutils.Flow{Name: name, FlowType: "AUTHENTICATION", Handle: handle, Nodes: nodes}
 }
 
+// buildRetryFlow assembles a flow shaped like the console's: the challenge goes straight to the verify step,
+// which waits for the browser's response and sends a failed passkey back to the username prompt.
+func buildRetryFlow(name, handle string) testutils.Flow {
+	nodes := usernamePromptNodes()
+	nodes = append(nodes, passkeyChallengeNode(true, "passkey_verify"))
+	tail := passkeyTailNodes()
+	tail[0]["onFailure"] = "prompt_username"
+	nodes = append(nodes, tail...)
+
+	return testutils.Flow{Name: name, FlowType: "AUTHENTICATION", Handle: handle, Nodes: nodes}
+}
+
 var (
 	passkeyFlowTestOU = testutils.OrganizationUnit{
 		Handle:      "passkey-auth-flow-test-ou",
@@ -215,6 +227,7 @@ type PasskeyAuthFlowTestSuite struct {
 	baselineFlowID     string
 	usernamelessFlowID string
 	missingSignatureID string
+	retryFlowID        string
 }
 
 func TestPasskeyAuthFlowTestSuite(t *testing.T) {
@@ -258,6 +271,7 @@ func (ts *PasskeyAuthFlowTestSuite) SetupSuite() {
 		"Passkey Usernameless Auth Flow Test", "auth_flow_passkey_usernameless_test"))
 	ts.missingSignatureID = ts.createFlow(buildUsernameFlow(
 		"Passkey Auth Flow Missing Signature Test", "auth_flow_passkey_no_signature_test", true, false))
+	ts.retryFlowID = ts.createFlow(buildRetryFlow("Passkey Auth Flow Retry Test", "auth_flow_passkey_retry_test"))
 
 	passkeyFlowTestApp.OUID = ouID
 	passkeyFlowTestApp.AuthFlowID = ts.baselineFlowID
@@ -417,7 +431,8 @@ func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_RelyingPartyIDDefault() 
 	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
 }
 
-// TestPasskeyAuthFlow_InvalidSignature rejects an assertion whose signature does not verify.
+// TestPasskeyAuthFlow_InvalidSignature rejects an assertion whose signature does not verify. The verify node
+// has no onFailure route, so the flow ends with the error.
 func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_InvalidSignature() {
 	ts.useFlow(ts.baselineFlowID)
 
@@ -431,10 +446,11 @@ func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_InvalidSignature() {
 
 	finalStep, err := common.CompleteFlow(step.ExecutionID, inputs, "action_assertion",
 		step.ChallengeToken)
-	if err == nil {
-		ts.Require().NotEqual("COMPLETE", finalStep.FlowStatus,
-			"A tampered signature must not complete the flow")
-	}
+	ts.Require().NoError(err, "Failed to submit the tampered assertion")
+	ts.Require().Equal("ERROR", finalStep.FlowStatus, "A tampered signature must end the flow")
+	ts.Require().Empty(finalStep.Assertion, "A tampered signature must not issue an assertion")
+	ts.Require().NotNil(finalStep.Error, "The response should say why the passkey failed")
+	ts.Require().Equal("FET-1015", finalStep.Error.Code)
 }
 
 // TestPasskeyAuthFlow_MissingRequiredInputs submits an assertion with no signature, which the
@@ -456,4 +472,61 @@ func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_MissingRequiredInputs() 
 		ts.Require().True(common.HasInput(finalStep.Data.Inputs, "signature"),
 			"The flow should ask for the missing signature input again")
 	}
+}
+
+// TestPasskeyAuthFlow_RejectedPasskeyReturnsToSignIn sends a rejected passkey back to the sign-in prompt,
+// from where a new attempt gets a new challenge and completes.
+func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_RejectedPasskeyReturnsToSignIn() {
+	ts.useFlow(ts.retryFlowID)
+
+	step := ts.startUsernameFlow()
+	firstChallenge := ts.challengeFromStep(step)
+	inputs := ts.assertionInputs(firstChallenge)
+	inputs["signature"] = "AAAA" + inputs["signature"][4:]
+
+	step, err := common.CompleteFlow(step.ExecutionID, inputs, "", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the tampered assertion")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "A rejected passkey should not end the flow")
+	ts.Require().NotNil(step.Error, "The sign-in prompt should say why the passkey failed")
+	ts.Require().Equal("FET-1015", step.Error.Code)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"A rejected passkey should return to the sign-in prompt")
+
+	ts.signInAgain(step, firstChallenge)
+}
+
+// TestPasskeyAuthFlow_ClientReportedFailureReturnsToSignIn returns to the sign-in prompt when the client
+// reports that the browser's passkey prompt failed, as when the person cancels it.
+func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_ClientReportedFailureReturnsToSignIn() {
+	ts.useFlow(ts.retryFlowID)
+
+	step := ts.startUsernameFlow()
+	firstChallenge := ts.challengeFromStep(step)
+
+	step, err := common.CompleteFlow(step.ExecutionID, map[string]string{"passkeyError": "NotAllowedError"}, "",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to report the failed passkey prompt")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "A cancelled passkey prompt should not end the flow")
+	ts.Require().NotNil(step.Error, "The sign-in prompt should say that the passkey failed")
+	ts.Require().Equal("FET-1019", step.Error.Code)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"A cancelled passkey prompt should return to the sign-in prompt")
+
+	ts.signInAgain(step, firstChallenge)
+}
+
+// signInAgain enters the username again from the sign-in prompt and completes with a valid passkey, checking
+// that the new attempt is not tied to the failed one.
+func (ts *PasskeyAuthFlowTestSuite) signInAgain(step *common.FlowStep, failedChallenge string) {
+	step, err := common.CompleteFlow(step.ExecutionID, map[string]string{"username": "passkeyflowuser"},
+		"action_username", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the username again")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	challenge := ts.challengeFromStep(step)
+	ts.Require().NotEqual(failedChallenge, challenge, "The new attempt should get a new challenge")
+
+	finalStep, err := common.CompleteFlow(step.ExecutionID, ts.assertionInputs(challenge), "", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the passkey assertion")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "The new attempt should sign the person in")
+	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
 }

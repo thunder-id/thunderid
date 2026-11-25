@@ -898,6 +898,7 @@ Validates the cryptographic response returned by the user's authenticator agains
 - `authenticatorData` (required): the authenticator data from the response. Default: `authenticatorData`
 - `signature` (required): the cryptographic signature from the response. Default: `signature`
 - `userHandle` (optional): the user handle from the authenticator; used in usernameless flows. Default: `userHandle`
+- `passkeyError` (optional): sent by the client in place of the response when the browser's passkey prompt fails or the user cancels it. The step then fails.
 
 **Example:**
 
@@ -918,8 +919,6 @@ Validates the cryptographic response returned by the user's authenticator agains
 - Signature verification failed (invalid or tampered response)
 - Session token missing (Request Passkey did not run)
 - User not found after successful verification
-
-**Retry behavior:** If the passkey response is invalid (client error), the executor returns `INCOMPLETE` instead of failing the flow, allowing the user to retry by providing the required inputs again.
 
 </details>
 
@@ -987,6 +986,7 @@ Completes the WebAuthn registration ceremony and stores the new credential in th
 - `clientDataJSON` (required): the client data from the registration response. Default: `clientDataJSON`
 - `attestationObject` (required): the attestation object from the registration response. Default: `attestationObject`
 - `credentialName` (optional): a user-friendly label for the passkey. Default: `credentialName` (falls back to `"Passkey"` if empty)
+- `passkeyError` (optional): sent by the client in place of the response when the browser's passkey prompt fails or the user cancels it. The step then fails.
 
 **Example:**
 
@@ -1006,7 +1006,7 @@ Completes the WebAuthn registration ceremony and stores the new credential in th
 **Failure conditions:**
 - Session token missing (Start Passkey Registration did not run)
 - Credential already registered
-- Invalid credential: allow the user to retry by providing the required inputs
+- Invalid credential
 
 </details>
 

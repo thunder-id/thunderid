@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -39,6 +40,9 @@ const (
 const (
 	inputAttestationObject = "attestationObject"
 )
+
+// inputPasskeyError is sent by the client when the browser's passkey prompt fails or is cancelled.
+const inputPasskeyError = "passkeyError"
 
 // Runtime data keys
 const (
@@ -253,10 +257,17 @@ func (p *passkeyAuthExecutor) executeVerify(ctx *providers.NodeContext,
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Verifying passkey authentication response")
 
+	if ctx.UserInputs[inputPasskeyError] != "" {
+		logger.Debug(ctx.Context, "Client reported that the passkey prompt failed")
+		failPasskeyStep(ctx, execResp, &ErrPasskeyAuthFailed)
+		return execResp, nil
+	}
+
 	// Check for required inputs
 	if !p.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for passkey verification are not provided")
 		execResp.Status = providers.ExecUserInputRequired
+		execResp.Inputs = append(execResp.Inputs, providers.Input{Identifier: inputPasskeyError, Required: false})
 		return execResp, nil
 	}
 
@@ -320,7 +331,8 @@ func (p *passkeyAuthExecutor) validatePasskey(ctx *providers.NodeContext, execRe
 			logger.Debug(ctx.Context, "Passkey verification refused by a stated hold",
 				log.MaskedString(log.LoggerKeyUserID, userID), log.String("errorCode", stated.Code))
 			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = p.GetRequiredInputs(ctx)
+			execResp.Inputs = append(slices.Clone(p.GetRequiredInputs(ctx)),
+				providers.Input{Identifier: inputPasskeyError, Required: false})
 			execResp.Error = stated
 			return nil
 		}
@@ -328,10 +340,7 @@ func (p *passkeyAuthExecutor) validatePasskey(ctx *providers.NodeContext, execRe
 			logger.Debug(ctx.Context, "Passkey verification failed",
 				log.MaskedString(log.LoggerKeyUserID, userID),
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			// Return USER_INPUT_REQUIRED to allow retry on invalid passkey
-			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = p.GetRequiredInputs(ctx)
-			execResp.Error = &ErrInvalidPasskey
+			failPasskeyStep(ctx, execResp, &ErrInvalidPasskey)
 			return nil
 		}
 		logger.Error(ctx.Context, "Failed to verify passkey", log.MaskedString(log.LoggerKeyUserID, userID),
@@ -441,11 +450,18 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Finishing passkey registration")
 
+	if ctx.UserInputs[inputPasskeyError] != "" {
+		logger.Debug(ctx.Context, "Client reported that the passkey prompt failed")
+		failPasskeyStep(ctx, execResp, &ErrPasskeyRegistrationFailed)
+		return execResp, nil
+	}
+
 	// Check for required inputs
 	allInputs := []providers.Input{
 		{Identifier: inputCredentialID, Required: true},
 		{Identifier: inputClientDataJSON, Required: true},
 		{Identifier: inputAttestationObject, Required: true},
+		{Identifier: inputPasskeyError, Required: false},
 	}
 
 	// Validate inputs - only block on missing REQUIRED inputs
@@ -504,13 +520,11 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey registration failed",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			// Return USER_INPUT_REQUIRED to allow retry on invalid registration
-			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = allInputs
-			execResp.Error = tidcommon.CustomServiceError(ErrPasskeyRegistrationFailed, tidcommon.I18nMessage{
-				Key:          ErrPasskeyRegistrationFailed.ErrorDescription.Key,
-				DefaultValue: "Failed to finish passkey registration: " + svcErr.ErrorDescription.DefaultValue,
-			})
+			failPasskeyStep(ctx, execResp, tidcommon.CustomServiceError(ErrPasskeyRegistrationFailed,
+				tidcommon.I18nMessage{
+					Key:          ErrPasskeyRegistrationFailed.ErrorDescription.Key,
+					DefaultValue: "Failed to finish passkey registration: " + svcErr.ErrorDescription.DefaultValue,
+				}))
 			return execResp, nil
 		}
 		logger.Error(ctx.Context, "Failed to finish passkey registration",
@@ -528,6 +542,18 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 	logger.Debug(ctx.Context, "Passkey registration finished successfully",
 		log.MaskedString("credentialID", finishReq.CredentialID))
 	return execResp, nil
+}
+
+// failPasskeyStep fails the step and drops the passkey response, so the flow's onFailure route can start
+// a new attempt.
+func failPasskeyStep(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	svcErr *tidcommon.ServiceError) {
+	for _, id := range []string{inputCredentialID, inputClientDataJSON, inputAuthenticatorData, inputSignature,
+		inputUserHandle, inputAttestationObject, inputPasskeyError} {
+		delete(ctx.UserInputs, id)
+	}
+	execResp.Status = providers.ExecFailure
+	execResp.Error = svcErr
 }
 
 // passkeyStartFailure is the error for a passkey challenge that could not be started.

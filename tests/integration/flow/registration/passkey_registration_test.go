@@ -4,6 +4,7 @@
 package registration
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -123,6 +124,39 @@ func buildPasskeyRegistrationFlow(
 	}
 }
 
+// buildPasskeyRetryRegistrationFlow assembles a registration flow shaped like the console's templates: the
+// finish step waits for the browser's response, and a failed passkey goes to a prompt that starts a new one.
+func buildPasskeyRetryRegistrationFlow(name, handle string) testutils.Flow {
+	flow := buildPasskeyRegistrationFlow(name, handle, map[string]any{
+		"relyingPartyId":   passkeyRegRelyingPartyID,
+		"relyingPartyName": passkeyRegRelyingPartyName,
+	})
+	source, ok := flow.Nodes.([]map[string]any)
+	if !ok {
+		panic("passkey registration flow nodes have an unexpected type")
+	}
+	nodes := make([]map[string]any, 0, len(source)+1)
+	for _, node := range source {
+		switch node["id"] {
+		case "prompt_attestation":
+			continue
+		case "passkey_register_start":
+			node["onSuccess"] = "passkey_register_finish"
+		case "passkey_register_finish":
+			node["onFailure"] = "prompt_passkey_retry"
+		}
+		nodes = append(nodes, node)
+	}
+	flow.Nodes = append(nodes, map[string]any{
+		"id":   "prompt_passkey_retry",
+		"type": "PROMPT",
+		"prompts": []map[string]any{
+			{"action": map[string]any{"ref": "action_retry_passkey", "nextNode": "passkey_register_start"}},
+		},
+	})
+	return flow
+}
+
 var (
 	passkeyRegTestOU = testutils.OrganizationUnit{
 		Handle:      "passkey-registration-test-ou",
@@ -167,6 +201,7 @@ type PasskeyRegistrationTestSuite struct {
 	attestationFlow      string
 	defaultRPNameFlow    string
 	noRPIDFlow           string
+	retryFlow            string
 }
 
 func TestPasskeyRegistrationTestSuite(t *testing.T) {
@@ -220,6 +255,9 @@ func (ts *PasskeyRegistrationTestSuite) SetupSuite() {
 	ts.noRPIDFlow = ts.createFlow(buildPasskeyRegistrationFlow(
 		"Passkey Registration No RP ID Test", "reg_flow_passkey_no_rpid_test",
 		map[string]interface{}{"relyingPartyName": passkeyRegRelyingPartyName}))
+
+	ts.retryFlow = ts.createFlow(buildPasskeyRetryRegistrationFlow(
+		"Passkey Registration Retry Test", "reg_flow_passkey_retry_test"))
 
 	// An isolated auth flow avoids the cross-type reference check, which rejects an application
 	// whose authentication flow points at a different registration flow than the one configured.
@@ -329,20 +367,8 @@ func (ts *PasskeyRegistrationTestSuite) creationOptions(step *common.FlowStep) p
 func (ts *PasskeyRegistrationTestSuite) completeRegistration(
 	step *common.FlowStep, challenge string,
 ) (*common.FlowStep, *testutils.VirtualAuthenticator) {
-	// A fresh authenticator per registration, since each one owns a single credential ID and every
-	// test in this suite provisions a new user.
-	authenticator, err := testutils.NewVirtualAuthenticator(passkeyRegRelyingPartyID, passkeyRegOrigin)
-	ts.Require().NoError(err, "Failed to create virtual authenticator")
-
-	credentialID, clientDataJSON, attestationObject, err := authenticator.CreateAttestationResponse(
-		challenge, true)
-	ts.Require().NoError(err, "Failed to build attestation response")
-
-	finalStep, err := common.CompleteFlow(step.ExecutionID, map[string]string{
-		"credentialId":      credentialID,
-		"clientDataJSON":    clientDataJSON,
-		"attestationObject": attestationObject,
-	}, "action_attestation", step.ChallengeToken)
+	inputs, authenticator := ts.attestationInputs(challenge)
+	finalStep, err := common.CompleteFlow(step.ExecutionID, inputs, "action_attestation", step.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the attestation")
 
 	return finalStep, authenticator
@@ -461,6 +487,105 @@ func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_RelyingPartyIDDe
 	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected flow status to be COMPLETE")
 
 	user, err := testutils.FindUserByAttribute("username", "passkeyregnorpid")
+	ts.Require().NoError(err, "Failed to look up the registered user")
+	ts.Require().NotNil(user, "The registration flow should have provisioned a user")
+	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+}
+
+// TestPasskeyRegistration_RejectedPasskeyEndsFlowWithoutRetryRoute ends the sign-up with the error when the
+// finish node has no onFailure route.
+func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_RejectedPasskeyEndsFlowWithoutRetryRoute() {
+	ts.useFlow(ts.baselineFlowID)
+
+	step := ts.startRegistration("passkeyregnoretry")
+	ts.trackUser("passkeyregnoretry")
+
+	// An attestation over a challenge the server never issued is rejected.
+	inputs, _ := ts.attestationInputs(base64.RawURLEncoding.EncodeToString([]byte("not-the-issued-challenge")))
+	finalStep, err := common.CompleteFlow(step.ExecutionID, inputs, "action_attestation", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the attestation")
+	ts.Require().Equal("ERROR", finalStep.FlowStatus, "A rejected passkey should end the sign-up")
+	ts.Require().Empty(finalStep.Assertion, "A rejected passkey must not issue an assertion")
+	ts.Require().NotNil(finalStep.Error, "The response should say why the passkey failed")
+	ts.Require().Equal("FET-1018", finalStep.Error.Code)
+}
+
+// TestPasskeyRegistration_RejectedPasskeyCanBeRetried sends a rejected registration to the retry prompt, from
+// where a new attempt gets new creation options and completes the sign-up.
+func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_RejectedPasskeyCanBeRetried() {
+	ts.useFlow(ts.retryFlow)
+
+	step := ts.startRegistration("passkeyregrejected")
+	ts.trackUser("passkeyregrejected")
+	failedChallenge := ts.creationOptions(step).Challenge
+
+	// An attestation over a challenge the server never issued is rejected.
+	inputs, _ := ts.attestationInputs(base64.RawURLEncoding.EncodeToString([]byte("not-the-issued-challenge")))
+	step, err := common.CompleteFlow(step.ExecutionID, inputs, "", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the attestation")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "A rejected passkey should not end the sign-up")
+	ts.Require().NotNil(step.Error, "The retry prompt should say why the passkey failed")
+	ts.Require().Equal("FET-1018", step.Error.Code)
+
+	ts.registerAgain(step, failedChallenge)
+}
+
+// TestPasskeyRegistration_ClientReportedFailureCanBeRetried goes to the retry prompt when the client reports
+// that the browser's passkey prompt failed, as when the person cancels it.
+func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_ClientReportedFailureCanBeRetried() {
+	ts.useFlow(ts.retryFlow)
+
+	step := ts.startRegistration("passkeyregcancelled")
+	ts.trackUser("passkeyregcancelled")
+	failedChallenge := ts.creationOptions(step).Challenge
+
+	step, err := common.CompleteFlow(step.ExecutionID, map[string]string{"passkeyError": "NotAllowedError"}, "",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to report the failed passkey prompt")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "A cancelled passkey prompt should not end the sign-up")
+	ts.Require().NotNil(step.Error, "The retry prompt should say that the passkey failed")
+	ts.Require().Equal("FET-1018", step.Error.Code)
+
+	ts.registerAgain(step, failedChallenge)
+}
+
+// registerAgain starts a new passkey from the retry prompt and completes the sign-up with it.
+func (ts *PasskeyRegistrationTestSuite) registerAgain(step *common.FlowStep, failedChallenge string) {
+	ts.Require().True(common.HasAction(step.Data.Actions, "action_retry_passkey"),
+		"The retry prompt should offer to try again")
+
+	step, err := common.CompleteFlow(step.ExecutionID, nil, "action_retry_passkey", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to start a new passkey")
+	options := ts.creationOptions(step)
+	ts.Require().NotEqual(failedChallenge, options.Challenge, "The new attempt should get a new challenge")
+
+	inputs, _ := ts.attestationInputs(options.Challenge)
+	finalStep, err := common.CompleteFlow(step.ExecutionID, inputs, "", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the attestation")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "The new attempt should finish the sign-up")
+	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
+}
+
+// attestationInputs builds the flow inputs for a new credential over the given challenge, with the
+// authenticator that holds it. Each call uses a fresh authenticator, since each one owns a single credential ID.
+func (ts *PasskeyRegistrationTestSuite) attestationInputs(
+	challenge string,
+) (map[string]string, *testutils.VirtualAuthenticator) {
+	authenticator, err := testutils.NewVirtualAuthenticator(passkeyRegRelyingPartyID, passkeyRegOrigin)
+	ts.Require().NoError(err, "Failed to create virtual authenticator")
+	credentialID, clientDataJSON, attestationObject, err := authenticator.CreateAttestationResponse(challenge, true)
+	ts.Require().NoError(err, "Failed to build attestation response")
+
+	return map[string]string{
+		"credentialId":      credentialID,
+		"clientDataJSON":    clientDataJSON,
+		"attestationObject": attestationObject,
+	}, authenticator
+}
+
+// trackUser records a user the registration flow provisioned, so teardown removes it.
+func (ts *PasskeyRegistrationTestSuite) trackUser(username string) {
+	user, err := testutils.FindUserByAttribute("username", username)
 	ts.Require().NoError(err, "Failed to look up the registered user")
 	ts.Require().NotNil(user, "The registration flow should have provisioned a user")
 	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)

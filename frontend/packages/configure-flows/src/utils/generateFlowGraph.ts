@@ -727,6 +727,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Omit<C
         mode: 'verify',
       },
       onSuccess: postAuthNodeId,
+      onFailure: promptNodeId,
     });
   }
 

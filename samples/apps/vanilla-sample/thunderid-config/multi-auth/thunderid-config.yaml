@@ -461,6 +461,7 @@ nodes:
     name: PasskeyAuthExecutor
     mode: verify
   onSuccess: authorization
+  onFailure: choose_auth
 - id: authorization
   type: TASK_EXECUTION
   executor:
@@ -1133,6 +1134,39 @@ nodes:
     name: PasskeyAuthExecutor
     mode: register_finish
   onSuccess: auth_assert
+  onFailure: prompt_passkey_retry
+- id: prompt_passkey_retry
+  type: PROMPT
+  meta:
+    components:
+    - alt: "{{ t(signup:images.app_logo.alt) }}"
+      category: DISPLAY
+      height: '60'
+      id: image_passkey_retry
+      src: "{{ meta(application.logoUrl) }}"
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_passkey_retry
+      label: "{{ t(signup:forms.passkey.retry.title) }}"
+      variant: HEADING_1
+    - type: TEXT
+      id: text_passkey_retry_description
+      label: "{{ t(signup:forms.passkey.retry.description) }}"
+      variant: BODY
+    - type: BLOCK
+      id: block_passkey_retry_actions
+      components:
+      - type: ACTION
+        id: action_retry_passkey
+        label: "{{ t(signup:forms.passkey.retry.actions.retry.label) }}"
+        variant: PRIMARY
+        eventType: TRIGGER
+  prompts:
+  - action:
+      ref: action_retry_passkey
+      nextNode: passkey_reg_start
 - id: auth_assert
   type: TASK_EXECUTION
   executor:
