@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -20,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -51,7 +53,8 @@ func (suite *HTTPRequestExecutorTestSuite) SetupTest() {
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	suite.executor = newHTTPRequestExecutor(mockFlowFactory, nil, suite.mockAuthnProvider)
+	suite.executor = newHTTPRequestExecutor(mockFlowFactory, nil, suite.mockAuthnProvider,
+		httpservice.Initialize(true))
 }
 
 func newHTTPRequestAuthUser() providers.AuthUser {
@@ -569,6 +572,31 @@ func (suite *HTTPRequestExecutorTestSuite) TestExecute_ErrorHandling_FailOnError
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 }
 
+// A redirect is not followed and fails the step like an error status, rather than completing it with
+// nothing mapped.
+func (suite *HTTPRequestExecutorTestSuite) TestExecute_RedirectFailsTheStepWhenFailOnError() {
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://elsewhere.example.com/api", http.StatusFound)
+	}))
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		NodeProperties: map[string]interface{}{
+			"url":             suite.mockServer.URL + "/api/moved",
+			"errorHandling":   `{"failOnError": true}`,
+			"responseMapping": map[string]interface{}{"userId": "response.data.id"},
+		},
+		UserInputs:  make(map[string]string),
+		RuntimeData: make(map[string]string),
+	}
+
+	execResp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
+	assert.Equal(suite.T(), &ErrHTTPRequestFailed, execResp.Error)
+}
+
 func (suite *HTTPRequestExecutorTestSuite) TestExecute_ErrorHandling_FailOnErrorTrue() {
 	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -838,7 +866,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromEntit
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.Initialize(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -894,7 +923,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromRunti
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.Initialize(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -952,7 +982,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_RuntimeDataPr
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.Initialize(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -1008,7 +1039,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.Initialize(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -1062,7 +1094,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, providers.ExecutorTypeUtility,
 			[]providers.Input{}, []providers.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider)
+	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService, mockAuthnProvider,
+		httpservice.Initialize(true))
 
 	ctx := &providers.NodeContext{
 		Context:     context.Background(),
@@ -1084,4 +1117,67 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.Equal(suite.T(), "{{ctx(ouHandle)}}", receivedBody["orgHandle"])
+}
+
+// sendTo sends a GET to url through an executor whose outbound clients allow or refuse private
+// addresses, and returns the error.
+func (suite *HTTPRequestExecutorTestSuite) sendTo(allowPrivate bool, url string) error {
+	executor := *suite.executor
+	executor.clients = httpservice.Initialize(allowPrivate)
+	response, err := executor.executeRequestWithRetry(
+		&providers.NodeContext{Context: context.Background(), ExecutionID: "test-flow"},
+		&httpRequestConfig{URL: url, Method: http.MethodGet, Timeout: 10})
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	return err
+}
+
+func (suite *HTTPRequestExecutorTestSuite) TestExecuteRequest_RefusesPrivateAddresses() {
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	loopback := strings.Replace(suite.mockServer.URL, "127.0.0.1", "localhost", 1)
+	for _, url := range []string{suite.mockServer.URL, loopback, "http://10.0.0.1:8080/",
+		"http://169.254.169.254/latest/meta-data/"} {
+		suite.ErrorIs(suite.sendTo(false, url), httpservice.ErrPrivateAddress, "reached %s", url)
+	}
+}
+
+func (suite *HTTPRequestExecutorTestSuite) TestExecuteRequest_ReachesPrivateAddressesWhenAllowed() {
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	loopback := strings.Replace(suite.mockServer.URL, "127.0.0.1", "localhost", 1)
+	for _, url := range []string{suite.mockServer.URL, loopback} {
+		suite.NoError(suite.sendTo(true, url), "refused %s", url)
+	}
+}
+
+// A step's headers can carry a credential, so a redirect is returned rather than followed, and the key
+// never reaches the host the redirect names.
+func (suite *HTTPRequestExecutorTestSuite) TestExecuteRequest_DoesNotFollowRedirects() {
+	landed := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		landed = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+
+	executor := *suite.executor
+	executor.clients = httpservice.Initialize(true)
+	response, err := executor.executeRequestWithRetry(
+		&providers.NodeContext{Context: context.Background(), ExecutionID: "test-flow"},
+		&httpRequestConfig{URL: suite.mockServer.URL, Method: http.MethodGet, Timeout: 10,
+			Headers: map[string]string{"X-API-Key": "secret"}})
+	suite.Require().NoError(err)
+	_ = response.Body.Close()
+
+	suite.Equal(http.StatusFound, response.StatusCode)
+	suite.False(landed, "the redirect was followed")
 }

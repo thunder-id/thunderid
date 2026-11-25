@@ -26,6 +26,7 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/group"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -53,10 +54,20 @@ type authAssertExecutor struct {
 	entityTypeService   entitytype.EntityTypeServiceInterface
 	resourceService     providers.ResourceServerProvider
 	accessGuard         *accessGuard
+	sessionService      session.Service
+	sessionTracking     bool
 	logger              *log.Logger
 }
 
 var _ providers.Executor = (*authAssertExecutor)(nil)
+
+// sessionBinding is the session id and token family id the assertion carries.
+type sessionBinding struct {
+	sessionID     string
+	tokenFamilyID string
+	// direct is true when the ids are new, for a direct session recorded after the assertion.
+	direct bool
+}
 
 // newAuthAssertExecutor creates a new instance of AuthAssertExecutor.
 func newAuthAssertExecutor(
@@ -72,6 +83,8 @@ func newAuthAssertExecutor(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	accessGuard *accessGuard,
+	sessionService session.Service,
+	sessionTracking bool,
 ) *authAssertExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
@@ -96,6 +109,8 @@ func newAuthAssertExecutor(
 		entityTypeService:   entityTypeService,
 		resourceService:     resourceService,
 		accessGuard:         accessGuard,
+		sessionService:      sessionService,
+		sessionTracking:     sessionTracking,
 		logger:              logger,
 	}
 }
@@ -138,13 +153,25 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 			return execResp, nil
 		}
 
-		token, err := a.generateAuthAssertion(ctx, execResp, entityRef, logger)
+		binding, err := a.sessionBinding(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		token, err := a.generateAuthAssertion(ctx, execResp, entityRef, binding, logger)
 		// A client failure is recorded on the response; a returned error is a server fault.
 		if execResp.Status == providers.ExecFailure {
 			return execResp, nil
 		}
 		if err != nil {
 			return nil, err
+		}
+
+		// Recorded only once the assertion is built, so a failed login leaves no session.
+		if binding.direct {
+			if err := a.recordDirectSession(ctx, entityRef, binding); err != nil {
+				return nil, err
+			}
 		}
 
 		logger.Debug(ctx.Context, "Generated JWT token for authentication assertion")
@@ -271,6 +298,7 @@ var reservedAssertionClaims = map[string]bool{
 	oauth2const.ClaimSubjectType:                 true,
 	oauth2const.ClaimCorrelationID:               true,
 	oauth2const.ClaimSessionID:                   true,
+	oauth2const.ClaimTokenFamilyID:               true,
 	oauth2const.ClaimGrantedAuthorizationDetails: true,
 }
 
@@ -347,9 +375,48 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 	return nil
 }
 
+// sessionBinding returns the Session node's binding, or, with tracking on, new ids for a direct session when the
+// flow recorded none.
+func (a *authAssertExecutor) sessionBinding(ctx *providers.NodeContext) (sessionBinding, error) {
+	sessionID := ctx.RuntimeData[common.RuntimeKeySSOSessionID]
+	if a.sessionService == nil || ctx.Application.ID == "" || sessionID != "" {
+		return sessionBinding{sessionID: sessionID, tokenFamilyID: ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]}, nil
+	}
+	// Tracking off: no session, and not the family a Session node offered.
+	if !a.sessionTracking {
+		return sessionBinding{}, nil
+	}
+	sessionID, err := sysutils.GenerateUUIDv7()
+	if err != nil {
+		return sessionBinding{}, fmt.Errorf("failed to generate session id: %w", err)
+	}
+	// Never the family a Session node offered: after a skipped save it may be another subject's.
+	tokenFamilyID, err := sysutils.GenerateUUIDv7()
+	if err != nil {
+		return sessionBinding{}, fmt.Errorf("failed to generate token family id: %w", err)
+	}
+	return sessionBinding{sessionID: sessionID, tokenFamilyID: tokenFamilyID, direct: true}, nil
+}
+
+// recordDirectSession records the direct session the assertion names, with the application as its participant.
+func (a *authAssertExecutor) recordDirectSession(ctx *providers.NodeContext, entityRef *providers.EntityReference,
+	binding sessionBinding) error {
+	flowIn := session.SSOInputsFrom(ctx.Context)
+	return a.sessionService.CreateDirect(ctx.Context, session.CreateDirectInput{
+		SessionID:     binding.sessionID,
+		SubjectID:     entityRef.EntityID,
+		FlowID:        flowIn.FlowID,
+		FlowVersion:   flowIn.FlowVersion,
+		AppID:         ctx.Application.ID,
+		TokenFamilyID: binding.tokenFamilyID,
+		ClientInfo:    session.ClientInfoFrom(ctx.Context),
+	})
+}
+
 // generateAuthAssertion generates the authentication assertion token for the resolved subject.
 func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse, entityRef *providers.EntityReference, logger *log.Logger,
+	execResp *providers.ExecutorResponse, entityRef *providers.EntityReference, binding sessionBinding,
+	logger *log.Logger,
 ) (string, error) {
 	tokenSub := ""
 
@@ -408,15 +475,12 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 
 	addCorrelationClaim(jwtClaims, ctx.ExecutionID)
 
-	// Carry the token family id (minted by the Session node) so the authorization code, and in turn
-	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
-	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
-		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
+	// Bind the grant's tokens to the login's session.
+	if binding.tokenFamilyID != "" {
+		jwtClaims[oauth2const.ClaimTokenFamilyID] = binding.tokenFamilyID
 	}
-
-	// Carry the SSO session id published by the Session node. Absent when the flow has no Session node.
-	if sessionID, exists := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; exists && sessionID != "" {
-		jwtClaims[oauth2const.ClaimSessionID] = sessionID
+	if binding.sessionID != "" {
+		jwtClaims[oauth2const.ClaimSessionID] = binding.sessionID
 	}
 
 	requiredAttributes := a.getRequiredUserAttributes(ctx)

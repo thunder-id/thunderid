@@ -76,6 +76,9 @@ Use the **SMS gateway** connection to connect <ProductName /> to any SMS gateway
 Do not configure the same header in both sections. Bearer token and Basic authentication use the `Authorization` header,
 so do not add `Authorization` under **Other HTTP headers** when either method is selected.
 
+A gateway URL on a private address, such as `localhost`, is refused by default. See
+[Private Addresses](../../../deployment/configuration#private-addresses).
+
 #### Customize the Gateway Request Body
 
 <ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.

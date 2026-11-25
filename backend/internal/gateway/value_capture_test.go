@@ -101,7 +101,7 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	// of one write; a test of the retries sets its own.
 	f.capture.retryDelay = 5 * time.Millisecond
 	f.capture.attempts = 1
-	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()), newPipeline())
+	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, testGatewayClient()), newPipeline())
 	return f
 }
 

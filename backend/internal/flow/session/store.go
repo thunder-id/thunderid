@@ -41,12 +41,12 @@ func (st *store) Create(ctx context.Context, s Session) error {
 	}
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryCreateSession,
-			s.SessionID, st.deploymentID, s.SubjectID, s.FlowID, s.FlowVersion,
-			s.FlowExecutionID, s.HandleID,
+			s.SessionID, string(s.Type), s.SubjectID, s.FlowID, s.FlowVersion,
+			nullableString(s.FlowExecutionID), nullableString(s.HandleID),
 			s.AuthenticatedAt, s.CreatedAt, s.LastActiveAt,
 			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt),
 			properties,
-			string(s.State), s.Version)
+			string(s.State), s.Version, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
@@ -447,6 +447,14 @@ func nullableTime(t time.Time) interface{} {
 	return t
 }
 
+// nullableString returns nil for an empty string so nullable columns store NULL, otherwise the string.
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 // marshalProperties encodes a session's properties for the PROPERTIES column, or NULL when it has none.
 func marshalProperties(p SessionProperties) (interface{}, error) {
 	if p == (SessionProperties{}) {
@@ -492,14 +500,6 @@ func buildSessionFromRow(row map[string]interface{}) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	flowExecutionID, err := parseString(row["flow_execution_id"], "flow_execution_id")
-	if err != nil {
-		return nil, err
-	}
-	handleID, err := parseString(row["handle_id"], "handle_id")
-	if err != nil {
-		return nil, err
-	}
 	authenticatedAt, err := sysutils.ParseDBTimeField(row["authenticated_at"], "authenticated_at")
 	if err != nil {
 		return nil, err
@@ -519,11 +519,12 @@ func buildSessionFromRow(row map[string]interface{}) (*Session, error) {
 
 	return &Session{
 		SessionID:         sessionID,
+		Type:              Type(parseNullableString(row["type"])),
 		SubjectID:         subjectID,
 		FlowID:            flowID,
 		FlowVersion:       flowVersion,
-		FlowExecutionID:   flowExecutionID,
-		HandleID:          handleID,
+		FlowExecutionID:   parseNullableString(row["flow_execution_id"]),
+		HandleID:          parseNullableString(row["handle_id"]),
 		AuthenticatedAt:   authenticatedAt,
 		CreatedAt:         createdAt,
 		LastActiveAt:      lastActiveAt,

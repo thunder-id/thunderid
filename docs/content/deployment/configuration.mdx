@@ -33,6 +33,7 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.hostname` | `localhost` | The hostname or IP address the server binds to |
 | `server.port` | `8090` | Port the server listens on |
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
+| `server.allow_private_addresses` | `false` | Whether calls to destinations an administrator configures may reach a private address, such as `localhost`, `10.0.0.5` or `169.254.169.254`. Turn it on for a local or single-host setup. See [Private Addresses](#private-addresses). |
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.timeouts.read_header_seconds` | `10` | Seconds the server waits to read a request's headers. Guards against clients that send headers slowly to hold connections open. |
 | `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, so it can stay short: applying and reverting a version (`gateway.apply_timeout_seconds`), the import (`import.timeout_seconds`), and the MCP server (`/mcp`), which gets the longer of the two because a tool can run either. |
@@ -98,6 +99,21 @@ Keep the ranges as narrow as possible. A range such as `172.16.0.0/12` covers ev
 **CDN headers:** `cf-connecting-ip` and `true-client-ip` are only safe when the origin accepts traffic only from the CDN. Otherwise, use `x-forwarded-for` with the CDN's ranges listed.
 
 The client IP is for display and logging. Do not rely on it for security decisions.
+
+### Private Addresses
+
+By default, <ProductName /> refuses calls to a destination an administrator configures when its host is, or resolves to, one of these addresses:
+
+- Loopback (`localhost`, `127.0.0.1`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`, including instance metadata services) and private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`)
+- The shared address space `100.64.0.0/10`
+- Unspecified (`0.0.0.0`, `::`), multicast, reserved and broadcast addresses
+- An IPv6 NAT64 or 6to4 address that embeds one of the above, such as `64:ff9b::a9fe:a9fe`
+
+This covers federated identity providers (token, userinfo, JWKS and GitHub user email endpoints), notification providers (SMS gateways, Twilio, Vonage and SMTP hosts), HTTP request and extension steps in flows, AuthZEN policy decision points, authorization details processors, and back-channel logout URIs. The check runs on the address actually connected to, and on every redirect, so a hostname that later resolves elsewhere cannot get around it.
+
+Set `server.allow_private_addresses: true` in `deployment.yaml` and restart the server when these destinations run on such addresses. The quickstart pack turns it on, since everything it runs is on one host. Turning it on applies to every destination above at once, including back-channel logout URIs that dynamic client registration accepts.
+
+Destinations a client names, such as Client ID Metadata Documents and the JWKS URIs client assertions are verified against or tokens are encrypted to, are always refused these addresses. The trusted issuer's JWKS URL and user lookup, which the deployment configuration sets, are never refused. Gateways have their own setting, `gateway.allow_private_addresses`.
 
 ## Gate Client Configuration
 
@@ -625,6 +641,21 @@ flow:
 ```
 
 For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
+
+## Session Configuration
+
+Controls which sign-ins record a [session](../../key-concepts/authentication/sessions).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `session.tracking.enabled` | `true` | If `true`, a sign-in through a flow without the session nodes records a [direct session](../../key-concepts/authentication/sessions#sign-ins-without-sso). If `false`, such a sign-in records no session, so it cannot be listed or ended, and its tokens carry no `sid` claim. A flow with the session nodes still records its SSO session, so SSO is not affected. The setting applies to new sign-ins: sessions recorded earlier keep working until they end |
+
+**Example:**
+```yaml
+session:
+  tracking:
+    enabled: false
+```
 
 ## User Configuration
 

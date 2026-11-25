@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
@@ -54,14 +55,23 @@ func (suite *BuiltInExecutorRegistrationTestSuite) mockFlowFactory() *coremock.F
 	return mockFactory
 }
 
+// outboundClients returns a factory that builds the client the extension executor sends through.
+func outboundClients(t *testing.T) *httpmock.OutboundClientFactoryInterfaceMock {
+	clients := httpmock.NewOutboundClientFactoryInterfaceMock(t)
+	clients.EXPECT().NewHTTPClientWithoutRedirects(time.Duration(0)).
+		Return(httpmock.NewHTTPClientInterfaceMock(t)).Maybe()
+	return clients
+}
+
 func (suite *BuiltInExecutorRegistrationTestSuite) depsForBuiltInRegistration() ExecutorDependencies {
 	return ExecutorDependencies{
-		FlowFactory:    suite.mockFlowFactory(),
-		EntityProvider: entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
-		OAuthSvc:       oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
-		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
-		GithubSvc:      githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T()),
-		GoogleSvc:      googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T()),
+		FlowFactory:     suite.mockFlowFactory(),
+		EntityProvider:  entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
+		OAuthSvc:        oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
+		OIDCSvc:         oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
+		GithubSvc:       githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T()),
+		GoogleSvc:       googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T()),
+		OutboundClients: outboundClients(suite.T()),
 	}
 }
 
@@ -134,6 +144,21 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_R
 			reg, newBuiltInExecutorRegistrars(), ExecutorDependencies{}, ExecutorNameInviteExecutor)
 	})
 	assert.False(suite.T(), reg.IsRegistered(ExecutorNameInviteExecutor))
+}
+
+// Without outbound clients the HTTP request and extension executors fail to register, rather than
+// their first step.
+func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_RequiresOutboundClients() {
+	for _, name := range []string{ExecutorNameHTTPRequest, ExecutorNameExtension} {
+		deps := suite.depsForBuiltInRegistration()
+		deps.OutboundClients = nil
+		reg := newExecutorRegistry()
+
+		err := registerBuiltInExecutor(reg, newBuiltInExecutorRegistrars(), deps, name)
+
+		suite.ErrorContains(err, "failed to register built-in executor", name)
+		assert.False(suite.T(), reg.IsRegistered(name), name)
+	}
 }
 
 func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutors_UnknownName() {
@@ -289,6 +314,20 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_GateHostnameRe
 	ex, err := reg.GetExecutor(ExecutorNamePasskeyAuth)
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "signin.example.org", ex.(*passkeyAuthExecutor).gateHostname)
+}
+
+func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_SessionTrackingReachesTheAuthAssertExecutor() {
+	for _, tracking := range []bool{true, false} {
+		reg, err := Initialize(suite.depsForBuiltInRegistration(), flowconfig.Config{
+			Flow:            engineconfig.FlowConfig{Executors: []string{ExecutorNameAuthAssert}},
+			SessionTracking: tracking,
+		})
+		require.NoError(suite.T(), err)
+
+		ex, err := reg.GetExecutor(ExecutorNameAuthAssert)
+		require.NoError(suite.T(), err)
+		assert.Equal(suite.T(), tracking, ex.(*authAssertExecutor).sessionTracking)
+	}
 }
 
 func (suite *BuiltInExecutorRegistrationTestSuite) TestSetActorProvider_ReachesThePreSuspendExecutor() {

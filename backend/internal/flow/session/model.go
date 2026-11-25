@@ -22,6 +22,16 @@ const (
 	StateEnded State = "ENDED"
 )
 
+// Type is the kind of session.
+type Type string
+
+const (
+	// TypeSSO is a session a Session node established, which later logins can reuse.
+	TypeSSO Type = "SSO"
+	// TypeDirect is the session of one login through a flow without a Session node.
+	TypeDirect Type = "DIRECT"
+)
+
 // TerminationReason names the path that ended a session.
 type TerminationReason string
 
@@ -59,6 +69,8 @@ type Session struct {
 	// session receives the same value. Unlike HandleID it is not a credential. It is a UUIDv7, so it
 	// carries the session's creation time, and changing what is published would need a migration.
 	SessionID string
+	// Type is the kind of session. A direct session has no flow execution or handle.
+	Type Type
 	// SubjectID is the authenticated subject (user) the session belongs to.
 	SubjectID string
 	// FlowID is the flow this session is grouped under (the SSO group key).
@@ -118,8 +130,8 @@ type Participant struct {
 	LastActiveAt time.Time
 }
 
-// SSOInputs are the transient, request-scoped inputs the SSO-Check and Session nodes need to resolve
-// or establish a session: the inbound handle for the current flow and the flow's identity/version
+// SSOInputs are the transient, request-scoped inputs the SSO-Check, Session and auth assert nodes need to
+// resolve or record a session: the inbound handle for the current flow and the flow's identity/version
 // (the SSO group key). They are carried on the Go context.Context rather than a NodeContext field, so
 // they never persist with the flow context and never enter the reusable engine's public contract.
 type SSOInputs struct {

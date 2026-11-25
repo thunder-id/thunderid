@@ -2019,20 +2019,24 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BackchannelLogoutDefaultsSurviveA
 	assert.Equal(suite.T(), 1024, got.QueueSize)
 }
 
-// reject_private_addresses defaults to true in default.json, so an explicit false must survive the merge.
-func (suite *ConfigTestSuite) TestMergeConfigs_RejectPrivateAddressesCanBeTurnedOff() {
-	base := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
-		Backchannel: engineconfig.BackchannelLogoutConfig{RejectPrivateAddresses: boolPtr(true)},
-	}}}
-	user := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
-		Backchannel: engineconfig.BackchannelLogoutConfig{RejectPrivateAddresses: boolPtr(false)},
-	}}}
+// server.allow_private_addresses is off in default.json, and a deployment turns it on.
+func (suite *ConfigTestSuite) TestMergeConfigs_AllowPrivateAddressesCanBeTurnedOn() {
+	base := &Config{}
+	user := &Config{Server: engineconfig.ServerConfig{AllowPrivateAddresses: true}}
 
 	mergeConfigs(base, user)
 
-	assert.False(suite.T(), base.OAuth.Logout.Backchannel.RejectsPrivateAddresses())
-	var unset engineconfig.BackchannelLogoutConfig
-	assert.True(suite.T(), unset.RejectsPrivateAddresses(), "unset fails safe")
+	assert.True(suite.T(), base.Server.AllowPrivateAddresses)
+}
+
+// The back-channel logout reject_private_addresses key is gone: the server setting covers it, and
+// strict loading refuses a deployment.yaml that still names it.
+func (suite *ConfigTestSuite) TestRemovedRejectPrivateAddressesKeyIsRefused() {
+	doc := "oauth:\n  logout:\n    backchannel:\n      reject_private_addresses: false\n"
+	dec := yaml.NewDecoder(strings.NewReader(doc))
+	dec.KnownFields(true)
+	var cfg Config
+	assert.Error(suite.T(), dec.Decode(&cfg))
 }
 
 func (suite *ConfigTestSuite) TestDeploymentOverridesAccountAccessDefaults() {
@@ -2161,4 +2165,47 @@ notification:
 		assert.Nil(suite.T(), cfg, unknown)
 		assert.Error(suite.T(), err, unknown)
 	}
+}
+
+// A deployment switches session tracking off, and an omitted value keeps the shipped default.
+func (suite *ConfigTestSuite) TestSessionTrackingEnabledOverridesTheShippedDefault() {
+	base := &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(true)}}}
+	mergeConfigs(base, &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(false)}}})
+	assert.False(suite.T(), base.Session.Tracking.IsEnabled(), "false must override the true default")
+
+	kept := &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(true)}}}
+	mergeConfigs(kept, &Config{})
+	assert.True(suite.T(), kept.Session.Tracking.IsEnabled(), "an omitted value keeps the default")
+
+	assert.False(suite.T(), SessionTrackingConfig{}.IsEnabled(), "a configuration without the key tracks nothing")
+}
+
+func (suite *ConfigTestSuite) TestTheShippedDefaultsTurnSessionTrackingOn() {
+	data, err := os.ReadFile("../../../cmd/server/config/default.json")
+	suite.Require().NoError(err)
+	var defaults Config
+	suite.Require().NoError(json.Unmarshal(data, &defaults))
+
+	assert.True(suite.T(), defaults.Session.Tracking.IsEnabled())
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigReadsSessionTrackingEnabled() {
+	const content = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+session:
+  tracking:
+    enabled: false
+`
+	tempDir := suite.T().TempDir()
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "session*.yaml", content), "", tempDir)
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), SessionTrackingConfig{Enabled: boolPtr(false)}, cfg.Session.Tracking)
 }

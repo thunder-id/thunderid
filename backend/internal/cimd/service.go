@@ -43,14 +43,12 @@ type cimdService struct {
 	logger     *log.Logger
 }
 
-// newCIMDService creates a new instance of cimdService. Documents are retrieved by a client that
-// refuses private and loopback addresses on the connected address and follows no redirects.
-func newCIMDService() CIMDServiceInterface {
+// newCIMDService creates a new instance of cimdService. Documents are retrieved by a client from
+// clients that follows no redirects.
+func newCIMDService(clients syshttp.OutboundClientFactoryInterface) CIMDServiceInterface {
 	return &cimdService{
-		httpClient: syshttp.NewHTTPClientWithCheckRedirect(func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		}),
-		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIMDService")),
+		httpClient: clients.NewHTTPClientWithoutRedirects(cimdFetchTimeout),
+		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIMDService")),
 	}
 }
 

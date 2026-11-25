@@ -19,8 +19,10 @@ const Name = "rest"
 
 // Initialize builds the REST authentication provider from its config block. It
 // validates that base_url is set and applies defaults for the request timeout and
-// correlation-ID header. Enablement is the caller's concern.
-func Initialize(cfg config.RestConfig) (providers.AuthnProviderInterface, error) {
+// correlation-ID header. base_url is set by the deployment configuration, so the provider is called
+// with an unguarded client from clients. Enablement is the caller's concern.
+func Initialize(cfg config.RestConfig,
+	clients systemhttp.OutboundClientFactoryInterface) (providers.AuthnProviderInterface, error) {
 	if cfg.BaseURL == "" {
 		return nil, errors.New("base_url is required when the rest authn provider is enabled")
 	}
@@ -32,6 +34,6 @@ func Initialize(cfg config.RestConfig) (providers.AuthnProviderInterface, error)
 	if correlationIDHeader == "" {
 		correlationIDHeader = serverconst.CorrelationIDHeaderName
 	}
-	httpClient := systemhttp.NewHTTPClientWithTimeout(timeout)
+	httpClient := clients.NewUnguardedHTTPClient(timeout)
 	return newRestAuthnProvider(cfg.BaseURL, cfg.Security.APIKey, correlationIDHeader, httpClient), nil
 }

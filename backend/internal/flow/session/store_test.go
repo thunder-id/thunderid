@@ -40,6 +40,7 @@ func (s *StoreTestSuite) sampleSession() Session {
 	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
 	return Session{
 		SessionID:       "sess-1",
+		Type:            TypeSSO,
 		SubjectID:       "user-1",
 		FlowID:          "flow-1",
 		FlowVersion:     2,
@@ -73,11 +74,11 @@ func (s *StoreTestSuite) TestCreate_Success() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateSession,
-		sess.SessionID, testDeploymentID, sess.SubjectID, sess.FlowID, sess.FlowVersion,
+		sess.SessionID, string(TypeSSO), sess.SubjectID, sess.FlowID, sess.FlowVersion,
 		sess.FlowExecutionID, sess.HandleID,
 		sess.AuthenticatedAt, sess.CreatedAt, sess.LastActiveAt,
 		nil, sess.AbsoluteExpiresAt, sampleProperties,
-		string(sess.State), sess.Version).
+		string(sess.State), sess.Version, testDeploymentID).
 		Return(int64(1), nil)
 
 	err := s.store.Create(context.Background(), sess)
@@ -92,11 +93,11 @@ func (s *StoreTestSuite) TestCreate_DBError() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateSession,
-		sess.SessionID, testDeploymentID, sess.SubjectID, sess.FlowID, sess.FlowVersion,
+		sess.SessionID, string(TypeSSO), sess.SubjectID, sess.FlowID, sess.FlowVersion,
 		sess.FlowExecutionID, sess.HandleID,
 		sess.AuthenticatedAt, sess.CreatedAt, sess.LastActiveAt,
 		nil, sess.AbsoluteExpiresAt, sampleProperties,
-		string(sess.State), sess.Version).
+		string(sess.State), sess.Version, testDeploymentID).
 		Return(int64(0), errors.New("db down"))
 
 	err := s.store.Create(context.Background(), sess)
@@ -566,7 +567,7 @@ func (s *StoreTestSuite) TestBuildSessionFromRow_BadRequiredFields() {
 	s.Require().NoError(err)
 
 	// Each required string field errors when non-string.
-	for _, f := range []string{"session_id", "subject_id", "flow_id", "flow_execution_id", "handle_id"} {
+	for _, f := range []string{"session_id", "subject_id", "flow_id"} {
 		row := valid()
 		row[f] = 42
 		_, buildErr := buildSessionFromRow(row)
@@ -633,4 +634,40 @@ func (s *StoreTestSuite) TestDeleteSession_PropagatesTheError() {
 
 	s.Error(err)
 	s.False(removed)
+}
+
+// A direct session stores NULL for the flow execution and handle it doesn't have.
+func (s *StoreTestSuite) TestCreate_DirectSession() {
+	sess := s.sampleSession()
+	sess.Type = TypeDirect
+	sess.FlowExecutionID = ""
+	sess.HandleID = ""
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateSession,
+		sess.SessionID, string(TypeDirect), sess.SubjectID, sess.FlowID, sess.FlowVersion,
+		nil, nil,
+		sess.AuthenticatedAt, sess.CreatedAt, sess.LastActiveAt,
+		nil, sess.AbsoluteExpiresAt, sampleProperties,
+		string(sess.State), sess.Version, testDeploymentID).
+		Return(int64(1), nil)
+
+	s.NoError(s.store.Create(context.Background(), sess))
+}
+
+// A direct session row has no flow execution or handle, and still builds.
+func (s *StoreTestSuite) TestBuildSessionFromRow_DirectSession() {
+	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+
+	got, err := buildSessionFromRow(map[string]interface{}{
+		"session_id": "sess-1", "type": "DIRECT", "subject_id": "user-1", "flow_id": "flow-1",
+		"flow_version": int64(2), "flow_execution_id": nil, "handle_id": nil,
+		"authenticated_at": base, "created_at": base, "last_active_at": base,
+		"idle_expires_at": base, "absolute_expires_at": base, "state": "ACTIVE", "version": int64(1),
+	})
+
+	s.Require().NoError(err)
+	s.Equal(TypeDirect, got.Type)
+	s.Empty(got.FlowExecutionID)
+	s.Empty(got.HandleID)
+	s.Equal(2, got.FlowVersion)
 }

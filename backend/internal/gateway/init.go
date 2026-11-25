@@ -14,6 +14,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
@@ -49,12 +50,16 @@ import (
 // bus is required: the gateway service publishes registration events on it, and the version service
 // publishes capture, apply and revert events.
 //
+// outbound builds the client the trusted issuer's user lookup is called with, and gatewayOutbound,
+// which follows gateway.allow_private_addresses, the clients a gateway is called with.
+//
 // The stopper it returns stops the sweeps of unused values that applies start in the background, and
 // is called on shutdown.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.ExportServiceInterface,
 	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
 	changes *ChangeCapture, settings serverconfig.ServerConfigService,
-	projects ProjectDirectory, bus eventbus.EventBusInterface) (ServiceInterface, StopperInterface, error) {
+	projects ProjectDirectory, bus eventbus.EventBusInterface,
+	outbound, gatewayOutbound syshttp.OutboundClientFactoryInterface) (ServiceInterface, StopperInterface, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
 	}
@@ -78,10 +83,10 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 	deployPipeline := newPipeline()
 	service := newService(gatewayStore, deployPipeline, bus)
 	versionStore := newVersionStore()
-	versions := newVersionService(gatewayStore, versionStore, exporter, newGatewayClient(),
-		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline, bus)
+	versions := newVersionService(gatewayStore, versionStore, exporter, newGatewayClient(gatewayOutbound),
+		declarativeresource.SecretFieldsOf(exporters), newActorNames(outbound), deployPipeline, bus)
 	if grace, on := unusedValueGrace(context.Background()); on {
-		versions.unusedValues = newUnusedValueSweeper(versionStore, versions, newGatewayClient(),
+		versions.unusedValues = newUnusedValueSweeper(versionStore, versions, newGatewayClient(gatewayOutbound),
 			goroutineRunner{}, grace, unusedValueSweepInterval())
 	}
 	versions.autoApply = newAutoApplySource(settings)
@@ -91,7 +96,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 	}
 	h := newHandler(service)
 	h.afterDelete = versions.Forget
-	stores := newStoreService(gatewayStore, newGatewayClient())
+	stores := newStoreService(gatewayStore, newGatewayClient(gatewayOutbound))
 	if capture != nil {
 		capture.bind(exporter, gatewayStore, stores, deployPipeline)
 	}

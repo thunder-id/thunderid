@@ -164,6 +164,56 @@ var (
 		},
 	}
 
+	// httpRequestExecutorRedirectFlow calls an endpoint that answers with a redirect, failing on error.
+	httpRequestExecutorRedirectFlow = testutils.Flow{
+		Name:     "HTTP Request Executor Auth Flow - Redirect",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_http_request_redirect",
+		Nodes: []map[string]interface{}{
+			{
+				"id":        "start",
+				"type":      "START",
+				"onSuccess": "credentials_auth",
+			},
+			{
+				"id":   "credentials_auth",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "CredentialsAuthExecutor",
+				},
+				"onSuccess": "http_request_redirect",
+			},
+			{
+				"id":   "http_request_redirect",
+				"type": "TASK_EXECUTION",
+				"properties": map[string]interface{}{
+					"url":           common.MockHTTPBaseURL + "/api/redirect",
+					"method":        "POST",
+					"headers":       "{\"Content-Type\": \"application/json\"}",
+					"body":          "{\"userId\": \"{{ctx(userId)}}\"}",
+					"errorHandling": "{\"failOnError\": true}",
+					"timeout":       "5",
+				},
+				"executor": map[string]interface{}{
+					"name": "HTTPRequestExecutor",
+				},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":   "auth_assert",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AuthAssertExecutor",
+				},
+				"onSuccess": "end",
+			},
+			{
+				"id":   "end",
+				"type": "END",
+			},
+		},
+	}
+
 	// httpRequestExecutorRequestPlaceholderFlow exercises {{request(...)}} in the HTTP Request
 	// Executor body: resolvable current-source and sourceless (source omitted → current) header
 	// lookups, plus every unresolvable shape (absent/init-source/missing-name/invalid-type/malformed)
@@ -325,7 +375,8 @@ func (ts *HTTPRequestExecutorTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create mock HTTP server: %v", err)
 	}
 	for _, flow := range []testutils.Flow{httpRequestExecutorFlow, httpRequestExecutorContinueWithErrorFlow,
-		httpRequestExecutorFailOnErrorFlow, httpRequestExecutorRequestPlaceholderFlow} {
+		httpRequestExecutorFailOnErrorFlow, httpRequestExecutorRequestPlaceholderFlow,
+		httpRequestExecutorRedirectFlow} {
 		common.UseMockHTTPServer(flow, ts.mockNotificationServer)
 	}
 
@@ -492,6 +543,30 @@ func (ts *HTTPRequestExecutorTestSuite) TestHTTPRequestAuthFlow_WithFailOnErrorT
 	})
 
 	ts.Require().Error(err, "HTTP request failure should cause authentication flow to fail")
+}
+
+// A redirect is not followed, since it could resend the step's headers to another host: with
+// failOnError it fails the flow, and the redirect target is never called.
+func (ts *HTTPRequestExecutorTestSuite) TestHTTPRequestAuthFlow_RedirectFailsWithFailOnErrorTrue() {
+	flowID, err := testutils.CreateFlow(httpRequestExecutorRedirectFlow)
+	ts.Require().NoError(err, "Failed to create redirect flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
+
+	err = common.UpdateAppConfig(ts.testAppID, flowID, "")
+	ts.NoError(err, "App config update should succeed")
+
+	defer func() {
+		common.UpdateAppConfig(ts.testAppID, ts.testFlowID, "")
+	}()
+
+	_, err = common.InitiateAuthFlowWithError(ts.testAppID, map[string]string{
+		"username": "httprequestuser",
+		"password": "SecurePass123!",
+	})
+
+	ts.Require().Error(err, "A redirect should fail the flow when failOnError is true")
+	ts.NotNil(ts.mockNotificationServer.GetRequestByPath("/api/redirect"), "The endpoint should be called")
+	ts.Nil(ts.mockNotificationServer.GetRequestByPath("/api/notifications"), "The redirect should not be followed")
 }
 
 func (ts *HTTPRequestExecutorTestSuite) TestHTTPRequestAuthFlow_RequestPlaceholders() {

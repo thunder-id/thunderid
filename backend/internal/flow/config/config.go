@@ -27,6 +27,9 @@ type Config struct {
 	// cookie lifetime. It is sourced from the server-config "session" section at the composition root,
 	// not the static server runtime, so FromServerRuntime leaves it zero for the caller to populate.
 	Session flowsession.Config
+	// SessionTracking records a direct session for a login through a flow without a Session node, from
+	// session.tracking.enabled.
+	SessionTracking bool
 	// TokenLeeway is how long past exp a token is still accepted, from the deployment's JWT leeway.
 	TokenLeeway time.Duration
 	// GateHostname is the host of the gate that serves the sign-in pages.
@@ -75,10 +78,11 @@ type FlowSectionConfig struct {
 func FromServerRuntime() Config {
 	runtime := config.GetServerRuntime()
 	return Config{
-		Flow:          runtime.Config.Flow,
-		SecureCookies: secureCookies(runtime.Config.Server),
-		TokenLeeway:   time.Duration(runtime.Config.JWT.Leeway) * time.Second,
-		GateHostname:  runtime.Config.GateClient.Hostname,
+		Flow:            runtime.Config.Flow,
+		SecureCookies:   secureCookies(runtime.Config.Server),
+		SessionTracking: runtime.Config.Session.Tracking.IsEnabled(),
+		TokenLeeway:     time.Duration(runtime.Config.JWT.Leeway) * time.Second,
+		GateHostname:    runtime.Config.GateClient.Hostname,
 	}
 }
 

@@ -6,6 +6,7 @@ package gateway
 import (
 	"context"
 
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/userlookup"
 )
 
@@ -19,9 +20,10 @@ type actorNames struct {
 	lookup *userlookup.Lookup
 }
 
-// newActorNames names actors through a lookup read from the server configuration.
-func newActorNames() *actorNames {
-	return &actorNames{lookup: userlookup.New()}
+// newActorNames names actors through a lookup read from the server configuration, called with a
+// client from clients.
+func newActorNames(clients syshttp.OutboundClientFactoryInterface) *actorNames {
+	return &actorNames{lookup: userlookup.New(clients)}
 }
 
 // fill puts a name to each actor that has none, when a lookup is configured. An actor already named

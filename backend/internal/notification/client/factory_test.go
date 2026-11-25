@@ -42,11 +42,11 @@ func (suite *ClientFactoryTestSuite) SetupSuite() {
 }
 
 func (suite *ClientFactoryTestSuite) SetupTest() {
-	suite.factory = newClientFactory()
+	suite.factory = newClientFactory(privateAllowed)
 }
 
 func (suite *ClientFactoryTestSuite) TestNewNotificationClientFactory() {
-	provider := newClientFactory()
+	provider := newClientFactory(privateAllowed)
 
 	suite.NotNil(provider)
 	suite.Implements((*ClientFactoryInterface)(nil), provider)
