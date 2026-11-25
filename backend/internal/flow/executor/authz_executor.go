@@ -101,6 +101,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		return execResp, nil
 	}
 
+<<<<<<< HEAD
 	// Bind permission checks to the request's resource server.
 	// An unresolved binding produces no permission grant.
 	resourceServer := a.resolveResourceServer(ctx)
@@ -111,6 +112,15 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		resourceServerID = resourceServer.ID
 		execResp.RuntimeData[common.RuntimeKeyResourceServerID] = resourceServer.ID
 	}
+=======
+	// Resolve the single resource server the permission scopes are evaluated against: the OAuth layer
+	// seeds it in runtime data; a direct /flow/execute request (which does not go through the
+	// authorization endpoint) may supply it as an input; otherwise fall back to the configured default
+	// resource server. Permission evaluation must be scoped to a resource server, so when none can be
+	// resolved the requested permission scopes are dropped rather than evaluated unscoped (which could
+	// authorize a permission the user only holds on a different resource server).
+	resourceServerID := a.resolveResourceServerID(ctx, requestedPerms)
+>>>>>>> 6135a44f3 (Fixes #5546)
 	if resourceServerID == "" {
 		logger.Debug(ctx.Context,
 			"No resource server bound to the request; dropping requested permission scopes",
@@ -189,6 +199,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	return execResp, nil
 }
 
+<<<<<<< HEAD
 // resolveResourceServer returns the resource server the permission scopes are evaluated against, or
 // nil when none can be resolved.
 func (a *authorizationExecutor) resolveResourceServer(
@@ -196,6 +207,18 @@ func (a *authorizationExecutor) resolveResourceServer(
 ) *providers.ResourceServer {
 	identifier := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
 		common.RuntimeKeyResourceServerIdentifier)
+=======
+// resolveResourceServerID determines the internal ID of the single resource server that permission
+// scopes are evaluated against. The binding is communicated as a resource server identifier: the OAuth
+// layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
+// authorization endpoint) may supply it as an input. The identifier is resolved to its internal ID
+// through the provider. When no identifier is present, the provider decides the resource server from the
+// requested permissions (ThunderID resolves the deployment's configured default). Returns "" when none
+// can be resolved (unknown identifier, ambiguous permissions, no default configured, or no resource
+// provider available, for example the embedded engine).
+func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext, requestedPerms []string) string {
+	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
+>>>>>>> 6135a44f3 (Fixes #5546)
 	if identifier == "" {
 		identifier, _ = ctx.ConsumeInput(common.RuntimeKeyResourceServerIdentifier)
 	}
@@ -204,8 +227,8 @@ func (a *authorizationExecutor) resolveResourceServer(
 			"No resource server service available; dropping requested permission scopes")
 		return nil
 	}
-	rs, svcErr := a.resourceService.GetResourceServerByIdentifier(ctx.Context, identifier)
-	if svcErr != nil {
+	rs, svcErr := a.resourceService.GetResourceServerByPermissions(ctx.Context, identifier, requestedPerms)
+	if svcErr != nil || rs == nil {
 		a.logger.Debug(ctx.Context,
 			"Resource server did not resolve; dropping requested permission scopes",
 			log.String("identifier", identifier))

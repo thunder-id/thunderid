@@ -31,6 +31,24 @@ var (
 	}
 )
 
+// Resource server binding errors
+var (
+	// ErrorAmbiguousPermissions is the error a ResourceServerProvider returns when the requested
+	// permissions are defined on more than one resource server.
+	ErrorAmbiguousPermissions = ServiceError{
+		Type: ClientErrorType,
+		Code: "SSE-4220",
+		Error: I18nMessage{
+			Key:          "error.ambiguous_permissions",
+			DefaultValue: "Ambiguous permissions",
+		},
+		ErrorDescription: I18nMessage{
+			Key:          "error.ambiguous_permissions_description",
+			DefaultValue: "The requested permissions are defined on more than one resource server",
+		},
+	}
+)
+
 // Server errors
 var (
 	// InternalServerError is the error returned for unexpected server errors.

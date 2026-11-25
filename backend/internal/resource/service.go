@@ -77,6 +77,9 @@ type ResourceServiceInterface interface {
 	GetResourceServerByIdentifier(
 		ctx context.Context, identifier string,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
+	GetResourceServerByPermissions(
+		ctx context.Context, resourceIdentifier string, permissions []string,
+	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	IsResourceServerDeclarative(id string) bool
 
 	// Resource operations
@@ -561,6 +564,14 @@ func (rs *resourceService) GetResourceServerByIdentifier(
 	}
 
 	return rs.withManaged(ctx, &resourceServer)
+}
+
+// GetResourceServerByPermissions resolves the resource server a token binds to. ThunderID resolves
+// resource servers by resource identifier only and does not consult the permissions.
+func (rs *resourceService) GetResourceServerByPermissions(
+	ctx context.Context, resourceIdentifier string, _ []string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	return rs.GetResourceServerByIdentifier(ctx, resourceIdentifier)
 }
 
 // GetResourceServerList retrieves a paginated list of resource servers.

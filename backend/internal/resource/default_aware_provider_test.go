@@ -62,29 +62,16 @@ func (suite *DefaultAwareProviderTestSuite) TestExplicitIdentifier_PropagatesBas
 	assert.Same(suite.T(), svcErr, err)
 }
 
-// An empty identifier resolves the configured default resource server through the wrapped provider.
-func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_DefaultConfigured_Resolves() {
-	rs := providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}
-	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
-	suite.base.On("GetResourceServer", mock.Anything, "rs-1").Return(&rs, nil)
-
-	resolved, err := suite.subject.GetResourceServerByIdentifier(context.Background(), "")
-
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), &rs, resolved)
-}
-
-// No default configured surfaces as a client error so the caller maps it to invalid_target.
-func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_NoDefaultConfigured_ReturnsClientError() {
-	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: ""}, nil)
+// GetResourceServerByIdentifier is promoted from the wrapped provider unchanged: an empty identifier is
+// not substituted with the configured default, and the server-config store is not read.
+func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_ByIdentifier_DoesNotResolveDefault() {
+	svcErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}
+	suite.base.On("GetResourceServerByIdentifier", mock.Anything, "").Return(nil, svcErr)
 
 	resolved, err := suite.subject.GetResourceServerByIdentifier(context.Background(), "")
 
 	assert.Nil(suite.T(), resolved)
-	require.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), tidcommon.ClientErrorType, err.Type)
+	assert.Same(suite.T(), svcErr, err)
 }
 
 // A merged value of an unexpected type is treated as "no default configured" (client error), matching
@@ -93,7 +80,7 @@ func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_ConfigTypeMismat
 	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
 		Return("unexpected-type", nil)
 
-	resolved, err := suite.subject.GetResourceServerByIdentifier(context.Background(), "")
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", nil)
 
 	assert.Nil(suite.T(), resolved)
 	require.NotNil(suite.T(), err)
@@ -106,7 +93,7 @@ func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_ConfigReadFailur
 	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
 		Return(nil, svcErr)
 
-	resolved, err := suite.subject.GetResourceServerByIdentifier(context.Background(), "")
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.Same(suite.T(), svcErr, err)
@@ -119,10 +106,77 @@ func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_DefaultDeleted_P
 		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-gone"}, nil)
 	suite.base.On("GetResourceServer", mock.Anything, "rs-gone").Return(nil, svcErr)
 
-	resolved, err := suite.subject.GetResourceServerByIdentifier(context.Background(), "")
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", nil)
 
 	assert.Nil(suite.T(), resolved)
 	assert.Same(suite.T(), svcErr, err)
+}
+
+// An explicit identifier is resolved by identifier only, regardless of the permissions; the
+// server-config store is not read.
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_WithIdentifier_ResolvesByIdentifier() {
+	cases := map[string][]string{
+		"with permissions":    {"read"},
+		"without permissions": nil,
+	}
+	for name, permissions := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			rs := providers.ResourceServer{ID: "rs-1"}
+			suite.base.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").Return(&rs, nil)
+
+			resolved, err := suite.subject.GetResourceServerByPermissions(
+				context.Background(), "https://api.example.com", permissions)
+
+			assert.Nil(suite.T(), err)
+			assert.Equal(suite.T(), &rs, resolved)
+		})
+	}
+}
+
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_UnknownIdentifier_DoesNotFallBackToDefault() {
+	svcErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"}
+	suite.base.On("GetResourceServerByIdentifier", mock.Anything, "https://unknown.example.com").
+		Return(nil, svcErr)
+
+	resolved, err := suite.subject.GetResourceServerByPermissions(
+		context.Background(), "https://unknown.example.com", []string{"read"})
+
+	assert.Nil(suite.T(), resolved)
+	assert.Equal(suite.T(), svcErr, err)
+}
+
+// Without an identifier the configured default is resolved, with or without permissions.
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_NoIdentifier_ResolvesDefault() {
+	cases := map[string][]string{
+		"with permissions":    {"read"},
+		"without permissions": nil,
+	}
+	for name, permissions := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			rs := providers.ResourceServer{ID: "rs-1"}
+			suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
+				Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
+			suite.base.On("GetResourceServer", mock.Anything, "rs-1").Return(&rs, nil)
+
+			resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", permissions)
+
+			assert.Nil(suite.T(), err)
+			assert.Equal(suite.T(), &rs, resolved)
+		})
+	}
+}
+
+func (suite *DefaultAwareProviderTestSuite) TestByPermissions_NoIdentifier_NoDefault_ReturnsClientError() {
+	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
+		Return(resource.DefaultResourceServerConfig{}, nil)
+
+	resolved, err := suite.subject.GetResourceServerByPermissions(context.Background(), "", []string{"read"})
+
+	assert.Nil(suite.T(), resolved)
+	require.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), tidcommon.ClientErrorType, err.Type)
 }
 
 // GetResourceServer and ValidatePermissions are promoted from the embedded provider unchanged.
