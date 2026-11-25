@@ -129,7 +129,7 @@ export default function AcceptInvitePage() {
 ```
 
 :::note
-The SDK's `InviteUser` component starts a `USER_ONBOARDING` flow, the flow an administrator uses to create or invite users in the Console. It does not start the **Invite into Organization** flow.
+To draw the invitation's steps in your application, render `BaseInviteToOrganizationUnit` from the [React](../../../sdks-and-tools/react/apis/components/invite-to-organization-unit.mdx) or [Vue](../../../sdks-and-tools/vue/apis/components/invite-to-organization-unit.mdx) SDK and send each step through your backend as above. The SDK's `InviteUser` component starts a `USER_ONBOARDING` flow, the flow an administrator uses to create or invite users in the Console. It does not start the **Invite into Organization** flow.
 :::
 
 ## Share an Existing Account Directly

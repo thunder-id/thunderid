@@ -1,0 +1,182 @@
+---
+displayed_sidebar: null
+title: <InviteToOrganizationUnit />
+docType: reference
+description: Runs an invitation flow that invites a person into an organization unit and assigns them roles there, in Vue apps.
+---
+
+# `<InviteToOrganizationUnit />`
+
+The `InviteToOrganizationUnit` component runs an `INVITATION` flow: the signed-in admin enters the person's email, picks the roles they get, and the flow sends them an invite link. The component starts the flow by its ID on `POST /flow/execute`, or on `endpoints.flowExecute` on `<ThunderIDProvider />` when set, and submits each step there with the signed-in user's access token. The person is invited into the organization unit named in the token's `ouId` claim, which must own the flow or have it shared with it. For creating and sharing the flow and the permission the token needs, see [Invite Members](../../../../../use-cases/b2b/journeys/invite-members#start-an-invitation).
+
+The steps come from the flow, so the component draws whatever the flow returns. The person accepts the invitation from the link, on the Gate or on a page of your application that renders `AcceptInvite`.
+
+## Usage
+
+### Basic Usage
+
+```vue title="src/InviteMemberPage.vue" showLineNumbers
+<script setup>
+import { InviteToOrganizationUnit, SignedIn } from '@thunderid/vue'
+
+const invitationFlowId = '<invitation-flow-id>'
+</script>
+
+<template>
+  <SignedIn>
+    <InviteToOrganizationUnit :flow-id="invitationFlowId" @error="(error) => console.error(error)" />
+  </SignedIn>
+</template>
+```
+
+A new `flowId` starts the flow again. To invite another person after an invitation is sent, change the component's `key`, or call `resetFlow` from the slot.
+
+### Sending the Requests From Your Backend
+
+`BaseInviteToOrganizationUnit` takes the two requests as props, so your application decides how each step reaches the server. Use it when your backend holds the token for the organization unit and relays the steps:
+
+```vue title="src/InviteMemberPage.vue" showLineNumbers
+<script setup>
+import { BaseInviteToOrganizationUnit } from '@thunderid/vue'
+
+const invitationFlowId = '<invitation-flow-id>'
+
+const sendStep = async (payload) => {
+  const response = await fetch('/api/invitations', {
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  })
+
+  return response.json()
+}
+</script>
+
+<template>
+  <BaseInviteToOrganizationUnit :flow-id="invitationFlowId" :on-initialize="sendStep" :on-submit="sendStep" />
+</template>
+```
+
+The first request carries `flowId` and `verbose: true`. Each later request carries `executionId`, `challengeToken`, `action`, and `inputs`. Your backend forwards each one to `POST /flow/execute` and returns the response body.
+
+### Custom Rendering
+
+Use the default scoped slot to replace the built-in UI. It receives the [slot props](#slot-props), and the component keeps the requests and the step's state. `title` and `subtitle` arrive translated, but the labels in `components` are flow template literals such as `{{ t(invitation:forms.email.title) }}`, so resolve them with `resolveFlowTemplateLiterals`. A `ROLE_SELECT` input lists its roles in `additionalData.roleOptions`, which `parseRoleOptions` reads, and takes the chosen role IDs separated by spaces:
+
+```vue title="src/InviteForm.vue" showLineNumbers
+<script setup>
+import { InviteToOrganizationUnit, parseRoleOptions, resolveFlowTemplateLiterals, useI18n } from '@thunderid/vue'
+
+defineProps({ flowId: { required: true, type: String } })
+
+const { t } = useI18n()
+const label = (component) => resolveFlowTemplateLiterals(component.label, { t })
+
+// The step's components, at any depth.
+const flatten = (components) => components.flatMap((component) => [component, ...flatten(component.components ?? [])])
+const picked = (value) => (value ?? '').split(' ').filter(Boolean)
+const toggle = (value, id) =>
+  (picked(value).includes(id) ? picked(value).filter((roleId) => roleId !== id) : [...picked(value), id]).join(' ')
+</script>
+
+<template>
+  <InviteToOrganizationUnit :flow-id="flowId">
+    <template #default="{ components, additionalData, values, handleInputChange, handleSubmit, isLoading, error }">
+      <p v-if="error" role="alert">{{ error.message }}</p>
+      <template v-for="component in flatten(components)" :key="component.id">
+        <p v-if="component.type === 'TEXT'">{{ label(component) }}</p>
+        <label v-else-if="component.type === 'EMAIL_INPUT'">
+          {{ label(component) }}
+          <input
+            type="email"
+            :value="values[component.ref] ?? ''"
+            @input="handleInputChange(component.ref, $event.target.value)"
+          />
+        </label>
+        <template v-else-if="component.type === 'ROLE_SELECT'">
+          <label v-for="role in parseRoleOptions(additionalData?.roleOptions)" :key="role.id">
+            <input
+              type="checkbox"
+              :checked="picked(values[component.ref]).includes(role.id)"
+              @change="handleInputChange(component.ref, toggle(values[component.ref], role.id))"
+            />
+            {{ role.name }}
+          </label>
+        </template>
+        <button v-else-if="component.type === 'ACTION'" :disabled="isLoading" @click="handleSubmit(component, values)">
+          {{ label(component) }}
+        </button>
+      </template>
+    </template>
+  </InviteToOrganizationUnit>
+</template>
+```
+
+`handleSubmit` checks the step's required fields against the values set through `handleInputChange` before it sends the step.
+
+## Built-in UI
+
+The built-in UI is a card. Its header shows the step's title and subtitle, and the body draws the rest of the step: the email field, the role checkboxes, the invite link to copy when the invitation email cannot be sent, and the step's buttons. A step's buttons stay disabled until its required fields are filled. A failed request shows its message above the form.
+
+Elements drawn from the flow carry `data-testid` values for tests: `thunderid-field-<ref>` for an input and `thunderid-action-<id>` for a button.
+
+The SDK's own text comes from these translation keys:
+
+| Key | Default (`en-US`) |
+| :--- | :--- |
+| `elements.fields.role_select.aria_label` | `Select roles` |
+| `elements.fields.role_select.empty` | `No roles to assign.` |
+| `errors.invite.flow.failure` | `An error occurred during the invitation. Please try again later.` |
+| `errors.invite.components.not.available` | `The invitation form is not available at the moment. Please try again later.` |
+
+The step labels come from the flow's `invitation` translations, served with the flow metadata.
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `flowId` | `string` | ✅ | The ID of the `INVITATION` flow. A new value starts the flow again. |
+| `onError` | `(error: Error) => void` | ❌ | Called when a request fails or the server returns an error. The component shows the message either way. Also available as `@error`. |
+| `onFlowChange` | `(response: InviteUserFlowResponse) => void` | ❌ | Called with each response of the flow. Also available as `@flow-change`. |
+| `showTitle` | `boolean` | ❌ | Whether the header shows the step's title. Defaults to `true`. |
+| `showSubtitle` | `boolean` | ❌ | Whether the header shows the step's subtitle. Defaults to `true`. |
+| `size` | `'small' \| 'medium' \| 'large'` | ❌ | Spacing and control size. Defaults to `'medium'`. |
+| `variant` | `'outlined' \| 'elevated'` | ❌ | The card variant. Defaults to `'outlined'`. |
+| `className` | `string` | ❌ | Extra CSS class added to the root element. |
+
+## Slot Props
+
+The default scoped slot receives `InviteToOrganizationUnitRenderProps`:
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `components` | `any[]` | The step's components, headings included, with their labels as flow template literals. |
+| `additionalData` | `Record<string, string>` | The step's additional data, such as `roleOptions` for a `ROLE_SELECT` input and `inviteLink`. |
+| `title` | `string` | The step's first `HEADING_1` text, translated. |
+| `subtitle` | `string` | The step's first `HEADING_2` or `SUBTITLE_1` text, translated. |
+| `values` | `Record<string, string>` | The step's values, by input `ref`. |
+| `fieldErrors` | `Record<string, string>` | Validation messages, by input `ref`. |
+| `touched` | `Record<string, boolean>` | The inputs the user has left, by input `ref`. |
+| `isValid` | `boolean` | Whether the last submit passed validation. |
+| `isLoading` | `boolean` | Whether a request is in progress. |
+| `error` | `Error \| null` | The last failure, with a translated message. |
+| `executionId` | `string` | The ID of the flow execution. |
+| `meta` | `FlowMetadataResponse \| null` | The flow metadata. |
+| `handleInputChange` | `(name: string, value: string) => void` | Sets a value. |
+| `handleInputBlur` | `(name: string) => void` | Marks an input as touched. |
+| `handleSubmit` | `(component, data?) => Promise<void>` | Validates the step and submits it with the action of `component`. |
+| `resetFlow` | `() => void` | Clears the flow so it starts again. |
+
+## `<BaseInviteToOrganizationUnit />`
+
+`BaseInviteToOrganizationUnit` is the component that `InviteToOrganizationUnit` renders. It holds no SDK state and makes no request: pass it `onInitialize`, which starts the flow, and `onSubmit`, which submits a step. Each takes the request body and resolves to the response body. It takes every prop above and the same default scoped slot, plus:
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `onInitialize` | `(payload: Record<string, any>) => Promise<InviteUserFlowResponse>` | ✅ | Starts the flow. |
+| `onSubmit` | `(payload: Record<string, any>) => Promise<InviteUserFlowResponse>` | ✅ | Submits a step. |
+| `isInitialized` | `boolean` | ❌ | The flow starts once this is `true`. Defaults to `true`. |
+
+## Related
+
+- [Invite Members](../../../../../use-cases/b2b/journeys/invite-members) sets up the invitation flow and explains how the person accepts.
