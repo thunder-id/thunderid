@@ -98,13 +98,13 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 
 	// Resolve any explicit resource identifier to an echo RS (ID == Identifier); an empty identifier
 	// resolves to the configured default resource server, as the default-aware provider does.
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, identifier string, _ []string) *providers.ResourceServer {
 			if identifier == "" {
 				return &providers.ResourceServer{ID: testDefaultRSID, Identifier: testDefaultRSIdentifier}
 			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
+		}, func(_ context.Context, _ string, _ []string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
@@ -163,13 +163,13 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 // stubDefaultResourceServer wires the resource mock so that a request carrying no resource (empty
 // identifier) resolves to the configured default resource server.
 func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer() {
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, identifier string, _ []string) *providers.ResourceServer {
 			if identifier == "" {
 				return &providers.ResourceServer{ID: testDefaultRSID, Identifier: testDefaultRSIdentifier}
 			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
+		}, func(_ context.Context, _ string, _ []string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
@@ -1457,7 +1457,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_TokenReques
 	authCodeWithTwoResources.Scopes = testScopeReadWrite
 
 	suite.mockResourceService.ExpectedCalls = nil
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testResourceURL).
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, testResourceURL, mock.Anything).
 		Return(&providers.ResourceServer{ID: testResourceURL, Identifier: testResourceURL}, nil)
 	// rs1 only supports "read"; "write" is invalid.
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testResourceURL, mock.Anything).
@@ -1591,7 +1591,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DownscopeVa
 	authCode.Scopes = "read write"
 
 	suite.mockResourceService.ExpectedCalls = nil
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testResourceURL).
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, testResourceURL, mock.Anything).
 		Return(&providers.ResourceServer{ID: testResourceURL, Identifier: testResourceURL}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testResourceURL, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
