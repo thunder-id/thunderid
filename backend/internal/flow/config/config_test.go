@@ -55,6 +55,29 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 	s.Zero(result.Session.AbsoluteTimeoutSeconds)
 }
 
+func (s *FlowConfigTestSuite) TestFromServerRuntimeSessionTracking() {
+	cases := []struct {
+		name    string
+		enabled *bool
+		want    bool
+	}{
+		{name: "enabled", enabled: new(true), want: true},
+		{name: "disabled", enabled: new(false), want: false},
+		{name: "unset", enabled: nil, want: false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			config.ResetServerRuntime()
+			cfg := &config.Config{
+				Session: config.SessionConfig{Tracking: config.SessionTrackingConfig{Enabled: tc.enabled}},
+			}
+			s.Require().NoError(config.InitializeServerRuntime("/tmp/test-flow-config", cfg))
+
+			s.Equal(tc.want, FromServerRuntime().SessionTracking)
+		})
+	}
+}
+
 func (s *FlowConfigTestSuite) TestFromServerRuntimeSecureCookies() {
 	cases := []struct {
 		name      string

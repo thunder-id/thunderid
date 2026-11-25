@@ -291,6 +291,20 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_GateHostnameRe
 	assert.Equal(suite.T(), "signin.example.org", ex.(*passkeyAuthExecutor).gateHostname)
 }
 
+func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_SessionTrackingReachesTheAuthAssertExecutor() {
+	for _, tracking := range []bool{true, false} {
+		reg, err := Initialize(suite.depsForBuiltInRegistration(), flowconfig.Config{
+			Flow:            engineconfig.FlowConfig{Executors: []string{ExecutorNameAuthAssert}},
+			SessionTracking: tracking,
+		})
+		require.NoError(suite.T(), err)
+
+		ex, err := reg.GetExecutor(ExecutorNameAuthAssert)
+		require.NoError(suite.T(), err)
+		assert.Equal(suite.T(), tracking, ex.(*authAssertExecutor).sessionTracking)
+	}
+}
+
 func (suite *BuiltInExecutorRegistrationTestSuite) TestSetActorProvider_ReachesThePreSuspendExecutor() {
 	reg, err := Initialize(suite.depsForBuiltInRegistration(), flowconfig.Config{
 		Flow: engineconfig.FlowConfig{Executors: []string{ExecutorNamePreSuspend, ExecutorNameInviteExecutor}},

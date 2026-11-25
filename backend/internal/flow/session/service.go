@@ -50,6 +50,11 @@ type Service interface {
 	// true when the authenticated subject conflicts with the existing session's subject.
 	SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (SaveCheckpointResult, error)
 
+	// CreateDirect records a direct session for a login that established no SSO session: the session and the
+	// signing-in application as its participant, written in one transaction. A direct session has no handle,
+	// so no later login can reuse it.
+	CreateDirect(ctx context.Context, in CreateDirectInput) error
+
 	// LoadCheckpoint returns the session referenced by in.Handle and the checkpoint's context, refreshes
 	// the session's last-active timestamp and idle deadline (throttled: skipped when the last refresh is
 	// within the activity-refresh window), and records the joining application as a participant. It uses
@@ -72,12 +77,12 @@ type Service interface {
 	// against ending a session grouped under a different flow. It is idempotent, returning (nil, nil)
 	// when no session matches the handle, and returns the deleted session on success.
 	Terminate(ctx context.Context, handle, flowID string) (*Session, error)
-	// TerminateBySubject ends every SSO session belonging to the subject, revoking the subject's
-	// grants first so no session is deleted while its tokens remain live. It is idempotent, returning
-	// nil when the subject holds no sessions.
+	// TerminateBySubject ends every session belonging to the subject, SSO and direct, revoking the
+	// subject's grants first so no session is deleted while its tokens remain live. It notifies only for
+	// sessions that had not expired. It is idempotent, returning nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
 
-	// DetachApplication detaches an application from every SSO session it participates in: for each
+	// DetachApplication detaches an application from every session it participates in: for each
 	// organization unit it signed in under, it revokes that participation's token family and drops its
 	// row, deleting the session itself only when the application was its last participant. It is
 	// idempotent, returning nil when the application participates in none.
@@ -126,6 +131,21 @@ type SaveCheckpointInput struct {
 	TokenFamilyID string
 	// ClientInfo is the requesting client's metadata, recorded on a session this save establishes and
 	// used to update the last-active IP of an existing one.
+	ClientInfo ClientInfo
+}
+
+// CreateDirectInput carries what recording a direct session needs.
+type CreateDirectInput struct {
+	// SessionID is the id the login's assertion carries as sid.
+	SessionID   string
+	SubjectID   string
+	FlowID      string
+	FlowVersion int
+	AppID       string
+	// TokenFamilyID is the token family id (tfid) of the login's grant. It is stored on the participant so
+	// ending the session revokes the grant.
+	TokenFamilyID string
+	// ClientInfo is the requesting client's metadata, recorded on the session.
 	ClientInfo ClientInfo
 }
 
@@ -279,6 +299,28 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		AuthenticatedAt:   target.AuthenticatedAt,
 		AbsoluteExpiresAt: target.AbsoluteExpiresAt,
 	}, nil
+}
+
+// CreateDirect implements Service.
+func (s *service) CreateDirect(ctx context.Context, in CreateDirectInput) error {
+	participantOU, err := s.participantOU(ctx, in.SubjectID, participantOUID(ctx))
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	sess := s.newSession(TypeDirect, in.SessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo, now)
+	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := s.store.Create(txCtx, sess); err != nil {
+			return err
+		}
+		return s.recordParticipant(txCtx, in.SessionID, in.AppID, participantOU, in.TokenFamilyID, now)
+	}); err != nil {
+		return fmt.Errorf("failed to record direct session: %w", err)
+	}
+
+	s.logger.Debug(ctx, "Recorded direct session", log.String("flowID", in.FlowID))
+	return nil
 }
 
 // LoadCheckpoint implements Service.
@@ -573,7 +615,7 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	return sess, nil
 }
 
-// TerminateBySubject ends every SSO session belonging to the subject. Repeated calls are idempotent.
+// TerminateBySubject ends every session belonging to the subject. Repeated calls are idempotent.
 //
 // Unlike Terminate, this does not revoke token families. Subject-wide termination is driven by a
 // criteria revocation on the subject dimension, which already matches every token those sessions
@@ -624,11 +666,16 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 		return fmt.Errorf("failed to terminate subject sessions: %w", txErr)
 	}
 
-	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	s.logger.Debug(ctx, "Terminated all sessions for subject", log.Int("sessionCount", len(sessions)))
 	if participantsBySession != nil {
+		now := time.Now()
 		for _, sess := range sessions {
 			if !removed[sess.SessionID] {
 				// A concurrent termination already removed this session and notifies for it.
+				continue
+			}
+			if expired(sess.IdleExpiresAt, now) || expired(sess.AbsoluteExpiresAt, now) {
+				// Expiry already ended it, and expiry sends no notification.
 				continue
 			}
 			s.terminationTopic.Notify(ctx, TerminatedSession{
@@ -642,7 +689,7 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	return nil
 }
 
-// DetachApplication detaches an application from every SSO session it participates in. Narrower than
+// DetachApplication detaches an application from every session it participates in. Narrower than
 // Terminate: only this application's participation goes, and the session is deleted once nothing is left
 // to participate. Each token family is revoked before its row is dropped, in one transaction.
 func (s *service) DetachApplication(ctx context.Context, appID string) error {
@@ -777,29 +824,10 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 		return nil, false, fmt.Errorf("failed to generate session handle: %w", err)
 	}
 
-	now := time.Now().UTC()
-	newSession := Session{
-		SessionID:       sessionID,
-		SubjectID:       in.SubjectID,
-		FlowID:          in.FlowID,
-		FlowVersion:     in.FlowVersion,
-		FlowExecutionID: in.ExecutionID,
-		HandleID:        handle,
-		AuthenticatedAt: now,
-		CreatedAt:       now,
-		LastActiveAt:    now,
-		// The idle deadline slides on each activity refresh; the absolute deadline is fixed here and
-		// caps the session's total lifetime. The resolver rejects a session past either deadline.
-		IdleExpiresAt:     now.Add(s.timeouts.Idle),
-		AbsoluteExpiresAt: now.Add(s.timeouts.Absolute),
-		Properties: SessionProperties{
-			UserAgent:    in.ClientInfo.UserAgent,
-			CreationIP:   in.ClientInfo.IP,
-			LastActiveIP: in.ClientInfo.IP,
-		},
-		State:   StateActive,
-		Version: 1,
-	}
+	newSession := s.newSession(TypeSSO, sessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo,
+		time.Now().UTC())
+	newSession.FlowExecutionID = in.ExecutionID
+	newSession.HandleID = handle
 	if err := s.store.Create(ctx, newSession); err != nil {
 		return nil, false, err
 	}
@@ -818,6 +846,32 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 		s.logger.Debug(ctx, "Established SSO session", log.String("flowID", in.FlowID))
 	}
 	return established, created, nil
+}
+
+// newSession builds an active session of the given type, created at now.
+func (s *service) newSession(sessionType Type, sessionID, subjectID, flowID string, flowVersion int,
+	client ClientInfo, now time.Time) Session {
+	return Session{
+		SessionID:       sessionID,
+		Type:            sessionType,
+		SubjectID:       subjectID,
+		FlowID:          flowID,
+		FlowVersion:     flowVersion,
+		AuthenticatedAt: now,
+		CreatedAt:       now,
+		LastActiveAt:    now,
+		// The idle deadline slides on each activity refresh; the absolute deadline is fixed here and
+		// caps the session's total lifetime. The resolver rejects a session past either deadline.
+		IdleExpiresAt:     now.Add(s.timeouts.Idle),
+		AbsoluteExpiresAt: now.Add(s.timeouts.Absolute),
+		Properties: SessionProperties{
+			UserAgent:    client.UserAgent,
+			CreationIP:   client.IP,
+			LastActiveIP: client.IP,
+		},
+		State:   StateActive,
+		Version: 1,
+	}
 }
 
 // recordParticipant records the application as a participant of the session under the organization

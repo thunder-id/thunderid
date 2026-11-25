@@ -2162,3 +2162,46 @@ notification:
 		assert.Error(suite.T(), err, unknown)
 	}
 }
+
+// A deployment switches session tracking off, and an omitted value keeps the shipped default.
+func (suite *ConfigTestSuite) TestSessionTrackingEnabledOverridesTheShippedDefault() {
+	base := &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(true)}}}
+	mergeConfigs(base, &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(false)}}})
+	assert.False(suite.T(), base.Session.Tracking.IsEnabled(), "false must override the true default")
+
+	kept := &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(true)}}}
+	mergeConfigs(kept, &Config{})
+	assert.True(suite.T(), kept.Session.Tracking.IsEnabled(), "an omitted value keeps the default")
+
+	assert.False(suite.T(), SessionTrackingConfig{}.IsEnabled(), "a configuration without the key tracks nothing")
+}
+
+func (suite *ConfigTestSuite) TestTheShippedDefaultsTurnSessionTrackingOn() {
+	data, err := os.ReadFile("../../../cmd/server/config/default.json")
+	suite.Require().NoError(err)
+	var defaults Config
+	suite.Require().NoError(json.Unmarshal(data, &defaults))
+
+	assert.True(suite.T(), defaults.Session.Tracking.IsEnabled())
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigReadsSessionTrackingEnabled() {
+	const content = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+session:
+  tracking:
+    enabled: false
+`
+	tempDir := suite.T().TempDir()
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "session*.yaml", content), "", tempDir)
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), SessionTrackingConfig{Enabled: boolPtr(false)}, cfg.Session.Tracking)
+}

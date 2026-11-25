@@ -200,7 +200,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	}
 
 	// SSO inputs ride on the context (transient, never persisted, and off the engine contract);
-	// only the SSO-Check and Session nodes read them.
+	// only the SSO-Check, Session and auth assert nodes read them.
 	ssoCtx := session.WithSSOInputs(ctx.Context, session.SSOInputs{
 		Handle:      ctx.SSOHandleIn,
 		FlowID:      ssoFlowID(ctx),

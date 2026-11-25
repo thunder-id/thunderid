@@ -91,6 +91,63 @@ func (_c *ServiceMock_AbsoluteTimeout_Call) RunAndReturn(run func() time.Duratio
 	return _c
 }
 
+// CreateDirect provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) CreateDirect(ctx context.Context, in CreateDirectInput) error {
+	ret := _mock.Called(ctx, in)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateDirect")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, CreateDirectInput) error); ok {
+		r0 = returnFunc(ctx, in)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// ServiceMock_CreateDirect_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateDirect'
+type ServiceMock_CreateDirect_Call struct {
+	*mock.Call
+}
+
+// CreateDirect is a helper method to define mock.On call
+//   - ctx context.Context
+//   - in CreateDirectInput
+func (_e *ServiceMock_Expecter) CreateDirect(ctx any, in any) *ServiceMock_CreateDirect_Call {
+	return &ServiceMock_CreateDirect_Call{Call: _e.mock.On("CreateDirect", ctx, in)}
+}
+
+func (_c *ServiceMock_CreateDirect_Call) Run(run func(ctx context.Context, in CreateDirectInput)) *ServiceMock_CreateDirect_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 CreateDirectInput
+		if args[1] != nil {
+			arg1 = args[1].(CreateDirectInput)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_CreateDirect_Call) Return(err error) *ServiceMock_CreateDirect_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *ServiceMock_CreateDirect_Call) RunAndReturn(run func(ctx context.Context, in CreateDirectInput) error) *ServiceMock_CreateDirect_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DetachApplication provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) DetachApplication(ctx context.Context, appID string) error {
 	ret := _mock.Called(ctx, appID)

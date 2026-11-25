@@ -218,6 +218,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Establishes() {
 	suite.NotEmpty(res.Handle)
 	suite.Require().NotNil(created)
 	suite.Equal(created.AbsoluteExpiresAt, res.AbsoluteExpiresAt, "the result says when the new session ends")
+	suite.Equal(TypeSSO, created.Type)
 	suite.Equal("user-1", created.SubjectID)
 	suite.Equal("flow-1", created.FlowID)
 	suite.Equal(3, created.FlowVersion)
@@ -1633,4 +1634,119 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForRowsItRemov
 	err := svc.TerminateBySubject(context.Background(), "user-1")
 
 	suite.Require().NoError(err)
+}
+
+// An expired session is deleted without a notification, since expiry already ended it.
+func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForLiveSessions() {
+	svc, m, listener := suite.newServiceWithListener(nil)
+	now := time.Now()
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{
+		{SessionID: "live", IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(2 * time.Hour)},
+		{SessionID: "idle", IdleExpiresAt: now.Add(-time.Minute), AbsoluteExpiresAt: now.Add(time.Hour)},
+		{SessionID: "ended", IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(-time.Minute)},
+	}, nil)
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"live", "idle", "ended"}).Return(nil, nil)
+	runTx(m)
+	for _, sessionID := range []string{"live", "idle", "ended"} {
+		m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil)
+		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
+		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
+	}
+	listener.EXPECT().OnEvent(mock.Anything, mock.MatchedBy(func(ended TerminatedSession) bool {
+		return ended.SessionID == "live"
+	})).Once()
+
+	err := svc.TerminateBySubject(context.Background(), "user-1")
+
+	suite.Require().NoError(err)
+}
+
+// --- CreateDirect ---
+
+func directInput() CreateDirectInput {
+	return CreateDirectInput{
+		SessionID: "direct-1", SubjectID: "user-1", FlowID: "flow-1", FlowVersion: 3, AppID: "app-123",
+		TokenFamilyID: "tfid-1",
+		ClientInfo:    ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0"},
+	}
+}
+
+func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheSessionAndItsParticipant() {
+	svc, m := suite.newService()
+	runTx(m)
+	var created Session
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s Session) error { created = s; return nil })
+	var recorded Participant
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, p Participant) error { recorded = p; return nil })
+
+	err := svc.CreateDirect(context.Background(), directInput())
+
+	suite.Require().NoError(err)
+	suite.Equal("direct-1", created.SessionID)
+	suite.Equal(TypeDirect, created.Type)
+	suite.Equal("user-1", created.SubjectID)
+	suite.Equal("flow-1", created.FlowID)
+	suite.Equal(3, created.FlowVersion)
+	suite.Empty(created.FlowExecutionID, "a direct session records no flow execution")
+	suite.Empty(created.HandleID, "a direct session has no handle to resume it by")
+	suite.Equal(StateActive, created.State)
+	suite.Equal(created.CreatedAt.Add(svc.timeouts.Idle), created.IdleExpiresAt)
+	suite.Equal(created.CreatedAt.Add(svc.timeouts.Absolute), created.AbsoluteExpiresAt)
+	suite.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", created.Properties.UserAgent)
+	suite.Equal("203.0.113.10", created.Properties.CreationIP)
+	suite.Equal("203.0.113.10", created.Properties.LastActiveIP)
+	suite.Equal(Participant{SessionID: "direct-1", AppID: "app-123", TokenFamilyID: "tfid-1",
+		FirstJoinedAt: created.CreatedAt, LastActiveAt: created.CreatedAt}, recorded)
+}
+
+func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheParticipantUnderItsOU() {
+	svc, m := suite.newService()
+	svc.ouEligibility = suite.subjectMaySignIn(true)
+	runTx(m)
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(nil)
+	var recorded Participant
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, p Participant) error { recorded = p; return nil })
+
+	err := svc.CreateDirect(boundaryContext("ou-x"), directInput())
+
+	suite.Require().NoError(err)
+	suite.Equal("ou-x", recorded.OUID)
+}
+
+func (suite *ServiceTestSuite) TestCreateDirect_FailsWhenTheOUCannotBeChecked() {
+	svc, m := suite.newService()
+	e := NewOUEligibilityMock(suite.T())
+	e.EXPECT().IsEligibleOU(mock.Anything, "ou-x").Return(false, &tidcommon.InternalServerError).Once()
+	svc.ouEligibility = e
+
+	err := svc.CreateDirect(boundaryContext("ou-x"), directInput())
+
+	suite.Error(err)
+	m.store.AssertNotCalled(suite.T(), "Create", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestCreateDirect_FailsWhenTheSessionCannotBeWritten() {
+	svc, m := suite.newService()
+	runTx(m)
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(errors.New("db down"))
+
+	err := svc.CreateDirect(context.Background(), directInput())
+
+	suite.Error(err)
+	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
+}
+
+// A session whose participant can't be written would hold a grant no sign-out could revoke, so it fails.
+func (suite *ServiceTestSuite) TestCreateDirect_FailsWhenTheParticipantCannotBeWritten() {
+	svc, m := suite.newService()
+	runTx(m)
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+
+	err := svc.CreateDirect(context.Background(), directInput())
+
+	suite.Error(err)
 }

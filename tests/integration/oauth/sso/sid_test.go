@@ -5,6 +5,7 @@ package sso
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -27,7 +28,7 @@ const (
 )
 
 // noSessionAuthFlow is the suite's authentication flow with the SSO nodes removed: credentials are
-// always prompted and no session is established, so the flow has nothing to name as a sid.
+// always prompted and no SSO session is established, so each login records a direct session.
 var noSessionAuthFlow = testutils.Flow{
 	Name:     "SSO Sid No Session Auth Flow",
 	FlowType: "AUTHENTICATION",
@@ -141,9 +142,9 @@ func (ts *SSOLogoutTestSuite) TestSid_ChangesAfterSignOutAndReLogin() {
 	ts.NotEqual(firstSid, secondSid, "a new session must be named by a new sid")
 }
 
-// TestSid_AbsentWithoutSessionNode verifies a flow that establishes no SSO session issues an ID token
-// without a sid claim.
-func (ts *SSOLogoutTestSuite) TestSid_AbsentWithoutSessionNode() {
+// TestSid_NamesTheDirectSessionWithoutSessionNode verifies a flow that establishes no SSO session records a
+// direct session for each login, which the ID token names with a sid claim, and sets no SSO cookie.
+func (ts *SSOLogoutTestSuite) TestSid_NamesTheDirectSessionWithoutSessionNode() {
 	ts.createUser(sidNoSessionUser)
 
 	flowID, err := testutils.CreateFlow(noSessionAuthFlow)
@@ -200,9 +201,21 @@ func (ts *SSOLogoutTestSuite) TestSid_AbsentWithoutSessionNode() {
 	tokens := ts.exchangeCodeAsClient(client, code, sidNoSessClientID, sidNoSessSecret)
 	ts.Require().NotEmpty(tokens.IDToken, "an ID token should still be issued for openid scope")
 
-	_, has := ts.sidClaim(tokens.IDToken)
-	ts.False(has, "a flow without a Session node must not issue a sid claim")
+	sid, has := ts.sidClaim(tokens.IDToken)
+	ts.True(has, "a flow without a Session node must name its direct session with a sid claim")
+	ts.Require().NotEmpty(sid)
 	ts.Empty(ts.ssoCookieNames(client), "no SSO cookie should be set by a flow without a Session node")
+
+	row, err := testutils.QueryRuntimeDB(fmt.Sprintf(
+		`SELECT TYPE, FLOW_EXECUTION_ID, HANDLE_ID FROM "SESSION" WHERE SESSION_ID = '%s';`, sid))
+	ts.Require().NoError(err, "failed to read the direct session")
+	ts.Equal("DIRECT||", row, "a direct session has no flow execution or handle")
+
+	// A direct session is never reused, so the next login prompts again and records its own.
+	again := ts.loginTokensAsClient(client, sidNoSessClientID, sidNoSessSecret, sidNoSessionUser, "sid_nosession_2")
+	againSid, _ := ts.sidClaim(again.IDToken)
+	ts.Require().NotEmpty(againSid)
+	ts.NotEqual(sid, againSid, "each login must record its own session")
 }
 
 // sidClaim decodes a JWT and returns its sid claim, reporting whether the claim is present.

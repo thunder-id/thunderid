@@ -15,6 +15,7 @@ func Initialize(deps ExecutorDependencies, flowConfig flowconfig.Config) (Execut
 	reg := newExecutorRegistry()
 	deps.tokenLeeway = flowConfig.TokenLeeway
 	deps.gateHostname = flowConfig.GateHostname
+	deps.sessionTracking = flowConfig.SessionTracking
 	names := flowConfig.Flow.Executors
 	if err := registerBuiltInExecutors(reg, deps, names); err != nil {
 		return nil, err

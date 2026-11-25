@@ -11,17 +11,18 @@ import (
 )
 
 var (
-	// queryCreateSession inserts a new SSO session. It is idempotent per establishing flow execution:
+	// queryCreateSession inserts a new session. It is idempotent per establishing flow execution:
 	// on a FLOW_EXECUTION_ID conflict it does nothing, so concurrent joins in one execution converge
 	// on the single session that won the race (the caller re-reads it via queryGetSessionByExecutionID).
+	// A direct session has no flow execution, so it never conflicts.
 	// The ON CONFLICT ... DO NOTHING form is valid in both PostgreSQL and SQLite.
 	queryCreateSession = model.DBQuery{
 		ID: "SEQ-SESS-01",
-		Query: `INSERT INTO "SESSION" (SESSION_ID, DEPLOYMENT_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, ` +
+		Query: `INSERT INTO "SESSION" (SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, ` +
 			`FLOW_EXECUTION_ID, HANDLE_ID, ` +
 			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
-			`PROPERTIES, STATE, VERSION) ` +
-			`VALUES ($1, $2, 'SSO', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ` +
+			`PROPERTIES, STATE, VERSION, DEPLOYMENT_ID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ` +
 			`ON CONFLICT (FLOW_EXECUTION_ID, DEPLOYMENT_ID) DO NOTHING`,
 	}
 
@@ -29,7 +30,7 @@ var (
 	// (state, deadlines) are applied by the resolver, not here.
 	queryGetSessionByHandle = model.DBQuery{
 		ID: "SEQ-SESS-02",
-		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
 			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
 			`PROPERTIES, STATE, VERSION ` +
 			`FROM "SESSION" WHERE HANDLE_ID = $1 AND DEPLOYMENT_ID = $2 AND TYPE = 'SSO'`,
@@ -40,7 +41,7 @@ var (
 	// checkpoints to the session an earlier join in the same execution already created.
 	queryGetSessionByExecutionID = model.DBQuery{
 		ID: "SEQ-SESS-03",
-		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
 			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
 			`PROPERTIES, STATE, VERSION ` +
 			`FROM "SESSION" WHERE FLOW_EXECUTION_ID = $1 AND DEPLOYMENT_ID = $2 AND TYPE = 'SSO'`,
@@ -128,10 +129,10 @@ var (
 		Query: `DELETE FROM "SESSION" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryListSessionsBySubject returns all SSO sessions owned by a subject.
+	// queryListSessionsBySubject returns every session owned by a subject, SSO and direct.
 	queryListSessionsBySubject = model.DBQuery{
 		ID: "SEQ-SESS-13",
-		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
 			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
 			`PROPERTIES, STATE, VERSION ` +
 			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND DEPLOYMENT_ID = $2`,
@@ -161,8 +162,7 @@ var (
 		Query: `UPDATE "SESSION" SET LAST_ACTIVE_AT = $1, IDLE_EXPIRES_AT = $2, ` +
 			`VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
 			`WHERE SESSION_ID = $3 AND STATE = $4 AND LAST_ACTIVE_AT <= $5 ` +
-			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $1) ` +
-			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $1) AND DEPLOYMENT_ID = $6`,
+			`AND IDLE_EXPIRES_AT > $1 AND ABSOLUTE_EXPIRES_AT > $1 AND DEPLOYMENT_ID = $6`,
 	}
 )
 

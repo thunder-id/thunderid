@@ -387,6 +387,10 @@ flow:
   {{- end }}
 {{- end }}
 
+session:
+  tracking:
+    enabled: {{ .Values.configuration.session.tracking.enabled }}
+
 import:
   timeout_seconds: {{ .Values.configuration.import.timeoutSeconds }}
 
