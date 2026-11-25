@@ -91,7 +91,7 @@ Access tokens issued earlier stay valid until they expire, except after a role i
 | `exp` / `iat` | New values |
 | `cnf.jkt` (DPoP) | Preserved |
 | `authorization_details` | Details of reusable types are preserved while their type is unchanged; one-off details are dropped. Narrowed when `authorization_details` is supplied |
-| `auth_time` | Not carried into refreshed tokens |
+| `auth_time` | Preserved in the access token, so a refresh does not make the sign-in recent again. Not carried into a refreshed ID Token |
 | `sid` (ID Token) | Unchanged. A refreshed ID Token names the same SSO session as the original |
 
 </details>

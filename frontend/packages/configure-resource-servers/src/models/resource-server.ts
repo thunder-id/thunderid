@@ -84,6 +84,8 @@ export interface Action {
   description?: string | null;
   permission: string;
   kind?: ActionKind;
+  /** Maximum seconds since the subject authenticated for a token to be used for this action. */
+  maxAge?: number;
 }
 
 export interface ActionListResponse {
@@ -137,6 +139,8 @@ export interface CreateActionRequest {
 export interface UpdateActionRequest {
   name?: string;
   description?: string | null;
+  /** Send the action's current maxAge to keep it; the update replaces the action's fields. */
+  maxAge?: number;
 }
 
 export interface ResourcePermissions {

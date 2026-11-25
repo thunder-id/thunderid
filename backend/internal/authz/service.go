@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package authz provides authorization service functionality.
@@ -18,7 +18,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/authz/engine"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/resource"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const loggerComponentName = "AuthorizationService"
@@ -77,7 +79,30 @@ func (s *authorizationService) EvaluateAccessBatch(
 			Evaluations: []providers.AccessEvaluationResponse{},
 		}, nil
 	}
-	enrichedRequest, svcErr := s.enrichRequest(ctx, request)
+
+	responses := make([]providers.AccessEvaluationResponse, len(request.Evaluations))
+	pending := providers.AccessEvaluationsRequest{
+		Evaluations: make([]providers.AccessEvaluationRequest, 0, len(request.Evaluations)),
+	}
+	pendingIndexes := make([]int, 0, len(request.Evaluations))
+	subjects := make(map[string]*providers.Entity)
+	for i, evaluation := range request.Evaluations {
+		granted, svcErr := s.grantsSelfServicePermission(ctx, evaluation, subjects)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if granted {
+			responses[i] = providers.AccessEvaluationResponse{Decision: true}
+			continue
+		}
+		pending.Evaluations = append(pending.Evaluations, evaluation)
+		pendingIndexes = append(pendingIndexes, i)
+	}
+	if len(pending.Evaluations) == 0 {
+		return &providers.AccessEvaluationsResponse{Evaluations: responses}, nil
+	}
+
+	enrichedRequest, svcErr := s.enrichRequest(ctx, pending, subjects)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -93,7 +118,29 @@ func (s *authorizationService) EvaluateAccessBatch(
 	logger.Debug(ctx, "Authorization evaluation completed",
 		log.Int("evaluationCount", len(request.Evaluations)))
 
-	return fromEngineAccessEvaluationsResponse(evaluationResp), nil
+	evaluated := fromEngineAccessEvaluationsResponse(evaluationResp)
+	for j, index := range pendingIndexes {
+		if j < len(evaluated.Evaluations) {
+			responses[index] = evaluated.Evaluations[j]
+		}
+	}
+	return &providers.AccessEvaluationsResponse{Evaluations: responses}, nil
+}
+
+// grantsSelfServicePermission reports whether the evaluation asks for a self-service permission of the System
+// resource server for an existing user, on no resource or on the user. A user holds those without a role: they
+// act only on the user's own account. subjects caches the subjects already read.
+func (s *authorizationService) grantsSelfServicePermission(
+	ctx context.Context, evaluation providers.AccessEvaluationRequest, subjects map[string]*providers.Entity,
+) (bool, *tidcommon.ServiceError) {
+	if evaluation.ResourceServer.ID != serverconst.SystemResourceServerID ||
+		evaluation.Subject.Category != providers.EntityCategoryUser.String() || evaluation.Subject.ID == "" ||
+		(evaluation.ResourceServer.ResourceID != "" && evaluation.ResourceServer.ResourceID != evaluation.Subject.ID) ||
+		!security.IsSelfServicePermission(evaluation.Permission.Name) || s.entityService == nil {
+		return false, nil
+	}
+	subject, svcErr := s.resolveSubject(ctx, evaluation.Subject, subjects)
+	return subject != nil, svcErr
 }
 
 // evaluateWithResolvedEngines routes evaluations to connection-backed or default engines and preserves order.
@@ -238,10 +285,12 @@ func (s *authorizationService) getResourceServer(
 	return s.resourceService.GetResourceServer(ctx, strings.TrimSpace(resourceServer.ID))
 }
 
-// enrichRequest adds persisted entity attributes to supported subject evaluations.
+// enrichRequest adds persisted entity attributes to supported subject evaluations. subjects caches the subjects
+// already read.
 func (s *authorizationService) enrichRequest(
 	ctx context.Context,
 	request providers.AccessEvaluationsRequest,
+	subjects map[string]*providers.Entity,
 ) (providers.AccessEvaluationsRequest, *tidcommon.ServiceError) {
 	if s.entityService == nil {
 		return request, nil
@@ -249,27 +298,14 @@ func (s *authorizationService) enrichRequest(
 	enriched := providers.AccessEvaluationsRequest{
 		Evaluations: make([]providers.AccessEvaluationRequest, 0, len(request.Evaluations)),
 	}
-	entities := make(map[string]*providers.Entity)
 	for _, evaluation := range request.Evaluations {
 		if !supportsSubjectEnrichment(evaluation.Subject.Category) {
 			enriched.Evaluations = append(enriched.Evaluations, evaluation)
 			continue
 		}
-		entityKey := evaluation.Subject.Category + ":" + evaluation.Subject.ID
-		subjectEntity, ok := entities[entityKey]
-		if !ok {
-			resolvedEntity, err := s.entityService.GetEntityProfile(ctx, evaluation.Subject.ID)
-			if err != nil {
-				if !errors.Is(err, entity.ErrEntityNotFound) {
-					return providers.AccessEvaluationsRequest{}, &tidcommon.InternalServerError
-				}
-				resolvedEntity = nil
-			}
-			if resolvedEntity != nil && resolvedEntity.Category.String() != evaluation.Subject.Category {
-				resolvedEntity = nil
-			}
-			subjectEntity = resolvedEntity
-			entities[entityKey] = subjectEntity
+		subjectEntity, svcErr := s.resolveSubject(ctx, evaluation.Subject, subjects)
+		if svcErr != nil {
+			return providers.AccessEvaluationsRequest{}, svcErr
 		}
 		if subjectEntity != nil {
 			properties := map[string]interface{}{}
@@ -292,6 +328,28 @@ func (s *authorizationService) enrichRequest(
 		enriched.Evaluations = append(enriched.Evaluations, evaluation)
 	}
 	return enriched, nil
+}
+
+// resolveSubject reads the subject's entity once per batch. It is nil when the subject does not exist or its
+// category differs.
+func (s *authorizationService) resolveSubject(ctx context.Context, subject providers.Subject,
+	subjects map[string]*providers.Entity) (*providers.Entity, *tidcommon.ServiceError) {
+	key := subject.Category + ":" + subject.ID
+	if resolved, ok := subjects[key]; ok {
+		return resolved, nil
+	}
+	resolved, err := s.entityService.GetEntityProfile(ctx, subject.ID)
+	if err != nil {
+		if !errors.Is(err, entity.ErrEntityNotFound) {
+			return nil, &tidcommon.InternalServerError
+		}
+		resolved = nil
+	}
+	if resolved != nil && resolved.Category.String() != subject.Category {
+		resolved = nil
+	}
+	subjects[key] = resolved
+	return resolved, nil
 }
 
 // supportsSubjectEnrichment reports whether a subject category has persisted entity attributes.

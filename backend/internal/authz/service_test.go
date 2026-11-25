@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -22,7 +22,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/resource"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	enginemock "github.com/thunder-id/thunderid/tests/mocks/authz/engine"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -148,6 +150,123 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchSuccess() {
 	suite.Len(response.Evaluations, 2)
 	suite.True(response.Evaluations[0].Decision)
 	suite.False(response.Evaluations[1].Decision)
+}
+
+// selfServiceAuthz returns a service whose entity service reads each subject in reads exactly that many times.
+// user1 is a user, agent1 an agent and unknown does not exist.
+func (suite *AuthorizationServiceTestSuite) selfServiceAuthz(reads map[string]int) providers.AuthorizationProvider {
+	security.InitDataPlanePermissions("")
+	suite.T().Cleanup(func() { security.InitControlPlanePermissions("") })
+	entities := map[string]*providers.Entity{
+		"user1":  {ID: "user1", Category: providers.EntityCategoryUser},
+		"agent1": {ID: "agent1", Category: providers.EntityCategoryAgent},
+	}
+	entityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	for id, times := range reads {
+		var err error
+		if entities[id] == nil {
+			err = entitypkg.ErrEntityNotFound
+		}
+		entityService.On("GetEntityProfile", mock.Anything, id).Return(entities[id], err).Times(times)
+	}
+	return newAuthorizationService(suite.mockEngine, nil, entityService, nil)
+}
+
+// A user holds the System resource server's self-service permissions without a role, so the engine decides only
+// the rest, and the answers keep the request order. The subject is read once for the batch.
+func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchGrantsSelfServicePermissionsToAUser() {
+	service := suite.selfServiceAuthz(map[string]int{"user1": 1})
+	user := providers.Subject{Category: providers.EntityCategoryUser.String(), ID: "user1"}
+	system := providers.AccessEvaluationResourceServer{ID: serverconst.SystemResourceServerID}
+	request := providers.AccessEvaluationsRequest{Evaluations: []providers.AccessEvaluationRequest{
+		{Subject: user, ResourceServer: system, Permission: providers.Permission{Name: "org:user:view"}},
+		{Subject: user, ResourceServer: system, Permission: providers.Permission{Name: "self:credentials:update"}},
+		{Subject: user, ResourceServer: providers.AccessEvaluationResourceServer{
+			ID: serverconst.SystemResourceServerID, ResourceID: "user1"},
+			Permission: providers.Permission{Name: "self:credentials:update"}},
+	}}
+	suite.mockEngine.On("EvaluateAccessBatch", mock.Anything, mock.MatchedBy(
+		func(req engine.AccessEvaluationsRequest) bool {
+			return len(req.Evaluations) == 1 && req.Evaluations[0].Permission.Name == "org:user:view"
+		})).Return(&engine.AccessEvaluationsResponse{
+		Evaluations: []engine.AccessEvaluationResponse{{Decision: false}}}, nil).Once()
+
+	response, err := service.EvaluateAccessBatch(context.Background(), request)
+
+	suite.Nil(err)
+	suite.Require().Len(response.Evaluations, 3)
+	suite.False(response.Evaluations[0].Decision)
+	suite.True(response.Evaluations[1].Decision)
+	suite.True(response.Evaluations[2].Decision)
+}
+
+func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchSelfServiceOnlyNeedsNoEngine() {
+	service := suite.selfServiceAuthz(map[string]int{"user1": 1})
+	request := providers.AccessEvaluationsRequest{Evaluations: []providers.AccessEvaluationRequest{{
+		Subject:        providers.Subject{Category: providers.EntityCategoryUser.String(), ID: "user1"},
+		ResourceServer: providers.AccessEvaluationResourceServer{ID: serverconst.SystemResourceServerID},
+		Permission:     providers.Permission{Name: "self:protectedattributes:update"},
+	}}}
+
+	response, err := service.EvaluateAccessBatch(context.Background(), request)
+
+	suite.Nil(err)
+	suite.Require().Len(response.Evaluations, 1)
+	suite.True(response.Evaluations[0].Decision)
+	suite.mockEngine.AssertNotCalled(suite.T(), "EvaluateAccessBatch", mock.Anything, mock.Anything)
+}
+
+// Only an existing user holds them, only on the System resource server and only on their own account; the
+// engine decides the rest. agent1 is read once as an agent and once as a user.
+func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchLeavesOtherSelfServiceRequestsToTheEngine() {
+	service := suite.selfServiceAuthz(map[string]int{"user1": 1, "agent1": 2, "unknown": 1})
+	self := providers.Permission{Name: "self:credentials:update"}
+	system := providers.AccessEvaluationResourceServer{ID: serverconst.SystemResourceServerID}
+	userCategory := providers.EntityCategoryUser.String()
+	otherUser := providers.AccessEvaluationResourceServer{ID: serverconst.SystemResourceServerID, ResourceID: "user2"}
+	request := providers.AccessEvaluationsRequest{Evaluations: []providers.AccessEvaluationRequest{
+		{Subject: providers.Subject{Category: providers.EntityCategoryAgent.String(), ID: "agent1"},
+			ResourceServer: system, Permission: self},
+		{Subject: providers.Subject{GroupIDs: []string{"group1"}}, ResourceServer: system, Permission: self},
+		{Subject: providers.Subject{Category: userCategory, ID: "user1"},
+			ResourceServer: providers.AccessEvaluationResourceServer{ID: "rs-1"}, Permission: self},
+		{Subject: providers.Subject{Category: userCategory, ID: "unknown"}, ResourceServer: system, Permission: self},
+		{Subject: providers.Subject{Category: userCategory, ID: "agent1"}, ResourceServer: system, Permission: self},
+		{Subject: providers.Subject{Category: userCategory, ID: "user1"}, ResourceServer: otherUser, Permission: self},
+	}}
+	suite.mockEngine.On("EvaluateAccessBatch", mock.Anything, mock.MatchedBy(
+		func(req engine.AccessEvaluationsRequest) bool { return len(req.Evaluations) == 6 })).
+		Return(&engine.AccessEvaluationsResponse{Evaluations: []engine.AccessEvaluationResponse{
+			{Decision: false}, {Decision: false}, {Decision: false}, {Decision: false}, {Decision: false},
+			{Decision: false}}}, nil).Once()
+
+	response, err := service.EvaluateAccessBatch(context.Background(), request)
+
+	suite.Nil(err)
+	suite.Require().Len(response.Evaluations, 6)
+	for _, evaluation := range response.Evaluations {
+		suite.False(evaluation.Decision)
+	}
+}
+
+// A failed subject lookup is a server error, not a decision.
+func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchSelfServiceSubjectLookupFails() {
+	security.InitDataPlanePermissions("")
+	suite.T().Cleanup(func() { security.InitControlPlanePermissions("") })
+	entityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityService.On("GetEntityProfile", mock.Anything, "user1").Return(
+		(*providers.Entity)(nil), errors.New("store down")).Once()
+	service := newAuthorizationService(suite.mockEngine, nil, entityService, nil)
+
+	_, err := service.EvaluateAccessBatch(context.Background(), providers.AccessEvaluationsRequest{
+		Evaluations: []providers.AccessEvaluationRequest{{
+			Subject:        providers.Subject{Category: providers.EntityCategoryUser.String(), ID: "user1"},
+			ResourceServer: providers.AccessEvaluationResourceServer{ID: serverconst.SystemResourceServerID},
+			Permission:     providers.Permission{Name: "self:credentials:update"},
+		}}})
+
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessBatchReturnsContext() {
@@ -324,7 +443,7 @@ func TestAuthorizationServiceEnrichesSubjectPropertiesAndCachesEntities(t *testi
 		{Subject: providers.Subject{Category: providers.EntityCategoryApp.String(), ID: "app1"}},
 	}}
 
-	enriched, svcErr := service.enrichRequest(context.Background(), request)
+	enriched, svcErr := service.enrichRequest(context.Background(), request, map[string]*providers.Entity{})
 	require.Nil(t, svcErr)
 	require.Equal(t, map[string]interface{}{
 		"email":  "alice@example.com",
@@ -351,7 +470,7 @@ func TestAuthorizationServiceEnrichRequestRejectsInvalidEntityAttributes(t *test
 		Evaluations: []providers.AccessEvaluationRequest{{
 			Subject: providers.Subject{Category: providers.EntityCategoryUser.String(), ID: "user1"},
 		}},
-	})
+	}, map[string]*providers.Entity{})
 
 	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -366,7 +485,7 @@ func TestAuthorizationServiceEnrichRequestMapsEntityLookupError(t *testing.T) {
 		Evaluations: []providers.AccessEvaluationRequest{{
 			Subject: providers.Subject{Category: providers.EntityCategoryUser.String(), ID: "user1"},
 		}},
-	})
+	}, map[string]*providers.Entity{})
 
 	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -388,7 +507,7 @@ func TestAuthorizationServiceEnrichRequestContinuesForUnknownEntity(t *testing.T
 		{Subject: providers.Subject{Category: providers.EntityCategoryUser.String(), ID: "user1"}},
 	}}
 
-	enriched, svcErr := service.enrichRequest(context.Background(), request)
+	enriched, svcErr := service.enrichRequest(context.Background(), request, map[string]*providers.Entity{})
 	require.Nil(t, svcErr)
 	require.Len(t, enriched.Evaluations, 2)
 	require.Equal(t, request.Evaluations[0].Subject, enriched.Evaluations[0].Subject)

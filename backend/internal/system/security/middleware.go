@@ -6,6 +6,7 @@ package security
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -19,6 +20,15 @@ import (
 // occurred, so the response leaks nothing about the token's state.
 const wwwAuthChallengeInvalidToken = `Bearer error="invalid_token", ` +
 	`error_description="The access token is invalid, expired, or malformed"`
+
+// SetAuthenticationAgeChallenge sets the RFC 9470 challenge asking for an authentication within maxAge
+// seconds. The caller answers 401.
+func SetAuthenticationAgeChallenge(w http.ResponseWriter, maxAge string) {
+	w.Header().Set(serverconst.WWWAuthenticateHeaderName, fmt.Sprintf(
+		`%s error="insufficient_user_authentication", `+
+			`error_description="A more recent authentication is required", max_age="%s"`,
+		serverconst.TokenTypeBearer, maxAge))
+}
 
 // middleware returns an HTTP middleware function that applies security checks to requests.
 func middleware(service SecurityServiceInterface) (func(http.Handler) http.Handler, error) {

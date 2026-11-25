@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -213,6 +213,38 @@ func (suite *ActionAPITestSuite) TestUpdateActionAtResourceServer() {
 	suite.Equal(req.Handle, action.Handle, "Handle should be immutable")
 	suite.Equal(updateReq.Description, action.Description)
 	suite.Equal("update-action", action.Permission, "Permission should be immutable")
+}
+
+// An action's maxAge is set on create, replaced on update, cleared when an update omits it, and never negative.
+func (suite *ActionAPITestSuite) TestActionMaxAge() {
+	actionID, err := createActionAtResourceServer(suite.resourceServerID,
+		CreateActionRequest{Name: "Marked Action", Handle: "marked", MaxAge: 300})
+	suite.Require().NoError(err)
+	defer deleteAction(suite.resourceServerID, actionID)
+
+	action, err := getActionAtResourceServer(suite.resourceServerID, actionID)
+	suite.Require().NoError(err)
+	suite.Equal(int64(300), action.MaxAge)
+
+	suite.Require().NoError(updateAction(suite.resourceServerID, actionID,
+		UpdateActionRequest{Name: "Marked Action", MaxAge: 60}))
+	action, err = getActionAtResourceServer(suite.resourceServerID, actionID)
+	suite.Require().NoError(err)
+	suite.Equal(int64(60), action.MaxAge)
+
+	suite.Require().NoError(updateAction(suite.resourceServerID, actionID, UpdateActionRequest{Name: "Marked Action"}))
+	action, err = getActionAtResourceServer(suite.resourceServerID, actionID)
+	suite.Require().NoError(err)
+	suite.Zero(action.MaxAge, "an update without maxAge clears it")
+
+	err = updateAction(suite.resourceServerID, actionID, UpdateActionRequest{Name: "Marked Action", MaxAge: -1})
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "RES-1029")
+
+	_, err = createActionAtResourceServer(suite.resourceServerID,
+		CreateActionRequest{Name: "Negative", Handle: "negative", MaxAge: -1})
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "RES-1029")
 }
 
 func (suite *ActionAPITestSuite) TestDeleteActionAtResourceServer() {

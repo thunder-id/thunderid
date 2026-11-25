@@ -211,6 +211,33 @@ resources:
         handle: update
       - name: Delete
         handle: delete
+  - name: Self Service
+    handle: self
+    description: A user's own account, held by the user without a role
+  - name: Own Credentials
+    handle: credentials
+    parent: self
+    description: The signed-in user's own credentials
+    actions:
+      - name: Update
+        handle: update
+        maxAge: 300
+  - name: Own Agent Credentials
+    handle: agentcredentials
+    parent: self
+    description: The credentials of the signed-in user's personal agents
+    actions:
+      - name: Update
+        handle: update
+        maxAge: 300
+  - name: Own Protected Attributes
+    handle: protectedattributes
+    parent: self
+    description: The signed-in user's own protected attributes
+    actions:
+      - name: Update
+        handle: update
+        maxAge: 300
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061

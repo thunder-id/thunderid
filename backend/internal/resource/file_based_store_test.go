@@ -530,6 +530,45 @@ resources:
 	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found under another resource server")
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestGetActionByPermission() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	assert.True(s.T(), ok)
+
+	rs, err := parseToResourceServer([]byte(`
+id: rs-perm
+name: Permission Server
+identifier: api
+ouId: ou1
+actions:
+  - { name: Read, handle: read, maxAge: 600 }
+resources:
+  - { name: Org, handle: org, actions: [{ name: Delete, handle: delete, maxAge: 300 }] }
+`))
+	assert.NoError(s.T(), err)
+	assert.NoError(s.T(), ProcessResourceServer(rs))
+	assert.NoError(s.T(), fileStore.Create(rs.ID, rs))
+
+	serverAction, err := s.store.GetActionByPermission(s.ctx, rs.ID, "read")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "rs-perm:read", serverAction.ID)
+	assert.Equal(s.T(), int64(600), serverAction.MaxAge)
+
+	orgID := "rs-perm:org"
+	read, err := s.store.GetAction(s.ctx, "rs-perm:org:delete", rs.ID, &orgID)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "org:delete", read.Permission)
+	resourceAction, err := s.store.GetActionByPermission(s.ctx, rs.ID, "org:delete")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), read.ID, resourceAction.ID)
+	assert.Equal(s.T(), int64(300), resourceAction.MaxAge)
+
+	_, err = s.store.GetActionByPermission(s.ctx, rs.ID, "unknown")
+	assert.ErrorIs(s.T(), err, errActionNotFound)
+
+	_, err = s.store.GetActionByPermission(s.ctx, "other-rs", "read")
+	assert.ErrorIs(s.T(), err, errActionNotFound)
+}
+
 func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)

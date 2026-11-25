@@ -6,7 +6,12 @@ package security
 import (
 	"context"
 	"testing"
+	"time"
 
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -215,6 +220,108 @@ func (s *SecurityContextTestSuite) TestGetClientID() {
 			s.Equal(tt.expected, GetClientID(tt.ctx))
 		})
 	}
+}
+
+func contextWithAuthTime(authTime interface{}) context.Context {
+	attributes := map[string]interface{}{}
+	if authTime != nil {
+		attributes[claimAuthTime] = authTime
+	}
+	return withSecurityContext(context.Background(),
+		newSecurityContext("user-1", "ou-1", "token", nil, attributes))
+}
+
+func (s *SecurityContextTestSuite) TestAuthenticationExceedsMaxAge() {
+	const now = int64(1700000000)
+	tests := []struct {
+		name     string
+		authTime interface{}
+		maxAge   int64
+		expected bool
+	}{
+		{name: "no limit", authTime: nil, maxAge: 0, expected: false},
+		{name: "within the limit", authTime: float64(now - 10), maxAge: 300, expected: false},
+		{name: "at the limit", authTime: float64(now - 300), maxAge: 300, expected: false},
+		{name: "older than the limit", authTime: float64(now - 301), maxAge: 300, expected: true},
+		{name: "no auth_time", authTime: nil, maxAge: 300, expected: true},
+		{name: "auth_time not a number", authTime: "recent", maxAge: 300, expected: true},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expected, authenticationExceedsMaxAge(contextWithAuthTime(tt.authTime), tt.maxAge, now))
+		})
+	}
+}
+
+func (s *SecurityContextTestSuite) TestAuthenticationExceedsMaxAge_NoSecurityContext() {
+	s.True(authenticationExceedsMaxAge(context.Background(), 300, 1700000000))
+}
+
+func (s *SecurityContextTestSuite) TestRequireRecentAuthentication() {
+	const permission = "self:credentials:update"
+	now := time.Now().Unix()
+	tests := []struct {
+		name       string
+		authTime   interface{}
+		maxAge     int64
+		readErr    *tidcommon.ServiceError
+		wantCode   string
+		wantMaxAge string
+	}{
+		{name: "recent", authTime: float64(now - 10), maxAge: 300},
+		{name: "no mark", maxAge: 0},
+		{name: "old", authTime: float64(now - 3600), maxAge: 300,
+			wantCode: ErrorRecentAuthenticationRequired.Code, wantMaxAge: "300"},
+		{name: "no auth_time", maxAge: 300, wantCode: ErrorRecentAuthenticationRequired.Code, wantMaxAge: "300"},
+		{name: "mark cannot be read", readErr: &tidcommon.InternalServerError,
+			wantCode: tidcommon.InternalServerError.Code},
+		{name: "no action carries the permission", readErr: &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType, Code: "RES-1004"}, wantCode: tidcommon.InternalServerError.Code},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			reader := NewPermissionMaxAgeReaderInterfaceMock(s.T())
+			reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID, permission).
+				Return(tt.maxAge, tt.readErr).Once()
+
+			svcErr := RequireRecentAuthentication(contextWithAuthTime(tt.authTime), reader, permission)
+
+			if tt.wantCode == "" {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(tt.wantCode, svcErr.Code)
+			s.Equal(tt.wantMaxAge, svcErr.ErrorDescription.Params[ErrorParamMaxAge])
+		})
+	}
+}
+
+// An empty permission, as on the control plane, checks nothing.
+func (s *SecurityContextTestSuite) TestRequireRecentAuthentication_EmptyPermissionChecksNothing() {
+	s.Nil(RequireRecentAuthentication(contextWithAuthTime(nil), nil, ""))
+}
+
+// A self-service permission is never left unchecked: without a reader the request is refused.
+func (s *SecurityContextTestSuite) TestRequireRecentAuthentication_WithoutReaderIsRefused() {
+	svcErr := RequireRecentAuthentication(contextWithAuthTime(nil), nil, "self:credentials:update")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// With a system permission prefix, the maxAge is read for the permission the System resource server declares.
+func (s *SecurityContextTestSuite) TestRequireRecentAuthentication_ReadsTheDeclaredPermission() {
+	InitDataPlanePermissions("mgmt")
+	s.T().Cleanup(func() { InitControlPlanePermissions("") })
+	reader := NewPermissionMaxAgeReaderInterfaceMock(s.T())
+	reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID,
+		"self:credentials:update").Return(int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+	svcErr := RequireRecentAuthentication(contextWithAuthTime(float64(time.Now().Unix()-10)), reader,
+		"mgmt:self:credentials:update")
+
+	s.Nil(svcErr)
 }
 
 func (s *SecurityContextTestSuite) TestGetAttribute() {

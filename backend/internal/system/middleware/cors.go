@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package middleware provides HTTP middleware functions for request processing.
@@ -27,12 +27,14 @@ var DefaultAllowedHeaders = []string{"Content-Type", "Authorization"}
 //
 // AllowedMethods and AllowedHeaders are slices so the response payload is
 // data-driven rather than a parsed string. MaxAge is the preflight cache TTL
-// in seconds; zero suppresses the Access-Control-Max-Age header. The
+// in seconds; zero suppresses the Access-Control-Max-Age header.
+// ExposedHeaders lists the response headers a script may read. The
 // per-request Origin echo is decided by the global matcher and never
 // influenced by these options.
 type CORSOptions struct {
 	AllowedMethods   []string
 	AllowedHeaders   []string
+	ExposedHeaders   []string
 	AllowCredentials bool
 	MaxAge           int
 }
@@ -88,6 +90,9 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	}
 
 	if !isPreflight(r) {
+		if exposed := joinHeaderList(opts.ExposedHeaders); exposed != "" {
+			w.Header().Set("Access-Control-Expose-Headers", exposed)
+		}
 		return
 	}
 	if methods := joinHeaderList(opts.AllowedMethods); methods != "" {

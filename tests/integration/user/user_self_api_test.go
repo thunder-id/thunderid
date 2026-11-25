@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package user
@@ -323,6 +323,71 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateProfileSchemaInvalidAttribute
 
 	s.Equal(before, s.selfProfileAttributes(),
 		"a rejected update must leave the whole profile unchanged")
+}
+
+// A token that does not ask for self:credentials:update cannot change the user's credentials.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsNeedsThePermission() {
+	token, err := s.signIn.ObtainAccessToken(s.ouID, "openid", s.username, s.password,
+		testutils.SystemResourceIdentifier)
+	s.Require().NoError(err)
+
+	body, err := json.Marshal(map[string]interface{}{"attributes": map[string]interface{}{"password": s.password + "?"}})
+	s.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/users/me/update-credentials",
+		bytes.NewReader(body))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClientWithToken(token.AccessToken).Do(req)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+// A token that asks for the self-service permissions carries them, and says when the user signed in.
+func (s *SelfUserEndpointsSuite) TestSelfServiceTokenCarriesAuthTime() {
+	token, err := s.signIn.ObtainAccessToken(s.ouID, "openid "+testutils.SelfServiceScopes, s.username, s.password,
+		testutils.SystemResourceIdentifier)
+	s.Require().NoError(err)
+
+	claims, err := testutils.DecodeJWT(token.AccessToken)
+	s.Require().NoError(err)
+	s.Contains(claims.Additional["scope"], "self:credentials:update")
+	s.Contains(claims.Additional["scope"], "self:protectedattributes:update")
+	authTime, ok := claims.Additional["auth_time"].(float64)
+	s.Require().True(ok, "the token must carry auth_time")
+	s.InDelta(float64(time.Now().Unix()), authTime, 60)
+}
+
+// A sign-in older than the credentials action's maxAge gets 401 with an RFC 9470 challenge.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsNeedsARecentSignIn() {
+	t := s.T()
+	previous, err := testutils.SetSelfActionMaxAge("credentials", 1)
+	s.Require().NoError(err)
+	t.Cleanup(func() {
+		if _, err := testutils.SetSelfActionMaxAge("credentials", previous); err != nil {
+			t.Errorf("failed to restore the maxAge: %v", err)
+		}
+	})
+	token, err := s.signIn.ObtainAccessToken(s.ouID, "openid "+testutils.SelfServiceScopes, s.username, s.password,
+		testutils.SystemResourceIdentifier)
+	s.Require().NoError(err)
+	time.Sleep(2 * time.Second)
+
+	body, err := json.Marshal(map[string]interface{}{"attributes": map[string]interface{}{"password": s.password}})
+	s.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/users/me/update-credentials",
+		bytes.NewReader(body))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClientWithToken(token.AccessToken).Do(req)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	challenge := resp.Header.Get("WWW-Authenticate")
+	s.requireSelfError(resp, http.StatusUnauthorized, "AUTH-4011")
+	s.Contains(challenge, `error="insufficient_user_authentication"`)
+	s.Contains(challenge, `max_age="1"`)
 }
 
 // TestSelfUserUpdateCredentialsMissingAttributesRejected verifies that a credential update with an

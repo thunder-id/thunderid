@@ -63,7 +63,7 @@ AuthZEN mode uses the server-level Direct Auth Secret for the backend-to-PDP cal
 - A **typed user model** with the `Customer` user type for consumers and the `Staff` user type for internal team. Self sign-up, password recovery, and staff invitation flows back the B2C use-case story.
 - An **on-behalf-of (OBO)** flow triggered from inside a chat session: the agent returns a consent request, the frontend opens a popup where the user picks which booking permissions to grant, and the issued user-context token only carries the approved subset. The token is an **implicit OBO token**. It carries an `act` claim naming the agent that mediated the login, so the resource server sees both the user (`sub`) and the acting agent (`act.sub`) from a single token.
 - A REST API that **verifies the JWT** and **enforces scopes per route** (`booking:read`, `booking:create`, `booking:cancel`, `booking:recommend`).
-- A **self-service profile page** at `/profile` that calls ThunderID's `/users/me` directly with the `WAYFINDER` user token to read account details, edit attributes, and change the password.
+- A **self-service profile page** at `/profile` that calls ThunderID's `/users/me` directly to read account details and edit attributes with the `WAYFINDER` user token, and changes the password with a separate System resource server token that carries `self:credentials:update`.
 - **Multi-LLM support**. The Wayfinder Concierge works with both **Anthropic Claude** and **Google Gemini**, selectable via an environment variable.
 - **CIBA-based flight upgrade**. A background upgrade scheduler uses CIBA (Client-Initiated Backchannel Authentication) to authenticate the customer out-of-band via email or SMS notification. The customer approves the upgrade on their own device; the scheduler then processes it with a CIBA-issued token carrying the `upgrade:process` scope.
 - **Verifiable Credentials (OID4VCI / OID4VP)**. Members can add a Wayfinder Sky Pass to their EUDI wallet straight from the profile page (OpenID4VCI issuance). The Skyline Lounge kiosk (`lounge/`) verifies the pass using OpenID4VP selective disclosure, reading only the `tier` and `full_name` claims.
@@ -348,7 +348,7 @@ assigned to the Concierge agent, not John:
 
 ### Manage Your Profile
 
-Click your name in the top-right corner and pick **Profile** to view your account details, edit profile attributes, or change your password. The page calls ThunderID's `/users/me`, `PUT /users/me`, and `POST /users/me/update-credentials` directly with the `WAYFINDER` user token. No scope beyond a valid user JWT is required.
+Click your name in the top-right corner and pick **Profile** to view your account details, edit profile attributes, or change your password. The page calls ThunderID's `/users/me` and `PUT /users/me` directly with the `WAYFINDER` user token. `POST /users/me/update-credentials` needs the `self:credentials:update` permission of the System resource server, which the `WAYFINDER` token, bound to the booking resource server, cannot carry. So **Update password** opens a popup that asks for a System resource server token with that scope (`resource=https://localhost:8090/mcp`, set with `VITE_THUNDERID_SYSTEM_RESOURCE`). Every user gets the permission without a role. A recent sign-in completes the popup on its own; when the sign-in is older than the permission's `maxAge` (300 seconds by default), the API answers `401` with an `insufficient_user_authentication` challenge, and the next **Update password** signs in again with that `max_age`.
 
 ### No Chat Access
 

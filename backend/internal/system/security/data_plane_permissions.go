@@ -16,6 +16,14 @@ var dataPlaneOrgCatalog = []catalogResource{
 	{ResourceTypeAgentType, crudActions},
 }
 
+// dataPlaneSelfCatalog lists, in declaration order, the resources and actions under the self root on the
+// System resource server. They act only on the token's own subject.
+var dataPlaneSelfCatalog = []catalogResource{
+	{ResourceTypeSelfCredentials, []string{catalogActionUpdate}},
+	{ResourceTypeSelfAgentCredentials, []string{catalogActionUpdate}},
+	{ResourceTypeSelfProtectedAttributes, []string{catalogActionUpdate}},
+}
+
 // InitDataPlanePermissions activates the data plane's permissions. When handle is non-empty (e.g.
 // "mgmt"), every permission is prefixed with it.
 //   - The system root permission reaches the whole deployment. It has no child permission yet.
@@ -31,8 +39,12 @@ var dataPlaneOrgCatalog = []catalogResource{
 func InitDataPlanePermissions(handle string) {
 	system := buildPermission(handle, "system")
 	org := buildPermission(handle, "org")
+	self := buildPermission(handle, permissionRootSelf)
 	orgChild := func(resource ResourceType, action string) string {
 		return buildPermission(handle, "org", string(resource), action)
+	}
+	selfChild := func(resource ResourceType, action string) string {
+		return buildPermission(handle, permissionRootSelf, string(resource), action)
 	}
 
 	p := &SystemPermissions{
@@ -40,6 +52,11 @@ func InitDataPlanePermissions(handle string) {
 		Org:                org,
 		AdministrationFlow: org,
 		OUListRoots:        system,
+
+		SelfService:                   self,
+		SelfCredentialsUpdate:         selfChild(ResourceTypeSelfCredentials, catalogActionUpdate),
+		SelfAgentCredentialsUpdate:    selfChild(ResourceTypeSelfAgentCredentials, catalogActionUpdate),
+		SelfProtectedAttributesUpdate: selfChild(ResourceTypeSelfProtectedAttributes, catalogActionUpdate),
 
 		OU:              orgChild(ResourceTypeOU, ""),
 		OUView:          orgChild(ResourceTypeOU, catalogActionView),
@@ -125,5 +142,7 @@ func InitDataPlanePermissions(handle string) {
 		ConfigVersionCreate: system,
 	}
 	p.Catalog = append([]string{org}, buildCatalog(handle, "org", dataPlaneOrgCatalog)...)
+	p.Catalog = append(p.Catalog, self)
+	p.Catalog = append(p.Catalog, buildCatalog(handle, permissionRootSelf, dataPlaneSelfCatalog)...)
 	activatePermissions(p)
 }

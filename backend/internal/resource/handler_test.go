@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -577,6 +577,47 @@ func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_WithK
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	suite.NoError(err)
 	suite.Equal(providers.ActionKindTool, resp.Kind)
+	suite.mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_WithMaxAge() {
+	reqBody := CreateActionRequest{Name: "test-action", Handle: "test-handle", MaxAge: 300}
+
+	suite.mockService.On("CreateAction", mock.Anything,
+		"rs-123", (*string)(nil), mock.MatchedBy(func(a providers.Action) bool {
+			return a.MaxAge == 300
+		})).Return(&providers.Action{ID: "action-123", Handle: "test-handle", MaxAge: 300}, nil)
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/resource-servers/rs-123/actions", bytes.NewReader(body))
+	req.SetPathValue("rsId", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionPostAtResourceServerRequest(w, req)
+
+	suite.Equal(http.StatusCreated, w.Code)
+	suite.Contains(w.Body.String(), `"maxAge":300`)
+	suite.mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleActionPutAtResourceServerRequest_WithMaxAge() {
+	reqBody := UpdateActionRequest{Name: "updated-action-name", MaxAge: 600}
+
+	suite.mockService.On("UpdateAction", mock.Anything,
+		"rs-123", (*string)(nil), "action-123", mock.MatchedBy(func(a providers.Action) bool {
+			return a.MaxAge == 600
+		})).Return(&providers.Action{ID: "action-123", MaxAge: 600}, nil)
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("PUT", "/resource-servers/rs-123/actions/action-123", bytes.NewReader(body))
+	req.SetPathValue("rsId", "rs-123")
+	req.SetPathValue("id", "action-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionPutAtResourceServerRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Contains(w.Body.String(), `"maxAge":600`)
 	suite.mockService.AssertExpectations(suite.T())
 }
 

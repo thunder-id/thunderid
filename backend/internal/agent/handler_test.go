@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -23,10 +24,12 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
 type InlineStubAgentService struct {
@@ -228,7 +231,7 @@ func TestHandleAgentPostRequest_Success(t *testing.T) {
 			return &model.AgentCompleteResponse{ID: "agent-123"}, nil
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	goodJSON := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},` +
 		`"owner": {"id": "admin-id"}}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(goodJSON))
@@ -259,7 +262,7 @@ func TestHandleAgentPostRequest_PassesDelegatedToTheService(t *testing.T) {
 					return &model.AgentCompleteResponse{ID: "agent-123"}, nil
 				},
 			}
-			handler := newAgentHandler(stubService)
+			handler := newAgentHandler(stubService, nil)
 			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(tt.body))
 			w := httptest.NewRecorder()
 
@@ -283,7 +286,7 @@ func TestHandleAgentPostRequest_PassesValidUntil(t *testing.T) {
 			return &model.AgentCompleteResponse{ID: "agent-123"}, nil
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	body := `{"ouId": "ou-123", "type": "worker", "validUntil": "2027-03-31T00:00:00Z"}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
 	w := httptest.NewRecorder()
@@ -309,7 +312,7 @@ func TestHandleAgentPutRequest_DistinguishesAbsentAndNullValidUntil(t *testing.T
 				return &model.AgentCompleteResponse{ID: id}, nil
 			},
 		}
-		handler := newAgentHandler(stubService)
+		handler := newAgentHandler(stubService, nil)
 		req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(body))
 		req.SetPathValue("id", "agent-123")
 		w := httptest.NewRecorder()
@@ -330,7 +333,7 @@ func TestHandleAgentPostRequest_PassesTheProject(t *testing.T) {
 			return &model.AgentCompleteResponse{ID: "agent-123"}, nil
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents",
 		bytes.NewBufferString(`{"projectId": "project-1", "type": "worker"}`))
 	w := httptest.NewRecorder()
@@ -346,7 +349,7 @@ func TestHandleAgentPostRequest_PassesTheProject(t *testing.T) {
 
 func TestHandleAgentPostRequest_ValidationError(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	badJSON := `{"ouId": "ou-123", "attributes": {"name": "ab"}}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(badJSON))
 	w := httptest.NewRecorder()
@@ -357,7 +360,7 @@ func TestHandleAgentPostRequest_ValidationError(t *testing.T) {
 
 func TestHandleAgentPostRequest_InvalidJSONFormat(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(`{bad`))
 	w := httptest.NewRecorder()
 
@@ -367,7 +370,7 @@ func TestHandleAgentPostRequest_InvalidJSONFormat(t *testing.T) {
 
 func TestHandleAgentPutRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	goodJSON := `{"attributes": {"name": "Updated Valid Name"}}`
 	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(goodJSON))
 	req.SetPathValue("id", "agent-123")
@@ -383,7 +386,7 @@ func TestHandleAgentPutRequest_ReportsTheDerivedStatus(t *testing.T) {
 		return string(req.Attributes) == `{"name":"Updated Valid Name"}`
 	})).Return(&model.AgentCompleteResponse{ID: "agent-123",
 		Status: &providers.AccessStatusReport{Value: providers.AccessStatusActive}}, nil).Once()
-	handler := newAgentHandler(mockSvc)
+	handler := newAgentHandler(mockSvc, nil)
 	body := `{"attributes":{"name":"Updated Valid Name"},"status":{"value":"SUSPENDED"}}`
 	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(body))
 	req.SetPathValue("id", "agent-123")
@@ -418,7 +421,7 @@ func TestHandleAgentPutRequest_ValidationError(t *testing.T) {
 			}
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	badJSON := `{"attributes": {"name": "a"}}`
 	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(badJSON))
 	req.SetPathValue("id", "agent-123")
@@ -430,7 +433,7 @@ func TestHandleAgentPutRequest_ValidationError(t *testing.T) {
 
 func TestHandleAgentPutRequest_MissingID(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodPut, "/agents/", bytes.NewBufferString(`{}`))
 	req.SetPathValue("id", "")
 	w := httptest.NewRecorder()
@@ -441,7 +444,7 @@ func TestHandleAgentPutRequest_MissingID(t *testing.T) {
 
 func TestHandleAgentPutRequest_InvalidJSONFormat(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(`{bad`))
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -464,7 +467,7 @@ func TestHandleAgentPostRequest_KindForwarded(t *testing.T) {
 					return &model.AgentCompleteResponse{}, nil
 				},
 			}
-			handler := newAgentHandler(stubService)
+			handler := newAgentHandler(stubService, nil)
 			body := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},
 				"kind": "` + string(kind) + `"}`
 			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
@@ -479,7 +482,7 @@ func TestHandleAgentPostRequest_KindForwarded(t *testing.T) {
 
 func TestHandleAgentGetRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent-123", nil)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -490,7 +493,7 @@ func TestHandleAgentGetRequest_Success(t *testing.T) {
 
 func TestHandleAgentGetRequest_MissingID(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/", nil)
 	req.SetPathValue("id", "")
 	w := httptest.NewRecorder()
@@ -501,7 +504,7 @@ func TestHandleAgentGetRequest_MissingID(t *testing.T) {
 
 func TestHandleAgentDeleteRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodDelete, "/agents/agent-123", nil)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -512,7 +515,7 @@ func TestHandleAgentDeleteRequest_Success(t *testing.T) {
 
 func TestHandleAgentDeleteRequest_MissingID(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodDelete, "/agents/", nil)
 	req.SetPathValue("id", "")
 	w := httptest.NewRecorder()
@@ -526,7 +529,7 @@ func TestHandleClientSecretRegenerateRequest_ReturnsTheSecret(t *testing.T) {
 	service := agentmock.NewAgentServiceInterfaceMock(t)
 	service.EXPECT().RegenerateAgentSecret(mock.Anything, "agent-123").
 		Return(&model.ClientSecretResponse{ClientSecret: "fresh", RevocationIncomplete: true}, nil).Once()
-	handler := newAgentHandler(service)
+	handler := newAgentHandler(service, nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/client-secret/regenerate", nil)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -543,7 +546,7 @@ func TestHandleClientSecretRegenerateRequest_ReportsARefusal(t *testing.T) {
 	service := agentmock.NewAgentServiceInterfaceMock(t)
 	service.EXPECT().RegenerateAgentSecret(mock.Anything, "agent-123").
 		Return(nil, &ErrorClientSecretNotUsed).Once()
-	handler := newAgentHandler(service)
+	handler := newAgentHandler(service, nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/client-secret/regenerate", nil)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -556,7 +559,7 @@ func TestHandleClientSecretRegenerateRequest_ReportsARefusal(t *testing.T) {
 }
 
 func TestHandleClientSecretRegenerateRequest_MissingID(t *testing.T) {
-	handler := newAgentHandler(&InlineStubAgentService{})
+	handler := newAgentHandler(&InlineStubAgentService{}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents//client-secret/regenerate", nil)
 	req.SetPathValue("id", "")
 	w := httptest.NewRecorder()
@@ -575,7 +578,7 @@ func TestHandleAgentCredentialUpdateRequest_UpdatesTheCredentials(t *testing.T) 
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Empty(t, w.Body.String())
@@ -590,7 +593,7 @@ func TestHandleAgentCredentialUpdateRequest_ReportsARefusal(t *testing.T) {
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
@@ -606,7 +609,7 @@ func TestHandleAgentCredentialUpdateRequest_RefusesAPersonalAgent(t *testing.T) 
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorPersonalAgentCredentialsNotUpdatable.Code)
@@ -621,14 +624,14 @@ func TestHandleAgentCredentialUpdateRequest_ReportsAServiceError(t *testing.T) {
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
 }
 
 func TestHandleAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
-	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/update-credentials", strings.NewReader(`{`))
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -640,7 +643,7 @@ func TestHandleAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
 }
 
 func TestHandleAgentCredentialUpdateRequest_MissingID(t *testing.T) {
-	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), nil)
 	req := httptest.NewRequest(http.MethodPost, "/agents//update-credentials",
 		strings.NewReader(`{"credentials":{"password":"s3cret"}}`))
 	req.SetPathValue("id", "")
@@ -660,10 +663,79 @@ func TestHandleOwnedAgentCredentialUpdateRequest_UpdatesTheCredentials(t *testin
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleOwnedAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Empty(t, w.Body.String())
+}
+
+// The owner's sign-in must be within the permission's maxAge; an older one is challenged before the service runs.
+func TestHandleOwnedAgentCredentialUpdateRequest_AuthenticationAge(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	const permission = "self:agentcredentials:update"
+	now := time.Now().Unix()
+	tests := []struct {
+		name       string
+		authTime   any
+		wantStatus int
+	}{
+		{name: "recent", authTime: float64(now - 10), wantStatus: http.StatusNoContent},
+		{name: "older than maxAge", authTime: float64(now - 3600), wantStatus: http.StatusUnauthorized},
+		{name: "no auth_time", wantStatus: http.StatusUnauthorized},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			service := agentmock.NewAgentServiceInterfaceMock(t)
+			if tc.wantStatus == http.StatusNoContent {
+				service.EXPECT().UpdateOwnedAgentCredentials(mock.Anything, "user-1", "agent-123",
+					providers.AgentKindPersonalAssistant, json.RawMessage(`{"password":"s3cret"}`)).Return(nil).Once()
+			}
+			reader := resourcemock.NewResourceServiceInterfaceMock(t)
+			reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID, permission).
+				Return(int64(300), (*tidcommon.ServiceError)(nil)).Once()
+			attributes := map[string]any{}
+			if tc.authTime != nil {
+				attributes["auth_time"] = tc.authTime
+			}
+			req := httptest.NewRequest(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+				strings.NewReader(`{"attributes":{"password":"s3cret"}}`))
+			req = req.WithContext(security.WithSecurityContextTest(req.Context(),
+				security.NewSecurityContextForTest("user-1", "", "token", []string{permission}, attributes)))
+			req.SetPathValue("id", "agent-123")
+			w := httptest.NewRecorder()
+			handler := newAgentHandler(service, reader)
+
+			handler.HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+			assert.Equal(t, tc.wantStatus, w.Code)
+			if tc.wantStatus != http.StatusUnauthorized {
+				return
+			}
+			assert.Equal(t, `Bearer error="insufficient_user_authentication", `+
+				`error_description="A more recent authentication is required", max_age="300"`,
+				w.Header().Get("WWW-Authenticate"))
+			assert.Contains(t, w.Body.String(), security.ErrorRecentAuthenticationRequired.Code)
+		})
+	}
+}
+
+// A maxAge that cannot be read refuses the change with a server error.
+func TestHandleOwnedAgentCredentialUpdateRequest_MaxAgeReadFails(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	reader := resourcemock.NewResourceServiceInterfaceMock(t)
+	reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID,
+		"self:agentcredentials:update").Return(int64(0), &tidcommon.InternalServerError).Once()
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+		`{"attributes":{"password":"s3cret"}}`, "user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), reader)
+
+	handler.HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // A body without credentials is passed on, and the service refuses it.
@@ -676,7 +748,7 @@ func TestHandleOwnedAgentCredentialUpdateRequest_ReportsARefusal(t *testing.T) {
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleOwnedAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
@@ -692,14 +764,14 @@ func TestHandleOwnedAgentCredentialUpdateRequest_ReportsAServiceError(t *testing
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+	newAgentHandler(service, nil).HandleOwnedAgentCredentialUpdateRequest(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
 }
 
 func TestHandleOwnedAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
-	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), nil)
 	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials", `{`, "user-1", false)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -712,7 +784,7 @@ func TestHandleOwnedAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
 
 // No token is 401 and a delegated token is 403, and neither reaches the service.
 func TestHandleOwnedAgentCredentialUpdateRequest_CallerGuards(t *testing.T) {
-	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), nil)
 	cases := []struct {
 		name      string
 		subject   string
@@ -738,7 +810,7 @@ func TestHandleOwnedAgentCredentialUpdateRequest_CallerGuards(t *testing.T) {
 
 func TestHandleAgentListRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents", nil)
 	w := httptest.NewRecorder()
 
@@ -756,7 +828,7 @@ func TestHandleAgentListRequest_WithOrganizationUnitFilter(t *testing.T) {
 			return &model.AgentListResponse{}, nil
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, `/agents?filter=ouId+eq+%22ou-1%22`, nil)
 	w := httptest.NewRecorder()
 
@@ -783,7 +855,7 @@ func TestHandleAgentListRequest_WithProject(t *testing.T) {
 			return &model.AgentListResponse{}, nil
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, `/agents?projectId=project-1&filter=ouId+eq+%22ou-1%22`, nil)
 	w := httptest.NewRecorder()
 
@@ -795,7 +867,7 @@ func TestHandleAgentListRequest_WithProject(t *testing.T) {
 
 func TestHandleAgentListRequest_InvalidFilter(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents?filter=invalidfilter", nil)
 	w := httptest.NewRecorder()
 
@@ -827,7 +899,7 @@ func ownerRequestWithBody(method, target, body, subject string, delegated bool) 
 // The owner routes need a user's own token: none is 401, and a delegated one, such as an agent's token for its
 // owner, is 403. Neither reaches the service.
 func TestHandleOwnedAgentRequests_CallerGuards(t *testing.T) {
-	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), nil)
 	cases := []struct {
 		name      string
 		subject   string
@@ -863,7 +935,7 @@ func TestHandleOwnedAgentRequests_PassTheCallerAndKind(t *testing.T) {
 		Return(&model.AgentListResponse{TotalResults: 1}, nil).Once()
 	svc.EXPECT().GetOwnedAgent(mock.Anything, "user-1", "agent-1", false).
 		Return(&model.AgentGetResponse{ID: "agent-1"}, nil).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	w := httptest.NewRecorder()
 	handler.HandleOwnedAgentListRequest(w,
@@ -886,7 +958,7 @@ func TestHandleOwnedAgentPutRequest(t *testing.T) {
 			return req.Description == "new" &&
 				slices.Equal(req.GrantTypes, []providers.GrantType{providers.GrantTypeAuthorizationCode})
 		})).Return(&model.AgentCompleteResponse{ID: "agent-1"}, nil).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	req := ownerRequestWithBody(http.MethodPut, "/users/me/agents/agent-1",
 		`{"description":"new","attributes":{"name":"x"},"grantTypes":["authorization_code"],`+
@@ -916,7 +988,7 @@ func TestHandleOwnedAgentDeleteRequest(t *testing.T) {
 	svc := agentmock.NewAgentServiceInterfaceMock(t)
 	svc.EXPECT().DeleteOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
 		Return(nil).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	req := ownerRequestWithBody(http.MethodDelete, "/users/me/agents/agent-1", "", "user-1", false)
 	req.SetPathValue("id", "agent-1")
@@ -936,7 +1008,7 @@ func TestHandleOwnedAgentListRequest_Kind(t *testing.T) {
 	svc := agentmock.NewAgentServiceInterfaceMock(t)
 	svc.EXPECT().GetOwnedAgents(mock.Anything, "user-1", providers.AgentKind(""), 0, 0).
 		Return(&model.AgentListResponse{}, nil).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	w := httptest.NewRecorder()
 	handler.HandleOwnedAgentListRequest(w, ownerRequest("/users/me/agents", "user-1", false))
@@ -957,7 +1029,7 @@ func TestHandleOwnedAgentRequests_Errors(t *testing.T) {
 		mock.Anything).Return(nil, &ErrorAgentNotFound).Once()
 	svc.EXPECT().DeleteOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
 		Return(&ErrorAgentNotFound).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	w := httptest.NewRecorder()
 	handler.HandleOwnedAgentListRequest(w, ownerRequest("/users/me/agents?limit=-1", "user-1", false))
@@ -984,7 +1056,7 @@ func TestHandleOwnedAgentRequests_Errors(t *testing.T) {
 // The owner routes answer a browser's preflight.
 func TestOwnedAgentRoutes_Preflight(t *testing.T) {
 	mux := http.NewServeMux()
-	registerRoutes(mux, newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t)))
+	registerRoutes(mux, newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t), nil))
 	for _, path := range []string{"/users/me/agents", "/users/me/agents/agent-1"} {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, path, nil))
@@ -1001,7 +1073,7 @@ func TestHandleOwnedAgentGetRequest_NotFound(t *testing.T) {
 	req.SetPathValue("id", "agent-2")
 	w := httptest.NewRecorder()
 
-	newAgentHandler(svc).HandleOwnedAgentGetRequest(w, req)
+	newAgentHandler(svc, nil).HandleOwnedAgentGetRequest(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
@@ -1062,7 +1134,7 @@ func TestHandleAgentListRequest_ServiceError(t *testing.T) {
 			return nil, &tidcommon.InternalServerError
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents", nil)
 	w := httptest.NewRecorder()
 
@@ -1072,7 +1144,7 @@ func TestHandleAgentListRequest_ServiceError(t *testing.T) {
 
 func TestHandleAgentGroupsRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent-123/groups", nil)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -1083,7 +1155,7 @@ func TestHandleAgentGroupsRequest_Success(t *testing.T) {
 
 func TestHandleAgentGroupsRequest_MissingID(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents//groups", nil)
 	req.SetPathValue("id", "")
 	w := httptest.NewRecorder()
@@ -1095,7 +1167,7 @@ func TestHandleAgentGroupsRequest_MissingID(t *testing.T) {
 
 func TestHandleAgentGroupsRequest_InvalidLimit(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent1/groups?limit=abc", nil)
 	req.SetPathValue("id", "agent1")
 	w := httptest.NewRecorder()
@@ -1113,7 +1185,7 @@ func TestHandleAgentGroupsRequest_ServiceError(t *testing.T) {
 			return nil, &ErrorAgentNotFound
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent1/groups", nil)
 	req.SetPathValue("id", "agent1")
 	w := httptest.NewRecorder()
@@ -1125,7 +1197,7 @@ func TestHandleAgentGroupsRequest_ServiceError(t *testing.T) {
 
 func TestHandleAgentRolesRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent-123/roles", nil)
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -1136,7 +1208,7 @@ func TestHandleAgentRolesRequest_Success(t *testing.T) {
 
 func TestHandleAgentRolesRequest_MissingID(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents//roles", nil)
 	req.SetPathValue("id", "")
 	w := httptest.NewRecorder()
@@ -1148,7 +1220,7 @@ func TestHandleAgentRolesRequest_MissingID(t *testing.T) {
 
 func TestHandleAgentRolesRequest_InvalidLimit(t *testing.T) {
 	stubService := &InlineStubAgentService{}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent1/roles?limit=abc", nil)
 	req.SetPathValue("id", "agent1")
 	w := httptest.NewRecorder()
@@ -1166,7 +1238,7 @@ func TestHandleAgentRolesRequest_ServiceError(t *testing.T) {
 			return nil, &ErrorAgentNotFound
 		},
 	}
-	handler := newAgentHandler(stubService)
+	handler := newAgentHandler(stubService, nil)
 	req := httptest.NewRequest(http.MethodGet, "/agents/agent1/roles", nil)
 	req.SetPathValue("id", "agent1")
 	w := httptest.NewRecorder()
@@ -1186,7 +1258,7 @@ func TestHandleOwnedAgentSuspensionRequests(t *testing.T) {
 		Return(nil).Once()
 	svc.EXPECT().SuspendOwnedAgents(mock.Anything, "user-1", providers.AgentKindPersonalAssistant).
 		Return(2, nil).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	for name, handle := range map[string]http.HandlerFunc{
 		"suspend":   handler.HandleOwnedAgentSuspendRequest,
@@ -1226,7 +1298,7 @@ func TestHandleOwnedAgentSuspendRequest_NotFound(t *testing.T) {
 	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-1/suspend", "", "user-1", false)
 	req.SetPathValue("id", "agent-1")
 	w := httptest.NewRecorder()
-	newAgentHandler(svc).HandleOwnedAgentSuspendRequest(w, req)
+	newAgentHandler(svc, nil).HandleOwnedAgentSuspendRequest(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -1237,7 +1309,7 @@ func TestHandleOwnedAgentSuspensionRequests_ServiceErrors(t *testing.T) {
 		Return(&ErrorAgentNotFound).Once()
 	svc.EXPECT().SuspendOwnedAgents(mock.Anything, "user-1", providers.AgentKindPersonalAssistant).
 		Return(0, &tidcommon.InternalServerError).Once()
-	handler := newAgentHandler(svc)
+	handler := newAgentHandler(svc, nil)
 
 	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-1/unsuspend", "", "user-1", false)
 	req.SetPathValue("id", "agent-1")

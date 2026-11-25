@@ -28,6 +28,7 @@ The app opens on `http://localhost:5173/`.
 | `/results`         | Flight search results.                                                  |
 | `/bookings`        | Signed-in user's flight bookings.                                       |
 | `/profile`         | Signed-in user's profile — account details, attribute edits, password change. Calls Thunder's `/users/me` directly. |
+| `/self-service-callback` | Lands the auth code for the password change token and posts it back to the Profile page. |
 | `/agent-callback`  | Lands the OBO auth code and posts it back to the chat widget.           |
 | `/signin-as-agent` | Deep-link entry that triggers an agent (M2M) sign-in flow.              |
 

@@ -328,7 +328,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 		TotalResults: 1,
 		Actions: []providers.Action{
 			{ID: "act0", Name: "List Bookings", Handle: "list_bookings", Permission: "list_bookings",
-				Kind: providers.ActionKindResource},
+				Kind: providers.ActionKindResource, MaxAge: 300},
 		},
 	}
 
@@ -362,6 +362,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	s.Require().Len(imported.Actions, 1)
 	assert.Equal(s.T(), "list_bookings", imported.Actions[0].Handle)
 	assert.Equal(s.T(), providers.ActionKindResource, imported.Actions[0].Kind)
+	assert.Equal(s.T(), int64(300), imported.Actions[0].MaxAge)
 	assert.Len(s.T(), imported.Resources, 1)
 	assert.Len(s.T(), imported.Resources[0].Actions, 1)
 	assert.Equal(s.T(), providers.ActionKindTool, imported.Resources[0].Actions[0].Kind)
@@ -932,6 +933,11 @@ func TestProcessResourceServer_ValidatesHandlesAndDelimiter(t *testing.T) {
 			name:      "handle with an invalid character",
 			resources: "  - { name: App, handle: \"my app\" }\n",
 			errSubstr: "invalid handle 'my app' for resource 'App'",
+		},
+		{
+			name:      "negative action maxAge",
+			resources: "  - { name: App, handle: app, actions: [{ name: Read, handle: read, maxAge: -1 }] }\n",
+			errSubstr: "invalid maxAge for action 'Read'",
 		},
 		{
 			name:      "invalid delimiter",

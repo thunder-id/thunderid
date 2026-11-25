@@ -137,6 +137,75 @@ User API responses that include a user's attributes also include `verifiedAttrib
 
 Applications can receive the verification status in tokens and the UserInfo response as `<attribute>_verified`, for example `email_verified`, beside the attribute it describes. If the user type defines an attribute with that name, its stored value is released instead. See [Verified Contact Claims](../../protocols/oauth-oidc/claims-and-scopes#verified-contact-claims).
 
+## Let Users Change Their Own Account
+
+A signed-in user reads and changes their own account through the self-service APIs, with an access token issued to that user. Reading the account with `GET /users/me` and changing attributes other than an email address or mobile number with `PUT /users/me` need only a valid user access token. The changes in the following table also need a self-service permission of the System resource server and a recent sign-in.
+
+| Permission | Change | API |
+|------------|--------|-----|
+| `self:credentials:update` | Set the user's own credentials, such as a password or PIN | `POST /users/me/update-credentials` |
+| `self:agentcredentials:update` | Set the credentials of a personal agent the user owns | `POST /users/me/agents/{id}/update-credentials` |
+| `self:protectedattributes:update` | Add, change, or remove an attribute of type `email` or `mobile` | `PUT /users/me` |
+
+### Request a Self-Service Permission
+
+Every user holds the self-service permissions without a role. An access token carries one only when the application asks for it: name the permission in `scope` and the System resource server in `resource`. In a default deployment, the System resource server's identifier is `https://localhost:8090/mcp`. <ProductName /> does not yet limit which applications can ask for these permissions.
+
+An access token binds one resource server, so a token issued for your own API cannot also carry a self-service permission. Request a separate token for the self-service call, for example when the user opens the page that changes the password:
+
+```http
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=$CLIENT_ID
+  &redirect_uri=https://app.example.com/callback
+  &scope=self:credentials:update
+  &resource=https://localhost:8090/mcp
+  &code_challenge=$CODE_CHALLENGE
+  &code_challenge_method=S256
+  &state=$STATE
+```
+
+Name the same `resource` when you redeem the code. See [Resource Indicators](../protocols/oauth-oidc/resource-indicators.mdx).
+
+If you set `server.security.system_permission_prefix`, the APIs expect the prefixed permissions, for example `mgmt:self:credentials:update`. Users then hold them through roles on your own resource server, like the other prefixed system permissions, and the `maxAge` still comes from the action on the System resource server.
+
+### Recent Sign-In
+
+Each self-service action on the System resource server sets a `maxAge`, the number of seconds a sign-in stays recent enough for the change. All three ship with `maxAge: 300`. To change it, update the action through the resource server API, as described in [Update an Action](../resource-servers.mdx#update-an-action).
+
+The API compares `maxAge` with the access token's `auth_time` claim, the time the user signed in. Access tokens issued by the authorization code, CIBA, and device authorization grants carry `auth_time`, and so do tokens from a token exchange of the assertion a sign-in flow returns. A refreshed access token keeps the original `auth_time`, so refreshing a token does not make the sign-in recent again. See [`max_age` and `auth_time`](../protocols/oauth-oidc/openid-connect.mdx#max_age-and-auth_time).
+
+The API answers a self-service change as follows:
+
+| Token | Response |
+|-------|----------|
+| Does not carry the permission | `403`. The code is `AUTH-4030` on the two credential APIs and `USR-1047` on `PUT /users/me`. |
+| Carries the permission, and the sign-in is older than `maxAge` or the token has no `auth_time` | `401` with the code `AUTH-4011` and a `WWW-Authenticate` challenge. |
+| Carries the permission, and the sign-in is within `maxAge` | The change is made. |
+
+The challenge follows [RFC 9470](https://datatracker.ietf.org/doc/html/rfc9470):
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="300"
+```
+
+The `/users/me` APIs list `WWW-Authenticate` in `Access-Control-Expose-Headers`, so a browser application can read the challenge.
+
+### Handle the Challenge
+
+When a self-service call returns the `insufficient_user_authentication` challenge, sign the user in again and retry:
+
+1. Read `max_age` from the `WWW-Authenticate` header.
+2. Send a new authorization request with `max_age` set to that value, or with `prompt=login`. Keep the same `scope` and `resource`.
+3. Redeem the code, then retry the call with the new access token.
+
+Refreshing the old token does not help, because the refreshed token keeps the original `auth_time`. `max_age` and `prompt=login` act on the single sign-on (SSO) session that the application's sign-in flow keeps. See [`prompt` Values](../protocols/oauth-oidc/openid-connect.mdx#prompt-values).
+
+### Add the Self-Service Permissions After an Upgrade
+
+A deployment set up on an earlier release has no `self` resources on its System resource server. Until you add them, access tokens cannot carry the self-service permissions, so a change in the table above is refused with `403` when the token lacks the permission. A user whose role holds `system` passes the permission check, and with no action to carry a `maxAge`, the change needs no recent sign-in. To add them, import the System resource server document from `bootstrap/01-default-resources.yaml` with an upsert, as described in [Add System Permissions After an Upgrade](./manage-roles.mdx#add-system-permissions-after-an-upgrade). The imported actions carry `maxAge: 300`.
+
 ## Delete a User
 
 1. Open the user from the **Users** list.

@@ -44,6 +44,13 @@ const (
 	// config (frontend/apps/console/public/config.js).
 	SystemResourceIdentifier = "https://localhost:8090/mcp"
 
+	// SystemResourceServerID is the ID of the System resource server the server bootstraps.
+	SystemResourceServerID = "01900000-0000-7000-8000-000000000020"
+
+	// SelfServiceScopes are the System resource server's permissions a user holds over their own account,
+	// which a self-service application asks for to change the user's credentials or protected attributes.
+	SelfServiceScopes = "self:credentials:update self:agentcredentials:update self:protectedattributes:update"
+
 	// FlowSecretHeaderName is the header used to present a Flow Secret to /flow/execute.
 	FlowSecretHeaderName = "Flow-Secret"
 )
@@ -2509,6 +2516,90 @@ func ListResourceIDs(rsID, parentID string) ([]string, error) {
 		ids = append(ids, resource.ID)
 	}
 	return ids, nil
+}
+
+// SetSelfActionMaxAge sets the maxAge of the update action under the System resource server's self:<handle>
+// resource, such as self:credentials, and returns the maxAge it replaced. A PUT replaces the action, so the
+// name and description are sent back.
+func SetSelfActionMaxAge(handle string, maxAge int64) (int64, error) {
+	resourcesURL := fmt.Sprintf("%s/resource-servers/%s/resources?limit=100", TestServerURL, SystemResourceServerID)
+	selfID, err := findResourceByPermission(resourcesURL, "self")
+	if err != nil {
+		return 0, err
+	}
+	resourceID, err := findResourceByPermission(resourcesURL+"&parentId="+selfID, "self:"+handle)
+	if err != nil {
+		return 0, err
+	}
+
+	actionsURL := fmt.Sprintf("%s/resource-servers/%s/resources/%s/actions", TestServerURL,
+		SystemResourceServerID, resourceID)
+	body, err := getJSON(actionsURL + "?limit=100")
+	if err != nil {
+		return 0, err
+	}
+	var actions struct {
+		Actions []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Handle      string `json:"handle"`
+			Description string `json:"description"`
+			MaxAge      int64  `json:"maxAge"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(body, &actions); err != nil {
+		return 0, fmt.Errorf("failed to parse action list: %w", err)
+	}
+	for _, action := range actions.Actions {
+		if action.Handle != "update" {
+			continue
+		}
+		payload, err := json.Marshal(map[string]interface{}{
+			"name": action.Name, "description": action.Description, "maxAge": maxAge,
+		})
+		if err != nil {
+			return 0, err
+		}
+		req, err := http.NewRequest(http.MethodPut, actionsURL+"/"+action.ID, bytes.NewReader(payload))
+		if err != nil {
+			return 0, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := GetHTTPClient().Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(resp.Body)
+			return 0, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(respBody))
+		}
+		return action.MaxAge, nil
+	}
+	return 0, fmt.Errorf("the self:%s resource has no update action", handle)
+}
+
+// findResourceByPermission returns the ID of the resource the list at listURL holds with the given permission.
+func findResourceByPermission(listURL, permission string) (string, error) {
+	body, err := getJSON(listURL)
+	if err != nil {
+		return "", err
+	}
+	var resources struct {
+		Resources []struct {
+			ID         string `json:"id"`
+			Permission string `json:"permission"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(body, &resources); err != nil {
+		return "", fmt.Errorf("failed to parse resource list: %w", err)
+	}
+	for _, resource := range resources.Resources {
+		if resource.Permission == permission {
+			return resource.ID, nil
+		}
+	}
+	return "", fmt.Errorf("the System resource server has no %s resource", permission)
 }
 
 // ListActionIDsAtResource returns the IDs of actions defined directly on a resource.

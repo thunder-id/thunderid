@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/url"
 	"path"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -63,6 +64,9 @@ type UserServiceInterface interface {
 	UpdateUser(ctx context.Context, userID string, user *providers.User) (*providers.User, *tidcommon.ServiceError)
 	UpdateUserAttributes(ctx context.Context, userID string,
 		attributes json.RawMessage) (*providers.User, *tidcommon.ServiceError)
+	// UpdateSelfUserAttributes updates the signed-in user's own attributes. A change to a protected attribute
+	// needs its self-service permission and a recent sign-in.
+	UpdateSelfUserAttributes(ctx context.Context, attributes json.RawMessage) (*providers.User, *tidcommon.ServiceError)
 	GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
@@ -127,6 +131,8 @@ type userService struct {
 	// managed says which users a control plane deployed, which stay read only here, credentials included.
 	// Nil where nothing is deployed from one.
 	managed managedresource.StoreInterface
+	// maxAgeReader reads a self-service permission's maxAge.
+	maxAgeReader security.PermissionMaxAgeReaderInterface
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -141,6 +147,7 @@ func newUserService(
 	sharingService sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
 	projectValidator projectOUValidator,
+	maxAgeReader security.PermissionMaxAgeReaderInterface,
 ) *userService {
 	us := &userService{
 		authzService:      authzService,
@@ -155,6 +162,7 @@ func newUserService(
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		bus:               bus,
 		projectValidator:  projectValidator,
+		maxAgeReader:      maxAgeReader,
 	}
 	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService, us.authorizeShareInto)
 	return us
@@ -952,18 +960,80 @@ func (us *userService) updateUser(
 	return user, nil
 }
 
+// checkSelfProtectedAttributeChange refuses a change to the user's own protected attributes (for now, email
+// and mobile types) unless the token has the permission and an auth_time within the permission's maxAge.
+func (us *userService) checkSelfProtectedAttributeChange(
+	ctx context.Context, user providers.User, attributes json.RawMessage,
+) *tidcommon.ServiceError {
+	perms := security.GetSystemPermissions()
+	if perms == nil || perms.SelfProtectedAttributesUpdate == "" {
+		return nil
+	}
+	required := perms.SelfProtectedAttributesUpdate
+
+	changed, svcErr := us.changesProtectedAttribute(ctx, user, attributes)
+	if svcErr != nil || !changed {
+		return svcErr
+	}
+	if !security.HasSufficientSystemPermission(security.GetPermissions(ctx), required) {
+		us.logger.Debug(ctx, "Refused a protected attribute change without the permission to make it",
+			log.MaskedString(log.LoggerKeyUserID, user.ID))
+		return &ErrorProtectedAttributeChangeNotPermitted
+	}
+	return security.RequireRecentAuthentication(ctx, us.maxAgeReader, required)
+}
+
+// changesProtectedAttribute reports whether the new attributes add, change or remove a protected attribute.
+func (us *userService) changesProtectedAttribute(
+	ctx context.Context, user providers.User, attributes json.RawMessage,
+) (bool, *tidcommon.ServiceError) {
+	schemaAttributes, svcErr := us.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, user.Type,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return false, svcErr
+	}
+	current := map[string]any{}
+	if len(user.Attributes) > 0 {
+		if err := json.Unmarshal(user.Attributes, &current); err != nil {
+			return false, &tidcommon.InternalServerError
+		}
+	}
+	requested := map[string]any{}
+	if err := json.Unmarshal(attributes, &requested); err != nil {
+		return false, &ErrorInvalidRequestFormat
+	}
+	for _, attribute := range schemaAttributes {
+		if entitytypemodel.IsContactType(attribute.Type) &&
+			!reflect.DeepEqual(current[attribute.Attribute], requested[attribute.Attribute]) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // UpdateUserAttributes updates only the attributes of a user while preserving immutable fields.
 func (us *userService) UpdateUserAttributes(
 	ctx context.Context, userID string, attributes json.RawMessage,
 ) (*providers.User, *tidcommon.ServiceError) {
-	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes)
+	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes, false)
 	us.publishUserEvent(ctx, audit.EventUserUpdate, audit.ActionUpdate, userID, svcErr)
 	return updated, svcErr
 }
 
-// updateUserAttributes updates only the attributes of a user without publishing its audit event.
+// UpdateSelfUserAttributes updates the signed-in user's own attributes.
+func (us *userService) UpdateSelfUserAttributes(
+	ctx context.Context, attributes json.RawMessage,
+) (*providers.User, *tidcommon.ServiceError) {
+	userID := security.GetSubject(ctx)
+	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes, true)
+	us.publishUserEvent(ctx, audit.EventUserUpdate, audit.ActionUpdate, userID, svcErr)
+	return updated, svcErr
+}
+
+// updateUserAttributes updates only the attributes of a user without publishing its audit event. self says
+// the signed-in user is changing their own attributes, which checks a change to a protected attribute.
 func (us *userService) updateUserAttributes(
-	ctx context.Context, userID string, attributes json.RawMessage,
+	ctx context.Context, userID string, attributes json.RawMessage, self bool,
 ) (*providers.User, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -1031,6 +1101,12 @@ func (us *userService) updateUserAttributes(
 	// Check if user is declarative (immutable)
 	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
+	}
+
+	if self {
+		if svcErr := us.checkSelfProtectedAttributeChange(ctx, existingUser, attributes); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	existingUser.Attributes = attributes

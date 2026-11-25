@@ -134,7 +134,7 @@ func (s *DataPlanePermissionsTestSuite) TestPrefixIsHonored() {
 	s.Equal("mgmt:org:ou:create", ResolveActionPermission(ActionCreateOU))
 }
 
-func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTree() {
+func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgAndSelfTrees() {
 	p := GetSystemPermissions()
 	s.Equal("org", p.Catalog[0])
 	s.Equal([]string{
@@ -147,6 +147,9 @@ func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTree() {
 		"org:usertype:delete",
 		"org:agenttype", "org:agenttype:view", "org:agenttype:create", "org:agenttype:update",
 		"org:agenttype:delete",
+		"self", "self:credentials", "self:credentials:update",
+		"self:agentcredentials", "self:agentcredentials:update",
+		"self:protectedattributes", "self:protectedattributes:update",
 	}, p.Catalog)
 }
 
@@ -172,6 +175,9 @@ func (s *DataPlanePermissionsTestSuite) TestRouteTable() {
 		{http.MethodPost, "/import", "system"},
 		{http.MethodGet, "/variables", "system"},
 		{http.MethodPost, "/flow/execute", ""},
+		{http.MethodPost, "/users/me/update-credentials", "self:credentials:update"},
+		{http.MethodPost, "/users/me/agents/agent-1/update-credentials", "self:agentcredentials:update"},
+		{http.MethodPut, "/users/me", ""},
 		{http.MethodGet, "/not-a-route", "system"},
 	}
 	for _, tc := range tests {
@@ -244,6 +250,35 @@ func (s *DataPlanePermissionsTestSuite) TestAuthorizeLetsSystemPassOrgRoutes() {
 			}
 		})
 	}
+}
+
+func (s *DataPlanePermissionsTestSuite) TestSelfServicePermissions() {
+	s.True(IsSelfServicePermission("self"))
+	s.True(IsSelfServicePermission("self:credentials:update"))
+	s.True(IsSelfServicePermission("self:agentcredentials:update"))
+	s.True(IsSelfServicePermission("self:protectedattributes:update"))
+	s.False(IsSelfServicePermission("org:user:update"))
+	s.False(IsSelfServicePermission("selfish"))
+}
+
+// A self-service route needs its permission and no organization unit; the service checks the authentication age.
+func (s *DataPlanePermissionsTestSuite) TestSelfServiceRouteNeedsNoOrganizationUnit() {
+	service, err := newSecurityService(nil, nil, nil, apiPermissionEntries)
+	s.Require().NoError(err)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials", nil)
+	ctx := withSecurityContext(req.Context(), newSecurityContext("user-1", "", "token",
+		[]string{"self:credentials:update"}, nil))
+
+	s.NoError(service.authorize(req.WithContext(ctx)))
+}
+
+func (s *DataPlanePermissionsTestSuite) TestSelfServiceRouteNeedsThePermission() {
+	service, err := newSecurityService(nil, nil, nil, apiPermissionEntries)
+	s.Require().NoError(err)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials", nil)
+	ctx := withSecurityContext(req.Context(), newSecurityContext("user-1", "ou-1", "token", []string{"org"}, nil))
+
+	s.ErrorIs(service.authorize(req.WithContext(ctx)), errInsufficientPermissions)
 }
 
 func (s *DataPlanePermissionsTestSuite) TestForEachPermissionPlaneForTest() {

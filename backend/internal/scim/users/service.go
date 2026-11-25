@@ -266,7 +266,7 @@ func (s *scimUsersService) ReplaceUser(
 		// skipping user.UpdateUser's OU/type validation. That validation requires
 		// system:usertype:view with no self-access bypass, so self-service callers
 		// would otherwise hit it and fail.
-		result, svcErr = s.userService.UpdateUserAttributes(ctx, userID, attrsJSON)
+		result, svcErr = s.userService.UpdateSelfUserAttributes(ctx, attrsJSON)
 	} else {
 		updatedUser := &providers.User{
 			ID:         userID,

@@ -21,6 +21,11 @@ async function thunderRequest(path, accessToken, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.body = body;
+    // RFC 9470: the sign-in is older than the action allows.
+    const maxAge = /max_age="?(\d+)/.exec(response.headers.get("WWW-Authenticate") || "");
+    if (maxAge) {
+      error.maxAge = Number(maxAge[1]);
+    }
     throw error;
   }
   return body;

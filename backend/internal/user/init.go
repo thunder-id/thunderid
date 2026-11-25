@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -41,6 +42,7 @@ func Initialize(
 	valueCapturer declarativeresource.ValueCapturer,
 	bus eventbus.EventBusInterface,
 	projectValidator projectOUValidator,
+	maxAgeReader security.PermissionMaxAgeReaderInterface,
 ) (ConfigurableUserService, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, nil, errNilEventBus
@@ -48,7 +50,7 @@ func Initialize(
 
 	// Step 1: Create service with entity service
 	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
-		verification, valueCapturer, sharingService, bus, projectValidator)
+		verification, valueCapturer, sharingService, bus, projectValidator, maxAgeReader)
 	userService.managed = managedresource.GetStore()
 	sharingService.RegisterResourceType(userService.sharingDeclaration)
 	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
@@ -72,7 +74,7 @@ func Initialize(
 		}
 	}
 
-	userHandler := newUserHandler(userService)
+	userHandler := newUserHandler(userService, maxAgeReader)
 	registerRoutes(mux, userHandler)
 
 	// Create resolver for OU package to query user data without cross-DB access
@@ -203,6 +205,7 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 	optsSelf := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		ExposedHeaders:   []string{serverconst.WWWAuthenticateHeaderName},
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
@@ -233,6 +236,7 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 	optsSelfCredentials := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		ExposedHeaders:   []string{serverconst.WWWAuthenticateHeaderName},
 		AllowCredentials: true,
 		MaxAge:           600,
 	}

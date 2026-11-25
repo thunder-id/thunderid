@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/useAuth";
 import { KeyRound, RefreshCw, Save, Wallet } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { getSelfServiceAccessToken, tokenSubject } from "../auth/selfServiceTokenService";
 import {
   getMyUser,
   getSkyPassOffer,
@@ -224,15 +225,17 @@ function Profile({ getAccessToken }) {
             )}
           </section>
 
-          <PasswordSection getAccessTokenRef={getAccessTokenRef} disabled={user.isReadOnly} />
+          <PasswordSection userId={user.id} disabled={user.isReadOnly} />
         </>
       )}
     </main>
   );
 }
 
-function PasswordSection({ getAccessTokenRef, disabled }) {
+function PasswordSection({ userId, disabled }) {
   const [password, setPassword] = useState("");
+  // Set when the server asks for a more recent sign-in; the next try signs in again with it.
+  const [maxAge, setMaxAge] = useState(undefined);
   const [confirm, setConfirm] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -254,13 +257,23 @@ function PasswordSection({ getAccessTokenRef, disabled }) {
 
     setIsSaving(true);
     try {
-      const accessToken = await getAccessTokenRef.current();
+      const accessToken = await getSelfServiceAccessToken({ maxAge });
+      // The popup may sign in another account; change the password only for the user shown here.
+      if (tokenSubject(accessToken) !== userId) {
+        throw new Error("The sign-in window used a different account. Sign in as this user to change the password.");
+      }
       await updateMyCredentials(accessToken, { password });
+      setMaxAge(undefined);
       setPassword("");
       setConfirm("");
       setMessage("Password updated.");
     } catch (err) {
-      setError(formatError(err));
+      if (err.status === 401 && err.maxAge !== undefined) {
+        setMaxAge(err.maxAge);
+        setError("Your sign-in is too old to change the password. Select Update password to sign in again.");
+      } else {
+        setError(formatError(err));
+      }
     } finally {
       setIsSaving(false);
     }

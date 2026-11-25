@@ -117,6 +117,9 @@ type ResourceServiceInterface interface {
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
 	) ([]string, *tidcommon.ServiceError)
+	GetPermissionMaxAge(
+		ctx context.Context, resourceServerID string, permission string,
+	) (int64, *tidcommon.ServiceError)
 
 	// ResolveResourceServerOUHandle resolves ou_handle to an OU ID on the given resource server
 	// in-place. Called by the declarative loader validator so that file-based resource servers
@@ -1542,6 +1545,7 @@ func (rs *resourceService) createAction(
 			Description: action.Description,
 			Permission:  action.Permission,
 			Kind:        action.Kind,
+			MaxAge:      action.MaxAge,
 		}
 		return nil
 	}); err != nil {
@@ -1737,12 +1741,17 @@ func (rs *resourceService) updateAction(
 		return nil, &ErrorInvalidRequestFormat
 	}
 
-	// Update only name and description (handle and kind are immutable)
+	if action.MaxAge < 0 {
+		return nil, &ErrorInvalidMaxAge
+	}
+
+	// Update only name, description and maxAge (handle and kind are immutable)
 	updateAction := providers.Action{
 		Name:        action.Name,
 		Handle:      currentAction.Handle, // Immutable - preserve
 		Description: action.Description,
 		Kind:        currentAction.Kind, // Immutable - preserve
+		MaxAge:      action.MaxAge,
 	}
 
 	// Use transaction for write operation
@@ -1761,6 +1770,7 @@ func (rs *resourceService) updateAction(
 			Handle:      updateAction.Handle,
 			Description: updateAction.Description,
 			Kind:        updateAction.Kind,
+			MaxAge:      updateAction.MaxAge,
 		}
 		return nil
 	}); err != nil {
@@ -1909,6 +1919,23 @@ func (rs *resourceService) ValidateDeleteAction(
 	return &revocation.AccessRevocationTarget{
 		Scopes: []revocation.AudienceScope{{Audience: resourceServer.Identifier, Scope: action.Permission}},
 	}, nil
+}
+
+// GetPermissionMaxAge returns the maxAge of the action carrying the permission, or 0 (no limit) when no action
+// carries it, as before a deployment imports the actions. It needs no caller access check: the permission name
+// is already in the caller's token.
+func (rs *resourceService) GetPermissionMaxAge(
+	ctx context.Context, resourceServerID string, permission string,
+) (int64, *tidcommon.ServiceError) {
+	action, err := rs.resourceStore.GetActionByPermission(ctx, resourceServerID, permission)
+	if errors.Is(err, errActionNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to get the action carrying the permission", log.Error(err))
+		return 0, &tidcommon.InternalServerError
+	}
+	return action.MaxAge, nil
 }
 
 // ValidatePermissions checks if permissions exist for a given resource server.
@@ -2147,6 +2174,9 @@ func (rs *resourceService) validateActionCreate(action providers.Action, delimit
 	// Validate handle
 	if err := validateHandle(action.Handle, delimiter); err != nil {
 		return err
+	}
+	if action.MaxAge < 0 {
+		return &ErrorInvalidMaxAge
 	}
 	return nil
 }

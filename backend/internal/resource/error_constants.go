@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -353,6 +353,19 @@ var (
 			Key: "error.resourceservice.cannot_modify_managed_resource_server_description",
 			DefaultValue: "Resource server {{param(id)}} was deployed by the control plane and can only be " +
 				"changed there",
+		},
+	}
+	// ErrorInvalidMaxAge is returned when an action's maxAge is negative.
+	ErrorInvalidMaxAge = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_max_age",
+			DefaultValue: "Invalid maximum age",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_max_age_description",
+			DefaultValue: "The maximum age must be zero or a positive number of seconds",
 		},
 	}
 )

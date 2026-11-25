@@ -4822,6 +4822,32 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SelfIssuedExter
 	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
 }
 
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PassesSubjectAuthTime() {
+	const authTime = int64(1700000000)
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer, "aud": "app123",
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	req := suite.createBasicTokenRequest(subjectToken)
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:      testUserID,
+			Iss:      testCustomIssuer,
+			Scopes:   []string{testScopeRead},
+			AuthTime: authTime,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.AuthTime == authTime
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	suite.Nil(errResp)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
 // An external subject token whose connection has no authorization mapping gets no permission scopes,
 // whatever its own scope claim and the request ask for; OIDC scopes are kept. The exchanged token names
 // the external issuer as its source IdP.

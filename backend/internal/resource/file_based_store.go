@@ -261,6 +261,7 @@ func declarativeAction(rs *providers.ResourceServer, resourcePath string, action
 		Description: action.Description,
 		Permission:  action.Permission,
 		Kind:        action.Kind,
+		MaxAge:      action.MaxAge,
 	}
 }
 
@@ -687,6 +688,24 @@ func (f *fileBasedResourceStore) GetDeclaredPermissions(
 	}
 	slices.Sort(permissions)
 	return slices.Compact(permissions), nil
+}
+
+// GetActionByPermission returns the declared action carrying the permission.
+func (f *fileBasedResourceStore) GetActionByPermission(
+	ctx context.Context, resServerID string, permission string) (providers.Action, error) {
+	rs, err := f.GetResourceServer(ctx, resServerID)
+	if err != nil {
+		return providers.Action{}, errActionNotFound
+	}
+	// The resource server's own actions come first, under an empty resource path.
+	for _, res := range append([]providers.Resource{{Actions: rs.Actions}}, rs.Resources...) {
+		for _, action := range res.Actions {
+			if action.Permission == permission {
+				return declarativeAction(&rs, res.Permission, action), nil
+			}
+		}
+	}
+	return providers.Action{}, errActionNotFound
 }
 
 func (f *fileBasedResourceStore) ValidatePermissions(

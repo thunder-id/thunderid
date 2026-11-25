@@ -83,6 +83,8 @@ These parameters on the authorization request control *how* the user authenticat
 
 The ID Token's `auth_time` claim reports that same moment, taken from the session rather than from the clock at the time the token is built. That applies to the ID Token issued by the login itself, not only to later authorizations, so a login and every authorization that reuses its session report an identical `auth_time`. An authorization that re-authenticated, whether because of `prompt=login` or a `max_age` the previous authentication no longer satisfied, carries a later one.
 
+Access tokens issued for a sign-in also carry `auth_time` ([RFC 9068](https://datatracker.ietf.org/doc/html/rfc9068)): those from the authorization code, CIBA, and device authorization grants, and from a token exchange of the assertion a sign-in flow returns. A refreshed access token keeps the original `auth_time`, so a refresh does not make the sign-in recent again. An API that requires a recent sign-in, such as the self-service credential APIs, compares `auth_time` with its limit and answers with an `insufficient_user_authentication` challenge ([RFC 9470](https://datatracker.ietf.org/doc/html/rfc9470)) that names `max_age`. The client then sends a new authorization request with that `max_age`. See [Let Users Change Their Own Account](../../users/manage-users.mdx#let-users-change-their-own-account).
+
 ## Try It in <ProductName />
 
 OpenID Connect activates as soon as a client requests the `openid` scope. No deployment-level toggle is needed.

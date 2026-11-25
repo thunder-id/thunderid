@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -20,11 +21,13 @@ import (
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -40,6 +43,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
@@ -2600,10 +2604,10 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay(t *testing.T) {
 }
 
 func TestNewFunctions(t *testing.T) {
-	svc := newUserService(nil, nil, nil, nil, nil, nil, nil, nil, discardingBus{}, nil)
+	svc := newUserService(nil, nil, nil, nil, nil, nil, nil, nil, discardingBus{}, nil, nil)
 	require.NotNil(t, svc)
 
-	handler := newUserHandler(svc)
+	handler := newUserHandler(svc, nil)
 	require.NotNil(t, handler)
 }
 
@@ -5348,7 +5352,7 @@ func TestSharingPolicy_ResolveOverlayCarriesTheMandatedRoles(t *testing.T) {
 // that waited for it.
 func TestSetRoleAssignmentService_AppliesTheWaitingDeclaredMandates(t *testing.T) {
 	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
-	service := newUserService(nil, nil, nil, nil, nil, nil, nil, sharingMock, discardingBus{}, nil)
+	service := newUserService(nil, nil, nil, nil, nil, nil, nil, sharingMock, discardingBus{}, nil, nil)
 	roles := []string{"role-a"}
 	declared := userPolicy(shareOwnerOU)
 	declared.Declared = true
@@ -5899,7 +5903,7 @@ func verificationUserService(t *testing.T, storeMock *entitymock.EntityServiceIn
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Maybe()
 	return &userService{bus: discardingBus{}, entityService: storeMock, entityTypeService: schemaMock,
 		ouService: ouServiceMock, authzService: newAllowAllAuthz(t), governance: governance,
-		verification: verification}
+		verification: verification, logger: log.GetLogger()}
 }
 
 // readsEntityWith matches a verification read of the entity holding the given attributes.
@@ -6171,6 +6175,191 @@ func (s *UserServiceTestSuite) TestUpdateUserAttributes_ReportsOneStoredSnapshot
 			require.Equal(t, verifiedEmail(), user.VerifiedAttributes)
 		})
 	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserAttributes_ProtectedAttributeChange() {
+	security.InitDataPlanePermissions("")
+	defer security.InitControlPlanePermissions("")
+	selfAttributes := security.GetSystemPermissions().SelfProtectedAttributesUpdate
+	const maxAge = int64(300)
+	recent := float64(time.Now().Unix())
+	stale := float64(time.Now().Add(-time.Hour).Unix())
+	readerErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5000"}
+
+	tests := []struct {
+		name        string
+		caller      string
+		permissions []string
+		authTime    any
+		request     string
+		readsSchema bool
+		readsMaxAge bool
+		readerErr   *tidcommon.ServiceError
+		wantErr     string
+		wantMaxAge  string
+		// management updates through UpdateUserAttributes, which checks no protected attribute.
+		management bool
+	}{
+		{
+			name:        "NameChangeNeedsNoPermission",
+			caller:      svcTestUserID1,
+			request:     `{"name":"Bob","email":"alice@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+		},
+		{
+			name:        "EmailChangeWithoutPermissionIsRefused",
+			caller:      svcTestUserID1,
+			authTime:    recent,
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+			wantErr:     ErrorProtectedAttributeChangeNotPermitted.Code,
+		},
+		{
+			name:        "MobileRemovalWithoutPermissionIsRefused",
+			caller:      svcTestUserID1,
+			authTime:    recent,
+			request:     `{"name":"Alice","email":"alice@example.com"}`,
+			readsSchema: true,
+			wantErr:     ErrorProtectedAttributeChangeNotPermitted.Code,
+		},
+		{
+			name:        "EmailChangeWithStaleAuthenticationNeedsRecentAuthentication",
+			caller:      svcTestUserID1,
+			permissions: []string{selfAttributes},
+			authTime:    stale,
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+			readsMaxAge: true,
+			wantErr:     security.ErrorRecentAuthenticationRequired.Code,
+			wantMaxAge:  "300",
+		},
+		{
+			name:        "EmailChangeWithRecentAuthenticationUpdates",
+			caller:      svcTestUserID1,
+			permissions: []string{selfAttributes},
+			authTime:    recent,
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+			readsMaxAge: true,
+		},
+		{
+			name:        "MaxAgeReadErrorIsAServerError",
+			caller:      svcTestUserID1,
+			permissions: []string{selfAttributes},
+			authTime:    recent,
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+			readsMaxAge: true,
+			readerErr:   readerErr,
+			wantErr:     tidcommon.InternalServerError.Code,
+		},
+		{
+			name:       "ManagementUpdateOfOwnAccountIsNotChecked",
+			caller:     svcTestUserID1,
+			request:    `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			management: true,
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			t := s.T()
+			existing := &providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1,
+				Type: testUserType, OUID: testOrgID,
+				Attributes: json.RawMessage(`{"name":"Alice","email":"alice@example.com","mobile":"+94771234567"}`)}
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(existing, nil)
+			verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+			verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+				Return(map[string]providers.VerifiedAttribute{}).Maybe()
+			service := verificationUserService(t, storeMock, activeGovernance(t), verification)
+			if tc.readsSchema {
+				service.entityTypeService.(*entitytypemock.EntityTypeServiceInterfaceMock).
+					On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testUserType,
+						entitytype.AttributeFilter{AllowNonCredential: true}).
+					Return([]entitytype.AttributeInfo{
+						{Attribute: "name", Type: entitytypemodel.TypeString},
+						{Attribute: "email", Type: entitytypemodel.TypeEmail},
+						{Attribute: "mobile", Type: entitytypemodel.TypeMobile},
+					}, (*tidcommon.ServiceError)(nil)).Once()
+			}
+			reader := resourcemock.NewResourceServiceInterfaceMock(t)
+			if tc.readsMaxAge {
+				reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID, selfAttributes).
+					Return(maxAge, tc.readerErr).Once()
+			}
+			service.maxAgeReader = reader
+			if tc.wantErr == "" {
+				storeMock.On("UpdateAttributes", mock.Anything, svcTestUserID1, json.RawMessage(tc.request)).
+					Return(nil).Once()
+			}
+			attributes := map[string]any{}
+			if tc.authTime != nil {
+				attributes["auth_time"] = tc.authTime
+			}
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest(tc.caller, testOrgID, "token", tc.permissions, attributes))
+
+			var user *providers.User
+			var err *tidcommon.ServiceError
+			if tc.management {
+				user, err = service.UpdateUserAttributes(ctx, svcTestUserID1, json.RawMessage(tc.request))
+			} else {
+				user, err = service.UpdateSelfUserAttributes(ctx, json.RawMessage(tc.request))
+			}
+
+			if tc.wantErr == "" {
+				s.Require().Nil(err)
+				s.Require().NotNil(user)
+				return
+			}
+			s.Require().Nil(user)
+			s.Require().NotNil(err)
+			s.Require().Equal(tc.wantErr, err.Code)
+			s.Require().Equal(tc.wantMaxAge, err.ErrorDescription.Params[security.ErrorParamMaxAge])
+			storeMock.AssertNotCalled(t, "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserAttributes_ControlPlaneChecksNoProtectedAttribute() {
+	security.InitControlPlanePermissions("")
+	t := s.T()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(verifiedUserEntity(), nil)
+	storeMock.On("UpdateAttributes", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+	verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).Return(verifiedEmail()).Once()
+	service := verificationUserService(t, storeMock, activeGovernance(t), verification)
+	service.maxAgeReader = resourcemock.NewResourceServiceInterfaceMock(t)
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(svcTestUserID1, testOrgID, "token", nil, nil))
+
+	user, err := service.UpdateSelfUserAttributes(ctx, json.RawMessage(`{"email":"b@example.com"}`))
+
+	s.Require().Nil(err)
+	s.Require().NotNil(user)
+}
+
+// A declared user is read only, so a change to their protected attributes gets that refusal first.
+func (s *UserServiceTestSuite) TestUpdateSelfUserAttributes_DeclaredUserIsRefusedBeforeTheProtectedAttributeCheck() {
+	security.InitDataPlanePermissions("")
+	t := s.T()
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(verifiedUserEntity(), nil).Once()
+	storeMock.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(true, nil).Once()
+	service := verificationUserService(t, storeMock, activeGovernance(t),
+		attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t))
+	service.maxAgeReader = resourcemock.NewResourceServiceInterfaceMock(t)
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(svcTestUserID1, testOrgID, "token", nil, nil))
+
+	user, err := service.UpdateSelfUserAttributes(ctx, json.RawMessage(`{"email":"b@example.com"}`))
+
+	s.Require().Nil(user)
+	s.Require().NotNil(err)
+	s.Require().Equal(ErrorCannotModifyDeclarativeResource.Code, err.Code)
 }
 
 const svcTestAdminID = "admin-1"

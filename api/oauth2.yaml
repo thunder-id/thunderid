@@ -1598,6 +1598,12 @@ components:
         nbf:
           type: integer
           format: int64
+        auth_time:
+          type: integer
+          format: int64
+          description: |
+            Time the user signed in, in seconds since the epoch (RFC 9470). Present when the
+            token carries `auth_time`.
         sub:
           type: string
         sub_type:

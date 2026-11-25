@@ -31,12 +31,17 @@ const handlerLoggerComponentName = "UserHandler"
 // userHandler is the handler for user management operations.
 type userHandler struct {
 	userService UserServiceInterface
+	// maxAgeReader reads a self-service permission's maxAge.
+	maxAgeReader security.PermissionMaxAgeReaderInterface
 }
 
 // newUserHandler creates a new instance of userHandler with dependency injection.
-func newUserHandler(userService UserServiceInterface) *userHandler {
+func newUserHandler(
+	userService UserServiceInterface, maxAgeReader security.PermissionMaxAgeReaderInterface,
+) *userHandler {
 	return &userHandler{
-		userService: userService,
+		userService:  userService,
+		maxAgeReader: maxAgeReader,
 	}
 }
 
@@ -436,7 +441,7 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	updatedUser, svcErr := uh.userService.UpdateUserAttributes(ctx, userID, updateRequest.Attributes)
+	updatedUser, svcErr := uh.userService.UpdateSelfUserAttributes(ctx, updateRequest.Attributes)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -527,6 +532,13 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 	if security.IsDelegated(ctx) {
 		handleError(ctx, w, &ErrorDelegatedTokenNotAllowed)
 		return
+	}
+	if perms := security.GetSystemPermissions(); perms != nil {
+		if svcErr := security.RequireRecentAuthentication(ctx, uh.maxAgeReader,
+			perms.SelfCredentialsUpdate); svcErr != nil {
+			handleError(ctx, w, svcErr)
+			return
+		}
 	}
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
@@ -653,8 +665,11 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusBadRequest
 		case ErrorAuthenticationFailed.Code:
 			statusCode = http.StatusUnauthorized
+		case security.ErrorRecentAuthenticationRequired.Code:
+			security.SetAuthenticationAgeChallenge(w, svcErr.ErrorDescription.Params[security.ErrorParamMaxAge])
+			statusCode = http.StatusUnauthorized
 		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code, ErrorSharedUserReadOnly.Code,
-			ErrorDelegatedTokenNotAllowed.Code:
+			ErrorDelegatedTokenNotAllowed.Code, ErrorProtectedAttributeChangeNotPermitted.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest

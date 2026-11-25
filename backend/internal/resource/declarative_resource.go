@@ -262,6 +262,7 @@ func (e *resourceServerExporter) getAllActions(
 				Handle:      action.Handle,
 				Description: action.Description,
 				Kind:        action.Kind,
+				MaxAge:      action.MaxAge,
 			})
 		}
 		offset += len(actions.Actions)
@@ -537,12 +538,17 @@ func resolveResourcePermissions(rs *providers.ResourceServer) error {
 	return nil
 }
 
-// validateActionHandles checks that each action handle is valid and does not contain the delimiter.
+// validateActionHandles checks that each action handle is valid and does not contain the delimiter, and
+// that its maxAge is not negative.
 func validateActionHandles(rs *providers.ResourceServer, actions []providers.Action) error {
 	for j := range actions {
 		if svcErr := validateHandle(actions[j].Handle, rs.Delimiter); svcErr != nil {
 			return fmt.Errorf("invalid handle '%s' for action '%s' in resource server '%s': %s",
 				actions[j].Handle, actions[j].Name, rs.ID, svcErr.ErrorDescription.DefaultValue)
+		}
+		if actions[j].MaxAge < 0 {
+			return fmt.Errorf("invalid maxAge for action '%s' in resource server '%s': %s",
+				actions[j].Name, rs.ID, ErrorInvalidMaxAge.ErrorDescription.DefaultValue)
 		}
 	}
 	return nil

@@ -154,6 +154,9 @@ func (s *tokenIntrospectionService) prepareValidResponse(payload map[string]inte
 	if nbf, ok := payload["nbf"].(float64); ok {
 		response.Nbf = int64(nbf)
 	}
+	if authTime, ok := payload[constants.ClaimAuthTime].(float64); ok {
+		response.AuthTime = int64(authTime)
+	}
 
 	if sub, ok := payload[constants.ClaimSub].(string); ok {
 		response.Sub = sub

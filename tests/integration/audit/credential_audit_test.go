@@ -31,7 +31,12 @@ func (ts *AuditLogTestSuite) TestEveryUserCredentialUpdateRecordsItsOutcome() {
 	userID := ts.createUser(ouID, userType, ts.prefix+"cred", credentialMarker+"Initial1!")
 	siblingOU, siblingType := ts.createUserType("cred-sibling")
 	siblingID := ts.createUser(siblingOU, siblingType, ts.prefix+"cred-sibling", credentialMarker+"Sibling1!")
-	managerID, managerClient := ts.createScopedUserManager("cred-scoped")
+	manager := ts.createScopedManager("cred-scoped", []string{"user", "usertype"},
+		[]string{"org:user", "org:usertype:view"})
+	managerID, managerClient := manager.id, manager.client
+	selfToken, err := manager.signIn.ObtainAccessToken(manager.ouID, "openid "+testutils.SelfServiceScopes,
+		manager.username, scopedManagerPassword, testutils.SystemResourceIdentifier)
+	ts.Require().NoError(err)
 	adminRef := testutils.AuditRef{Type: "user", ID: ts.adminUserID()}
 	managerRef := testutils.AuditRef{Type: "user", ID: managerID}
 	userRef := testutils.AuditRef{Type: "user", ID: userID}
@@ -85,7 +90,7 @@ func (ts *AuditLogTestSuite) TestEveryUserCredentialUpdateRecordsItsOutcome() {
 		},
 		// Last, since replacing a password the caller holds revokes the token the caller sends.
 		{
-			name: "a user sets their own password", client: managerClient,
+			name: "a user sets their own password", client: testutils.GetHTTPClientWithToken(selfToken.AccessToken),
 			path:   "/users/me/update-credentials",
 			body:   fmt.Sprintf(`{"attributes":{"password":%q}}`, credentialMarker+"Self1!"),
 			status: http.StatusNoContent, actor: managerRef, target: managerRef,

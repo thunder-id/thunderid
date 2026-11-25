@@ -18,6 +18,7 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } fr
 import { getLocations } from "./api";
 import { getCachedChatAccessToken, getChatAccessToken } from "./auth/chatTokenService";
 import { AUTH_CONFIG } from "./auth/config";
+import { SELF_SERVICE_MESSAGE_TYPE } from "./auth/selfServiceTokenService";
 import { useAuth } from "./auth/useAuth";
 import { BookingDetailsPageWithAuth } from "./pages/BookingDetailsPageWithAuth";
 import { BookingsPageWithAuth } from "./pages/BookingsPageWithAuth";
@@ -714,11 +715,8 @@ function usePostOAuthResultToOpener(type) {
   }, [type]);
 }
 
-// Receives the OAuth authorization code from ThunderID after the chat agent has
-// triggered an authorization-code flow in a popup. Posts the code (and state)
-// back to the opener window (the chat widget) and closes itself.
-function AgentCallbackRoute() {
-  usePostOAuthResultToOpener("wayfinder-agent-oauth");
+function OAuthPopupCallback({ type, message }) {
+  usePostOAuthResultToOpener(type);
 
   return (
     <main style={{
@@ -729,26 +727,24 @@ function AgentCallbackRoute() {
       fontFamily: "sans-serif",
       color: "#555"
     }}>
-      <p>Connecting your account to the assistant…</p>
+      <p>{message}</p>
     </main>
   );
 }
 
-function ChatTokenCallbackRoute() {
-  usePostOAuthResultToOpener("wayfinder-chat-token-oauth");
+// Receives the OAuth authorization code from ThunderID after the chat agent has
+// triggered an authorization-code flow in a popup. Posts the code (and state)
+// back to the opener window (the chat widget) and closes itself.
+function AgentCallbackRoute() {
+  return <OAuthPopupCallback type="wayfinder-agent-oauth" message="Connecting your account to the assistant…" />;
+}
 
-  return (
-    <main style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: "100vh",
-      fontFamily: "sans-serif",
-      color: "#555"
-    }}>
-      <p>Authorizing chat access...</p>
-    </main>
-  );
+function ChatTokenCallbackRoute() {
+  return <OAuthPopupCallback type="wayfinder-chat-token-oauth" message="Authorizing chat access..." />;
+}
+
+function SelfServiceCallbackRoute() {
+  return <OAuthPopupCallback type={SELF_SERVICE_MESSAGE_TYPE} message="Confirming your sign-in..." />;
 }
 
 // Deep-link entry point for agent sign-in. Triggers an OAuth authorize with
@@ -853,6 +849,7 @@ function AppRoutes({ authReady, criteria, locations, onSearch }) {
       <Route path="/signup" element={authReady ? <AuthPage key="signup" /> : <BookingsUnavailable />} />
       <Route path="/recovery" element={authReady ? <AuthPage key="recovery" /> : <BookingsUnavailable />} />
       <Route path="/auth" element={<Navigate to="/signin" replace />} />
+      <Route path="/self-service-callback" element={<SelfServiceCallbackRoute />} />
       {AI_FEATURES_ENABLED && <Route path="/agent-callback" element={<AgentCallbackRoute />} />}
       {AI_FEATURES_ENABLED && <Route path="/chat-token-callback" element={<ChatTokenCallbackRoute />} />}
       {AI_FEATURES_ENABLED && (

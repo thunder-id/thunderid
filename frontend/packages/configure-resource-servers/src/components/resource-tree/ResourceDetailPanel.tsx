@@ -144,8 +144,12 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
       );
     } else {
       const updater = selectedNode.type === 'resource-action' ? updateResourceAction : updateServerAction;
+      const {maxAge} = selectedNode.data;
       updater.mutate(
-        {actionId: selectedNode.id, data: {name, description: description || null}},
+        {
+          actionId: selectedNode.id,
+          data: {name, description: description || null, ...(maxAge !== undefined && {maxAge})},
+        },
         {
           onSuccess: () => {
             setSaveError(null);

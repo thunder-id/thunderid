@@ -5,7 +5,13 @@ package security
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 type contextKey string
@@ -131,6 +137,64 @@ func IsDelegated(ctx context.Context) bool {
 func GetClientID(ctx context.Context) string {
 	clientID, _ := GetAttribute(ctx, claimClientID).(string)
 	return clientID
+}
+
+// PermissionMaxAgeReaderInterface reads the maxAge a resource server marks a permission with.
+type PermissionMaxAgeReaderInterface interface {
+	GetPermissionMaxAge(
+		ctx context.Context, resourceServerID string, permission string,
+	) (int64, *tidcommon.ServiceError)
+}
+
+// RequireRecentAuthentication refuses the token when its auth_time is older than the maxAge the System
+// resource server marks the self-service permission with. An empty permission, as on the control plane, checks
+// nothing.
+func RequireRecentAuthentication(
+	ctx context.Context, reader PermissionMaxAgeReaderInterface, permission string,
+) *tidcommon.ServiceError {
+	if permission == "" {
+		return nil
+	}
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	if reader == nil {
+		logger.Error(ctx, "No reader for the maximum authentication age of the permission",
+			log.String("permission", permission))
+		return &tidcommon.InternalServerError
+	}
+	maxAge, svcErr := reader.GetPermissionMaxAge(ctx, serverconst.SystemResourceServerID,
+		declaredSelfPermission(permission))
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to read the maximum authentication age of the permission",
+			log.String("permission", permission), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	if authenticationExceedsMaxAge(ctx, maxAge, time.Now().Unix()) {
+		return ErrorRecentAuthenticationRequired.WithParams(
+			map[string]string{ErrorParamMaxAge: strconv.FormatInt(maxAge, 10)})
+	}
+	return nil
+}
+
+// declaredSelfPermission returns a self-service permission as the System resource server declares it, without
+// the deployment's system permission prefix.
+func declaredSelfPermission(permission string) string {
+	if sysPerms == nil || sysPerms.SelfService == "" {
+		return permission
+	}
+	return permissionRootSelf + strings.TrimPrefix(permission, sysPerms.SelfService)
+}
+
+// authenticationExceedsMaxAge reports whether the token's auth_time is more than maxAge seconds before now, in Unix
+// seconds. A token without auth_time exceeds every limit; a maxAge of zero or less sets none.
+func authenticationExceedsMaxAge(ctx context.Context, maxAge int64, now int64) bool {
+	if maxAge <= 0 {
+		return false
+	}
+	authTime, ok := GetAttribute(ctx, claimAuthTime).(float64)
+	if !ok {
+		return true
+	}
+	return now-int64(authTime) > maxAge
 }
 
 // GetAttribute retrieves a specific attribute from the security token.

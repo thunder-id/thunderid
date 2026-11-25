@@ -305,7 +305,11 @@ curl -kL https://localhost:8090/resource-servers/<resource-server-id>/resources/
 
 ### Update an Action
 
-You can update the `name` and `description`. The `handle` cannot be changed.
+You can update the `name`, `description`, and `maxAge`. The `handle` and `kind` cannot be changed.
+
+`maxAge` limits how long ago, in seconds, the user may have signed in for a token to be used for the action ([RFC 9470](https://datatracker.ietf.org/doc/html/rfc9470)). The access token's `auth_time` claim records the sign-in time. The value is zero or a positive number. Omit it, or set it to `0`, for no limit. A negative value is refused with `RES-1029`. <ProductName /> enforces `maxAge` for the self-service permissions of the System resource server, which ship with `maxAge: 300`. See [Recent Sign-In](./users/manage-users.mdx#recent-sign-in). On your own resource servers, your API enforces it by comparing the token's `auth_time` with the action's `maxAge`.
+
+A `PUT` replaces the action's fields. Send `description` and `maxAge` with every update, because an update that leaves one out clears it. For example, an update that sends only `name` removes the action's sign-in age limit.
 
 ```bash
 curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id>/actions/<action-id> \
@@ -313,9 +317,14 @@ curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id>/act
   -H 'Authorization: Bearer <access-token>' \
   -d '{
     "name": "Updated Action Name",
-    "description": "Updated description"
+    "description": "Updated description",
+    "maxAge": 300
   }'
 ```
+
+For an action on a resource, send the same body to `/resource-servers/<resource-server-id>/resources/<resource-id>/actions/<action-id>`. The self-service actions of the System resource server are on resources under `self`.
+
+When you edit an action's name or description in the Console, the Console keeps its existing `maxAge`.
 
 ### Delete an Action
 

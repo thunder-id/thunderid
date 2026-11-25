@@ -160,6 +160,9 @@ type Action struct {
 	Permission  string `yaml:"-"                     json:"-"` // Computed permission string, not serialized to YAML
 	// Kind is empty ("") for API/CUSTOM actions; "tool"|"resource" for MCP actions.
 	Kind ActionKind `yaml:"kind,omitempty" json:"-"`
+	// MaxAge, when positive, is the longest time in seconds since auth_time a token may be used for this action
+	// (RFC 9470). Zero sets no limit.
+	MaxAge int64 `yaml:"maxAge,omitempty" json:"-"`
 }
 
 // Resource represents a resource in both declarative resources and service layer.

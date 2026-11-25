@@ -481,6 +481,16 @@ func (c *compositeResourceStore) GetAction(
 	return action, err
 }
 
+// GetActionByPermission returns the action carrying the permission from either store.
+func (c *compositeResourceStore) GetActionByPermission(
+	ctx context.Context, resServerID string, perm string) (providers.Action, error) {
+	return declarativeresource.CompositeGetHelper(
+		func() (providers.Action, error) { return c.dbStore.GetActionByPermission(ctx, resServerID, perm) },
+		func() (providers.Action, error) { return c.fileStore.GetActionByPermission(ctx, resServerID, perm) },
+		errActionNotFound,
+	)
+}
+
 // GetActionList returns a paginated, deduplicated action list from both stores.
 func (c *compositeResourceStore) GetActionList(
 	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit, offset int,

@@ -1791,6 +1791,10 @@ paths:
       tags:
         - Self
       summary: Update self user profile
+      description: |
+        Replaces the signed-in user's attributes. Adding, changing or removing an attribute of type `email` or
+        `mobile` needs the `self:protectedattributes:update` permission and a sign-in within the `maxAge` the
+        System resource server sets on it; other attributes need neither.
       security:
         - OAuth2: []
       requestBody:
@@ -1860,19 +1864,59 @@ paths:
                       key: "error.userservice.user_type_not_found_description"
                       defaultValue: "The specified user type does not exist"
         "401":
-          description: Unauthorized - missing or invalid authentication token
+          description: >
+            Missing or invalid authentication token, or a protected attribute change whose sign-in is older than
+            the permission's `maxAge`, or whose token has no `auth_time` (`AUTH-4011`)
+          headers:
+            WWW-Authenticate:
+              description: >
+                `Bearer error="insufficient_user_authentication"` with `max_age` when the sign-in is too old
+                (RFC 9470). The client signs the user in again with `max_age` and retries.
+              schema:
+                type: string
+              example: 'Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="300"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unauthorized:
+                  summary: Missing or invalid token
+                  value:
+                    code: "AUTH-4010"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "Authentication is required to access this resource"
+                recent-authentication-required:
+                  summary: Sign-in older than the permission's maxAge
+                  value:
+                    code: "AUTH-4011"
+                    message:
+                      key: "error.security.recent_authentication_required"
+                      defaultValue: "Recent authentication required"
+                    description:
+                      key: "error.security.recent_authentication_required_description"
+                      defaultValue: "Authenticate again: this change needs an authentication within the last 300 seconds"
+        "403":
+          description: >
+            A protected attribute change without the `self:protectedattributes:update` permission (`USR-1047`), or a
+            change to a user shared into this organization unit, which only the owning organization unit can change
+            (`USR-1045`)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "AUTH-4010"
+                code: "USR-1047"
                 message:
-                  key: "error.unauthorized"
-                  defaultValue: "Unauthorized"
+                  key: "error.userservice.protected_attribute_change_not_permitted"
+                  defaultValue: "Protected attribute change not permitted"
                 description:
-                  key: "error.unauthorized_description"
-                  defaultValue: "Authentication is required to access this resource"
+                  key: "error.userservice.protected_attribute_change_not_permitted_description"
+                  defaultValue: "The access token does not carry the permission to change protected attributes"
         "404":
           description: Authenticated user not found
           content:
@@ -2708,6 +2752,9 @@ paths:
         user's own: a delegated token is refused. An agent declared in a file, and one a control plane deployed,
         are refused. An administrator cannot set a personal agent's credentials, and an update of the agent
         through `PUT /agents/{id}` or `PUT /users/me/agents/{id}` that names a credential is refused (`AGT-1068`).
+
+        The token needs the `self:agentcredentials:update` permission and a sign-in within the `maxAge` the
+        System resource server sets on it.
       security:
         - OAuth2: []
       parameters:
@@ -2739,14 +2786,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         "401":
-          description: No user access token (`AGT-1060`)
+          description: >
+            No user access token (`AGT-1060`), or a sign-in older than the permission's `maxAge`, or a token with
+            no `auth_time` (`AUTH-4011`)
+          headers:
+            WWW-Authenticate:
+              description: >
+                `Bearer error="insufficient_user_authentication"` with `max_age` when the sign-in is too old
+                (RFC 9470). The client signs the user in again with `max_age` and retries.
+              schema:
+                type: string
+              example: 'Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="300"'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         "403":
           description: |
-            A delegated token (`AGT-1061`), such as an agent's own token for its owner; the caller does not hold
+            The token does not carry the `self:agentcredentials:update` permission (`AUTH-4030`); a delegated
+            token (`AGT-1061`), such as an agent's own token for its owner; the caller does not hold
             every permission the agent holds; or the agent is declared in a file (`AGT-1027`) or deployed by a
             control plane (`AGT-1063`).
           content:
@@ -2770,6 +2828,9 @@ paths:
       tags:
         - Self
       summary: Update self user credentials
+      description: |
+        Sets the signed-in user's credentials. The token needs the `self:credentials:update` permission and a
+        sign-in within the `maxAge` the System resource server sets on it.
       security:
         - OAuth2: []
       requestBody:
@@ -2802,21 +2863,46 @@ paths:
                       key: "error.userservice.missing_credentials_description"
                       defaultValue: "At least one credential field must be provided"
         "401":
-          description: Unauthorized - missing or invalid authentication token
+          description: >
+            Missing or invalid authentication token, or a sign-in older than the permission's `maxAge`, or a
+            token with no `auth_time` (`AUTH-4011`)
+          headers:
+            WWW-Authenticate:
+              description: >
+                `Bearer error="insufficient_user_authentication"` with `max_age` when the sign-in is too old
+                (RFC 9470). The client signs the user in again with `max_age` and retries.
+              schema:
+                type: string
+              example: 'Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="300"'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "AUTH-4010"
-                message:
-                  key: "error.unauthorized"
-                  defaultValue: "Unauthorized"
-                description:
-                  key: "error.unauthorized_description"
-                  defaultValue: "Authentication is required to access this resource"
+              examples:
+                unauthorized:
+                  summary: Missing or invalid token
+                  value:
+                    code: "AUTH-4010"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "Authentication is required to access this resource"
+                recent-authentication-required:
+                  summary: Sign-in older than the permission's maxAge
+                  value:
+                    code: "AUTH-4011"
+                    message:
+                      key: "error.security.recent_authentication_required"
+                      defaultValue: "Recent authentication required"
+                    description:
+                      key: "error.security.recent_authentication_required_description"
+                      defaultValue: "Authenticate again: this change needs an authentication within the last 300 seconds"
         "403":
-          description: The caller may not change the user's credentials with a delegated token
+          description: >
+            The token does not carry the `self:credentials:update` permission (`AUTH-4030`), or is a delegated
+            token (`USR-1046`)
           content:
             application/json:
               schema:

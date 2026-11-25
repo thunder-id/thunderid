@@ -156,6 +156,10 @@ func (s *securityService) authorize(r *http.Request) error {
 	if !HasSufficientSystemPermission(permissions, required) {
 		return errInsufficientPermissions
 	}
+	// A self-service permission acts only on the token's own subject, so it needs no organization unit.
+	if IsSelfServicePermission(required) {
+		return nil
+	}
 	// A public path also serves callers without a token, so its service decides what a token that names no
 	// organization unit may do there.
 	if LacksOrganizationUnit(r.Context()) && !s.isPublicPath(r.Context(), r.URL.Path) {

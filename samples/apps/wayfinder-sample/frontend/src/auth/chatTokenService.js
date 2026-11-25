@@ -2,36 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CHAT_SCOPES } from "./config";
+import {
+  authorizeUrl,
+  codeChallengeFor,
+  exchangeCode,
+  randomString,
+  waitForPopupResult,
+} from "./popupAuthorize";
 
 const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
-const CLIENT_ID = import.meta.env.VITE_THUNDER_CLIENT_ID || "WAYFINDER";
 const AGENT_CHAT_URL = import.meta.env.VITE_AGENT_CHAT_URL || "http://localhost:8790/chat";
 const CALLBACK_PATH = "/chat-token-callback";
 const TOKEN_STORAGE_KEY = "wf_chat_token";
 const FLOW_STORAGE_KEY = "wf_chat_token_flow";
-
-function base64UrlEncode(bytes) {
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-
-  return btoa(binary)
-    .replace(/=+$/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-}
-
-async function sha256(value) {
-  const encoded = new TextEncoder().encode(value);
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", encoded));
-}
-
-function randomString() {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return base64UrlEncode(bytes);
-}
 
 function decodeJWTPayload(token) {
   try {
@@ -88,86 +71,42 @@ export async function getChatAccessToken({ interactive = false } = {}) {
 
   const state = randomString();
   const codeVerifier = randomString();
-  const codeChallenge = base64UrlEncode(await sha256(codeVerifier));
+  const codeChallenge = await codeChallengeFor(codeVerifier);
   const redirectUri = `${window.location.origin}${CALLBACK_PATH}`;
 
   sessionStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify({ state, codeVerifier }));
 
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: CLIENT_ID,
-    redirect_uri: redirectUri,
+  popup.location.href = authorizeUrl({
     scope: CHAT_SCOPES.join(" "),
     resource: AGENT_CHAT_URL,
+    redirectUri,
     state,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-    acr_values: "urn:thunder:auth:user",
+    codeChallenge,
   });
 
-  popup.location.href = `${AUTH_SERVER_BASE_URL}/oauth2/authorize?${params.toString()}`;
-
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      window.removeEventListener("message", handleMessage);
-      reject(new Error("Chat authorization timed out."));
-    }, 120000);
-
-    async function handleMessage(event) {
-      if (event.origin !== window.location.origin || event.data?.type !== "wayfinder-chat-token-oauth") {
-        return;
-      }
-
-      window.clearTimeout(timeout);
-      window.removeEventListener("message", handleMessage);
-
-      try {
-        if (event.data.error) {
-          throw new Error(event.data.errorDescription || event.data.error);
-        }
-
-        const stored = JSON.parse(sessionStorage.getItem(FLOW_STORAGE_KEY) || "{}");
-        sessionStorage.removeItem(FLOW_STORAGE_KEY);
-
-        if (!event.data.code || event.data.state !== stored.state || !stored.codeVerifier) {
-          throw new Error("Invalid chat authorization response.");
-        }
-
-        const token = await exchangeCodeForChatToken(event.data.code, stored.codeVerifier, redirectUri);
-        sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
-        resolve(token);
-      } catch (error) {
-        reject(error);
-      }
-    }
-
-    window.addEventListener("message", handleMessage);
+  const result = await waitForPopupResult({
+    type: "wayfinder-chat-token-oauth",
+    timeoutMs: 120000,
+    timeoutMessage: "Chat authorization timed out.",
   });
-}
-
-async function exchangeCodeForChatToken(code, codeVerifier, redirectUri) {
-  const response = await fetch(`${AUTH_SERVER_BASE_URL}/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-      client_id: CLIENT_ID,
-      code_verifier: codeVerifier,
-      resource: AGENT_CHAT_URL,
-    }),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Chat token request failed (${response.status}): ${text}`);
+  if (result.error) {
+    throw new Error(result.errorDescription || result.error);
   }
 
-  const payload = JSON.parse(text);
-  if (!payload.access_token) {
-    throw new Error("Chat token response did not include an access token.");
+  const stored = JSON.parse(sessionStorage.getItem(FLOW_STORAGE_KEY) || "{}");
+  sessionStorage.removeItem(FLOW_STORAGE_KEY);
+
+  if (!result.code || result.state !== stored.state || !stored.codeVerifier) {
+    throw new Error("Invalid chat authorization response.");
   }
 
-  return payload.access_token;
+  const token = await exchangeCode({
+    code: result.code,
+    codeVerifier: stored.codeVerifier,
+    redirectUri,
+    resource: AGENT_CHAT_URL,
+    label: "Chat token",
+  });
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  return token;
 }

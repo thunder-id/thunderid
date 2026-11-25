@@ -26,11 +26,15 @@ import (
 // agentHandler handles HTTP requests for agent operations.
 type agentHandler struct {
 	service AgentServiceInterface
+	// maxAgeReader reads a self-service permission's maxAge.
+	maxAgeReader security.PermissionMaxAgeReaderInterface
 }
 
 // newAgentHandler constructs an agentHandler bound to the given service.
-func newAgentHandler(service AgentServiceInterface) *agentHandler {
-	return &agentHandler{service: service}
+func newAgentHandler(
+	service AgentServiceInterface, maxAgeReader security.PermissionMaxAgeReaderInterface,
+) *agentHandler {
+	return &agentHandler{service: service, maxAgeReader: maxAgeReader}
 }
 
 // HandleAgentListRequest handles GET /agents.
@@ -243,6 +247,13 @@ func (h *agentHandler) HandleOwnedAgentCredentialUpdateRequest(w http.ResponseWr
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
+	}
+	if perms := security.GetSystemPermissions(); perms != nil {
+		if svcErr := security.RequireRecentAuthentication(ctx, h.maxAgeReader,
+			perms.SelfAgentCredentialsUpdate); svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
 	}
 
 	req, err := sysutils.DecodeJSONBody[model.UpdateOwnedAgentCredentialsRequest](r)
@@ -526,6 +537,9 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		case ErrorAgentNotFound.Code:
 			statusCode = http.StatusNotFound
 		case ErrorAuthenticationRequired.Code:
+			statusCode = http.StatusUnauthorized
+		case security.ErrorRecentAuthenticationRequired.Code:
+			security.SetAuthenticationAgeChallenge(w, svcErr.ErrorDescription.Params[security.ErrorParamMaxAge])
 			statusCode = http.StatusUnauthorized
 		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:

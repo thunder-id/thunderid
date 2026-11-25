@@ -21,3 +21,10 @@ export const BOOKING_SCOPES = [
 export const CHAT_SCOPES = AI_FEATURES_ENABLED ? ["agent:access"] : [];
 
 export const SCOPES = BOOKING_SCOPES;
+
+// The sign-in token is bound to the booking resource server, so a password change asks the
+// System resource server for its own token.
+export const SYSTEM_RESOURCE =
+  import.meta.env.VITE_THUNDERID_SYSTEM_RESOURCE || "https://localhost:8090/mcp";
+
+export const SELF_SERVICE_SCOPES = ["self:credentials:update"];

@@ -1295,7 +1295,7 @@ func TestDataPlaneCatalogMatchesBootstrapBundle(t *testing.T) {
 	InitDataPlanePermissions("")
 	defer InitControlPlanePermissions("")
 
-	delimiter, declared := declaredPermissions(t, bootstrapBundlePath, rsSystem, "org")
+	delimiter, declared := declaredPermissions(t, bootstrapBundlePath, rsSystem, "org", "self")
 	assert.Equal(t, ":", delimiter)
 	assert.ElementsMatch(t, GetSystemPermissions().Catalog, declared)
 }

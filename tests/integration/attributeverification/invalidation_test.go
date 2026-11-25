@@ -156,6 +156,21 @@ func (ts *InvalidationTestSuite) selfUpdate(user testUser, attributes map[string
 	ts.Require().Equal(http.StatusOK, status, "the self update must succeed: %s", body)
 }
 
+// A token that does not ask for self:protectedattributes:update cannot change the email, which stays verified.
+func (ts *InvalidationTestSuite) TestASelfEmailChangeNeedsThePermission() {
+	user := ts.newVerifiedUser("self_unpermitted")
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(user.signInClientID, testutils.OUSignInRedirectURI,
+		"openid", user.username, user.password, true)
+	ts.Require().NoError(err)
+
+	status, body := sendJSON(ts.T(), testutils.GetHTTPClientWithToken(tokenResp.AccessToken),
+		http.MethodPut, "/users/me", map[string]interface{}{"attributes": profile(user, otherAddress(user))})
+
+	ts.Equal(http.StatusForbidden, status, "%s", body)
+	ts.Contains(string(body), "USR-1047")
+	ts.NotEmpty(verifiedAt(ts.T(), user.id, emailAttribute), "an unchanged email stays verified")
+}
+
 func (ts *InvalidationTestSuite) TestAnAdministratorChangingTheEmailClearsVerification() {
 	user := ts.newVerifiedUser("admin_change")
 

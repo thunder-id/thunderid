@@ -1050,6 +1050,7 @@ inboundAuthConfig:
       redirectUris:
         - http://localhost:5173
         - http://localhost:5173/chat-token-callback
+        - http://localhost:5173/self-service-callback
       postLogoutRedirectUris:
         - http://localhost:5173
       grantTypes:

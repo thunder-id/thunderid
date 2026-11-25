@@ -961,6 +961,31 @@ func (s *CompositeResourceStoreTestSuite) TestGetAction_FoundInFile() {
 	s.fileStoreMock.AssertExpectations(s.T())
 }
 
+func (s *CompositeResourceStoreTestSuite) TestGetActionByPermission_FoundInDB() {
+	s.dbStoreMock.On("GetActionByPermission", s.ctx, "rs1", "perm:a").
+		Return(providers.Action{ID: "act-db", MaxAge: 300}, nil)
+
+	result, err := s.compositeStore.GetActionByPermission(s.ctx, "rs1", "perm:a")
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "act-db", result.ID)
+	assert.Equal(s.T(), int64(300), result.MaxAge)
+	s.fileStoreMock.AssertNotCalled(s.T(), "GetActionByPermission")
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetActionByPermission_FoundInFile() {
+	s.dbStoreMock.On("GetActionByPermission", s.ctx, "rs1", "perm:a").
+		Return(providers.Action{}, errActionNotFound)
+	s.fileStoreMock.On("GetActionByPermission", s.ctx, "rs1", "perm:a").
+		Return(providers.Action{ID: "act-file", MaxAge: 600}, nil)
+
+	result, err := s.compositeStore.GetActionByPermission(s.ctx, "rs1", "perm:a")
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "act-file", result.ID)
+	assert.Equal(s.T(), int64(600), result.MaxAge)
+}
+
 func (s *CompositeResourceStoreTestSuite) TestGetActionList_MergesBothStores() {
 	dbActions := []providers.Action{
 		{ID: "act-db1", Name: "DB Action 1"},

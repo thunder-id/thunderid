@@ -35,6 +35,8 @@ const (
 
 	// idCap is how many characters of an ID a line keeps.
 	idCap = 128
+
+	scopedManagerPassword = "AuditManager123!"
 )
 
 var (
@@ -663,6 +665,9 @@ type scopedManager struct {
 	ouID             string
 	resourceServerID string
 	client           *http.Client
+	username         string
+	// signIn signs the manager in through an application in its own unit.
+	signIn *testutils.OUSignInApps
 }
 
 // createScopedManager creates a manager in an organization unit of its own, named by name, who holds
@@ -673,8 +678,7 @@ func (ts *AuditLogTestSuite) createScopedManager(name string, handles, permissio
 	ownOU, ownType := ts.createUserType(name)
 
 	username := ts.prefix + name
-	password := "AuditManager123!"
-	managerID := ts.createUser(ownOU, ownType, username, password)
+	managerID := ts.createUser(ownOU, ownType, username, scopedManagerPassword)
 
 	identifier := "https://" + ts.prefix + name + ".audit.example.com/user"
 	rsID, err := testutils.CreateOrgScopedResourceServer(ownOU, "Audit Test RS "+ts.prefix+name, identifier,
@@ -696,13 +700,14 @@ func (ts *AuditLogTestSuite) createScopedManager(name string, handles, permissio
 
 	// A sign-in is bounded to its application's organization unit, so the manager signs in through an
 	// application in its own unit rather than the Console.
-	var signIn testutils.OUSignInApps
-	token, err := signIn.ObtainAccessToken(ownOU, "system "+strings.Join(permissions, " "), username, password,
-		identifier)
+	signIn := &testutils.OUSignInApps{}
+	token, err := signIn.ObtainAccessToken(ownOU, "system "+strings.Join(permissions, " "), username,
+		scopedManagerPassword, identifier)
 	ts.T().Cleanup(func() { _ = signIn.DeleteAll() })
 	ts.Require().NoError(err)
 	ts.Require().NotEmpty(token.AccessToken)
 	return scopedManager{
 		id: managerID, ouID: ownOU, resourceServerID: rsID, client: testutils.GetHTTPClientWithToken(token.AccessToken),
+		username: username, signIn: signIn,
 	}
 }

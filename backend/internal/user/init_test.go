@@ -30,7 +30,7 @@ func TestRegisterRoutes_SelfUserMetadata(t *testing.T) {
 	}
 	mockSvc.On("GetUserMetadata", mock.Anything, testUserID123).Return(expectedSchema, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	registerRoutes(mux, handler)
 
 	// Test GET /users/me/meta
@@ -115,7 +115,7 @@ func TestRegisterRoutes_SharingPolicyRoutes(t *testing.T) {
 			mux := http.NewServeMux()
 			mockSvc := NewUserServiceInterfaceMock(t)
 			tc.expect(mockSvc)
-			registerRoutes(mux, newUserHandler(mockSvc))
+			registerRoutes(mux, newUserHandler(mockSvc, nil))
 
 			rr := httptest.NewRecorder()
 			mux.ServeHTTP(rr, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
@@ -139,7 +139,7 @@ func TestRegisterRoutes_UserSubPathsDoNotReachTheUser(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			mux := http.NewServeMux()
-			registerRoutes(mux, newUserHandler(NewUserServiceInterfaceMock(t)))
+			registerRoutes(mux, newUserHandler(NewUserServiceInterfaceMock(t), nil))
 
 			rr := httptest.NewRecorder()
 			mux.ServeHTTP(rr, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))
@@ -154,7 +154,7 @@ func TestRegisterRoutes_SelfOrganizationUnits(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	mockSvc.On("GetAccessibleOrganizationUnits", mock.Anything, "siblings", 30, 0).
 		Return(&AccessibleOrganizationUnitListResponse{Current: "ou-p"}, (*tidcommon.ServiceError)(nil)).Once()
-	registerRoutes(mux, newUserHandler(mockSvc))
+	registerRoutes(mux, newUserHandler(mockSvc, nil))
 
 	authCtx := security.NewSecurityContextForTest(testUserID123, "ou-p", "", nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me/ous?scope=siblings", nil)
@@ -173,7 +173,7 @@ func TestRegisterRoutes_UserOrganizationUnits(t *testing.T) {
 		Return(&UserOrganizationUnitListResponse{TotalResults: 1, StartIndex: 1, Count: 1,
 			OrganizationUnits: []AccessibleOrganizationUnit{{ID: "ou-p", Handle: "p", Name: "P"}},
 			Links:             []utils.Link{}}, (*tidcommon.ServiceError)(nil)).Once()
-	registerRoutes(mux, newUserHandler(mockSvc))
+	registerRoutes(mux, newUserHandler(mockSvc, nil))
 
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/users/"+testUserID123+"/ous", nil))
@@ -185,7 +185,7 @@ func TestRegisterRoutes_UserOrganizationUnits(t *testing.T) {
 
 func TestInitialize_RefusesANilEventBus(t *testing.T) {
 	userService, resolver, exporter, err := Initialize(
-		http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	require.ErrorIs(t, err, errNilEventBus)
 	require.Nil(t, userService)

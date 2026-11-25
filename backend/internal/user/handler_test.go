@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -20,10 +21,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
 const (
@@ -43,7 +46,7 @@ func TestHandleSelfUserGetRequest_Success(t *testing.T) {
 	}
 	mockSvc.On("GetUser", mock.Anything, userID, false).Return(expectedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -74,7 +77,7 @@ func TestHandleSelfUserGetRequest_OmitsOperatorNote(t *testing.T) {
 	}}
 	mockSvc.On("GetUser", mock.Anything, userID, false).Return(suspended, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -99,7 +102,7 @@ func TestHandleSelfUserGetRequest_IncludeDisplay(t *testing.T) {
 	expectedUser := &providers.User{ID: userID}
 	mockSvc.On("GetUser", mock.Anything, userID, true).Return(expectedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me?include=display", nil)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -112,7 +115,7 @@ func TestHandleSelfUserGetRequest_IncludeDisplay(t *testing.T) {
 
 func TestHandleSelfUserGetRequest_Unauthorized(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
 	rr := httptest.NewRecorder()
 
@@ -136,9 +139,9 @@ func TestHandleSelfUserPutRequest_Success(t *testing.T) {
 		Type:       "employee",
 		Attributes: attributes,
 	}
-	mockSvc.On("UpdateUserAttributes", mock.Anything, userID, attributes).Return(updatedUser, nil)
+	mockSvc.On("UpdateSelfUserAttributes", mock.Anything, attributes).Return(updatedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`)
 	req := httptest.NewRequest(http.MethodPut, "/users/me", body)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -165,9 +168,9 @@ func TestHandleSelfUserPutRequest_OmitsOperatorNote(t *testing.T) {
 		Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension,
 			Since: "2026-10-21T08:00:00Z", OperatorNote: "Under investigation"},
 	}}
-	mockSvc.On("UpdateUserAttributes", mock.Anything, userID, attributes).Return(updatedUser, nil)
+	mockSvc.On("UpdateSelfUserAttributes", mock.Anything, attributes).Return(updatedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`)
 	req := httptest.NewRequest(http.MethodPut, "/users/me", body)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -189,7 +192,7 @@ func TestHandleSelfUserPutRequest_InvalidBody(t *testing.T) {
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPut, "/users/me", bytes.NewBufferString(`{"attributes":`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -203,6 +206,53 @@ func TestHandleSelfUserPutRequest_InvalidBody(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
 	require.Equal(t, ErrorInvalidRequestFormat.Code, errResp.Code)
 }
+func TestHandleSelfUserPutRequest_ProtectedAttributeRefusals(t *testing.T) {
+	tests := []struct {
+		name          string
+		svcErr        *tidcommon.ServiceError
+		wantStatus    int
+		wantChallenge string
+	}{
+		{
+			name: "RecentAuthenticationRequired",
+			svcErr: security.ErrorRecentAuthenticationRequired.WithParams(
+				map[string]string{security.ErrorParamMaxAge: "300"}),
+			wantStatus: http.StatusUnauthorized,
+			wantChallenge: `Bearer error="insufficient_user_authentication", ` +
+				`error_description="A more recent authentication is required", max_age="300"`,
+		},
+		{
+			name:       "ProtectedAttributeChangeNotPermitted",
+			svcErr:     &ErrorProtectedAttributeChangeNotPermitted,
+			wantStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := testUserID456
+			authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+			attributes := json.RawMessage(`{"email":"alice@example.com"}`)
+			mockSvc := NewUserServiceInterfaceMock(t)
+			mockSvc.On("UpdateSelfUserAttributes", mock.Anything, attributes).
+				Return((*providers.User)(nil), tc.svcErr)
+
+			handler := newUserHandler(mockSvc, nil)
+			body := bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`)
+			req := httptest.NewRequest(http.MethodPut, "/users/me", body)
+			req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+			rr := httptest.NewRecorder()
+
+			handler.HandleSelfUserPutRequest(rr, req)
+
+			require.Equal(t, tc.wantStatus, rr.Code)
+			require.Equal(t, tc.wantChallenge, rr.Header().Get("WWW-Authenticate"))
+			var errResp apierror.ErrorResponse
+			require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+			require.Equal(t, tc.svcErr.Code, errResp.Code)
+		})
+	}
+}
 
 func TestHandleSelfUserCredentialUpdateRequest_Success(t *testing.T) {
 	userID := testUserID789
@@ -212,7 +262,7 @@ func TestHandleSelfUserCredentialUpdateRequest_Success(t *testing.T) {
 	credentialsJSON := json.RawMessage(`{"password":[{"value":"Secret123!"}]}`)
 	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":{"password":[{"value":"Secret123!"}]}}`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -224,6 +274,81 @@ func TestHandleSelfUserCredentialUpdateRequest_Success(t *testing.T) {
 	require.Equal(t, 0, rr.Body.Len())
 }
 
+func TestHandleSelfUserCredentialUpdateRequest_AuthenticationAge(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	const permission = "self:credentials:update"
+	now := time.Now().Unix()
+	tests := []struct {
+		name          string
+		authTime      any
+		wantStatus    int
+		wantChallenge string
+	}{
+		{name: "recent", authTime: float64(now - 10), wantStatus: http.StatusNoContent},
+		{name: "older than maxAge", authTime: float64(now - 3600), wantStatus: http.StatusUnauthorized,
+			wantChallenge: `Bearer error="insufficient_user_authentication", ` +
+				`error_description="A more recent authentication is required", max_age="300"`},
+		{name: "no auth_time", wantStatus: http.StatusUnauthorized,
+			wantChallenge: `Bearer error="insufficient_user_authentication", ` +
+				`error_description="A more recent authentication is required", max_age="300"`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := testUserID789
+			attributes := map[string]any{}
+			if tc.authTime != nil {
+				attributes["auth_time"] = tc.authTime
+			}
+			authCtx := security.NewSecurityContextForTest(userID, "", "", []string{permission}, attributes)
+			mockSvc := NewUserServiceInterfaceMock(t)
+			credentialsJSON := json.RawMessage(`{"password":[{"value":"Secret123!"}]}`)
+			if tc.wantStatus == http.StatusNoContent {
+				mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
+			}
+			reader := resourcemock.NewResourceServiceInterfaceMock(t)
+			reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID, permission).
+				Return(int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+			handler := newUserHandler(mockSvc, reader)
+			req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
+				bytes.NewBufferString(`{"attributes":{"password":[{"value":"Secret123!"}]}}`))
+			req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+			rr := httptest.NewRecorder()
+
+			handler.HandleSelfUserCredentialUpdateRequest(rr, req)
+
+			require.Equal(t, tc.wantStatus, rr.Code)
+			require.Equal(t, tc.wantChallenge, rr.Header().Get("WWW-Authenticate"))
+			if tc.wantStatus != http.StatusUnauthorized {
+				return
+			}
+			var errResp apierror.ErrorResponse
+			require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+			require.Equal(t, security.ErrorRecentAuthenticationRequired.Code, errResp.Code)
+		})
+	}
+}
+
+// A maxAge that cannot be read refuses the change with a server error.
+func TestHandleSelfUserCredentialUpdateRequest_MaxAgeReadFails(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	reader := resourcemock.NewResourceServiceInterfaceMock(t)
+	reader.On("GetPermissionMaxAge", mock.Anything, serverconst.SystemResourceServerID, "self:credentials:update").
+		Return(int64(0), &tidcommon.InternalServerError).Once()
+	handler := newUserHandler(NewUserServiceInterfaceMock(t), reader)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
+		bytes.NewBufferString(`{"attributes":{"password":[{"value":"Secret123!"}]}}`))
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(),
+		security.NewSecurityContextForTest(testUserID789, "", "", []string{"self:credentials:update"}, nil)))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
 func TestHandleSelfUserCredentialUpdateRequest_StringValue(t *testing.T) {
 	userID := testUserID789
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
@@ -232,7 +357,7 @@ func TestHandleSelfUserCredentialUpdateRequest_StringValue(t *testing.T) {
 	credentialsJSON := json.RawMessage(`{"password":"plaintext-password"}`)
 	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":{"password":"plaintext-password"}}`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -249,7 +374,7 @@ func TestHandleSelfUserCredentialUpdateRequest_MissingCredentials(t *testing.T) 
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":{}}`))
@@ -308,7 +433,7 @@ func TestHandleSelfUserCredentialUpdateRequest_ErrorCases(t *testing.T) {
 			mockSvc := NewUserServiceInterfaceMock(t)
 			mockSvc.On("UpdateUserCredentials", mock.Anything, userID, tc.mockJSON).Return(tc.mockError)
 
-			handler := newUserHandler(mockSvc)
+			handler := newUserHandler(mockSvc, nil)
 			req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 				bytes.NewBufferString(tc.requestBody))
 			req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -334,7 +459,7 @@ func TestHandleSelfUserCredentialUpdateRequest_MultipleCredentialTypes(t *testin
 	credentialsJSON := json.RawMessage(`{"password":"new-password","pin":"1234"}`)
 	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":{"password":"new-password","pin":"1234"}}`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -355,7 +480,7 @@ func TestHandleUserCredentialUpdateRequest_Success(t *testing.T) {
 	credentialsJSON := json.RawMessage(`{"password":"new-password"}`)
 	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
 		bytes.NewBufferString(`{"credentials":{"password":"new-password"}}`))
 	req.SetPathValue("id", userID)
@@ -369,7 +494,7 @@ func TestHandleUserCredentialUpdateRequest_Success(t *testing.T) {
 
 func TestHandleUserCredentialUpdateRequest_MissingUserID(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/users/update-credentials",
 		bytes.NewBufferString(`{"credentials":{"password":"new-password"}}`))
@@ -389,7 +514,7 @@ func TestHandleUserCredentialUpdateRequest_MissingCredentials(t *testing.T) {
 	userID := testUserID789
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
 		bytes.NewBufferString(`{"credentials":{}}`))
@@ -409,7 +534,7 @@ func TestHandleUserCredentialUpdateRequest_InvalidBody(t *testing.T) {
 	userID := testUserID789
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
 		bytes.NewBufferString(`{"credentials":`))
@@ -459,7 +584,7 @@ func TestHandleUserCredentialUpdateRequest_ErrorCases(t *testing.T) {
 			mockSvc := NewUserServiceInterfaceMock(t)
 			mockSvc.On("UpdateUserCredentials", mock.Anything, userID, tc.mockJSON).Return(tc.mockError)
 
-			handler := newUserHandler(mockSvc)
+			handler := newUserHandler(mockSvc, nil)
 			req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
 				bytes.NewBufferString(tc.requestBody))
 			req.SetPathValue("id", userID)
@@ -483,7 +608,7 @@ func TestHandleUserCredentialUpdateRequest_MultipleCredentialTypes(t *testing.T)
 	credentialsJSON := json.RawMessage(`{"password":"new-password","pin":"1234"}`)
 	mockSvc.On("UpdateUserCredentials", mock.Anything, userID, credentialsJSON).Return(nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/"+userID+"/update-credentials",
 		bytes.NewBufferString(`{"credentials":{"password":"new-password","pin":"1234"}}`))
 	req.SetPathValue("id", userID)
@@ -504,7 +629,7 @@ func TestHandleUserListRequest_Success(t *testing.T) {
 	}
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, false).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0", nil)
 	rr := httptest.NewRecorder()
 
@@ -525,7 +650,7 @@ func TestHandleUserListRequest_ByProject(t *testing.T) {
 	mockSvc.On("GetUserListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
 		Return(expectedResp, nil).Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&projectId=project-1", nil)
 	rr := httptest.NewRecorder()
 
@@ -542,7 +667,7 @@ func TestHandleUserListRequest_ByProjectError(t *testing.T) {
 	mockSvc.On("GetUserListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
 		Return(nil, &ErrorInvalidFilter).Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&projectId=project-1", nil)
 	rr := httptest.NewRecorder()
 
@@ -559,7 +684,7 @@ func TestHandleUserListRequest_WithIncludeDisplay(t *testing.T) {
 	}
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, true).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&include=display", nil)
 	rr := httptest.NewRecorder()
 
@@ -580,7 +705,7 @@ func TestHandleUserListRequest_WithInvalidIncludeParam(t *testing.T) {
 	// Invalid include value should be treated as no include (includeDisplay=false).
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, false).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&include=invalid", nil)
 	rr := httptest.NewRecorder()
 
@@ -602,7 +727,7 @@ func TestHandleUserPostRequest_Success(t *testing.T) {
 	createdUser := &providers.User{ID: "user-bob", Type: "employee", Attributes: json.RawMessage(`{"username":"bob"}`)}
 	mockSvc.On("CreateUser", mock.Anything, mock.Anything).Return(createdUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body, _ := json.Marshal(userReq)
 	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
 	rr := httptest.NewRecorder()
@@ -621,7 +746,7 @@ func TestHandleUserGetRequest_Success(t *testing.T) {
 	expectedUser := &providers.User{ID: userID}
 	mockSvc.On("GetUser", mock.Anything, userID, false).Return(expectedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID, nil)
 	// Set path value for Go 1.22+ standard router
 	req.SetPathValue("id", userID)
@@ -641,7 +766,7 @@ func TestHandleUserGetRequest_IncludeDisplay(t *testing.T) {
 	expectedUser := &providers.User{ID: userID}
 	mockSvc.On("GetUser", mock.Anything, userID, true).Return(expectedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID+"?include=display", nil)
 	req.SetPathValue("id", userID)
 	rr := httptest.NewRecorder()
@@ -659,7 +784,7 @@ func TestHandleUserGetRequest_InOU(t *testing.T) {
 	mockSvc.On("GetUserInOU", mock.Anything, userID, ouID, true).
 		Return(&providers.User{ID: userID, OUID: ouID, IsOwnedByOU: new(false)}, nil).Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID+"?ouId="+ouID+"&include=display", nil)
 	req.SetPathValue("id", userID)
 	rr := httptest.NewRecorder()
@@ -687,7 +812,7 @@ func TestHandleUserGetRequest_InOUErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockSvc := NewUserServiceInterfaceMock(t)
 			mockSvc.On("GetUserInOU", mock.Anything, "u1", "ou-1", false).Return(nil, tc.svcErr).Once()
-			handler := newUserHandler(mockSvc)
+			handler := newUserHandler(mockSvc, nil)
 			req := httptest.NewRequest(http.MethodGet, "/users/u1?ouId=ou-1", nil)
 			req.SetPathValue("id", "u1")
 			rr := httptest.NewRecorder()
@@ -706,7 +831,7 @@ func TestHandleUserPutRequest_Success(t *testing.T) {
 	updatedUser := &providers.User{ID: userID, Attributes: json.RawMessage(`{"name":"Updated"}`)}
 	mockSvc.On("UpdateUser", mock.Anything, userID, mock.Anything).Return(updatedUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body, _ := json.Marshal(userReq)
 	req := httptest.NewRequest(http.MethodPut, "/users/"+userID, bytes.NewBuffer(body))
 	req.SetPathValue("id", userID)
@@ -725,7 +850,7 @@ func TestHandleUserDeleteRequest_Success(t *testing.T) {
 	userID := testUserID123
 	mockSvc.On("DeleteUser", mock.Anything, userID).Return(nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+userID, nil)
 	req.SetPathValue("id", userID)
 	rr := httptest.NewRecorder()
@@ -739,7 +864,7 @@ func TestHandleUserDeleteRequest_Success(t *testing.T) {
 // before it reaches the service.
 func TestHandleUserPostRequest_WithoutOUOrProject(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	for name, projectID := range map[string]string{"no project": "", "blank project": "   "} {
 		t.Run(name, func(t *testing.T) {
 			body, _ := json.Marshal(&CreateUserRequest{ProjectID: projectID, Type: "employee",
@@ -766,7 +891,7 @@ func TestHandleUserPostRequest_InProject(t *testing.T) {
 	})).Return(&providers.User{ID: "user-bob", OUID: "ou-system", ProjectID: "project-1", Type: "employee"}, nil).
 		Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body, _ := json.Marshal(&CreateUserRequest{OUID: "ou-system", ProjectID: "project-1", Type: "employee",
 		Attributes: json.RawMessage(`{"username":"bob"}`)})
 	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
@@ -789,7 +914,7 @@ func TestHandleUserListByPathRequest_Success(t *testing.T) {
 	mockSvc.On("GetUsersByPath", mock.Anything, "root/engineering", 10, 0,
 		mock.Anything, false).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/path/root/engineering?limit=10", nil)
 	req.SetPathValue("path", "root/engineering")
 	rr := httptest.NewRecorder()
@@ -808,7 +933,7 @@ func TestHandleUserListByPathRequest_WithIncludeDisplay(t *testing.T) {
 	mockSvc.On("GetUsersByPath", mock.Anything, "root/engineering", 10, 0,
 		mock.Anything, true).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(
 		http.MethodGet, "/users/path/root/engineering?limit=10&include=display", nil)
 	req.SetPathValue("path", "root/engineering")
@@ -827,7 +952,7 @@ func TestHandleUserPostByPathRequest_Success(t *testing.T) {
 	createdUser := &providers.User{ID: "user-new", Type: "customer"}
 	mockSvc.On("CreateUserByPath", mock.Anything, "root/sales", mock.Anything).Return(createdUser, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := bytes.NewBufferString(`{"type":"customer"}`)
 	req := httptest.NewRequest(http.MethodPost, "/users/path/root/sales", body)
 	req.SetPathValue("path", "root/sales")
@@ -847,7 +972,7 @@ func TestHandleUserGroupsGetRequest_Success(t *testing.T) {
 	}
 	mockSvc.On("GetUserGroups", mock.Anything, userID, 10, 0).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID+"/groups?limit=10", nil)
 	req.SetPathValue("id", userID)
 	rr := httptest.NewRecorder()
@@ -862,7 +987,7 @@ func TestHandleUserGroupsGetRequest_Success(t *testing.T) {
 
 func TestHandleUserListRequest_InvalidParams(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=abc", nil)
 	rr := httptest.NewRecorder()
 
@@ -879,7 +1004,7 @@ func TestHandleUserListRequest_WithFilter(t *testing.T) {
 			return m["username"] == "alice"
 		}), false).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?filter=username%20eq%20%22alice%22", nil)
 	rr := httptest.NewRecorder()
 
@@ -896,7 +1021,7 @@ func TestHandleUserListRequest_WithFilter_Unquoted(t *testing.T) {
 			return m["age"] == int64(30)
 		}), false).Return(expectedResp, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?filter=age%20eq%2030", nil)
 	rr := httptest.NewRecorder()
 
@@ -907,7 +1032,7 @@ func TestHandleUserListRequest_WithFilter_Unquoted(t *testing.T) {
 
 func TestHandleUserListRequest_InvalidFilter(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?filter=username%20invalid%20%22alice%22", nil)
 	rr := httptest.NewRecorder()
 
@@ -918,7 +1043,7 @@ func TestHandleUserListRequest_InvalidFilter(t *testing.T) {
 
 func TestHandleUserPostRequest_ErrorCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	t.Run("InvalidBody", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("invalid"))
@@ -938,7 +1063,7 @@ func TestHandleUserPostRequest_ErrorCases(t *testing.T) {
 
 func TestHandleUserGetRequest_ErrorCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	userID := "u1"
 
 	t.Run("MissingID", func(t *testing.T) {
@@ -960,7 +1085,7 @@ func TestHandleUserGetRequest_ErrorCases(t *testing.T) {
 
 func TestHandleUserPutRequest_ErrorCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	userID := "u1"
 
 	t.Run("InvalidBody", func(t *testing.T) {
@@ -984,7 +1109,7 @@ func TestHandleUserPutRequest_ErrorCases(t *testing.T) {
 
 func TestHandleUserDeleteRequest_ErrorCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	userID := "u1"
 
 	t.Run("MissingID", func(t *testing.T) {
@@ -1009,7 +1134,7 @@ func TestHandleUserListRequest_ServiceError(t *testing.T) {
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, false).
 		Return(nil, &tidcommon.InternalServerError).Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0", nil)
 	rr := httptest.NewRecorder()
 
@@ -1024,7 +1149,7 @@ func TestHandleUserListRequest_ServiceError(t *testing.T) {
 
 func TestHandleUserGroupsGetRequest_ErrorCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	userID := testUserID123
 
 	t.Run("MissingID", func(t *testing.T) {
@@ -1053,7 +1178,7 @@ func TestHandleUserGroupsGetRequest_ErrorCases(t *testing.T) {
 
 func TestHandleUserPutRequest_MissingID(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPut, "/users/", strings.NewReader(`{"attributes":{}}`))
 	rr := httptest.NewRecorder()
 
@@ -1068,7 +1193,7 @@ func TestHandleUserPutRequest_MissingID(t *testing.T) {
 
 func TestHandleUserListByPathRequest_ErrorCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	t.Run("InvalidPaginationParams", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/users/path/root/engineering?limit=abc", nil)
@@ -1109,7 +1234,7 @@ func TestHandleUserListByPathRequest_ErrorCases(t *testing.T) {
 
 func TestHandleUserPostByPathRequest_InvalidBody(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/path/root/sales", strings.NewReader("invalid"))
 	req.SetPathValue("path", "root/sales")
 	rr := httptest.NewRecorder()
@@ -1130,7 +1255,7 @@ func TestHandleSelfUserGetRequest_ServiceError(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	mockSvc.On("GetUser", mock.Anything, userID, false).Return(nil, &ErrorUserNotFound).Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -1146,7 +1271,7 @@ func TestHandleSelfUserGetRequest_ServiceError(t *testing.T) {
 
 func TestHandleSelfUserPutRequest_Unauthorized(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPut, "/users/me",
 		bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`))
 	rr := httptest.NewRecorder()
@@ -1165,7 +1290,7 @@ func TestHandleSelfUserPutRequest_EmptyAttributes(t *testing.T) {
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPut, "/users/me", bytes.NewBufferString(`{}`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -1185,10 +1310,10 @@ func TestHandleSelfUserPutRequest_ServiceError(t *testing.T) {
 	attributes := json.RawMessage(`{"email":"alice@example.com"}`)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	mockSvc.On("UpdateUserAttributes", mock.Anything, userID, attributes).
+	mockSvc.On("UpdateSelfUserAttributes", mock.Anything, attributes).
 		Return(nil, &tidcommon.InternalServerError).Once()
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`)
 	req := httptest.NewRequest(http.MethodPut, "/users/me", body)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -1205,7 +1330,7 @@ func TestHandleSelfUserPutRequest_ServiceError(t *testing.T) {
 
 func TestHandleSelfUserCredentialUpdateRequest_Unauthorized(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":{"password":"Secret123!"}}`))
 	rr := httptest.NewRecorder()
@@ -1224,7 +1349,7 @@ func TestHandleSelfUserCredentialUpdateRequest_DelegatedToken(t *testing.T) {
 	authCtx := security.NewSecurityContextForTest(testUserID789, "", "", nil,
 		map[string]any{"act": map[string]any{"sub": "agent-1"}})
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":{"password":"Secret123!"}}`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -1244,7 +1369,7 @@ func TestHandleSelfUserCredentialUpdateRequest_InvalidBody(t *testing.T) {
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
 		bytes.NewBufferString(`{"attributes":`))
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
@@ -1288,7 +1413,7 @@ func TestHandleError_ErrorUnauthorized_Returns403(t *testing.T) {
 	}
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	userID := "u1"
 
 	for _, tc := range tests {
@@ -1305,7 +1430,7 @@ func TestHandleError_ErrorUnauthorized_Returns403(t *testing.T) {
 
 func TestHandleUserPostRequest_ValidationError_MissingFields(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	body := `{"groups":["engineering"]}`
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
@@ -1322,7 +1447,7 @@ func TestHandleUserPostRequest_ValidationError_MissingFields(t *testing.T) {
 
 func TestHandleUserListRequest_PaginationEdgeCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	t.Run("Malformed Limit String Parameter", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/users?limit=xyz", nil)
@@ -1355,7 +1480,7 @@ func TestHandleUserListRequest_PaginationEdgeCases(t *testing.T) {
 
 func TestHandleUserListRequest_FilterExpressionEdgeCases(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	t.Run("Empty Filter Value Field Space", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/users?filter=%20%20", nil)
@@ -1381,7 +1506,7 @@ func TestHandleUserListRequest_FilterExpressionEdgeCases(t *testing.T) {
 
 func TestHandleUserMissingIDs_DirectTrimming(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 
 	t.Run("Empty String Strip on PUT Route", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/users/", bytes.NewBufferString(`{}`))
@@ -1416,7 +1541,7 @@ func TestHandleUserMissingIDs_DirectTrimming(t *testing.T) {
 
 func TestHandleSelfUserExits_MissingContextTokens(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	emptyAuthCtx := security.NewSecurityContextForTest("   ", "", "", nil, nil) // Spaces force token rejection
 
 	t.Run("Blank Context Verification on Self GET", func(t *testing.T) {
@@ -1458,7 +1583,7 @@ func TestHandleUserUsagesGetRequest_Success(t *testing.T) {
 			},
 		}, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/"+testUserID123+"/usages", nil)
 	req.SetPathValue("id", testUserID123)
 	rr := httptest.NewRecorder()
@@ -1476,7 +1601,7 @@ func TestHandleUserUsagesGetRequest_Success(t *testing.T) {
 
 func TestHandleUserUsagesGetRequest_MissingID(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users//usages", nil)
 	rr := httptest.NewRecorder()
 
@@ -1491,7 +1616,7 @@ func TestHandleUserUsagesGetRequest_NotFound(t *testing.T) {
 	mockSvc.On("GetUserUsages", mock.Anything, testUserID123).
 		Return(nil, &ErrorUserNotFound)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/"+testUserID123+"/usages", nil)
 	req.SetPathValue("id", testUserID123)
 	rr := httptest.NewRecorder()
@@ -1512,7 +1637,7 @@ func TestHandleSelfUserMetadataGetRequest_Success(t *testing.T) {
 	}
 	mockSvc.On("GetUserMetadata", mock.Anything, userID).Return(expectedSchema, nil)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me/meta", nil)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -1529,7 +1654,7 @@ func TestHandleSelfUserMetadataGetRequest_Success(t *testing.T) {
 
 func TestHandleSelfUserMetadataGetRequest_Unauthorized(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me/meta", nil)
 	rr := httptest.NewRecorder()
 
@@ -1545,7 +1670,7 @@ func TestHandleSelfUserMetadataGetRequest_ServiceError(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	mockSvc.On("GetUserMetadata", mock.Anything, userID).Return(nil, &ErrorUserNotFound)
 
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/users/me/meta", nil)
 	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
 	rr := httptest.NewRecorder()
@@ -1564,7 +1689,7 @@ func TestHandleSharingPolicyPostRequest_RefusesFieldsTheSchemaDoesNotList(t *tes
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
-			handler := newUserHandler(NewUserServiceInterfaceMock(t))
+			handler := newUserHandler(NewUserServiceInterfaceMock(t), nil)
 			req := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
 			req.SetPathValue("id", "user-1")
 			rr := httptest.NewRecorder()
@@ -1587,7 +1712,7 @@ func TestHandleSharingPolicyPostRequest_RefusesADeploymentWideReach(t *testing.T
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
-			handler := newUserHandler(NewUserServiceInterfaceMock(t))
+			handler := newUserHandler(NewUserServiceInterfaceMock(t), nil)
 			req := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
 			req.SetPathValue("id", "user-1")
 			rr := httptest.NewRecorder()
@@ -1616,7 +1741,7 @@ func TestHandleSharingPolicyPostRequest_PassesTheWireShapeToTheService(t *testin
 	mockSvc := NewUserServiceInterfaceMock(t)
 	mockSvc.On("CreateSharingPolicy", mock.Anything, "user-1", expected).
 		Return(sharing.Policy{ID: "policy-1", Version: 1}, (*tidcommon.ServiceError)(nil)).Once()
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := `{"initiatingOuId":"ou-child","childUnits":{"mode":"selected","units":[` +
 		`{"ouId":"ou-a","reach":"unit"},{"ouId":"ou-b","reach":"subtree"}]}}`
 	req := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
@@ -1636,7 +1761,7 @@ func TestHandleSharingPolicyPostRequest_PassesOverlayRulesToTheService(t *testin
 	mockSvc.On("CreateSharingPolicy", mock.Anything, "user-1", mock.Anything).
 		Run(func(args mock.Arguments) { recorded = args.Get(2).(sharing.PolicyRequest) }).
 		Return(sharing.Policy{}, &ErrorInvalidSharingPolicy).Once()
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := `{"childUnits":{"mode":"selected","overlayRules":{"roles":{"editable":false}},"units":[` +
 		`{"ouId":"ou-1","reach":"unit","overlayRules":{"roles":{"editable":true}}}]}}`
 	req := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
@@ -1676,7 +1801,7 @@ func TestHandleSharingPolicyWrite_MandatedRoleRefusals(t *testing.T) {
 				Return(sharing.Policy{}, &tc.refusal).Once()
 			mockSvc.On("UpdateSharingPolicy", mock.Anything, "user-1", "policy-1", mock.Anything).
 				Return(sharing.Policy{}, &tc.refusal).Once()
-			handler := newUserHandler(mockSvc)
+			handler := newUserHandler(mockSvc, nil)
 
 			create := httptest.NewRequest(http.MethodPost, "/users/user-1/sharing-policies", strings.NewReader(body))
 			create.SetPathValue("id", "user-1")
@@ -1705,7 +1830,7 @@ func TestHandleSharingPolicyWrite_MandatedRoleRefusals(t *testing.T) {
 }
 
 func TestHandleSharingPolicyPutRequest_RefusesAChangeOfIssuer(t *testing.T) {
-	handler := newUserHandler(NewUserServiceInterfaceMock(t))
+	handler := newUserHandler(NewUserServiceInterfaceMock(t), nil)
 	body := `{"initiatingOuId":"ou-child","childUnits":{"mode":"all"},"version":1}`
 	req := httptest.NewRequest(http.MethodPut, "/users/user-1/sharing-policies/policy-1", strings.NewReader(body))
 	req.SetPathValue("id", "user-1")
@@ -1728,7 +1853,7 @@ func TestHandleSharingPolicyPutRequest_PassesTheSectionsToTheService(t *testing.
 	mockSvc := NewUserServiceInterfaceMock(t)
 	mockSvc.On("UpdateSharingPolicy", mock.Anything, "user-1", "policy-1", expected).
 		Return(sharing.Policy{ID: "policy-1", Version: 4}, (*tidcommon.ServiceError)(nil)).Once()
-	handler := newUserHandler(mockSvc)
+	handler := newUserHandler(mockSvc, nil)
 	body := `{"childUnits":{"mode":"all","excludedOuIds":["ou-a"]},"version":3}`
 	req := httptest.NewRequest(http.MethodPut, "/users/user-1/sharing-policies/policy-1", strings.NewReader(body))
 	req.SetPathValue("id", "user-1")
@@ -1762,7 +1887,7 @@ func TestHandleSharingPolicy_StatusPerError(t *testing.T) {
 			mockSvc := NewUserServiceInterfaceMock(t)
 			mockSvc.On("GetSharingPolicy", mock.Anything, "user-1", "policy-1").
 				Return(sharing.Policy{}, &svcErr).Once()
-			handler := newUserHandler(mockSvc)
+			handler := newUserHandler(mockSvc, nil)
 			req := httptest.NewRequest(http.MethodGet, "/users/user-1/sharing-policies/policy-1", nil)
 			req.SetPathValue("id", "user-1")
 			req.SetPathValue("policyId", "policy-1")
@@ -1784,7 +1909,7 @@ func TestHandleSharingPolicyListRequest_Pagination(t *testing.T) {
 		req.SetPathValue("id", "user-1")
 		rr := httptest.NewRecorder()
 
-		newUserHandler(mockSvc).HandleSharingPolicyListRequest(rr, req)
+		newUserHandler(mockSvc, nil).HandleSharingPolicyListRequest(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 	})
@@ -1793,7 +1918,7 @@ func TestHandleSharingPolicyListRequest_Pagination(t *testing.T) {
 		req.SetPathValue("id", "user-1")
 		rr := httptest.NewRecorder()
 
-		newUserHandler(NewUserServiceInterfaceMock(t)).HandleSharingPolicyListRequest(rr, req)
+		newUserHandler(NewUserServiceInterfaceMock(t), nil).HandleSharingPolicyListRequest(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})

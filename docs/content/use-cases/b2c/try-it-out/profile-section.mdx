@@ -24,15 +24,19 @@ Complete [Set Up Your Environment](../../build-environment) before starting this
 <PatternPicker>
 <Pattern value="redirect" label="Redirect-based" description="Hosted screens, simplest to add" icon="external-link" default>
 
-In the redirect-based pattern, the consumer application renders the profile screen itself. Profile attributes are read from `/users/me` and ID token. Updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes, `/users/me/meta` for schema metadata retrieve, and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record, so no extra permissions are needed; the access token alone is enough.
+In the redirect-based pattern, the consumer application renders the profile screen itself. Profile attributes are read from `/users/me` and the ID token. Updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes, `/users/me/meta` for the schema metadata, and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record.
+
+Reading the profile and changing attributes such as the last name need only the access token John signed in with. A password change also needs the `self:credentials:update` permission of the System resource server and a recent sign-in. John's sign-in token is bound to the Wayfinder booking resource server, and an access token binds one resource server, so it cannot carry that permission.
+
+When John updates his password, Wayfinder opens a popup that asks <ProductName /> for a second token, with `self:credentials:update` in `scope` and the System resource server in `resource`. Every user holds that permission without a role. If John signed in within the permission's `maxAge`, 300 seconds by default, the popup completes without asking for anything. If his sign-in is older, <ProductName /> answers the password change with `401` and an `insufficient_user_authentication` challenge, and the next attempt signs John in again with that `max_age`. See [Let Users Change Their Own Account](../../../guides/users/manage-users.mdx#let-users-change-their-own-account).
 
 **Try the Use Case**
 
 1. Open <WayFinderSampleUrl /> and sign in as John.
 2. Open the account menu and select **Profile**. The sample reads John's attributes from his ID token and renders the
    **View** section.
-3. Edit the **Last Name** field and select **Save**.
-4. Select **Change Password**, enter the current password, set a new one, and save.
+3. Edit the **Last Name** field and select **Save changes**.
+4. In **Change password**, enter a new password in **New password** and **Confirm new password**, then select **Update password**. If John signed in more than 300 seconds ago, the first attempt shows an error that the sign-in is too old. Select **Update password** again, and sign in as John in the popup.
 
 **Try a Variant**
 

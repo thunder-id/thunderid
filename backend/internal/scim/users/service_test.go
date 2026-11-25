@@ -965,8 +965,8 @@ func (suite *ServiceTestSuite) TestReplaceUser_Success() {
 	require.Contains(t, scimUser.Schemas, "urn:thunderid:params:scim:schemas:employee:2.0:User")
 }
 
-// TestReplaceUser_IsSelf_UsesUpdateUserAttributes tests Replace User for Is Self Uses Update User Attributes.
-func (suite *ServiceTestSuite) TestReplaceUser_IsSelf_UsesUpdateUserAttributes() {
+// TestReplaceUser_IsSelf_UsesUpdateSelfUserAttributes tests that a self replace goes through the self update.
+func (suite *ServiceTestSuite) TestReplaceUser_IsSelf_UsesUpdateSelfUserAttributes() {
 	t := suite.T()
 	mockUserService := usermock.NewUserServiceInterfaceMock(t)
 	mockUserTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
@@ -990,11 +990,11 @@ func (suite *ServiceTestSuite) TestReplaceUser_IsSelf_UsesUpdateUserAttributes()
 	).Return(&entitytype.EntityType{Handle: testUserTypeEmployee, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
 	mockUserService.On("GetUser", mock.Anything, "user-123", false).
 		Return(&providers.User{ID: "user-123", Type: testUserTypeEmployee}, (*tidcommon.ServiceError)(nil))
-	// Self-service replace must go through UpdateUserAttributes, not UpdateUser:
+	// Self-service replace goes through UpdateSelfUserAttributes, as PUT /users/me does, not UpdateUser:
 	// UpdateUser's OU/type validation requires system:usertype:view with no
 	// self-access bypass, which would 500 for a self-service caller.
 	mockUserService.On(
-		"UpdateUserAttributes", mock.Anything, "user-123", json.RawMessage(`{"given_name":"Charlie"}`),
+		"UpdateSelfUserAttributes", mock.Anything, json.RawMessage(`{"given_name":"Charlie"}`),
 	).Return(updatedUser, (*tidcommon.ServiceError)(nil))
 
 	scimUser, err := service.ReplaceUser(context.Background(), "user-123", payload, testBaseURL, true)
@@ -1003,6 +1003,7 @@ func (suite *ServiceTestSuite) TestReplaceUser_IsSelf_UsesUpdateUserAttributes()
 	require.NotNil(t, scimUser)
 	require.Equal(t, "user-123", scimUser.ID)
 	mockUserService.AssertNotCalled(t, "UpdateUser", mock.Anything, mock.Anything, mock.Anything)
+	mockUserService.AssertNotCalled(t, "UpdateUserAttributes", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // TestReplaceUser_CoreOnly_NoExtensionURN_DefaultsToExistingType tests Replace User for Core Only No

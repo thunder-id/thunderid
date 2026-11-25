@@ -2734,6 +2734,11 @@ func (suite *ResourceServiceTestSuite) TestCreateActionAtResourceServer_Validati
 			action:        providers.Action{Name: "valid-name", Handle: "invalid handle"},
 			expectedError: ErrorInvalidHandle,
 		},
+		{
+			name:          "NegativeMaxAge",
+			action:        providers.Action{Name: "valid-name", Handle: "test-handle", MaxAge: -1},
+			expectedError: ErrorInvalidMaxAge,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -3212,6 +3217,95 @@ func (suite *ResourceServiceTestSuite) TestUpdateAction_KindChangeRejected() {
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateAction_MaxAge() {
+	currentAction := providers.Action{ID: "act-1", Name: testOriginalName, Handle: testOriginalHandle}
+
+	suite.Run("Stored", func() {
+		suite.SetupTest()
+		suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+		suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{}, nil)
+		suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-123", (*string)(nil)).
+			Return(currentAction, nil)
+		suite.mockStore.On("UpdateAction", mock.Anything, "act-1", "rs-123", (*string)(nil),
+			mock.MatchedBy(func(a providers.Action) bool {
+				return a.MaxAge == 300 && a.Handle == testOriginalHandle
+			})).Return(nil)
+
+		result, err := suite.service.UpdateAction(context.Background(), "rs-123", nil, "act-1",
+			providers.Action{Name: testUpdatedName, MaxAge: 300})
+
+		suite.Nil(err)
+		suite.Equal(int64(300), result.MaxAge)
+		suite.mockStore.AssertExpectations(suite.T())
+	})
+
+	suite.Run("ClearedWhenOmitted", func() {
+		suite.SetupTest()
+		marked := currentAction
+		marked.MaxAge = 300
+		suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+		suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{}, nil)
+		suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-123", (*string)(nil)).Return(marked, nil)
+		suite.mockStore.On("UpdateAction", mock.Anything, "act-1", "rs-123", (*string)(nil),
+			mock.MatchedBy(func(a providers.Action) bool { return a.MaxAge == 0 })).Return(nil)
+
+		result, err := suite.service.UpdateAction(context.Background(), "rs-123", nil, "act-1",
+			providers.Action{Name: testUpdatedName})
+
+		suite.Nil(err)
+		suite.Zero(result.MaxAge)
+	})
+
+	suite.Run("NegativeRejected", func() {
+		suite.SetupTest()
+		suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+		suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{}, nil)
+		suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-123", (*string)(nil)).
+			Return(currentAction, nil)
+
+		result, err := suite.service.UpdateAction(context.Background(), "rs-123", nil, "act-1",
+			providers.Action{Name: testUpdatedName, MaxAge: -1})
+
+		suite.Nil(result)
+		suite.NotNil(err)
+		suite.Equal(ErrorInvalidMaxAge.Code, err.Code)
+		suite.mockStore.AssertNotCalled(suite.T(), "UpdateAction",
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func (suite *ResourceServiceTestSuite) TestGetPermissionMaxAge() {
+	testCases := []struct {
+		name          string
+		action        providers.Action
+		storeErr      error
+		expected      int64
+		expectedError *tidcommon.ServiceError
+	}{
+		{name: "Marked", action: providers.Action{ID: "act-1", MaxAge: 300}, expected: 300},
+		{name: "NoActionMeansNoLimit", storeErr: errActionNotFound, expected: 0},
+		{name: "StoreError", storeErr: errors.New("db down"), expectedError: &tidcommon.InternalServerError},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetActionByPermission", mock.Anything, "rs-123", "perm:a").
+				Return(tc.action, tc.storeErr)
+
+			maxAge, err := suite.service.GetPermissionMaxAge(context.Background(), "rs-123", "perm:a")
+
+			suite.Equal(tc.expected, maxAge)
+			if tc.expectedError == nil {
+				suite.Nil(err)
+			} else {
+				suite.Require().NotNil(err)
+				suite.Equal(tc.expectedError.Code, err.Code)
+			}
+		})
+	}
 }
 
 func (suite *ResourceServiceTestSuite) TestGetActionAtResourceServer_Success() {

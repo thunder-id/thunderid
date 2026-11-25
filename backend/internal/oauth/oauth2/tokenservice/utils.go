@@ -435,6 +435,7 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimClaimsLocales] = true
 	reserved[constants.ClaimSubType] = true
 	reserved[constants.ClaimIDP] = true
+	reserved[constants.ClaimAuthTime] = true
 	reserved[constants.ClaimTokenFamilyID] = true
 	reserved[constants.ClaimSessionID] = true
 	reserved[constants.ClaimAuthorizationDetails] = true

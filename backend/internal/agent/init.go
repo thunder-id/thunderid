@@ -117,7 +117,7 @@ func Initialize(
 		}
 	}
 
-	handler := newAgentHandler(service)
+	handler := newAgentHandler(service, resourceService)
 	registerRoutes(mux, handler)
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, &agentTools{
@@ -220,6 +220,7 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 	ownedItemOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT", "DELETE", "POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		ExposedHeaders:   []string{serverconst.WWWAuthenticateHeaderName},
 		AllowCredentials: true,
 		MaxAge:           600,
 	}

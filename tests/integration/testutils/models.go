@@ -342,6 +342,8 @@ type IntrospectionResult struct {
 	Sub    string                 `json:"sub"`
 	Idp    string                 `json:"idp"`
 	Act    map[string]interface{} `json:"act"`
+	// AuthTime is the token's auth_time, zero when it has none.
+	AuthTime int64 `json:"auth_time"`
 }
 
 // AccessStatus is the effective access status a management read of a user, an agent or an

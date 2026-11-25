@@ -35,8 +35,10 @@ vi.mock('../../../api/useUpdateResource', () => ({
   default: () => ({mutate: vi.fn(), isPending: false}),
 }));
 
+const mockUpdateActionMutate = vi.fn();
+
 vi.mock('../../../api/useUpdateAction', () => ({
-  default: () => ({mutate: vi.fn(), isPending: false}),
+  default: () => ({mutate: mockUpdateActionMutate, isPending: false}),
 }));
 
 const mockResourceServer: ResourceServer = {
@@ -308,6 +310,48 @@ describe('ResourceDetailPanel', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', {name: /Save/i})).not.toBeInTheDocument();
     });
+  });
+
+  it('keeps the action maxAge when saving an action name change', async () => {
+    const selectedNode: SelectedNode = {
+      type: 'server-action',
+      id: 'a-1',
+      data: {id: 'a-1', name: 'Read All', handle: 'read-all', permission: 'dark-dodos:read-all', maxAge: 300},
+    };
+
+    renderWithProviders(
+      <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue('Read All'), {target: {value: 'Read Everything'}});
+    await waitFor(() => expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', {name: /Save/i}));
+
+    expect(mockUpdateActionMutate).toHaveBeenCalledWith(
+      {actionId: 'a-1', data: {name: 'Read Everything', description: null, maxAge: 300}},
+      expect.any(Object),
+    );
+  });
+
+  it('sends no maxAge when saving an action that has none', async () => {
+    const selectedNode: SelectedNode = {
+      type: 'server-action',
+      id: 'a-1',
+      data: {id: 'a-1', name: 'Read All', handle: 'read-all', permission: 'dark-dodos:read-all'},
+    };
+
+    renderWithProviders(
+      <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue('Read All'), {target: {value: 'Read Everything'}});
+    await waitFor(() => expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', {name: /Save/i}));
+
+    expect(mockUpdateActionMutate).toHaveBeenCalledWith(
+      {actionId: 'a-1', data: {name: 'Read Everything', description: null}},
+      expect.any(Object),
+    );
   });
 
   it('hides the Save/Reset bar when the name is typed away and back to original', async () => {

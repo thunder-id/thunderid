@@ -1829,6 +1829,32 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_Prefers
 		"auth_time must report the authentication, not when the code was minted")
 }
 
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_AccessTokenCarriesAuthTime() {
+	authenticated := time.Now().Add(-time.Hour)
+	code := suite.testAuthzCode
+	code.AuthTime = authenticated
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&code, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.AuthTime == authenticated.Unix()
+		})).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
 // testSessionID is the SSO session id the grant tests carry through the sid path.
 const testSessionID = "sess-1"
 

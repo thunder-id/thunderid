@@ -528,6 +528,51 @@ func (ts *PersonalAgentTestSuite) TestOwnerResetsTheirAgentsPassword() {
 	ts.Contains(adminResetBody, "AGT-1069")
 }
 
+// An owner token without self:agentcredentials:update cannot reset the agent's password.
+func (ts *PersonalAgentTestSuite) TestOwnerResetNeedsTheAgentCredentialsPermission() {
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	token, err := testutils.ObtainAccessTokenWithPassword(ts.portalClient(), paPortalRedirect,
+		"openid self:credentials:update self:protectedattributes:update", ts.ownerUsername, paPassword, true, "",
+		testutils.SystemResourceIdentifier)
+	ts.Require().NoError(err)
+
+	status, response := ts.selfServiceCall(http.MethodPost, "/users/me/agents/"+agent.id+"/update-credentials",
+		token.AccessToken, `{"attributes":{"password":"Agent@Pass1234"}}`)
+	ts.Equal(http.StatusForbidden, status, response)
+}
+
+// A sign-in older than the agent credentials action's maxAge gets 401 with an RFC 9470 challenge.
+func (ts *PersonalAgentTestSuite) TestOwnerResetNeedsARecentSignIn() {
+	t := ts.T()
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	previous, err := testutils.SetSelfActionMaxAge("agentcredentials", 1)
+	ts.Require().NoError(err)
+	t.Cleanup(func() {
+		if _, err := testutils.SetSelfActionMaxAge("agentcredentials", previous); err != nil {
+			t.Errorf("failed to restore the maxAge: %v", err)
+		}
+	})
+	token := ts.userToken(ts.ownerUsername)
+	time.Sleep(2 * time.Second)
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/agents/"+agent.id+"/update-credentials",
+		strings.NewReader(`{"attributes":{"password":"Agent@Pass1234"}}`))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode, readBody(resp))
+	ts.Equal("AUTH-4011", errorCode(resp))
+	challenge := resp.Header.Get("WWW-Authenticate")
+	ts.Contains(challenge, `error="insufficient_user_authentication"`)
+	ts.Contains(challenge, `max_age="1"`)
+}
+
 // An administrator resets an ordinary agent's password. An update that names it is refused.
 func (ts *PersonalAgentTestSuite) TestAdminResetsAnOrdinaryAgentsPassword() {
 	ownerID, _ := ts.createUser(ts.seededPersonType(), "pa_ordinary_reset_owner")
@@ -1254,11 +1299,17 @@ func (ts *PersonalAgentTestSuite) registerAgent() {
 // user's own access token, which carries no actor and names the user's organization unit.
 func (ts *PersonalAgentTestSuite) userToken(username string) string {
 	ts.T().Helper()
+	return ts.portalToken(ts.portalClient(), username)
+}
+
+// portalClient returns the client ID of the portal application userToken signs in through, creating it on first use.
+func (ts *PersonalAgentTestSuite) portalClient() string {
+	ts.T().Helper()
 	if ts.portalClientID == "" {
 		ts.portalClientID = "pa_suite_portal"
 		ts.portalAppID = ts.createPortal(ts.portalClientID, []string{"ouId"})
 	}
-	return ts.portalToken(ts.portalClientID, username)
+	return ts.portalClientID
 }
 
 // tokenWithoutOU returns the user's own access token from a portal application that does not ask for the
@@ -1307,8 +1358,8 @@ func (ts *PersonalAgentTestSuite) createPortal(clientID string, attributes []str
 // portalToken signs username in through the portal application with clientID and returns the access token.
 func (ts *PersonalAgentTestSuite) portalToken(clientID, username string) string {
 	ts.T().Helper()
-	token, err := testutils.ObtainAccessTokenWithPassword(clientID, paPortalRedirect, "openid",
-		username, paPassword, true)
+	token, err := testutils.ObtainAccessTokenWithPassword(clientID, paPortalRedirect,
+		"openid "+testutils.SelfServiceScopes, username, paPassword, true, "", testutils.SystemResourceIdentifier)
 	ts.Require().NoError(err)
 	return token.AccessToken
 }

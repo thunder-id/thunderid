@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -347,6 +347,7 @@ func (h *resourceHandler) HandleActionPostAtResourceServerRequest(w http.Respons
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
 		Kind:        sanitized.Kind,
+		MaxAge:      sanitized.MaxAge,
 	}
 
 	result, svcErr := h.resourceService.CreateAction(ctx, rsID, nil, serviceReq)
@@ -396,6 +397,7 @@ func (h *resourceHandler) HandleActionPutAtResourceServerRequest(w http.Response
 	serviceReq := providers.Action{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
+		MaxAge:      sanitized.MaxAge,
 	}
 
 	result, svcErr := h.resourceService.UpdateAction(ctx, rsID, nil, id, serviceReq)
@@ -475,6 +477,7 @@ func (h *resourceHandler) HandleActionPostAtResourceRequest(w http.ResponseWrite
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
 		Kind:        sanitized.Kind,
+		MaxAge:      sanitized.MaxAge,
 	}
 
 	result, svcErr := h.resourceService.CreateAction(ctx, rsID, &resourceID, serviceReq)
@@ -521,6 +524,7 @@ func (h *resourceHandler) HandleActionPutAtResourceRequest(w http.ResponseWriter
 	serviceReq := providers.Action{
 		Name:        sanitized.Name,
 		Description: sanitized.Description,
+		MaxAge:      sanitized.MaxAge,
 	}
 
 	result, svcErr := h.resourceService.UpdateAction(ctx, rsID, &resourceID, id, serviceReq)
@@ -695,6 +699,7 @@ func sanitizeCreateActionRequest(req *CreateActionRequest) CreateActionRequest {
 		Handle:      sysutils.SanitizeString(req.Handle),
 		Description: sysutils.SanitizeString(req.Description),
 		Kind:        req.Kind,
+		MaxAge:      req.MaxAge,
 	}
 }
 
@@ -703,6 +708,7 @@ func sanitizeUpdateActionRequest(req *UpdateActionRequest) UpdateActionRequest {
 	return UpdateActionRequest{
 		Name:        sysutils.SanitizeString(req.Name),
 		Description: sysutils.SanitizeString(req.Description),
+		MaxAge:      req.MaxAge,
 	}
 }
 
@@ -792,6 +798,7 @@ func toActionResponse(action *providers.Action) *ActionResponse {
 		Description: action.Description,
 		Permission:  action.Permission,
 		Kind:        action.Kind,
+		MaxAge:      action.MaxAge,
 	}
 }
 

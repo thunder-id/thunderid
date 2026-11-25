@@ -189,6 +189,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
 	sessionID, _ := extractStringClaim(claims, constants.ClaimSessionID)
 	ouID, _ := extractStringClaim(claims, constants.ClaimAccessTokenOUID)
+	authTime, _ := extractInt64Claim(claims, constants.ClaimAuthTime)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -242,6 +243,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		SessionID:            sessionID,
 		AuthorizationDetails: authorizationDetails,
 		OUID:                 ouID,
+		AuthTime:             authTime,
 	}, nil
 }
 
@@ -303,6 +305,16 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	if tv.isSelfIssuer(subjectClaims.Iss) && tv.isAuthAssertion(payload) {
 		if err := tv.consumeAuthAssertion(ctx, payload); err != nil {
 			return nil, err
+		}
+		assertionClaims, _, err := utils.DecodeFlowAssertionClaims(token)
+		if err != nil {
+			return nil, err
+		}
+		subjectClaims.AuthTime = assertionClaims.AuthTime.Unix()
+	} else if tv.isSelfIssuer(subjectClaims.Iss) {
+		// A token this server issued keeps its auth_time across the exchange (RFC 9068 section 2.2.1).
+		if authTime, err := extractInt64Claim(payload, constants.ClaimAuthTime); err == nil && authTime > 0 {
+			subjectClaims.AuthTime = authTime
 		}
 	}
 

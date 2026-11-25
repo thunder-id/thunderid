@@ -488,6 +488,22 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovedWithoutOpen
 	suite.Empty(response.IDToken.Token)
 }
 
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_AccessTokenCarriesAuthTime() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now().Add(-time.Minute)
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool { return ctx.AuthTime == record.AuthTime.Unix() })).
+		Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.Equal("access-token", response.AccessToken.Token)
+}
+
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierarchicalPermissions() {
 	for _, test := range []struct {
 		name, scopes, delimiter string

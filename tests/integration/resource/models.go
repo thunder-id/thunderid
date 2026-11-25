@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -34,6 +34,7 @@ type ActionResponse struct {
 	Description string `json:"description,omitempty"`
 	Permission  string `json:"permission"`
 	Kind        string `json:"kind,omitempty"`
+	MaxAge      int64  `json:"maxAge,omitempty"`
 }
 
 // LinkResponse represents a pagination link.
@@ -123,12 +124,14 @@ type CreateActionRequest struct {
 	Handle      string `json:"handle"`
 	Description string `json:"description,omitempty"`
 	Kind        string `json:"kind,omitempty"`
+	MaxAge      int64  `json:"maxAge,omitempty"`
 }
 
 // UpdateActionRequest represents the request to update an action.
 type UpdateActionRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	MaxAge      int64  `json:"maxAge,omitempty"`
 }
 
 // ErrorResponse represents an error response.

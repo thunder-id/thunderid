@@ -104,9 +104,18 @@ const (
 	ResourceTypeServerConfig ResourceType = "serverconfig"
 	// ResourceTypeConfigurationVersion identifies a configuration version resource.
 	ResourceTypeConfigurationVersion ResourceType = "configversion"
+	// ResourceTypeSelfCredentials identifies the credentials of the token's own subject.
+	ResourceTypeSelfCredentials ResourceType = "credentials"
+	// ResourceTypeSelfAgentCredentials identifies the credentials of the personal agents the token's subject owns.
+	ResourceTypeSelfAgentCredentials ResourceType = "agentcredentials"
+	// ResourceTypeSelfProtectedAttributes identifies the protected attributes of the token's own subject.
+	ResourceTypeSelfProtectedAttributes ResourceType = "protectedattributes"
 )
 
 // ---- Permission catalog ----
+
+// permissionRootSelf is the root of a user's permissions over their own account.
+const permissionRootSelf = "self"
 
 // Action handles declared under each catalog resource.
 const (
@@ -373,6 +382,14 @@ type SystemPermissions struct {
 	Org string
 	// AdministrationFlow is the permission a caller needs to run an administration flow.
 	AdministrationFlow string
+	// SelfService is the root of a user's permissions over their own account. Empty on the control plane.
+	SelfService string
+	// SelfCredentialsUpdate is needed to change the token subject's own credentials.
+	SelfCredentialsUpdate string
+	// SelfAgentCredentialsUpdate is needed to change the credentials of a personal agent the token's subject owns.
+	SelfAgentCredentialsUpdate string
+	// SelfProtectedAttributesUpdate is needed to change the token subject's own protected attributes.
+	SelfProtectedAttributesUpdate string
 	// OUListRoots is the permission a caller needs to list the root organization units. On the data plane it
 	// is the system root permission, since an organization permission reaches only the unit its token names.
 	OUListRoots                string
@@ -624,10 +641,10 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /users/me", ""},
 		{"GET /users/me/**", ""},
 		{"PUT /users/me/**", ""},
-		{"POST /users/me/update-credentials", ""},
+		{"POST /users/me/update-credentials", p.SelfCredentialsUpdate},
 		{"GET /capabilities", ""},
 		{"DELETE /users/me/agents/*", ""},
-		{"POST /users/me/agents/*/update-credentials", ""},
+		{"POST /users/me/agents/*/update-credentials", p.SelfAgentCredentialsUpdate},
 		{"POST /users/me/agents/suspend", ""},
 		{"POST /users/me/agents/*/suspend", ""},
 		{"POST /users/me/agents/*/unsuspend", ""},
@@ -995,6 +1012,12 @@ func activatePermissions(p *SystemPermissions) {
 // Returns nil if no plane's permissions have been initialized.
 func GetSystemPermissions() *SystemPermissions {
 	return sysPerms
+}
+
+// IsSelfServicePermission reports whether permission is under the self-service root.
+func IsSelfServicePermission(permission string) bool {
+	return sysPerms != nil && sysPerms.SelfService != "" &&
+		PermissionCovers(sysPerms.SelfService, permission, DefaultPermissionDelimiter)
 }
 
 // GetSystemRootPermission returns the root system permission string.

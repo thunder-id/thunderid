@@ -2589,6 +2589,13 @@ components:
             actions (defaults to "tool" when omitted on create). For API and CUSTOM resource server
             actions it is present only when a kind was provided on create, otherwise omitted.
             Immutable after creation.
+        maxAge:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Maximum time in seconds since the subject authenticated (the access token's `auth_time`) for a
+            token to be used for this action (RFC 9470). Omitted when the action sets no limit.
 
     CreateActionRequest:
       type: object
@@ -2612,9 +2619,17 @@ components:
             "tool" or "resource". For type=MCP it defaults to "tool" when omitted. For API and
             CUSTOM resource servers it is optional and, when omitted, stays empty. Immutable after
             creation; omit on update requests (kind cannot be changed).
+        maxAge:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Maximum time in seconds since the subject authenticated for a token to be used for this action
+            (RFC 9470). Omit or set zero for no limit. A negative value is refused (`RES-1029`).
 
     UpdateActionRequest:
       type: object
+      description: Replaces the action's fields, so an omitted description or maxAge is cleared.
       properties:
         name:
           type: string
@@ -2622,6 +2637,13 @@ components:
         description:
           type: string
           description: Optional description of the action
+        maxAge:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Maximum time in seconds since the subject authenticated for a token to be used for this action
+            (RFC 9470). Omit or set zero for no limit. A negative value is refused (`RES-1029`).
 
     ResourceServerListResponse:
       type: object

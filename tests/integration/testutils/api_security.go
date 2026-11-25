@@ -286,7 +286,7 @@ func getHTTPClientForUser(clientID, redirectURI, username, password string) (*ht
 	tokenResp, err := ObtainAccessTokenWithPassword(
 		clientID,
 		redirectURI,
-		"openid",
+		"openid "+SelfServiceScopes,
 		username,
 		password,
 		true,

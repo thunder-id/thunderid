@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -475,6 +475,16 @@ var (
 		              AND a.DEPLOYMENT_ID = $2
 		              AND a.PERMISSION = p.value
 		        )`,
+	}
+
+	// queryGetActionByPermission retrieves the action carrying a permission.
+	queryGetActionByPermission = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-48",
+		Query: `SELECT a.ID, a.NAME, a.HANDLE, a.DESCRIPTION, a.PERMISSION, a.PROPERTIES
+		        FROM "ACTION" a
+		        WHERE a.RESOURCE_SERVER_ID = $1
+		          AND a.PERMISSION = $2
+		          AND a.DEPLOYMENT_ID = $3`,
 	}
 )
 

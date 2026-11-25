@@ -1019,6 +1019,78 @@ func (_c *resourceStoreInterfaceMock_GetAction_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// GetActionByPermission provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetActionByPermission(ctx context.Context, resServerID string, permission string) (providers.Action, error) {
+	ret := _mock.Called(ctx, resServerID, permission)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetActionByPermission")
+	}
+
+	var r0 providers.Action
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (providers.Action, error)); ok {
+		return returnFunc(ctx, resServerID, permission)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) providers.Action); ok {
+		r0 = returnFunc(ctx, resServerID, permission)
+	} else {
+		r0 = ret.Get(0).(providers.Action)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resServerID, permission)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetActionByPermission_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetActionByPermission'
+type resourceStoreInterfaceMock_GetActionByPermission_Call struct {
+	*mock.Call
+}
+
+// GetActionByPermission is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resServerID string
+//   - permission string
+func (_e *resourceStoreInterfaceMock_Expecter) GetActionByPermission(ctx any, resServerID any, permission any) *resourceStoreInterfaceMock_GetActionByPermission_Call {
+	return &resourceStoreInterfaceMock_GetActionByPermission_Call{Call: _e.mock.On("GetActionByPermission", ctx, resServerID, permission)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetActionByPermission_Call) Run(run func(ctx context.Context, resServerID string, permission string)) *resourceStoreInterfaceMock_GetActionByPermission_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetActionByPermission_Call) Return(action providers.Action, err error) *resourceStoreInterfaceMock_GetActionByPermission_Call {
+	_c.Call.Return(action, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetActionByPermission_Call) RunAndReturn(run func(ctx context.Context, resServerID string, permission string) (providers.Action, error)) *resourceStoreInterfaceMock_GetActionByPermission_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetActionList provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetActionList(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit int, offset int) ([]providers.Action, error) {
 	ret := _mock.Called(ctx, resServerID, resID, kind, limit, offset)

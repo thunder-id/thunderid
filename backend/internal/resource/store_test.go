@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -2677,6 +2677,82 @@ func (suite *ResourceStoreTestSuite) TestActionProperties_RoundTrip() {
 	var fromString providers.Action
 	resolveActionProperties(map[string]interface{}{"properties": `{"kind":"tool"}`}, &fromString)
 	suite.Equal(providers.ActionKindTool, fromString.Kind)
+}
+
+func (suite *ResourceStoreTestSuite) TestActionProperties_MaxAgeRoundTrip() {
+	testCases := []struct {
+		name     string
+		action   providers.Action
+		expected interface{}
+	}{
+		{"KindOnly", providers.Action{Kind: providers.ActionKindTool}, []byte(`{"kind":"tool"}`)},
+		{"MaxAgeOnly", providers.Action{MaxAge: 300}, []byte(`{"maxAge":300}`)},
+		{"Both", providers.Action{Kind: providers.ActionKindTool, MaxAge: 300},
+			[]byte(`{"kind":"tool","maxAge":300}`)},
+		{"Neither", providers.Action{}, nil},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			props := buildActionPropertiesJSON(tc.action)
+			suite.Equal(tc.expected, props)
+
+			var resolved providers.Action
+			resolveActionProperties(map[string]interface{}{"properties": props}, &resolved)
+			suite.Equal(tc.action.Kind, resolved.Kind)
+			suite.Equal(tc.action.MaxAge, resolved.MaxAge)
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestGetActionByPermission() {
+	suite.Run("Found", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", context.Background(),
+			queryGetActionByPermission, "rs1", "perm:a", "test-deployment").
+			Return([]map[string]interface{}{
+				{
+					"id":         "action1",
+					"name":       "Test Action",
+					"handle":     "test-handle",
+					"permission": "perm:a",
+					"properties": `{"maxAge":300}`,
+				},
+			}, nil)
+
+		action, err := suite.store.GetActionByPermission(context.Background(), "rs1", "perm:a")
+
+		suite.NoError(err)
+		suite.Equal("action1", action.ID)
+		suite.Equal("perm:a", action.Permission)
+		suite.Equal(int64(300), action.MaxAge)
+	})
+
+	suite.Run("NotFound", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", context.Background(),
+			queryGetActionByPermission, "rs1", "perm:a", "test-deployment").
+			Return([]map[string]interface{}{}, nil)
+
+		_, err := suite.store.GetActionByPermission(context.Background(), "rs1", "perm:a")
+
+		suite.ErrorIs(err, errActionNotFound)
+	})
+
+	suite.Run("QueryError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", context.Background(),
+			queryGetActionByPermission, "rs1", "perm:a", "test-deployment").
+			Return(nil, errors.New("query error"))
+
+		_, err := suite.store.GetActionByPermission(context.Background(), "rs1", "perm:a")
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "failed to get action")
+	})
 }
 
 func (suite *ResourceStoreTestSuite) TestDeleteAction() {

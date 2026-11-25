@@ -423,7 +423,7 @@ func (f *verificationFixture) uniqueMobile() string {
 	return fmt.Sprintf("+1555%04d%03d", f.mobileStem, f.mobiles)
 }
 
-// token signs the user in and returns their access token, which carries no permission.
+// token signs the user in and returns their access token, which carries only the self-service permissions.
 func (f *verificationFixture) token(t *testing.T, u testUser) string {
 	t.Helper()
 
@@ -435,7 +435,7 @@ func signIn(t *testing.T, u testUser) *testutils.TokenResponse {
 	t.Helper()
 
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(u.signInClientID, testutils.OUSignInRedirectURI,
-		"openid", u.username, u.password, true)
+		"openid "+testutils.SelfServiceScopes, u.username, u.password, true, "", testutils.SystemResourceIdentifier)
 	require.NoError(t, err, "failed to sign %s in", u.username)
 	require.NotEmpty(t, tokenResp.AccessToken)
 	return tokenResp

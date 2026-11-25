@@ -10,7 +10,9 @@
  * attributes ThunderID stores about them (read from GET /users/me) from the Wayfinder sample
  * app's own Profile page, edits their last name (PUT /users/me), and changes their password
  * (POST /users/me/update-credentials) - then signs back in with the new password to confirm the
- * credential update actually took effect.
+ * credential update actually took effect. The password change needs self:credentials:update on the
+ * System resource server, which the sign-in token (bound to the booking resource server) cannot
+ * carry, so the page gets a second token through a sign-in popup.
  *
  * Uses a dedicated Customer user created via the Users API rather than the shared seed user
  * (john.doe): this test mutates the user's attributes and password, and the
@@ -87,7 +89,7 @@ describeOrSkip("Wayfinder B2C Tryout - Profile", { tag: [TestTags.WAYFINDER] }, 
     });
 
     await test.step("Change the password", async () => {
-      await profilePage.changePassword(newPassword);
+      await profilePage.changePassword(newPassword, customer.username, customer.password);
     });
 
     await test.step("Sign back in with the new password to confirm the credential update took effect", async () => {

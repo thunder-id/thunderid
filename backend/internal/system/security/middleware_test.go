@@ -491,6 +491,16 @@ func TestMiddleware_NilService(t *testing.T) {
 	assert.Nil(t, handler)
 }
 
+func TestSetAuthenticationAgeChallenge(t *testing.T) {
+	w := httptest.NewRecorder()
+
+	SetAuthenticationAgeChallenge(w, "120")
+
+	assert.Equal(t, `Bearer error="insufficient_user_authentication", `+
+		`error_description="A more recent authentication is required", max_age="120"`,
+		w.Header().Get("WWW-Authenticate"))
+}
+
 // Run the test suite
 func TestMiddlewareTestSuite(t *testing.T) {
 	suite.Run(t, new(MiddlewareTestSuite))

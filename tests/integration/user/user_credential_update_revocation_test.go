@@ -88,7 +88,7 @@ func (ts *UserAPITestSuite) newCredentialRevocationUser(name, password string) *
 // signIn signs the user in with the password and returns the access token.
 func (ts *UserAPITestSuite) signIn(u *credentialRevocationUser, password string) string {
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(u.signInID, testutils.OUSignInRedirectURI,
-		"openid", u.username, password, true, "")
+		"openid "+testutils.SelfServiceScopes, u.username, password, true, "", testutils.SystemResourceIdentifier)
 	ts.Require().NoError(err, "Failed to sign the user in")
 	return tokenResp.AccessToken
 }

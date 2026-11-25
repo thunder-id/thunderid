@@ -6,13 +6,15 @@
  *
  * Page Object Model for the Wayfinder sample app's self-service Profile page (/profile): the
  * "Profile attributes" form (backed by GET/PUT /users/me) and the "Change password" form (backed
- * by POST /users/me/update-credentials). Each attribute row is rendered as a <label> wrapping its
+ * by POST /users/me/update-credentials, called with a System resource server token that a sign-in
+ * popup returns). Each attribute row is rendered as a <label> wrapping its
  * <input>, so attributeInput() locates fields by their accessible (implicit-label) name rather
  * than a hardcoded selector per attribute.
  */
 
 import { Page, Locator, expect } from "@playwright/test";
 import { BasePage } from "../base.page";
+import { GateLoginPage } from "../gate-login.page";
 import { Timeouts } from "../../constants/timeouts";
 
 export class WayfinderProfilePage extends BasePage {
@@ -54,11 +56,34 @@ export class WayfinderProfilePage extends BasePage {
     await expect(this.page.getByText("Profile updated.")).toBeVisible({ timeout: Timeouts.DEFAULT_ACTION });
   }
 
-  /** Set a new password and save. Verifies the "Password updated." confirmation. */
-  async changePassword(newPassword: string) {
+  /**
+   * Set a new password and save. The page asks for a self-service token in a popup, which closes by
+   * itself when the gate reuses the recent sign-in, or shows the sign-in form, which is answered with
+   * the current credentials. Verifies the "Password updated." confirmation.
+   */
+  async changePassword(newPassword: string, username: string, currentPassword: string) {
     await this.newPasswordInput.fill(newPassword);
     await this.confirmPasswordInput.fill(newPassword);
-    await this.updatePasswordButton.click();
+    const [popup] = await Promise.all([this.page.waitForEvent("popup"), this.updatePasswordButton.click()]);
+
+    const gate = new GateLoginPage(popup);
+    const signInShown = await Promise.race([
+      popup.waitForEvent("close", { timeout: Timeouts.REDIRECT }).then(
+        () => false,
+        () => false
+      ),
+      gate.verifyLoginPageLoaded().then(
+        () => true,
+        () => false
+      ),
+    ]);
+    if (signInShown) {
+      await Promise.all([
+        popup.waitForEvent("close", { timeout: Timeouts.REDIRECT }),
+        gate.login(username, currentPassword),
+      ]);
+    }
+
     await expect(this.page.getByText("Password updated.")).toBeVisible({ timeout: Timeouts.DEFAULT_ACTION });
   }
 }

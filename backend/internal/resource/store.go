@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -71,6 +72,7 @@ type resourceStoreInterface interface {
 		ctx context.Context, resServerID string, resID *string, handle string,
 	) (bool, error)
 	ValidatePermissions(ctx context.Context, resServerID string, permissions []string) ([]string, error)
+	GetActionByPermission(ctx context.Context, resServerID string, permission string) (providers.Action, error)
 }
 
 // resourceStore is the default implementation of resourceStoreInterface.
@@ -87,7 +89,8 @@ type resourceServerProperties struct {
 
 // actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
 type actionProperties struct {
-	Kind providers.ActionKind `json:"kind,omitempty"`
+	Kind   providers.ActionKind `json:"kind,omitempty"`
+	MaxAge int64                `json:"maxAge,omitempty"`
 }
 
 // newResourceStore creates a new instance of resourceStore.
@@ -735,7 +738,7 @@ func (s *resourceStore) CreateAction(
 			action.Handle,                     // $5: HANDLE
 			action.Description,                // $6: DESCRIPTION
 			action.Permission,                 // $7: PERMISSION
-			buildActionPropertiesJSON(action), // $8: PROPERTIES (NULL when kind empty).
+			buildActionPropertiesJSON(action), // $8: PROPERTIES (NULL when none).
 			s.scope(ctx),                      // $9: DEPLOYMENT_ID
 		)
 		if err != nil {
@@ -752,12 +755,24 @@ func (s *resourceStore) CreateAction(
 func (s *resourceStore) GetAction(
 	ctx context.Context, id string, resServerID string, resID *string,
 ) (providers.Action, error) {
+	// Single unified query handles both resource server and resource level via nullable parameter
+	return s.getAction(ctx, queryGetActionByID, id, resServerID, resID, s.scope(ctx))
+}
+
+// GetActionByPermission retrieves the action carrying the permission.
+func (s *resourceStore) GetActionByPermission(
+	ctx context.Context, resServerID string, permission string,
+) (providers.Action, error) {
+	return s.getAction(ctx, queryGetActionByPermission, resServerID, permission, s.scope(ctx))
+}
+
+// getAction runs a query that selects one action.
+func (s *resourceStore) getAction(
+	ctx context.Context, query dbmodel.DBQuery, args ...interface{},
+) (providers.Action, error) {
 	var action providers.Action
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		// Single unified query handles both resource server and resource level via nullable parameter
-		results, err := dbClient.QueryContext(
-			ctx, queryGetActionByID, id, resServerID, resID, s.scope(ctx),
-		)
+		results, err := dbClient.QueryContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("failed to get action: %w", err)
 		}
@@ -851,7 +866,7 @@ func (s *resourceStore) UpdateAction(
 			queryUpdateAction,
 			action.Name,                       // $1: NAME
 			action.Description,                // $2: DESCRIPTION
-			buildActionPropertiesJSON(action), // $3: PROPERTIES (NULL when kind empty).
+			buildActionPropertiesJSON(action), // $3: PROPERTIES (NULL when none).
 			id,                                // $4: ACTION_ID
 			resServerID,                       // $5: RESOURCE_SERVER_ID (UUID FK)
 			resID,                             // $6: RESOURCE_ID (UUID FK or NULL)
@@ -1138,7 +1153,7 @@ func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
 	return json.RawMessage("{}")
 }
 
-// resolveActionProperties extracts and sets the kind from the ACTION.PROPERTIES column.
+// resolveActionProperties sets the kind and maxAge from the ACTION.PROPERTIES column.
 func resolveActionProperties(row map[string]interface{}, a *providers.Action) {
 	if propsVal, ok := row["properties"]; ok && propsVal != nil {
 		var props actionProperties
@@ -1154,17 +1169,18 @@ func resolveActionProperties(row map[string]interface{}, a *providers.Action) {
 		if len(propsBytes) > 0 {
 			if err := json.Unmarshal(propsBytes, &props); err == nil {
 				a.Kind = props.Kind
+				a.MaxAge = props.MaxAge
 			}
 		}
 	}
 }
 
-// buildActionPropertiesJSON builds the PROPERTIES JSON for an Action, or NULL when kind is empty.
+// buildActionPropertiesJSON builds the PROPERTIES JSON for an Action, or NULL when it has none.
 func buildActionPropertiesJSON(a providers.Action) interface{} {
-	if a.Kind == "" {
+	if a.Kind == "" && a.MaxAge == 0 {
 		return nil
 	}
-	if propsJSON, err := json.Marshal(actionProperties{Kind: a.Kind}); err == nil {
+	if propsJSON, err := json.Marshal(actionProperties{Kind: a.Kind, MaxAge: a.MaxAge}); err == nil {
 		return propsJSON
 	}
 	return nil

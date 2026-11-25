@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -667,6 +668,36 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_NoChange_KeepsPermissionScopes()
 	scopes := ts.accessTokenScopes(refreshed.AccessToken)
 	ts.Assert().Contains(scopes, "read", "refreshed token should retain read")
 	ts.Assert().Contains(scopes, "write", "refreshed token should retain write")
+}
+
+// A refresh keeps the sign-in's auth_time and the self-service permissions, which a user holds without a role.
+func (ts *RefreshSecurityTestSuite) TestRefresh_KeepsAuthTimeAndSelfPermissions() {
+	ts.createUser("refresh_sec_self")
+
+	tokens := ts.obtainTokensForResource(refreshSecClientID, refreshSecClientSecret, "refresh_sec_self",
+		"openid "+testutils.SelfServiceScopes, testutils.SystemResourceIdentifier)
+	claims, err := testutils.DecodeJWT(tokens.AccessToken)
+	ts.Require().NoError(err)
+	authTime, ok := claims.Additional["auth_time"].(float64)
+	ts.Require().True(ok, "the sign-in token must carry auth_time")
+	selfScopes := strings.Fields(testutils.SelfServiceScopes)
+	ts.Require().Subset(ts.accessTokenScopes(tokens.AccessToken), selfScopes)
+
+	// Wait a second, so an auth_time stamped at refresh would differ.
+	time.Sleep(time.Second)
+	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err)
+
+	refreshedClaims, err := testutils.DecodeJWT(refreshed.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(authTime, refreshedClaims.Additional["auth_time"], "a refresh keeps the original auth_time")
+	ts.Subset(ts.accessTokenScopes(refreshed.AccessToken), selfScopes)
+
+	introspected, err := testutils.IntrospectTokenResult(refreshed.AccessToken, refreshSecClientID,
+		refreshSecClientSecret, false)
+	ts.Require().NoError(err)
+	ts.True(introspected.Active)
+	ts.Equal(int64(authTime), introspected.AuthTime, "introspection returns the token's auth_time")
 }
 
 // Unassigning the role revokes the refresh token that carried its permissions, and a new sign-in no

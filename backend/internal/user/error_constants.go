@@ -547,6 +547,20 @@ var (
 			DefaultValue: "Credentials cannot be changed with a delegated token",
 		},
 	}
+	// ErrorProtectedAttributeChangeNotPermitted is returned when a self protected attribute change lacks the
+	// permission.
+	ErrorProtectedAttributeChangeNotPermitted = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.protected_attribute_change_not_permitted",
+			DefaultValue: "Protected attribute change not permitted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.protected_attribute_change_not_permitted_description",
+			DefaultValue: "The access token does not carry the permission to change protected attributes",
+		},
+	}
 )
 
 // Error variables
