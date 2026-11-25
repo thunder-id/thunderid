@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.10
+- **Version:** 0.11
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -10,6 +10,7 @@
   [#5354](https://github.com/thunder-id/thunderid/discussions/5354),
   [#5162](https://github.com/thunder-id/thunderid/issues/5162),
   [#5155](https://github.com/thunder-id/thunderid/issues/5155),
+  [#6682](https://github.com/thunder-id/thunderid/issues/6682),
   [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
   [RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396),
@@ -506,6 +507,67 @@ Requirements:
    component shows each eligible attribute's status and, for an unverified email or mobile
    number, the verify action.
 
+#### Personal agent self-service
+
+Personal agent self-service lets a signed-in user manage the agents they own, such as an
+assistant that acts on their behalf, through the `/users/me/agents` API. The agents are listed
+in the organization unit the access token names. It is optional: an SDK MAY ship it, and one
+that does MUST follow this section.
+
+| Operation | Contract |
+|---|---|
+| `getMeAgents` | Returns one page of the agents the user owns, with the total count. Accepts `limit`, `offset`, and a `kind` that lists only agents of that kind, such as `personal-assistant`. |
+| `getMeAgent` | Returns one of the user's agents by identifier, with its display name. |
+| `updateMeAgent` | Replaces the part of a personal agent its owner may change: the description, the attributes (the name included), the grant types, and the redirect URIs. Returns the updated agent. |
+| `deleteMeAgent` | Deletes one of the user's personal agents. Returns nothing. |
+| `suspendMeAgent` | Places the user's own suspension on one of their personal agents. Returns nothing. |
+| `unsuspendMeAgent` | Lifts the user's own suspension of one of their personal agents. Returns nothing. |
+| `suspendAllMeAgents` | Places the user's own suspension on every personal agent they have not already suspended. Returns how many it suspended. |
+
+Requirements:
+
+1. These are the signed-in user's own requests. They MUST be sent with the user's access token
+   through the SDK's authenticated transport, as the other `/users/me` requests are, and
+   `http.fetcher` MUST NOT apply to them. An SDK MAY accept a fetcher passed to a single call,
+   as it does for its other `/users/me` requests. The SDK MUST NOT mint or widen a credential
+   for them. The server refuses a delegated token, such as an agent's token for its owner.
+   Where the application signs users in on its own backend, these requests follow the SDK's
+   handling of its other `/users/me` requests.
+2. The collection URL is `baseUrl` followed by `/users/me/agents`, unless the SDK offers an
+   endpoint override for it and the application sets one. A single agent is addressed as the
+   collection URL followed by its percent-encoded identifier. `suspendMeAgent` and
+   `unsuspendMeAgent` send `POST` to the agent's URL followed by `/suspend` and `/unsuspend`, and
+   `suspendAllMeAgents` sends `POST` to the collection URL followed by `/suspend`.
+3. A blank or whitespace-only agent identifier MUST fail input validation before any network
+   call, as [Error model](#error-model) requires, with the code the SDK documents for invalid
+   input.
+4. HTTP 403 and 404 MUST surface as distinct error codes, as for management operations. The
+   SDK MUST NOT produce a user-visible side effect from an operation; the components decide
+   what the user sees.
+5. An agent's name is its `display` value, then its `name` attribute, then its identifier.
+   `getMeAgent` requests the display value; `getMeAgents` does not, so a listed agent is named
+   by its `name` attribute.
+6. An update replaces what it names, so `updateMeAgent` MUST send the attributes, the grant
+   types, and the redirect URIs every time, empty lists included. An edit MUST start from the
+   agent as read and send back the attributes it does not change. The edit form offers the
+   authorization code, CIBA, and refresh token grants, requires a name, and requires a redirect
+   URI while the authorization code grant is selected.
+7. The owner's suspension is independent of the organization's and of any other party's. Who
+   holds an agent suspended is read from `status.details.appliedBy`. The SDK offers Unsuspend
+   only while the owner holds a suspension, and Suspend otherwise. Lifting the owner's
+   suspension leaves any other in force.
+8. The admin agent views apply the same rule to the organization: they offer the
+   organization's Suspend when only other parties hold the agent suspended, and Unsuspend while
+   the organization holds a suspension or no party is named.
+9. A UI SDK ships a personal agent list and a personal agent details component, each with a
+   `Base` variant. The list shows only agents of kind `personal-assistant`. Editing, deleting,
+   and suspending are each off unless the application turns them on, and a read-only
+   (declarative) agent offers no edit or delete. In the components' own rendering, deleting an
+   agent, suspending one, and suspending all of them MUST ask the user to confirm first, and a
+   pending confirmation belongs to the agent it was opened for. A custom rendering receives the
+   actions and owns their confirmation. The details show who holds the agent suspended when the
+   server names them.
+
 #### Back-channel logout handling
 
 When a session ends at the ThunderID server, the server notifies every application that took
@@ -621,7 +683,7 @@ own.
 | Actions | Trigger an operation | Sign-in button, sign-out button, sign-up button |
 | Auth flow | Handle the redirect callback | Callback |
 | Control | Render conditionally on auth state | Signed-in, signed-out, loading |
-| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, language switcher |
+| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, personal agent list, personal agent details, language switcher |
 
 Requirements:
 
@@ -1240,6 +1302,29 @@ server recorded and nothing else.
 - **AC10.6:** Given a changed email address or mobile number, when the profile saves it, then
   it shows the stored value and its reported status and waits for Verify before starting a flow.
 
+### R11. Personal agent self-service that keeps each party's suspension its own
+
+**Requirement:** As a developer whose users own agents that act for them, I want the SDK to let
+a signed-in user list, edit, delete, and suspend their own agents, so my application gives
+users control of their agents without touching what the organization decided.
+
+**Acceptance criteria:**
+
+- **AC11.1:** Given a signed-in user, when any personal agent operation runs, then the request
+  carries the user's access token through the SDK's own transport and never `http.fetcher`.
+- **AC11.2:** Given a blank or whitespace-only agent identifier, when an operation that takes
+  one is called, then the SDK fails input validation before any network call.
+- **AC11.3:** Given an agent with attributes the edit does not change, when the update is
+  sent, then it carries those attributes unchanged, and the grant types and redirect URIs even
+  when they are empty.
+- **AC11.4:** Given an agent the organization alone holds suspended, when its details are
+  shown to the owner, then they offer Suspend and not Unsuspend; given one the owner holds
+  suspended, they offer Unsuspend.
+- **AC11.5:** Given a delete, suspend, or suspend-all action in a component's own rendering,
+  when the user picks it, then no request is sent until the user confirms.
+- **AC11.6:** Given a 403 or a 404 response, when the operation fails, then the two surface as
+  distinct error codes.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1254,3 +1339,4 @@ server recorded and nothing else.
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
+| 0.11 | 2026-11-23 | Personal agent self-service added as an optional capability (R11), with the personal agent list and details components. |
